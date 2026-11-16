@@ -61,6 +61,8 @@ claudemeister setup
 ```
 
 The formula also installs `cm`, a short name for `claudemeister`. `cm kcalm`, `cm ps` and `cm proxy` work the same.
+If `cm` is missing, `claudemeister alias on` or the "Short name cm" menu item adds it. Neither touches a `cm`
+that belongs to another program, and `claudemeister alias off` removes only its own.
 
 Homebrew also installs mihomo for `claudemeister -x`. `claudemeister setup` puts `/restart`, `/forget`, `/slim`
 and the other commands into `~/.claude/commands`, hooks into `~/.claude/settings.json` and a zsh hook into
