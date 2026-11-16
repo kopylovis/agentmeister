@@ -146,15 +146,29 @@ match() {
 }
 
 choose() {
-  local d name branch last idx
+  local d name branch last idx log when subj note wide=10
+  for d in ${dirs[@]+"${dirs[@]}"}; do
+    name=$(basename "$d")
+    [ "${#name}" -gt "$wide" ] && wide=${#name}
+  done
   idx=$(
     {
-      printf '~\t~ (домашний каталог)\n'
+      printf '~\t🏠 ~ (домашний каталог)\t%s\n' "Домашняя папка\\n~\\n\\nClaude Code запустится вне проекта."
       for d in ${dirs[@]+"${dirs[@]}"}; do
         name=$(basename "$d")
         branch=$(git -C "$d" branch --show-current 2>/dev/null)
-        last=$(git -C "$d" log -1 --format=%cr 2>/dev/null)
-        printf '%s\t%-30s %-28s %s\n' "$name" "$name" "${branch:--}" "$last"
+        # три последних коммита для описания справа; первая дата идет и в сам список
+        log=$(git -C "$d" log -3 --format='%cr%x1f%s' 2>/dev/null | tr '\t' ' ')
+        last=${log%%$'\x1f'*}
+        note="$name\\n${d/#$HOME/~}"
+        [ -n "$branch" ] && note+="\\nветка $branch"
+        if [ -n "$log" ]; then
+          note+="\\n\\n# последние коммиты"
+          while IFS=$'\x1f' read -r when subj; do note+="\\n$when\\n  $subj"; done <<<"$log"
+        else
+          note+="\\n\\nне git-репозиторий"
+        fi
+        printf "%s\t📁 %-${wide}s  %-18s  %s\t%s\n" "$name" "$name" "$(printf '%.18s' "${branch:--}")" "$last" "$note"
       done
     } | /usr/bin/python3 "$MENU" --title "Проекты в ${DEV/#$HOME/~}:" --label "Проект" --start 0 --default 1
   ) || return $?
@@ -183,7 +197,9 @@ if [ "$new" -eq 0 ]; then
 fi
 
 if [ -z "$mode" ]; then
-  idx=$(printf 'caffeinate\tcaffeinate — Mac не уснёт, пока идёт сессия\nобычная\tобычная\n' |
+  idx=$(printf '%s\t%s\t%s\n' \
+      caffeinate "☕ caffeinate" "caffeinate\\n\\nMac не уснет, пока идет сессия. Удобно для долгих задач и Remote Control с телефона. Экран при этом гаснуть может.\\n\\nС закрытой крышкой на батарее Mac все равно уснет, если не включен claudemeister lid.\\n\\n# без вопроса\\nclaudemeister ... -k" \
+      обычная "🌙 обычная" "Обычная сессия\\n\\nMac засыпает по своим настройкам, как без claudemeister.\\n\\n# без вопроса\\nclaudemeister ... -n" |
     /usr/bin/python3 "$MENU" --title "Режим сессии в ${dir/#$HOME/~}:" --label "Режим") || exit $?
   [ "$idx" = 1 ] && mode=normal || mode=caffeinate
 fi
@@ -193,7 +209,9 @@ if [ -z "$net" ]; then
   net=direct
   if /usr/bin/python3 "$PROXY" configured; then
     [ "$(/usr/bin/python3 "$PROXY" last)" = vps ] && def=1 || def=0
-    idx=$(printf 'напрямую\tнапрямую\nvps\tчерез VPS — только эта сессия, остальное напрямую\n' |
+    idx=$(printf '%s\t%s\t%s\n' \
+        напрямую "🔌 напрямую" "Напрямую\\n\\nСессия ходит в сеть как обычно.\\n\\n# без вопроса\\nclaudemeister ... -d" \
+        vps "🌐 через VPS" "Через VPS\\n\\nЧерез mihomo и ваш VPS идет только эта сессия и запущенные из нее программы, которые читают HTTPS_PROXY (gh, npm, curl, git по https). Остальное на Mac ходит напрямую.\\n\\n# без вопроса\\nclaudemeister ... -x" |
       /usr/bin/python3 "$MENU" --title "Сеть:" --label "Сеть" --default "$def") || exit $?
     [ "$idx" = 1 ] && net=vps
     /usr/bin/python3 "$PROXY" remember "$net"
