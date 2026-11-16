@@ -127,7 +127,9 @@ Without arguments in a terminal, `claudemeister` opens an action menu with four 
 home folder, saved ones, running ones, reopening after a reboot), modes, the VPS proxy and install. It runs the
 chosen action and prints the full command so you can type it directly next time. Afterwards you can go back to
 the menu. The humanize, guard, buildlog, notification and lid modes show as `[on]` or `[off]`, and Enter switches
-them in place without leaving the menu. Each item shows on the right the command that does the same. The menu
+them in place without leaving the menu. The menu fills the screen: the list on the left, and on the right a
+description of the selected item, the command that does the same and the current setup (versions, modes that
+are on, the proxy). Tab hides the description, and a narrow window hides it on its own. The menu
 follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in `~/.config/mnrh/config` picks
 one explicitly. `MNRH_NO_MENU=1` skips the menu and goes straight to the project list.
 

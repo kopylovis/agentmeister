@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
                                 "libexec", "claudemeister", "lib"))
 import mnrhlib  # noqa: E402
 import claude_menu as m  # noqa: E402
+import menu  # noqa: E402
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -27,24 +28,67 @@ class Menu(unittest.TestCase):
     def test_rows_match_items(self):
         rows = self.plain("ru")
         self.assertEqual(len(rows), len(m.ITEMS))
-        self.assertEqual([k is None for k, _ in rows], [k is None for k, _, _ in m.ITEMS])
+        self.assertEqual([k is None for k, _ in rows], [item[0] is None for item in m.ITEMS])
 
     def test_both_languages(self):
         self.assertIn("Открыть проект", self.plain("ru")[1][1])
         self.assertIn("Open a project", self.plain("en")[1][1])
 
-    def test_mode_shows_state_and_next_command(self):
+    def test_every_action_has_icon_and_description(self):
+        for key, icon, ru, en, desc_ru, desc_en in m.ITEMS:
+            if key:
+                self.assertEqual(menu.width(icon), 2, key)
+                self.assertTrue(desc_ru and desc_en, key)
+
+    def test_mode_shows_state(self):
         rows = dict((k.split(" ", 2)[1] if k and k.startswith("mode ") else k, t)
                     for k, t in self.plain("en", on={"guard"}))
-        self.assertIn("[on]", rows["guard"])
-        self.assertTrue(rows["guard"].endswith("claudemeister guard off"))
-        self.assertIn("[off]", rows["lid"])
-        self.assertTrue(rows["lid"].endswith("claudemeister lid on"))
+        self.assertTrue(rows["guard"].endswith("[on]"))
+        self.assertTrue(rows["lid"].endswith("[off]"))
 
-    def test_commands_line_up(self):
+    def test_flags_line_up(self):
         for lang in ("ru", "en"):
-            cols = {t.index("claudemeister ") for k, t in self.plain(lang, on={"humanize"}) if k}
+            cols = {menu.width(t[:t.index("[")]) for k, t in self.plain(lang, on={"humanize"})
+                    if k and k.startswith("mode ")}
             self.assertEqual(len(cols), 1, lang)
+
+    def test_description_names_next_command(self):
+        mnrhlib.lang = lambda: "en"
+        d = m.Describe.__new__(m.Describe)
+        d.state, d.proxy, d.claude, d.fresh = {"guard": True}, "?", "2.0", False
+        i = next(n for n, item in enumerate(m.ITEMS) if item[0] == "mode guard")
+        text = [ANSI.sub("", line) for line in d(i, 40)]
+        self.assertIn("$ claudemeister guard off", text)
+        self.assertTrue(all(len(line) <= 40 for line in text[:6]))
+
+
+class Layout(unittest.TestCase):
+    def test_width_counts_emoji_and_ansi(self):
+        self.assertEqual(menu.width("\x1b[1m📂 ab\x1b[0m"), 5)
+        self.assertEqual(menu.width(menu.fit("📂 abcdef", 4)), 4)
+        self.assertEqual(menu.width(menu.cut("📂📂", 3)), 2)
+
+    def test_split_keys(self):
+        self.assertEqual(menu.split_keys("\x1b[B\x1b[B"), ["\x1b[B", "\x1b[B"])
+        self.assertEqual(menu.split_keys("ssh\r"), ["ssh", "\r"])
+        self.assertEqual(menu.split_keys("\x1b"), ["\x1b"])
+
+    def test_panel_lines_have_equal_width(self):
+        items = [(None, "Group"), ("a", "📂 Open"), ("b", "\x1b[32m[on]\x1b[0m flag")]
+        out = []
+
+        class P(menu.Panel):
+            def size(self):
+                return 20, 100
+
+            def write(self, s):
+                out.append(s)
+
+        P(0, items, "title", 1, lambda i, w: ["x" * (w + 10)], ("L", "R"), "hint").draw()
+        lines = ANSI.sub("", "".join(out).replace("\x1b[H", "").replace("\x1b[K", "")
+                         .replace("\x1b[J", "")).split("\r\n")
+        self.assertEqual(len(lines), 19)  # нижнюю строку не трогаем, чтобы экран не прокрутился
+        self.assertEqual({menu.width(line) for line in lines[1:-1]}, {98})
 
 
 if __name__ == "__main__":
