@@ -283,16 +283,18 @@ class Menu:
 ALT_ON, ALT_OFF = "\x1b[?1049h", "\x1b[?1049l"
 FRAME, FRAME_DIM, ACCENT, ROW_BG = "38;5;110", "38;5;240", "38;5;110", "48;5;238"
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+# имя над рамками; этот же файл лежит в mnrh, там launcher ставит BRAND = "mnrh"
+BRAND = "claudemeister"
 
 
 def brand():
-    """Строка над рамками: имя и версия."""
+    """Строка над рамками: имя и версия из VERSION в корне проекта."""
     try:
         with open(os.path.join(ROOT, "VERSION")) as f:
             ver = f"  \x1b[2mv{f.read().strip()}\x1b[0m"
     except OSError:
         ver = ""
-    return f"\x1b[1;35mclaudemeister\x1b[0m{ver}"
+    return f"\x1b[1;35m{BRAND}\x1b[0m{ver}"
 
 
 def box(title, body, w, h, active):
@@ -588,6 +590,10 @@ def pick(items, title="", label="", start=1, default=0, marked=None, summary=Non
         menu.write(f"{label}: \x1b[1m{items[choice][0]}\x1b[0m\r\n")
     os.close(fd)
     return choice
+
+
+def pick_many(items, title="", marked=(), summary=None):
+    return pick(items, title=title, marked=set(marked), summary=summary)
 
 
 def choice(question, options, default=0, back=None, esc=None):
