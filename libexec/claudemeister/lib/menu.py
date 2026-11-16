@@ -497,6 +497,42 @@ class Screen:
     def roomy(self):
         return roomy(self.fd)
 
+    def ask(self, question, title="", note=()):
+        """Строка ввода в рамке на этом же экране. Enter: введенный текст (может быть пустым), Esc: None."""
+        self.open()
+        text = ""
+        while True:
+            try:
+                cols, rows = os.get_terminal_size(self.fd)
+            except OSError:
+                cols, rows = 80, 24
+            w = max(20, cols - 4)
+            body = [" " + line for line in wrap(list(note), w - 4)]
+            body += ["" if note else None, f" \x1b[1m{question}\x1b[0m  {text}\x1b[7m \x1b[0m"]
+            body = [line for line in body if line is not None]
+            hint = tr("Enter готово · Esc назад", "Enter done · Esc back")
+            lines = (["  " + cut(brand(), cols - 2)] + ["  " + line for line in box(f" › {heading(title)} ", body,
+                                                                                     w, max(5, rows - 3), True)]
+                     + ["  " + f"\x1b[2m{hint}\x1b[0m"])
+            os.write(self.fd, ("\x1b[H" + "\x1b[K\r\n".join(lines) + "\x1b[K\x1b[J").encode())
+            keys = PENDING[:] if PENDING else split_keys(read_keys(self.fd))
+            del PENDING[:]
+            for n, key in enumerate(keys):
+                if key in ("\r", "\n"):
+                    PENDING[:] = keys[n + 1:]
+                    return text
+                if key in ("\x03", "\x04"):
+                    raise Quit
+                if key == "\x1b":
+                    PENDING[:] = keys[n + 1:]
+                    return None
+                if key in ("\x7f", "\x08"):
+                    text = text[:-1]
+                elif key == "\x15":  # Ctrl+U стирает строку
+                    text = ""
+                elif not key.startswith("\x1b"):
+                    text += "".join(ch for ch in key if ch.isprintable())
+
     def pick(self, items, title="", default=0, describe=None, start=1, numbers=True, back=None, top=None):
         """Список в рамке на этом экране. Esc: None, Ctrl+C: исключение Quit."""
         if not items or all(key is None for key, _ in items):
