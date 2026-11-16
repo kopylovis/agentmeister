@@ -1,6 +1,8 @@
 import os
 import re
 import sys
+import threading
+import tty
 import unittest
 
 sys.dont_write_bytecode = True
@@ -114,6 +116,43 @@ class Layout(unittest.TestCase):
 
     def test_wrap_keeps_indent(self):
         self.assertEqual(menu.wrap(["  one two three"], 9), ["  one two", "  three"])
+
+
+class Ask(unittest.TestCase):
+    @staticmethod
+    def drain(fd):
+        try:
+            while os.read(fd, 4096):
+                pass
+        except OSError:
+            pass
+
+    def answer(self, keys):
+        master, slave = os.openpty()
+        tty.setcbreak(slave)  # как Screen.open: нажатия приходят сразу, без Enter
+        screen = menu.Screen()
+        screen.fd = slave
+        os.write(master, keys)
+        # кадр пишется в pty; если его не читать, буфер заполнится и запись встанет
+        reader = threading.Thread(target=self.drain, args=(master,), daemon=True)
+        reader.start()
+        try:
+            return screen.ask("Путь", title="t")
+        finally:
+            screen.fd = None
+            del menu.PENDING[:]
+            os.close(slave)  # чтение master получит ошибку, поток закончится, потом закрываем master
+            reader.join(2)
+            os.close(master)
+
+    def test_typed_text_with_backspace(self):
+        self.assertEqual(self.answer(b"~/abx\x7fc\r"), "~/abc")
+
+    def test_esc_cancels(self):
+        self.assertIsNone(self.answer(b"abc\x1b"))
+
+    def test_russian_text(self):
+        self.assertEqual(self.answer("папка\r".encode()), "папка")
 
 
 if __name__ == "__main__":
