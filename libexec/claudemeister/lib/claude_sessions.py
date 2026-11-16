@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde  # noqa: E402
-from menu import pick  # noqa: E402
+from menu import Quit, Screen, pick  # noqa: E402
 from session_store import (PROJECTS, UUID, ago, clip, decode, delete, encode, find, fmt_size, folder,  # noqa: E402
                            is_junk, load, offline, remove_if_empty, rewrite, running_ids, tree_size)
 import claude_search  # noqa: E402
@@ -203,86 +203,105 @@ def clean(assume_yes):
         print("Готово.")
 
 
-def pick_dest(s):
+def pick_dest(screen, s):
     options = [(os.path.basename(p), p) for p in projects() if p != s["cwd"]]
     if s["cwd"] != HOME:
         options.insert(0, ("~", HOME))
-    items = [(k, "~ (домашний каталог)" if p == HOME else k) for k, p in options]
-    items.append(("другая", "другая папка — ввести путь"))
-    i = pick(items, title=f"Куда перенести из {tilde(s['cwd'])}:", label="Куда")
+    items = [(k, "🏠 ~ (домашний каталог)" if p == HOME else f"📁 {k}") for k, p in options]
+    items.append(("другая", "📝 другая папка, ввести путь"))
+    i = screen.pick(items, title=f"Куда перенести из {tilde(s['cwd'])}")
     if i is None:
         return None
     if i < len(options):
         return options[i][1]
-    try:
-        raw = input("Путь: ").strip()
-    except EOFError:
-        return None
-    if not raw:
-        return None
-    path = os.path.abspath(os.path.expanduser(raw))
-    if not os.path.isdir(path):
-        print(f"Папки {tilde(path)} нет")
-        return None
+    with screen.suspend():
+        try:
+            raw = input("Путь: ").strip()
+        except EOFError:
+            return None
+        if not raw:
+            return None
+        path = os.path.abspath(os.path.expanduser(raw))
+        if not os.path.isdir(path):
+            print(f"Папки {tilde(path)} нет")
+            input(paint("Enter, к списку ", "2"))
+            return None
     return path
 
 
+def dim(text):
+    return f"\x1b[2m{text}\x1b[0m"
+
+
 def details(s):
-    print()
-    print(paint(s["title"] or "без названия", "1"))
-    print(f"  id       {s['id']}")
-    print(f"  папка    {tilde(s['cwd'])}" + (f"  ({s['branch']})" if s["branch"] else ""))
-    print(f"  размер   {fmt_size(s['size'])}, последнее изменение {ago(s['mtime'])}")
+    """Строки о сессии для правой панели меню."""
+    lines = [f"\x1b[1m{s['title'] or 'без названия'}\x1b[0m", ""]
+    facts = [("id", s["id"]), ("папка", tilde(s["cwd"]) + (f" ({s['branch']})" if s["branch"] else "")),
+             ("размер", fmt_size(s["size"])), ("изменена", ago(s["mtime"]))]
     if s["started_in"] and s["started_in"] != s["cwd"]:
-        print(f"  начата в {tilde(s['started_in'])}")
-    if s["prompt"] and s["prompt"] != s["title"]:
-        print(f"  запрос   {clip(s['prompt'], 100)}")
+        facts.append(("начата в", tilde(s["started_in"])))
     if s["link"]:
-        print(f"  ссылка на {tilde(s['target'])}")
+        facts.append(("ссылка на", tilde(s["target"])))
+    lines += [dim(f"{k:<10}") + v for k, v in facts]
     if s["running"]:
-        print(paint(f"  открыта сейчас (pid {s['running']}), переносить и удалять нельзя", "33"))
-    print()
+        lines += ["", f"\x1b[33mоткрыта сейчас (pid {s['running']})\x1b[0m", "переносить и удалять ее нельзя"]
+    if s["prompt"] and s["prompt"] != s["title"]:
+        lines += ["", dim("ПОСЛЕДНИЙ ЗАПРОС"), clip(" ".join(s["prompt"].split()), 400)]
+    return lines
 
 
-def interactive():
+def browse(screen):
+    """Сохраненные сессии на экране screen: список, действие, перенос, удаление. Продолжение сессии запускает
+    вызывающий: ответ ("resume", сессия, режим). None: Esc в списке. Строка: сообщение для заголовка."""
     pos = 0
     while True:
         ss = load()
         if not ss:
-            print("Сохранённых сессий нет.")
-            return 0
+            return "Сохраненных сессий нет"
         items = [(f"{folder(s['cwd'])} {s['title']} {s['id']}", row(s)) for s in ss]
-        i = pick(items, title=summary(ss), default=min(pos, len(ss) - 1))
+        i = screen.pick(items, title=summary(ss), default=min(pos, len(ss) - 1),
+                        describe=lambda i, w: details(ss[i]))
         if i is None:
-            return 0
+            return None
         pos = i
         s = ss[i]
-        details(s)
         if s["running"]:
-            actions = [("назад", "← к списку")]
+            actions = [("назад", "🔙 к списку")]
         else:
-            actions = [("caffeinate", "продолжить — caffeinate, Mac не уснёт"),
-                       ("обычная", "продолжить — обычная сессия"),
-                       ("перенести", "перенести в другую папку"),
-                       ("удалить", f"удалить ({fmt_size(s['size'])})"),
-                       ("назад", "← к списку")]
-        a = pick(actions, title="Что сделать:", label="Действие")
-        if a is None:
-            return 0
-        act = actions[a][0]
-        if act == "caffeinate":
-            resume(s, "caffeinate")
-        elif act == "обычная":
-            resume(s, "normal")
-        elif act == "перенести":
-            dest = pick_dest(s)
+            actions = [("caffeinate", "☕ продолжить, Mac не уснет"),
+                       ("обычная", "🌙 продолжить обычной сессией"),
+                       ("перенести", "📤 перенести в другую папку"),
+                       ("удалить", f"❌ удалить ({fmt_size(s['size'])})"),
+                       ("назад", "🔙 к списку")]
+        a = screen.pick(actions, title=f"Что сделать: {clip(s['title'] or s['id'], 50)}",
+                        describe=lambda i, w: details(s))
+        act = None if a is None else actions[a][0]
+        if act in ("caffeinate", "обычная"):
+            return "resume", s, "caffeinate" if act == "caffeinate" else "normal"
+        if act == "перенести":
+            dest = pick_dest(screen, s)
             if dest:
-                move(s, dest)
-                input(paint("Enter — к списку ", "2"))
+                with screen.suspend():
+                    move(s, dest)
+                    input(paint("Enter, к списку ", "2"))
         elif act == "удалить":
-            if confirm(f"Удалить «{clip(s['title'] or s['id'], 50)}» безвозвратно?", False):
+            sure = screen.pick([("нет", "🔙 нет, оставить"), ("да", "❌ да, удалить безвозвратно")],
+                               title=f"Удалить {clip(s['title'] or s['id'], 50)}?", describe=lambda i, w: details(s))
+            if sure == 1:
                 delete(s)
-                print("Удалено.")
+
+
+def interactive():
+    with Screen() as screen:
+        try:
+            got = browse(screen)
+        except Quit:
+            got = None
+    if isinstance(got, str):
+        print(got + ".")
+    elif got:
+        resume(got[1], got[2])
+    return 0
 
 
 def project_sessions(cwd):
@@ -306,24 +325,46 @@ def project_sessions(cwd):
         data = claude_search.update(sid, path)
         if not data:
             continue
+        talk = [m for m in data["msgs"] if m[0] in ("user", "claude")]
         out.append({"id": sid, "title": claude_search.title(sid, data), "mtime": os.stat(path).st_mtime,
                     "size": os.lstat(path).st_size + tree_size(os.path.join(pdir, sid)),
-                    "msgs": sum(1 for m in data["msgs"] if m[0] in ("user", "claude"))})
+                    "msgs": len(talk), "tail": [(m[0], clip(" ".join(str(m[2]).split()), 300)) for m in talk[-4:]]})
     out.sort(key=lambda x: x["mtime"], reverse=True)
     return out, busy
 
 
-def choose_session(cwd):
+def session_list(cwd):
+    """Сессии проекта для меню: (пункты, describe, заголовок, сессии) или None, если сохраненных нет.
+    Пункт 0 новая сессия, дальше сессии по времени."""
     ss, busy = project_sessions(cwd)
     if not ss:
+        return None
+    items = [("новая", "✨ новая сессия")]
+    for x in ss:
+        items.append((x["title"], f"💬 {ago(x['mtime']):>13}  {fmt_size(x['size']):>7}  {x['msgs']:>5} сообщ.  "
+                                  f"{clip(x['title'], 60)}"))
+    note = f" (еще {busy} открыты в других окнах)" if busy else ""
+
+    def describe(i, w):
+        if i == 0:
+            return ["\x1b[1mНовая сессия\x1b[0m", "", "Пустой контекст. Старые сессии останутся в /resume и в этом списке."]
+        x = ss[i - 1]
+        lines = [f"\x1b[1m{x['title']}\x1b[0m", dim(f"{ago(x['mtime'])} · {fmt_size(x['size'])} · {x['msgs']} сообщ."),
+                 "", dim("ПОСЛЕДНИЕ СООБЩЕНИЯ")]
+        for role, text in reversed(x["tail"]):
+            lines += ["", dim("вы" if role == "user" else "Claude"), text]
+        return lines
+
+    return items, describe, f"Сессии в {folder(os.path.abspath(cwd))}{note}", ss
+
+
+def choose_session(cwd):
+    found = session_list(cwd)
+    if not found:
         print("new")
         return 0
-    items = [("новая", "+ новая сессия")]
-    for x in ss:
-        items.append((x["title"], f"{ago(x['mtime']):>13}  {fmt_size(x['size']):>7}  {x['msgs']:>5} сообщ.  "
-                                  f"{clip(x['title'], 60)}"))
-    note = f" (ещё {busy} открыты в других окнах)" if busy else ""
-    i = pick(items, title=f"Сессии в {folder(os.path.abspath(cwd))}{note}:", label="Сессия", start=0)
+    items, describe, title, ss = found
+    i = pick(items, title=title, label="Сессия", start=0, describe=describe)
     if i is None:
         return 130
     print("new" if i == 0 else ss[i - 1]["id"])
