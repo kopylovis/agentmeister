@@ -145,38 +145,9 @@ match() {
   return 1
 }
 
-choose() {
-  local d name branch last idx log when subj note wide=10
-  for d in ${dirs[@]+"${dirs[@]}"}; do
-    name=$(basename "$d")
-    [ "${#name}" -gt "$wide" ] && wide=${#name}
-  done
-  idx=$(
-    {
-      printf '~\t🏠 ~ (домашний каталог)\t%s\n' "Домашняя папка\\n~\\n\\nClaude Code запустится вне проекта."
-      for d in ${dirs[@]+"${dirs[@]}"}; do
-        name=$(basename "$d")
-        branch=$(git -C "$d" branch --show-current 2>/dev/null)
-        # три последних коммита для описания справа; первая дата идет и в сам список
-        log=$(git -C "$d" log -3 --format='%cr%x1f%s' 2>/dev/null | tr '\t' ' ')
-        last=${log%%$'\x1f'*}
-        note="$name\\n${d/#$HOME/~}"
-        [ -n "$branch" ] && note+="\\nветка $branch"
-        if [ -n "$log" ]; then
-          note+="\\n\\n# последние коммиты"
-          while IFS=$'\x1f' read -r when subj; do note+="\\n$when\\n  $subj"; done <<<"$log"
-        else
-          note+="\\n\\nне git-репозиторий"
-        fi
-        printf "%s\t📁 %-${wide}s  %-18s  %s\t%s\n" "$name" "$name" "$(printf '%.18s' "${branch:--}")" "$last" "$note"
-      done
-    } | /usr/bin/python3 "$MENU" --title "Проекты в ${DEV/#$HOME/~}:" --label "Проект" --start 0 --default 1
-  ) || return $?
-  if [ "$idx" -eq 0 ]; then echo "$HOME"; else echo "${dirs[$((idx - 1))]}"; fi
-}
-
+dir=""
 if [ -z "$target" ]; then
-  dir=$(choose) || exit $?
+  :
 elif [ "$target" = "root" ] || [ "$target" = "~" ]; then
   dir="$HOME"
 elif case "$target" in */*) true ;; *) false ;; esac && [ -d "$target" ]; then
@@ -191,32 +162,20 @@ for a in ${passthrough[@]+"${passthrough[@]}"}; do
   esac
 done
 
-if [ "$new" -eq 0 ]; then
-  sid=$(/usr/bin/python3 "$LIB/claude_sessions.py" choose "$dir") || exit $?
+# недостающее (проект, сессия, режим, сеть) спрашивает один процесс на одном экране: между вопросами не мигает
+PROXY="$LIB/claude_proxy.py"
+ask=()
+[ -n "$dir" ] && ask+=(--dir "$dir")
+[ "$new" -eq 1 ] && ask+=(--no-session)
+[ -n "$mode" ] && ask+=(--mode "$mode")
+[ -n "$net" ] && ask+=(--net "$net")
+if [ -z "$dir" ] || [ "$new" -eq 0 ] || [ -z "$mode" ] || { [ -z "$net" ] && /usr/bin/python3 "$PROXY" configured; }; then
+  out=$(/usr/bin/python3 "$LIB/open_flow.py" ${ask[@]+"${ask[@]}"}) || exit $?
+  { read -r dir; read -r sid; read -r mode; read -r net; } <<<"$out"
   [ -n "$sid" ] && [ "$sid" != new ] && passthrough=(--resume "$sid" ${passthrough[@]+"${passthrough[@]}"})
 fi
-
-if [ -z "$mode" ]; then
-  idx=$(printf '%s\t%s\t%s\n' \
-      caffeinate "☕ caffeinate" "caffeinate\\n\\nMac не уснет, пока идет сессия. Удобно для долгих задач и Remote Control с телефона. Экран при этом гаснуть может.\\n\\nС закрытой крышкой на батарее Mac все равно уснет, если не включен claudemeister lid.\\n\\n# без вопроса\\nclaudemeister ... -k" \
-      обычная "🌙 обычная" "Обычная сессия\\n\\nMac засыпает по своим настройкам, как без claudemeister.\\n\\n# без вопроса\\nclaudemeister ... -n" |
-    /usr/bin/python3 "$MENU" --title "Режим сессии в ${dir/#$HOME/~}:" --label "Режим") || exit $?
-  [ "$idx" = 1 ] && mode=normal || mode=caffeinate
-fi
-
-PROXY="$LIB/claude_proxy.py"
-if [ -z "$net" ]; then
-  net=direct
-  if /usr/bin/python3 "$PROXY" configured; then
-    [ "$(/usr/bin/python3 "$PROXY" last)" = vps ] && def=1 || def=0
-    idx=$(printf '%s\t%s\t%s\n' \
-        напрямую "🔌 напрямую" "Напрямую\\n\\nСессия ходит в сеть как обычно.\\n\\n# без вопроса\\nclaudemeister ... -d" \
-        vps "🌐 через VPS" "Через VPS\\n\\nЧерез mihomo и ваш VPS идет только эта сессия и запущенные из нее программы, которые читают HTTPS_PROXY (gh, npm, curl, git по https). Остальное на Mac ходит напрямую.\\n\\n# без вопроса\\nclaudemeister ... -x" |
-      /usr/bin/python3 "$MENU" --title "Сеть:" --label "Сеть" --default "$def") || exit $?
-    [ "$idx" = 1 ] && net=vps
-    /usr/bin/python3 "$PROXY" remember "$net"
-  fi
-fi
+[ -n "$mode" ] || mode=caffeinate
+[ -n "$net" ] || net=direct
 pre=()
 if [ "$net" = vps ]; then
   /usr/bin/python3 "$PROXY" configured || { echo "claudemeister: прокси не настроен или нет mihomo: claudemeister proxy setup" >&2; exit 1; }
