@@ -26,6 +26,26 @@ class Cancel(Exception):
     pass
 
 
+class Quit(Cancel):
+    """Ctrl+C: выйти совсем, а не на шаг назад, как Esc."""
+
+
+# нажатия, пришедшие одной пачкой после Enter или Esc: их получит следующее меню на том же экране
+PENDING = []
+UNFINISHED = re.compile(rb"\x1b(\[[0-9;]*|O)?$")
+
+
+def read_keys(fd):
+    """Прочитать нажатия. Стрелка (\x1bOB) может прийти в два чтения: без дочитывания меню увидело бы Esc и букву."""
+    data = os.read(fd, 64)
+    while UNFINISHED.search(data) and select.select([fd], [], [], 0.05)[0]:
+        more = os.read(fd, 64)
+        if not more:
+            break
+        data += more
+    return data.decode("utf-8", "ignore")
+
+
 def split_keys(data):
     """Быстрые нажатия приходят одним чтением: «\x1b[B\x1b[B» это две стрелки вниз, а не неизвестная клавиша."""
     return KEY.findall(data) or [data]
@@ -204,10 +224,7 @@ class Menu:
         self.top = 0
 
     def read_key(self):
-        data = os.read(self.fd, 64)
-        if data == b"\x1b" and select.select([self.fd], [], [], 0.05)[0]:
-            data += os.read(self.fd, 64)
-        return data.decode("utf-8", "ignore")
+        return read_keys(self.fd)
 
     def handle(self, key):
         if key in UP:
@@ -238,7 +255,7 @@ class Menu:
             self.query = ""
             self.refilter()
         elif key in ("\x03", "\x04"):
-            raise Cancel
+            raise Quit
         elif key.startswith("\x1b"):
             pass
         else:
@@ -340,7 +357,7 @@ class Panel(Menu):
             if i == self.sel:
                 row = cut(f" › {text}", w)
                 on = f"\x1b[0;{ROW_BG};1m"
-                out.append(on + row.replace("\x1b[0m", on) + " " * (w - width(row)) + "\x1b[0m")
+                out.append(on + re.sub(r"\x1b\[0?m", on, row) + " " * (w - width(row)) + "\x1b[0m")
             else:
                 out.append(f"   {text}")
         if not self.choices(view):
@@ -391,16 +408,28 @@ class Panel(Menu):
         return super().handle(key)
 
     def run(self):
-        self.write(ALT_ON + HIDE + "\x1b[2J")
+        self.write(HIDE)
         self.draw()
         while True:
-            if select.select([self.fd], [], [], 0.3)[0]:
-                for key in split_keys(self.read_key()):
-                    if self.handle(key):
-                        return self.sel
-                self.draw()
-            elif self.size() != self.shape or getattr(self.describe, "dirty", lambda: False)():
-                self.draw()
+            if PENDING:
+                keys = PENDING[:]
+                del PENDING[:]
+            elif select.select([self.fd], [], [], 0.3)[0]:
+                keys = split_keys(self.read_key())
+            else:
+                if self.size() != self.shape or getattr(self.describe, "dirty", lambda: False)():
+                    self.draw()
+                continue
+            for n, key in enumerate(keys):
+                try:
+                    done = self.handle(key)
+                except Cancel:
+                    PENDING[:] = keys[n + 1:]
+                    raise
+                if done:
+                    PENDING[:] = keys[n + 1:]
+                    return self.sel
+            self.draw()
 
 
 def roomy(fd):
@@ -414,8 +443,86 @@ def roomy(fd):
     return cols >= 60 and rows >= 14
 
 
+class Screen:
+    """Один полноэкранный режим на несколько меню подряд: между ними экран не мигает. suspend() временно
+    возвращает обычный терминал для вывода команды или ввода строки."""
+
+    def __init__(self):
+        self.fd = None
+        self.saved = None
+
+    def open(self):
+        if self.fd is not None:
+            return self
+        self.fd = os.open("/dev/tty", os.O_RDWR)
+        self.saved = termios.tcgetattr(self.fd)
+        tty.setcbreak(self.fd)
+        attrs = termios.tcgetattr(self.fd)
+        attrs[3] &= ~termios.ISIG
+        termios.tcsetattr(self.fd, termios.TCSANOW, attrs)
+        os.write(self.fd, (ALT_ON + HIDE + "\x1b[2J").encode())
+        return self
+
+    def close(self):
+        del PENDING[:]
+        if self.fd is None:
+            return
+        try:
+            termios.tcsetattr(self.fd, termios.TCSADRAIN, self.saved)
+            os.write(self.fd, (ALT_OFF + SHOW).encode())
+        finally:
+            os.close(self.fd)
+            self.fd = None
+
+    def __enter__(self):
+        return self.open()
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def suspend(self):
+        screen = self
+
+        class Suspended:
+            def __enter__(self):
+                screen.close()
+
+            def __exit__(self, *exc):
+                screen.open()
+
+        return Suspended()
+
+    def roomy(self):
+        return roomy(self.fd)
+
+    def pick(self, items, title="", default=0, describe=None, start=1, numbers=True, back=None, top=None):
+        """Список в рамке на этом экране. Esc: None, Ctrl+C: исключение Quit."""
+        if not items or all(key is None for key, _ in items):
+            return None
+        self.open()
+        back = back or tr("назад", "back")
+        tab = tr("Tab описание · ", "Tab description · ") if describe else ""
+        hint = (tr(f"↑↓ выбрать · Enter · цифра или буквы, быстрый переход · {tab}Esc {back}",
+                   f"↑↓ move · Enter · a number or letters to jump · {tab}Esc {back}") if numbers else
+                tr(f"↑↓ выбрать · Enter · буквы ищут · {tab}Esc {back}",
+                   f"↑↓ move · Enter · type to search · {tab}Esc {back}"))
+        if roomy(self.fd):
+            menu = Panel(self.fd, items, top or brand(), default, describe,
+                         (heading(title), tr("Описание", "Description")), hint, start=start, numbers=numbers)
+        else:
+            # окно меньше 60 на 14: рамки не влезут, старый список в строку на том же экране
+            os.write(self.fd, b"\x1b[H\x1b[2J")
+            menu = Menu(self.fd, items, heading(title), "", start, default)
+            menu.esc = back
+        try:
+            return menu.run()
+        except Quit:
+            raise
+        except Cancel:
+            return None
+
+
 def drive(fd, menu):
-    full = isinstance(menu, Panel)
     saved = termios.tcgetattr(fd)
     try:
         tty.setcbreak(fd)
@@ -426,10 +533,9 @@ def drive(fd, menu):
     except Cancel:
         return None
     finally:
-        if not full:
-            menu.clear()
+        menu.clear()
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-        menu.write((ALT_OFF if full else "") + SHOW)
+        menu.write(SHOW)
 
 
 def panel(items, title="", default=0, describe=None, heads=("", ""), hint="", fallback=None):
@@ -437,15 +543,15 @@ def panel(items, title="", default=0, describe=None, heads=("", ""), hint="", fa
     if not items or all(key is None for key, _ in items):
         return None
     fd = os.open("/dev/tty", os.O_RDWR)
-    try:
-        if not roomy(fd):
-            os.close(fd)
-            fd = None
-            return fallback() if fallback else pick(items, title=title, default=default)
-        return drive(fd, Panel(fd, items, title, default, describe, heads, hint))
-    finally:
-        if fd is not None:
-            os.close(fd)
+    big = roomy(fd)
+    os.close(fd)
+    if not big:
+        return fallback() if fallback else pick(items, title=title, default=default)
+    with Screen() as screen:
+        try:
+            return Panel(screen.fd, items, title, default, describe, heads, hint).run()
+        except Cancel:
+            return None
 
 
 def heading(title):
@@ -458,20 +564,25 @@ def pick(items, title="", label="", start=1, default=0, marked=None, summary=Non
     if not items or all(key is None for key, _ in items):
         return None
     fd = os.open("/dev/tty", os.O_RDWR)
-    if marked is None and roomy(fd):
-        esc = esc or tr("выход", "quit")
-        tab = tr("Tab описание · ", "Tab description · ") if describe else ""
-        hint = tr(f"↑↓ выбрать · Enter · цифра или буквы, быстрый переход · {tab}Esc {esc}",
-                  f"↑↓ move · Enter · a number or letters to jump · {tab}Esc {esc}")
-        menu = Panel(fd, items, brand(), default, describe, (heading(title), tr("Описание", "Description")),
-                     hint, start=start, numbers=True)
-    else:
-        menu = Menu(fd, items, title, label, start, default)
-        if esc:
-            menu.esc = esc
-        if marked is not None:
-            menu.marks = set(marked)
-            menu.summary = summary
+    big = marked is None and roomy(fd)
+    if big:
+        os.close(fd)
+        with Screen() as screen:
+            try:
+                choice = screen.pick(items, title, default, describe, start, back=esc or tr("выход", "quit"))
+            except Quit:
+                choice = None
+        if choice is not None and label:
+            fd = os.open("/dev/tty", os.O_WRONLY)
+            os.write(fd, f"{label}: \x1b[1m{items[choice][0]}\x1b[0m\r\n".encode())
+            os.close(fd)
+        return choice
+    menu = Menu(fd, items, title, label, start, default)
+    if esc:
+        menu.esc = esc
+    if marked is not None:
+        menu.marks = set(marked)
+        menu.summary = summary
     choice = drive(fd, menu)
     if choice is not None and label and marked is None:
         menu.write(f"{label}: \x1b[1m{items[choice][0]}\x1b[0m\r\n")

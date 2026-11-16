@@ -131,6 +131,8 @@ them in place without leaving the menu. The menu fills the screen: the list on t
 description of the selected item, the command that does the same and the current setup (versions, modes that
 are on, the proxy). Tab hides the description, and a narrow window hides it on its own. Submenus look the same: the project list
 (branch and the last three commits on the right), sessions (latest messages), session mode and network.
+Submenus open on the same screen, and the menu stays up until a command runs. Esc goes one step back,
+Ctrl+C quits.
 `MNRH_PLAIN_MENU=1` brings back the plain inline lists. The menu
 follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in `~/.config/mnrh/config` picks
 one explicitly. `MNRH_NO_MENU=1` skips the menu and goes straight to the project list.

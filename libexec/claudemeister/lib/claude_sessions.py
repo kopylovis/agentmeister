@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde  # noqa: E402
-from menu import pick  # noqa: E402
+from menu import Quit, Screen, pick  # noqa: E402
 from session_store import (PROJECTS, UUID, ago, clip, decode, delete, encode, find, fmt_size, folder,  # noqa: E402
                            is_junk, load, offline, remove_if_empty, rewrite, running_ids, tree_size)
 import claude_search  # noqa: E402
@@ -203,27 +203,29 @@ def clean(assume_yes):
         print("Готово.")
 
 
-def pick_dest(s):
+def pick_dest(screen, s):
     options = [(os.path.basename(p), p) for p in projects() if p != s["cwd"]]
     if s["cwd"] != HOME:
         options.insert(0, ("~", HOME))
     items = [(k, "🏠 ~ (домашний каталог)" if p == HOME else f"📁 {k}") for k, p in options]
     items.append(("другая", "📝 другая папка, ввести путь"))
-    i = pick(items, title=f"Куда перенести из {tilde(s['cwd'])}:", label="Куда")
+    i = screen.pick(items, title=f"Куда перенести из {tilde(s['cwd'])}")
     if i is None:
         return None
     if i < len(options):
         return options[i][1]
-    try:
-        raw = input("Путь: ").strip()
-    except EOFError:
-        return None
-    if not raw:
-        return None
-    path = os.path.abspath(os.path.expanduser(raw))
-    if not os.path.isdir(path):
-        print(f"Папки {tilde(path)} нет")
-        return None
+    with screen.suspend():
+        try:
+            raw = input("Путь: ").strip()
+        except EOFError:
+            return None
+        if not raw:
+            return None
+        path = os.path.abspath(os.path.expanduser(raw))
+        if not os.path.isdir(path):
+            print(f"Папки {tilde(path)} нет")
+            input(paint("Enter, к списку ", "2"))
+            return None
     return path
 
 
@@ -248,17 +250,19 @@ def details(s):
     return lines
 
 
-def interactive():
+def browse(screen):
+    """Сохраненные сессии на экране screen: список, действие, перенос, удаление. Продолжение сессии запускает
+    вызывающий: ответ ("resume", сессия, режим). None: Esc в списке. Строка: сообщение для заголовка."""
     pos = 0
     while True:
         ss = load()
         if not ss:
-            print("Сохранённых сессий нет.")
-            return 0
+            return "Сохраненных сессий нет"
         items = [(f"{folder(s['cwd'])} {s['title']} {s['id']}", row(s)) for s in ss]
-        i = pick(items, title=summary(ss), default=min(pos, len(ss) - 1), describe=lambda i, w: details(ss[i]))
+        i = screen.pick(items, title=summary(ss), default=min(pos, len(ss) - 1),
+                        describe=lambda i, w: details(ss[i]))
         if i is None:
-            return 0
+            return None
         pos = i
         s = ss[i]
         if s["running"]:
@@ -269,24 +273,35 @@ def interactive():
                        ("перенести", "📤 перенести в другую папку"),
                        ("удалить", f"❌ удалить ({fmt_size(s['size'])})"),
                        ("назад", "🔙 к списку")]
-        a = pick(actions, title=f"Что сделать: {clip(s['title'] or s['id'], 50)}", label="Действие",
-                 describe=lambda i, w: details(s))
-        if a is None:
-            return 0
-        act = actions[a][0]
-        if act == "caffeinate":
-            resume(s, "caffeinate")
-        elif act == "обычная":
-            resume(s, "normal")
-        elif act == "перенести":
-            dest = pick_dest(s)
+        a = screen.pick(actions, title=f"Что сделать: {clip(s['title'] or s['id'], 50)}",
+                        describe=lambda i, w: details(s))
+        act = None if a is None else actions[a][0]
+        if act in ("caffeinate", "обычная"):
+            return "resume", s, "caffeinate" if act == "caffeinate" else "normal"
+        if act == "перенести":
+            dest = pick_dest(screen, s)
             if dest:
-                move(s, dest)
-                input(paint("Enter — к списку ", "2"))
+                with screen.suspend():
+                    move(s, dest)
+                    input(paint("Enter, к списку ", "2"))
         elif act == "удалить":
-            if confirm(f"Удалить «{clip(s['title'] or s['id'], 50)}» безвозвратно?", False):
+            sure = screen.pick([("нет", "🔙 нет, оставить"), ("да", "❌ да, удалить безвозвратно")],
+                               title=f"Удалить {clip(s['title'] or s['id'], 50)}?", describe=lambda i, w: details(s))
+            if sure == 1:
                 delete(s)
-                print("Удалено.")
+
+
+def interactive():
+    with Screen() as screen:
+        try:
+            got = browse(screen)
+        except Quit:
+            got = None
+    if isinstance(got, str):
+        print(got + ".")
+    elif got:
+        resume(got[1], got[2])
+    return 0
 
 
 def project_sessions(cwd):
@@ -318,16 +333,17 @@ def project_sessions(cwd):
     return out, busy
 
 
-def choose_session(cwd):
+def session_list(cwd):
+    """Сессии проекта для меню: (пункты, describe, заголовок, сессии) или None, если сохраненных нет.
+    Пункт 0 новая сессия, дальше сессии по времени."""
     ss, busy = project_sessions(cwd)
     if not ss:
-        print("new")
-        return 0
+        return None
     items = [("новая", "✨ новая сессия")]
     for x in ss:
         items.append((x["title"], f"💬 {ago(x['mtime']):>13}  {fmt_size(x['size']):>7}  {x['msgs']:>5} сообщ.  "
                                   f"{clip(x['title'], 60)}"))
-    note = f" (ещё {busy} открыты в других окнах)" if busy else ""
+    note = f" (еще {busy} открыты в других окнах)" if busy else ""
 
     def describe(i, w):
         if i == 0:
@@ -339,8 +355,16 @@ def choose_session(cwd):
             lines += ["", dim("вы" if role == "user" else "Claude"), text]
         return lines
 
-    i = pick(items, title=f"Сессии в {folder(os.path.abspath(cwd))}{note}:", label="Сессия", start=0,
-             describe=describe)
+    return items, describe, f"Сессии в {folder(os.path.abspath(cwd))}{note}", ss
+
+
+def choose_session(cwd):
+    found = session_list(cwd)
+    if not found:
+        print("new")
+        return 0
+    items, describe, title, ss = found
+    i = pick(items, title=title, label="Сессия", start=0, describe=describe)
     if i is None:
         return 130
     print("new" if i == 0 else ss[i - 1]["id"])

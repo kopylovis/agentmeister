@@ -14,8 +14,10 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from menu import choice, panel, pick  # noqa: E402
-from mnrhlib import CM, DEV, RESTART_QUEUE, ROOT, tilde, tr  # noqa: E402
+from menu import Cancel, Panel, Quit, Screen, choice  # noqa: E402
+from mnrhlib import CM, DEV, HOME, RESTART_QUEUE, ROOT, tilde, tr  # noqa: E402
+import claude_sessions  # noqa: E402
+import open_flow  # noqa: E402
 
 # (команда, значок, по-русски, по-английски, описание по-русски, по-английски). Группа: команда None.
 # Режим: "mode <имя>", Enter переключает его. Значки только шириной в две клетки, без VS16: иначе едут рамки.
@@ -221,15 +223,19 @@ class Describe:
         return lines
 
 
-def pick_action(at=1, note=""):
+def pick_action(screen, at=1, note=""):
     title = f"\x1b[1;35mclaudemeister\x1b[0m  {dim('v' + version())}" + (f"  \x1b[33m{note}\x1b[0m" if note else "")
     state = modes()
     items = rows(state)
+    if not screen.open().roomy():
+        return screen.pick(items, title="claudemeister", default=at, back=tr("выход", "quit"))
     hint = tr("↑↓ выбрать · Enter запустить · буквы ищут · Tab описание · Esc выход",
               "↑↓ move · Enter run · type to search · Tab description · Esc quit")
-    return panel(items, title=title, default=at, describe=Describe(state),
-                 heads=(tr("Действия", "Actions"), tr("Описание", "Description")), hint=hint,
-                 fallback=lambda: pick(items, title=title, esc=tr("выход", "quit"), default=at))
+    try:
+        return Panel(screen.fd, items, title, at, Describe(state),
+                     (tr("Действия", "Actions"), tr("Описание", "Description")), hint).run()
+    except Cancel:
+        return None
 
 
 def restart_pending():
@@ -266,14 +272,53 @@ def run(args):
     return 128 - rc if rc < 0 else rc
 
 
-def switch(name):
+def shown(args):
+    """Команда для показа: пути через ~."""
+    return " ".join(shlex.quote(tilde(x)) if x.startswith("/") else shlex.quote(x) for x in args)
+
+
+def launch(screen, args):
+    """Вернуть обычный терминал, запустить claudemeister args и спросить, вернуться ли в меню."""
+    screen.close()
+    print(dim(f"$ claudemeister {shown(args)}"), flush=True)
+    return again(run(args))
+
+
+def live_details(s):
+    import claude_live
+    label, _ = claude_live.STATUS.get(s.get("status"), (s.get("status") or "?", ""))
+    facts = [("папка", tilde(str(s.get("cwd") or "?"))), ("состояние", label.strip()),
+             ("с тех пор", claude_live.ago(s.get("statusUpdatedAt"))), ("pid", str(s.get("pid") or "?"))]
+    return ([f"\x1b[1m{claude_live.title(s)}\x1b[0m", ""] + [dim(f"{k:<11}") + v for k, v in facts if v]
+            + ["", tr("Enter переключит на вкладку этой сессии.", "Enter switches to this session's tab.")])
+
+
+def live_sessions(screen):
+    """Запущенные сессии на этом же экране. Enter переключает на вкладку. Ответ: строка для заголовка."""
+    import claude_live
+    ss = claude_live.live()
+    if not ss:
+        return tr("открытых сессий нет", "no open sessions")
+    at = screen.pick([(f"{claude_live.title(s)} {s.get('cwd')}", claude_live.row(s)) for s in ss],
+                     title=tr(f"Открытые сессии ({len(ss)})", f"Open sessions ({len(ss)})"),
+                     describe=lambda i, w: live_details(ss[i]))
+    if at is None:
+        return ""
+    if claude_live.jump(ss[at]):
+        return tr("переключил на вкладку", "switched to the tab")
+    return tr(f"не нашел вкладку, сессия в {tilde(str(ss[at].get('cwd') or '?'))}",
+              f"tab not found, the session is in {tilde(str(ss[at].get('cwd') or '?'))}")
+
+
+def switch(screen, name):
     """Переключить режим на месте. Возвращает строку для заголовка меню."""
     want = "off" if mode_on(name) else "on"
     import claude_lid
     if name == "lid" and want == "on" and not claude_lid.ready():
         # правила sudoers еще нет: lid on поставит его и спросит пароль sudo, это надо видеть
-        print(dim("$ claudemeister lid on"), flush=True)
-        run(["lid", "on"])
+        with screen.suspend():
+            print(dim("$ claudemeister lid on"), flush=True)
+            run(["lid", "on"])
     else:
         done = subprocess.run([CM, name, want], capture_output=True, text=True)
         if done.returncode != 0:
@@ -283,9 +328,20 @@ def switch(name):
 
 
 def main():
+    screen = Screen()
+    try:
+        return loop(screen)
+    except Quit:
+        return 0
+    finally:
+        screen.close()
+
+
+def loop(screen):
+    """Подменю (проект, сессии, запущенные) идут на том же экране, он закрывается только перед запуском команды."""
     at, note = 1, ""
     while True:
-        at = pick_action(at, note)
+        at = pick_action(screen, at, note)
         if at is None:
             return 0
         note = ""
@@ -293,10 +349,26 @@ def main():
         if key == "quit":
             return 0
         if key.startswith("mode "):
-            note = switch(key.split()[1])
+            note = switch(screen, key.split()[1])
             continue
-        print(dim(f"$ claudemeister {key}"), flush=True)
-        if not again(run(shlex.split(key))):
+        if key in ("open", "root"):
+            state = open_flow.flow(screen, HOME if key == "root" else None)
+            if state is not None and not launch(screen, open_flow.command(state)):
+                return 0
+            continue
+        if key == "sessions":
+            got = claude_sessions.browse(screen)
+            if isinstance(got, str):
+                note = got
+            elif got:
+                _, s, mode = got
+                if not launch(screen, ["sessions", "resume", s["id"]] + (["-n"] if mode == "normal" else [])):
+                    return 0
+            continue
+        if key == "ps":
+            note = live_sessions(screen)
+            continue
+        if not launch(screen, shlex.split(key)):
             return 0
 
 
