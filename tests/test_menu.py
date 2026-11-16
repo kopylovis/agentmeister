@@ -156,6 +156,41 @@ class Ask(unittest.TestCase):
         self.assertEqual(self.answer("папка\r".encode()), "папка")
 
 
+class Marks(unittest.TestCase):
+    def frame(self, keys=()):
+        out = []
+
+        class P(menu.Panel):
+            def size(self):
+                return 20, 100
+
+            def write(self, s):
+                out.append(s)
+
+        p = P(0, [("a", "alpha"), ("b", "beta"), ("c", "gamma")], "t", 0, None, ("L", "R"), "")
+        p.marks = {0}
+        p.summary = lambda marks: f"picked {len(marks)}"
+        for key in keys:
+            p.handle(key)
+        p.draw()
+        return p, ANSI.sub("", "".join(out))
+
+    def test_marks_drawn_and_toggled(self):
+        p, text = self.frame([" "])  # пробел снимает отметку с первой строки и уходит на вторую
+        self.assertEqual(p.marks, set())
+        self.assertIn("○ alpha", text)
+        p, text = self.frame(["\x1b[B", " "])
+        self.assertEqual(p.marks, {0, 1})
+        self.assertIn("◉ beta", text)
+        self.assertIn("picked 2", text)
+
+    def test_all_or_none(self):
+        p, _ = self.frame(["a"])
+        self.assertEqual(p.marks, {0, 1, 2})
+        p.handle("a")
+        self.assertEqual(p.marks, set())
+
+
 class Icons(unittest.TestCase):
     def tearDown(self):
         os.environ["MNRH_ICONS"] = "emoji"
