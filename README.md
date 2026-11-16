@@ -131,7 +131,11 @@ chosen action and prints the full command so you can type it directly next time.
 the menu. The humanize, guard, buildlog, notification and lid modes show as `[on]` or `[off]`, and Enter switches
 them in place without leaving the menu. The menu fills the screen: the list on the left, and on the right a
 description of the selected item, the command that does the same and the current setup (versions, modes that
-are on, the proxy). Tab hides the description, and a narrow window hides it on its own. Submenus look the same: the project list
+are on, the proxy). Tab hides the description, and a narrow window hides it on its own. iTerm2 and WezTerm show custom icons for
+the items, Terminal.app and other terminals show emoji. An `icons=emoji` or `icons=images` line in
+`~/.config/mnrh/config` (or `MNRH_ICONS`) picks one explicitly. iTerm2 3.7 asks once whether to allow the
+pictures: answer Yes with "Remember my choice". `tools/icons.py` draws the icons, the PNGs live in
+`share/claudemeister/icons`. Submenus look the same: the project list
 (branch and the last three commits on the right), sessions (latest messages), session mode and network.
 Submenus open on the same screen, and the menu stays up until a command runs. Esc goes one step back,
 Ctrl+C quits.
