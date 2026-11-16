@@ -214,19 +214,15 @@ def pick_dest(screen, s):
         return None
     if i < len(options):
         return options[i][1]
-    with screen.suspend():
-        try:
-            raw = input("Путь: ").strip()
-        except EOFError:
+    note = ["Полный путь или через ~, например ~/Developer/x."]
+    while True:
+        raw = screen.ask("Путь", title=f"Куда перенести из {tilde(s['cwd'])}", note=note)
+        if not raw or not raw.strip():
             return None
-        if not raw:
-            return None
-        path = os.path.abspath(os.path.expanduser(raw))
-        if not os.path.isdir(path):
-            print(f"Папки {tilde(path)} нет")
-            input(paint("Enter, к списку ", "2"))
-            return None
-    return path
+        path = os.path.abspath(os.path.expanduser(raw.strip()))
+        if os.path.isdir(path):
+            return path
+        note = [f"\x1b[33mПапки {tilde(path)} нет.\x1b[0m", "Полный путь или через ~, например ~/Developer/x."]
 
 
 def dim(text):
