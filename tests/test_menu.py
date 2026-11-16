@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import termios
 import threading
 import tty
 import unittest
@@ -189,6 +190,45 @@ class Marks(unittest.TestCase):
         self.assertEqual(p.marks, {0, 1, 2})
         p.handle("a")
         self.assertEqual(p.marks, set())
+
+
+class Framed(unittest.TestCase):
+    def test_output_keeps_colors_and_handles_carriage_return(self):
+        out = menu.Output()
+        out.feed("one\n\x1b[32mtwo\x1b[0m\nprogress 10%\rprogress 100%\n")
+        self.assertEqual(out.lines[:3], ["one", "\x1b[32mtwo\x1b[0m", "progress 100%"])
+
+    def test_output_drops_cursor_moves_and_sees_redraw_mark(self):
+        out = menu.Output()
+        out.feed("a\x1b[2Ab" + menu.REDRAW + "\x1b[2Kc")
+        self.assertEqual(out.lines, ["c"])
+        self.assertTrue(out.redraw)
+
+    def test_split_escape_waits_for_the_rest(self):
+        out = menu.Output()
+        out.feed("x\x1b[3")
+        out.feed("1my")
+        self.assertEqual(out.lines, ["x\x1b[31my"])
+
+    def test_fold_carries_color(self):
+        self.assertEqual(menu.fold("\x1b[32mabcdef", 3), ["\x1b[32mabc\x1b[0m", "\x1b[32mdef"])
+
+    def test_run_framed_captures_output_and_code(self):
+        master, slave = os.openpty()
+        tty.setcbreak(slave)
+        reader = threading.Thread(target=Ask.drain, args=(master,), daemon=True)
+        reader.start()
+        screen = menu.Screen()
+        screen.fd, screen.saved = slave, termios.tcgetattr(slave)
+        try:
+            code, out = menu.run_framed(screen, [sys.executable, "-c", "print('hi'); raise SystemExit(3)"], "t")
+        finally:
+            screen.fd = None
+            os.close(slave)
+            reader.join(2)
+            os.close(master)
+        self.assertEqual(code, 3)
+        self.assertIn("hi", out.plain())
 
 
 class Icons(unittest.TestCase):
