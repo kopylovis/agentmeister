@@ -91,6 +91,11 @@ ITEMS = [
      "Прокси тоже настроит, если его еще нет.",
      "Install /restart, /forget and the other commands, Claude Code hooks, the zsh hook and the claudemeister "
      "MCP server. Sets up the proxy too if it is missing."),
+    ("mode alias", "🔤", "Короткое имя cm", "Short name cm",
+     "Команда cm вместо claudemeister: cm open, cm sessions и так далее. Ставится ссылкой рядом с claudemeister. "
+     "Если имя cm уже занято другой программой, claudemeister его не тронет.",
+     "The cm command instead of claudemeister: cm open, cm sessions and so on. It is a link next to claudemeister. "
+     "If another program already owns the name cm, claudemeister leaves it alone."),
     ("doctor", "🔍", "Проверить установку", "Check the install",
      "Проверить, что claudemeister в PATH, Claude Code найден, а хуки и MCP-сервер на месте.",
      "Check that claudemeister is on PATH, Claude Code is found and the hooks and MCP server are in place."),
@@ -121,6 +126,9 @@ def mode_on(name):
         if name == "lid":
             import claude_lid
             return claude_lid.active()
+        if name == "alias":
+            import claude_alias
+            return claude_alias.enabled()
     except Exception:
         pass
     return False
@@ -210,7 +218,7 @@ class Describe:
                            tr("Сейчас выключено", "Off now")) + dim(tr(", Enter переключит", ", Enter switches it"))]
         if key not in ("quit",):
             lines += ["", dim(f"$ claudemeister {command(key, self.state)}")]
-        on = [name for name, flag in self.state.items() if flag]
+        on = [name for name, flag in self.state.items() if flag and name != "alias"]
         facts = [(tr("Версия", "Version"), version()),
                  ("Claude Code", self.claude),
                  (tr("Папка", "Folder"), tilde(os.getcwd())),
