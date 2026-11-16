@@ -59,6 +59,7 @@ help() {
 Установка
   claudemeister setup               команды, хуки, MCP-сервер, хук zsh, прокси, promptsill (setup -h)
   claudemeister doctor              проверить установку
+  claudemeister alias               короткое имя cm; on, off
   claudemeister --version           версия
 
 caffeinate (по умолчанию) не даёт Mac уснуть, пока идёт сессия:
@@ -79,6 +80,7 @@ case "${1:-}" in
   restore) exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" "$@" ;;
   doctor) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_doctor.py" "$@" ;;
   lid) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_lid.py" "$@" ;;
+  alias) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_alias.py" "$@" ;;
   parallel) exec /usr/bin/python3 "$(dirname "$MENU")/claude_parallel.py" "$@" ;;
   ask) exec /usr/bin/python3 "$(dirname "$MENU")/claude_ask.py" "$@" ;;
   release-notes) exec /usr/bin/python3 "$(dirname "$MENU")/release_notes.py" "$@" ;;

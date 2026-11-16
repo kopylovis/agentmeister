@@ -59,6 +59,8 @@ claudemeister setup
 ```
 
 Формула ставит и `cm`, короткое имя для `claudemeister`. `cm kcalm`, `cm ps`, `cm proxy` работают так же.
+Если `cm` нет, его ставит `claudemeister alias on` или пункт "Короткое имя cm" в меню. Чужой `cm` они не
+трогают, `claudemeister alias off` убирает только свой.
 
 Homebrew ставит заодно mihomo для `claudemeister -x`. `claudemeister setup` кладёт команды `/restart`,
 `/forget`, `/slim` и другие в `~/.claude/commands`, хуки в `~/.claude/settings.json`, хук zsh в `~/.zshrc`
