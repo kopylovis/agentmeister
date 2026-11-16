@@ -7,6 +7,7 @@ import sys
 import termios
 import time
 import tty
+import unicodedata
 
 HIDE, SHOW = "\x1b[?25l", "\x1b[?25h"
 TITLE, SUBTITLE = "1;35", "1;34"
@@ -16,11 +17,17 @@ HOME = ("\x1b[H", "\x1bOH", "\x1b[1~")
 END = ("\x1b[F", "\x1bOF", "\x1b[4~")
 DIGIT_PAUSE = 0.8
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+KEY = re.compile(r"\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Za-z]|[\x00-\x1f\x7f]|[^\x00-\x1f\x7f]+")
 FROM_RU = str.maketrans("йцукенгшщзхъфывапролджэячсмитьбю", "qwertyuiop[]asdfghjkl;'zxcvbnm,.")
 
 
 class Cancel(Exception):
     pass
+
+
+def split_keys(data):
+    """Быстрые нажатия приходят одним чтением: «\x1b[B\x1b[B» это две стрелки вниз, а не неизвестная клавиша."""
+    return KEY.findall(data) or [data]
 
 
 def tr(ru, en):
@@ -32,23 +39,44 @@ def tr(ru, en):
         return ru
 
 
+def cells(ch):
+    """Сколько клеток терминала занимает символ: эмодзи и иероглифы две, модификаторы ноль."""
+    if unicodedata.combining(ch) or ch in "\u200d\ufe0e\ufe0f":
+        return 0
+    return 2 if unicodedata.east_asian_width(ch) in "WF" else 1
+
+
+def width(text):
+    return sum(cells(ch) for ch in ANSI.sub("", text))
+
+
 def cut(text, width):
     out, seen, i = [], 0, 0
-    while i < len(text) and seen < width:
+    while i < len(text):
         m = ANSI.match(text, i)
         if m:
             out.append(m.group(0))
             i = m.end()
             continue
+        w = cells(text[i])
+        if seen + w > width:
+            break
         out.append(text[i])
-        seen += 1
+        seen += w
         i += 1
     return "".join(out) + ("\x1b[0m" if "\x1b[" in text else "")
+
+
+def fit(text, size):
+    """Обрезать по ширине и добить пробелами до нее же: строка ровно size клеток."""
+    text = cut(text, size)
+    return text + " " * max(0, size - width(text))
 
 
 class Menu:
     marks = None
     esc = None
+    numbers = True
 
     def __init__(self, tty_fd, items, title, label, start, default):
         self.fd = tty_fd
@@ -216,7 +244,7 @@ class Menu:
             for ch in key:
                 if not ch.isprintable():
                     continue
-                if ch.isdigit() and not self.query:
+                if ch.isdigit() and not self.query and self.numbers:
                     self.jump(ch)
                 else:
                     self.query += ch
@@ -229,9 +257,139 @@ class Menu:
         self.write(HIDE)
         self.draw()
         while True:
-            if self.handle(self.read_key()):
-                return self.sel if self.marks is None else set(self.marks)
+            for key in split_keys(self.read_key()):
+                if self.handle(key):
+                    return self.sel if self.marks is None else set(self.marks)
             self.draw()
+
+ALT_ON, ALT_OFF = "\x1b[?1049h", "\x1b[?1049l"
+FRAME, FRAME_DIM, ACCENT, ROW_BG = "38;5;110", "38;5;240", "38;5;110", "48;5;238"
+
+
+def box(title, body, w, h, active):
+    """Рамка w на h клеток с заголовком в верхней линии; body: строки внутри, лишние отрезаются."""
+    color = FRAME if active else FRAME_DIM
+    head = f"\x1b[{ACCENT if active else FRAME_DIM}m{title}\x1b[0m" if title else ""
+    top = f"\x1b[{color}m╭─\x1b[0m{head}\x1b[{color}m{'─' * max(0, w - 3 - width(title))}╮\x1b[0m"
+    side = f"\x1b[{color}m│\x1b[0m"
+    lines = [top]
+    for k in range(h - 2):
+        lines.append(f"{side}{fit(body[k] if k < len(body) else '', w - 2)}\x1b[0m{side}")
+    lines.append(f"\x1b[{color}m╰{'─' * (w - 2)}╯\x1b[0m")
+    return lines
+
+
+class Panel(Menu):
+    """Меню на весь экран: слева список в рамке, справа описание выбранного пункта. Tab прячет описание."""
+    numbers = False
+
+    def __init__(self, tty_fd, items, title, default, describe, heads, hint):
+        super().__init__(tty_fd, items, title, "", 1, default)
+        self.describe = describe
+        self.heads = heads
+        self.hint = hint
+        self.side = True
+        self.shape = None
+
+    def clear(self):
+        pass
+
+    def body(self, view, w, h):
+        if self.sel in view:
+            pos = view.index(self.sel)
+            if pos < self.top:
+                self.top = pos
+            elif pos >= self.top + h:
+                self.top = pos - h + 1
+        self.top = max(0, min(self.top, max(0, len(view) - h)))
+        out = []
+        for i in view[self.top:self.top + h]:
+            key, text = self.items[i]
+            if key is None:
+                out.append(f"  \x1b[{FRAME_DIM}m{text}\x1b[0m")
+            elif i == self.sel:
+                row = cut(f" › {text}", w)
+                on = f"\x1b[0;{ROW_BG};1m"
+                out.append(on + row.replace("\x1b[0m", on) + " " * (w - width(row)) + "\x1b[0m")
+            else:
+                out.append(f"   {text}")
+        if not self.choices(view):
+            out.append(f"\x1b[2m   {tr('ничего не найдено', 'nothing found')}\x1b[0m")
+        if self.top and out:
+            out[0] = fit(out[0], w - 3) + f"\x1b[2m ↑\x1b[0m"
+        if len(view) > self.top + h and out:
+            out[-1] = fit(out[-1], w - 3) + f"\x1b[2m ↓\x1b[0m"
+        return out
+
+    def draw(self):
+        rows, cols = self.size()
+        self.shape = (rows, cols)
+        view = self.view()
+        gap = 2
+        h = max(5, rows - 3)
+        side = self.side and cols >= 80
+        lw = cols - gap * 2 if not side else max(34, min(cols // 2 - 2, 46))
+        rw = cols - gap * 2 - lw - 1
+        left = box(f" › {self.heads[0]} ", self.body(view, lw - 2, h - 2), lw, h, True)
+        screen = left
+        if side:
+            text = self.describe(self.sel, rw - 4) if self.sel in self.choices(view) else []
+            right = box(f" {self.heads[1]} ", [" " + line for line in text], rw, h, False)
+            screen = [a + " " + b for a, b in zip(left, right)]
+        if self.query:
+            hint = tr(f"поиск: {self.query}▏ · Backspace стереть · Esc сбросить",
+                      f"search: {self.query}▏ · Backspace to erase · Esc to clear")
+        else:
+            hint = self.hint
+        pad = " " * gap
+        lines = [pad + cut(self.title, cols - gap)] + [pad + line for line in screen] + [pad + f"\x1b[2m{cut(hint, cols - gap * 2)}\x1b[0m"]
+        self.write("\x1b[H" + "\x1b[K\r\n".join(lines) + "\x1b[K\x1b[J")
+
+    def handle(self, key):
+        if key == "\t":
+            self.side = not self.side
+            return False
+        return super().handle(key)
+
+    def run(self):
+        self.write(ALT_ON + HIDE + "\x1b[2J")
+        self.draw()
+        while True:
+            if select.select([self.fd], [], [], 0.3)[0]:
+                for key in split_keys(self.read_key()):
+                    if self.handle(key):
+                        return self.sel
+                self.draw()
+            elif self.size() != self.shape or getattr(self.describe, "dirty", lambda: False)():
+                self.draw()
+
+
+def panel(items, title="", default=0, describe=None, heads=("", ""), hint="", fallback=None):
+    """Полноэкранное меню. В маленьком терминале (меньше 60 на 14) обычный pick. Ответ: индекс или None."""
+    if not items or all(key is None for key, _ in items):
+        return None
+    try:
+        cols, rows = os.get_terminal_size(sys.stdout.fileno())
+    except OSError:
+        cols, rows = 0, 0
+    if cols < 60 or rows < 14:
+        return fallback() if fallback else pick(items, title=title, default=default)
+    fd = os.open("/dev/tty", os.O_RDWR)
+    saved = termios.tcgetattr(fd)
+    menu = Panel(fd, items, title, default, describe or (lambda i, w: []), heads, hint)
+    try:
+        tty.setcbreak(fd)
+        attrs = termios.tcgetattr(fd)
+        attrs[3] &= ~termios.ISIG
+        termios.tcsetattr(fd, termios.TCSANOW, attrs)
+        choice = menu.run()
+    except Cancel:
+        choice = None
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+        menu.write(ALT_OFF + SHOW)
+        os.close(fd)
+    return choice
 
 
 def pick(items, title="", label="", start=1, default=0, marked=None, summary=None, esc=None):
