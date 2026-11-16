@@ -14,7 +14,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from menu import Cancel, Panel, Quit, Screen, choice  # noqa: E402
+from menu import Cancel, Panel, Quit, Screen, choice, run_framed, show_output  # noqa: E402
 from mnrhlib import CM, DEV, HOME, RESTART_QUEUE, ROOT, tilde, tr  # noqa: E402
 import claude_sessions  # noqa: E402
 import open_flow  # noqa: E402
@@ -292,6 +292,24 @@ def launch(screen, args):
     return again(run(args))
 
 
+def framed(screen, args):
+    """Команду в рамке на этом же экране, без мигания. Ответ: вернуться ли в меню. При выходе по q вывод
+    остается в обычном терминале, его можно прокрутить."""
+    title = f"claudemeister {shown(args)}"
+    code, out = run_framed(screen, [CM] + args, title)
+    if restart_pending():
+        screen.close()
+        return False
+    if show_output(screen, out, title, code):
+        return True
+    screen.close()
+    print(dim(f"$ {title}"))
+    text = out.plain()
+    if text:
+        print(text)
+    return False
+
+
 def live_details(s):
     import claude_live
     label, _ = claude_live.STATUS.get(s.get("status"), (s.get("status") or "?", ""))
@@ -324,9 +342,9 @@ def switch(screen, name):
     import claude_lid
     if name == "lid" and want == "on" and not claude_lid.ready():
         # правила sudoers еще нет: lid on поставит его и спросит пароль sudo, это надо видеть
-        with screen.suspend():
-            print(dim("$ claudemeister lid on"), flush=True)
-            run(["lid", "on"])
+        code, out = run_framed(screen, [CM, "lid", "on"], "claudemeister lid on")
+        if code != 0:
+            show_output(screen, out, "claudemeister lid on", code)
     else:
         done = subprocess.run([CM, name, want], capture_output=True, text=True)
         if done.returncode != 0:
@@ -376,7 +394,7 @@ def loop(screen):
         if key == "ps":
             note = live_sessions(screen)
             continue
-        if not launch(screen, shlex.split(key)):
+        if not framed(screen, shlex.split(key)):
             return 0
 
 

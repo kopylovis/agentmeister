@@ -137,7 +137,9 @@ the items, Terminal.app and other terminals show emoji. An `icons=emoji` or `ico
 pictures: answer Yes with "Remember my choice". `tools/icons.py` draws the icons, the PNGs live in
 `share/claudemeister/icons`. Submenus look the same: the project list
 (branch and the last three commits on the right), sessions (latest messages), session mode and network.
-Submenus open on the same screen, and the menu stays up until a command runs. Esc goes one step back,
+Submenus open on the same screen. Commands run from the menu stay in a frame too: colored output, their own
+lists and questions on the same screen; afterwards Enter goes back to the menu and `q` quits, leaving the output
+in the terminal. Only Claude Code itself runs outside. Esc goes one step back,
 Ctrl+C quits.
 `MNRH_PLAIN_MENU=1` brings back the plain inline lists. The menu
 follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in `~/.config/mnrh/config` picks
