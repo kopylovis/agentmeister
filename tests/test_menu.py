@@ -91,5 +91,30 @@ class Layout(unittest.TestCase):
         self.assertEqual({menu.width(line) for line in lines[1:-1]}, {98})
 
 
+    def test_numbers_and_wide_left_frame(self):
+        items = [("a", "x" * 70), ("b", "short")]
+        out = []
+
+        class P(menu.Panel):
+            def size(self):
+                return 20, 140
+
+            def write(self, s):
+                out.append(s)
+
+        P(0, items, "t", 0, lambda i, w: [], ("L", "R"), "", start=0, numbers=True).draw()
+        lines = ANSI.sub("", "".join(out)).split("\r\n")
+        self.assertIn("x" * 70, lines[2])
+        self.assertIn("1  short", lines[3])
+
+    def test_note_markup(self):
+        self.assertEqual([ANSI.sub("", x) for x in menu.render_note(r"Name\npath\n# commits\nfix")],
+                         ["Name", "path", "COMMITS", "fix"])
+        self.assertEqual(menu.render_note(""), [])
+
+    def test_wrap_keeps_indent(self):
+        self.assertEqual(menu.wrap(["  one two three"], 9), ["  one two", "  three"])
+
+
 if __name__ == "__main__":
     unittest.main()

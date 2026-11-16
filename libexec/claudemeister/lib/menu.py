@@ -5,6 +5,7 @@ import re
 import select
 import sys
 import termios
+import textwrap
 import time
 import tty
 import unicodedata
@@ -264,11 +265,23 @@ class Menu:
 
 ALT_ON, ALT_OFF = "\x1b[?1049h", "\x1b[?1049l"
 FRAME, FRAME_DIM, ACCENT, ROW_BG = "38;5;110", "38;5;240", "38;5;110", "48;5;238"
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+
+
+def brand():
+    """Строка над рамками: имя и версия."""
+    try:
+        with open(os.path.join(ROOT, "VERSION")) as f:
+            ver = f"  \x1b[2mv{f.read().strip()}\x1b[0m"
+    except OSError:
+        ver = ""
+    return f"\x1b[1;35mclaudemeister\x1b[0m{ver}"
 
 
 def box(title, body, w, h, active):
     """Рамка w на h клеток с заголовком в верхней линии; body: строки внутри, лишние отрезаются."""
     color = FRAME if active else FRAME_DIM
+    title = cut(title, max(0, w - 4))
     head = f"\x1b[{ACCENT if active else FRAME_DIM}m{title}\x1b[0m" if title else ""
     top = f"\x1b[{color}m╭─\x1b[0m{head}\x1b[{color}m{'─' * max(0, w - 3 - width(title))}╮\x1b[0m"
     side = f"\x1b[{color}m│\x1b[0m"
@@ -279,16 +292,29 @@ def box(title, body, w, h, active):
     return lines
 
 
-class Panel(Menu):
-    """Меню на весь экран: слева список в рамке, справа описание выбранного пункта. Tab прячет описание."""
-    numbers = False
+def wrap(lines, w):
+    """Длинные строки без цвета переносятся по словам с тем же отступом, цветные обрезаются."""
+    out = []
+    for line in lines:
+        if width(line) <= w or "\x1b[" in line:
+            out.append(line)
+            continue
+        indent = line[:len(line) - len(line.lstrip())]
+        out += textwrap.wrap(line, w, subsequent_indent=indent) or [""]
+    return out
 
-    def __init__(self, tty_fd, items, title, default, describe, heads, hint):
-        super().__init__(tty_fd, items, title, "", 1, default)
+
+class Panel(Menu):
+    """Меню на весь экран: слева список в рамке, справа описание выбранного пункта. Tab прячет описание.
+    Без describe список один на всю ширину."""
+
+    def __init__(self, tty_fd, items, title, default, describe=None, heads=("", ""), hint="", start=1, numbers=False):
+        super().__init__(tty_fd, items, title, "", start, default)
         self.describe = describe
         self.heads = heads
         self.hint = hint
-        self.side = True
+        self.numbers = numbers
+        self.side = describe is not None
         self.shape = None
 
     def clear(self):
@@ -302,12 +328,16 @@ class Panel(Menu):
             elif pos >= self.top + h:
                 self.top = pos - h + 1
         self.top = max(0, min(self.top, max(0, len(view) - h)))
+        digits = len(str(len(self.pick_able) + self.start - 1))
         out = []
         for i in view[self.top:self.top + h]:
             key, text = self.items[i]
             if key is None:
                 out.append(f"  \x1b[{FRAME_DIM}m{text}\x1b[0m")
-            elif i == self.sel:
+                continue
+            if self.numbers:
+                text = f"\x1b[2m{self.pick_able.index(i) + self.start:>{digits}}\x1b[0m  {text}"
+            if i == self.sel:
                 row = cut(f" › {text}", w)
                 on = f"\x1b[0;{ROW_BG};1m"
                 out.append(on + row.replace("\x1b[0m", on) + " " * (w - width(row)) + "\x1b[0m")
@@ -316,9 +346,9 @@ class Panel(Menu):
         if not self.choices(view):
             out.append(f"\x1b[2m   {tr('ничего не найдено', 'nothing found')}\x1b[0m")
         if self.top and out:
-            out[0] = fit(out[0], w - 3) + f"\x1b[2m ↑\x1b[0m"
+            out[0] = fit(out[0], w - 3) + "\x1b[2m ↑\x1b[0m"
         if len(view) > self.top + h and out:
-            out[-1] = fit(out[-1], w - 3) + f"\x1b[2m ↓\x1b[0m"
+            out[-1] = fit(out[-1], w - 3) + "\x1b[2m ↓\x1b[0m"
         return out
 
     def draw(self):
@@ -328,13 +358,20 @@ class Panel(Menu):
         gap = 2
         h = max(5, rows - 3)
         side = self.side and cols >= 80
-        lw = cols - gap * 2 if not side else max(34, min(cols // 2 - 2, 46))
+        if side:
+            # левая рамка по самой длинной строке, но описанию справа остается хотя бы 36 клеток
+            digits = len(str(len(self.pick_able) + self.start - 1)) + 2 if self.numbers else 0
+            need = max([width(text) + digits + 6 for key, text in self.items if key is not None]
+                       + [width(self.heads[0]) + 8])
+            lw = max(34, min(need, cols - gap * 2 - 37))
+        else:
+            lw = cols - gap * 2
         rw = cols - gap * 2 - lw - 1
         left = box(f" › {self.heads[0]} ", self.body(view, lw - 2, h - 2), lw, h, True)
         screen = left
         if side:
             text = self.describe(self.sel, rw - 4) if self.sel in self.choices(view) else []
-            right = box(f" {self.heads[1]} ", [" " + line for line in text], rw, h, False)
+            right = box(f" {self.heads[1]} ", [" " + line for line in wrap(text, rw - 4)], rw, h, False)
             screen = [a + " " + b for a, b in zip(left, right)]
         if self.query:
             hint = tr(f"поиск: {self.query}▏ · Backspace стереть · Esc сбросить",
@@ -342,12 +379,14 @@ class Panel(Menu):
         else:
             hint = self.hint
         pad = " " * gap
-        lines = [pad + cut(self.title, cols - gap)] + [pad + line for line in screen] + [pad + f"\x1b[2m{cut(hint, cols - gap * 2)}\x1b[0m"]
+        lines = ([pad + cut(self.title, cols - gap)] + [pad + line for line in screen]
+                 + [pad + f"\x1b[2m{cut(hint, cols - gap * 2)}\x1b[0m"])
         self.write("\x1b[H" + "\x1b[K\r\n".join(lines) + "\x1b[K\x1b[J")
 
     def handle(self, key):
         if key == "\t":
-            self.side = not self.side
+            if self.describe is not None:
+                self.side = not self.side
             return False
         return super().handle(key)
 
@@ -364,57 +403,76 @@ class Panel(Menu):
                 self.draw()
 
 
-def panel(items, title="", default=0, describe=None, heads=("", ""), hint="", fallback=None):
-    """Полноэкранное меню. В маленьком терминале (меньше 60 на 14) обычный pick. Ответ: индекс или None."""
-    if not items or all(key is None for key, _ in items):
-        return None
+def roomy(fd):
+    """Хватит ли места на рамки. MNRH_PLAIN_MENU=1 оставляет старый список в строку."""
+    if os.environ.get("MNRH_PLAIN_MENU"):
+        return False
     try:
-        cols, rows = os.get_terminal_size(sys.stdout.fileno())
+        cols, rows = os.get_terminal_size(fd)
     except OSError:
-        cols, rows = 0, 0
-    if cols < 60 or rows < 14:
-        return fallback() if fallback else pick(items, title=title, default=default)
-    fd = os.open("/dev/tty", os.O_RDWR)
+        return False
+    return cols >= 60 and rows >= 14
+
+
+def drive(fd, menu):
+    full = isinstance(menu, Panel)
     saved = termios.tcgetattr(fd)
-    menu = Panel(fd, items, title, default, describe or (lambda i, w: []), heads, hint)
     try:
         tty.setcbreak(fd)
         attrs = termios.tcgetattr(fd)
         attrs[3] &= ~termios.ISIG
         termios.tcsetattr(fd, termios.TCSANOW, attrs)
-        choice = menu.run()
+        return menu.run()
     except Cancel:
-        choice = None
+        return None
     finally:
+        if not full:
+            menu.clear()
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-        menu.write(ALT_OFF + SHOW)
-        os.close(fd)
-    return choice
+        menu.write((ALT_OFF if full else "") + SHOW)
 
 
-def pick(items, title="", label="", start=1, default=0, marked=None, summary=None, esc=None):
+def panel(items, title="", default=0, describe=None, heads=("", ""), hint="", fallback=None):
+    """Главное меню на весь экран. В маленьком терминале (меньше 60 на 14) fallback. Ответ: индекс или None."""
     if not items or all(key is None for key, _ in items):
         return None
     fd = os.open("/dev/tty", os.O_RDWR)
-    saved = termios.tcgetattr(fd)
-    menu = Menu(fd, items, title, label, start, default)
-    if esc:
-        menu.esc = esc
-    if marked is not None:
-        menu.marks = set(marked)
-        menu.summary = summary
     try:
-        tty.setcbreak(fd)
-        attrs = termios.tcgetattr(fd)
-        attrs[3] &= ~termios.ISIG
-        termios.tcsetattr(fd, termios.TCSANOW, attrs)
-        choice = menu.run()
-    except Cancel:
-        choice = None
+        if not roomy(fd):
+            os.close(fd)
+            fd = None
+            return fallback() if fallback else pick(items, title=title, default=default)
+        return drive(fd, Panel(fd, items, title, default, describe, heads, hint))
     finally:
-        menu.clear()
-        termios.tcsetattr(fd, termios.TCSADRAIN, saved)
-        menu.write(SHOW)
+        if fd is not None:
+            os.close(fd)
+
+
+def heading(title):
+    return ANSI.sub("", title).strip().rstrip(":")
+
+
+def pick(items, title="", label="", start=1, default=0, marked=None, summary=None, esc=None, describe=None):
+    """Список с выбором. Если терминал позволяет, на весь экран в рамке, с описанием справа, когда есть describe(i, w).
+    Отметки (marked) пока только в старом виде."""
+    if not items or all(key is None for key, _ in items):
+        return None
+    fd = os.open("/dev/tty", os.O_RDWR)
+    if marked is None and roomy(fd):
+        esc = esc or tr("выход", "quit")
+        tab = tr("Tab описание · ", "Tab description · ") if describe else ""
+        hint = tr(f"↑↓ выбрать · Enter · цифра или буквы, быстрый переход · {tab}Esc {esc}",
+                  f"↑↓ move · Enter · a number or letters to jump · {tab}Esc {esc}")
+        menu = Panel(fd, items, brand(), default, describe, (heading(title), tr("Описание", "Description")),
+                     hint, start=start, numbers=True)
+    else:
+        menu = Menu(fd, items, title, label, start, default)
+        if esc:
+            menu.esc = esc
+        if marked is not None:
+            menu.marks = set(marked)
+            menu.summary = summary
+    choice = drive(fd, menu)
     if choice is not None and label and marked is None:
         menu.write(f"{label}: \x1b[1m{items[choice][0]}\x1b[0m\r\n")
     os.close(fd)
@@ -473,23 +531,41 @@ def choice(question, options, default=0, back=None, esc=None):
     return result
 
 
+def render_note(note):
+    """Описание из третьего поля строки: строки через буквальные \\n, первая жирная, «# заголовок» тусклый."""
+    lines = note.split("\\n") if note else []
+    out = []
+    for k, line in enumerate(lines):
+        if k == 0:
+            out.append(f"\x1b[1m{line}\x1b[0m")
+        elif line.startswith("# "):
+            out.append(f"\x1b[2m{line[2:].upper()}\x1b[0m")
+        else:
+            out.append(line)
+    return out
+
+
 def main():
-    p = argparse.ArgumentParser(description="меню со стрелками; пункты «ключ<TAB>текст» из stdin, ответ — индекс с 0")
+    p = argparse.ArgumentParser(description="меню со стрелками; пункты «ключ<TAB>текст[<TAB>описание]» из stdin, "
+                                            "ответ — индекс с 0")
     p.add_argument("--title", default="")
     p.add_argument("--label", default="")
     p.add_argument("--start", type=int, default=1)
     p.add_argument("--default", type=int, default=0)
     a = p.parse_args()
 
-    items = []
+    items, notes = [], []
     for line in sys.stdin.read().splitlines():
         if not line.strip():
             continue
-        key, _, text = line.partition("\t")
+        key, _, rest = line.partition("\t")
+        text, _, note = rest.partition("\t")
         items.append((key, text or key))
+        notes.append(note)
     if not items:
         return 1
-    choice = pick(items, a.title, a.label, a.start, a.default)
+    describe = (lambda i, w: render_note(notes[i])) if any(notes) else None
+    choice = pick(items, a.title, a.label, a.start, a.default, describe=describe)
     if choice is None:
         return 130
     print(choice)
