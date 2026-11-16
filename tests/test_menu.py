@@ -6,6 +6,7 @@ import tty
 import unittest
 
 sys.dont_write_bytecode = True
+os.environ["MNRH_ICONS"] = "emoji"  # раскладку проверяем на emoji, картинки отдельно в Icons
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "claudemeister", "lib"))
 import mnrhlib  # noqa: E402
@@ -153,6 +154,32 @@ class Ask(unittest.TestCase):
 
     def test_russian_text(self):
         self.assertEqual(self.answer("папка\r".encode()), "папка")
+
+
+class Icons(unittest.TestCase):
+    def tearDown(self):
+        os.environ["MNRH_ICONS"] = "emoji"
+        menu._ICONS = None
+
+    def test_images_replace_known_emoji_only_when_enabled(self):
+        menu._ICONS = None
+        self.assertEqual(menu.with_icons("📂 x"), "📂 x")
+        os.environ["MNRH_ICONS"] = "images"
+        menu._ICONS = None
+        out = menu.with_icons("📂 x 🦄")
+        self.assertIn("\x1b]1337;File=inline=1;width=2;height=1", out)
+        self.assertNotIn("📂", out)
+        self.assertIn("🦄", out)
+
+    def test_every_menu_emoji_has_a_picture(self):
+        import json
+        folder = os.path.join(menu.ROOT, "share", "claudemeister", "icons")
+        with open(os.path.join(folder, "icons.json"), encoding="utf-8") as f:
+            have = json.load(f)
+        used = {item[1] for item in m.ITEMS if item[0]}
+        self.assertEqual(used - set(have), set())
+        for name in have.values():
+            self.assertTrue(os.path.isfile(os.path.join(folder, name + ".png")), name)
 
 
 if __name__ == "__main__":
