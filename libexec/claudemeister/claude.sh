@@ -17,56 +17,56 @@ MENU="$LIB/menu.py"
 help() {
   cat <<'EOF'
 Запуск
-  claudemeister                     меню (MNRH_NO_MENU=1 сразу к выбору проекта)
-  claudemeister open                выбрать проект в папке проектов
-  claudemeister <имя>               сразу в проекте (начала имени хватит) или в папке по пути
-  claudemeister --harness codex     запустить Codex или настроить его через setup
-  claudemeister root                в домашней папке
-  claudemeister ... -k | -n         caffeinate или обычная сессия, без вопроса
-  claudemeister ... -x | -d         через свой VPS или напрямую, без вопроса
-  claudemeister ... --new           новая сессия, не предлагать сохраненные
-  claudemeister ... -i              без записи на диск: ни переписки, ни истории промптов
-  claudemeister ... -- <аргументы>  аргументы для claude: claudemeister kcalm -- --continue
-  claudemeister sessions            сохраненные сессии: продолжить, перенести, удалить (sessions -h)
-  claudemeister ps                  запущенные сессии: кто ждет ответа, перейти во вкладку
-  claudemeister restore             вернуть сессии, открытые до перезагрузки или сбоя
-  claudemeister usage               токены и активное время по проектам (--days N, --project P)
+  agentmeister                     меню (MNRH_NO_MENU=1 сразу к выбору проекта)
+  agentmeister open                выбрать проект в папке проектов
+  agentmeister <имя>               сразу в проекте (начала имени хватит) или в папке по пути
+  agentmeister --harness codex     запустить Codex или настроить его через setup
+  agentmeister root                в домашней папке
+  agentmeister ... -k | -n         caffeinate или обычная сессия, без вопроса
+  agentmeister ... -x | -d         через свой VPS или напрямую, без вопроса
+  agentmeister ... --new           новая сессия, не предлагать сохраненные
+  agentmeister ... -i              без записи на диск: ни переписки, ни истории промптов
+  agentmeister ... -- <аргументы>  аргументы для claude: agentmeister kcalm -- --continue
+  agentmeister sessions            сохраненные сессии: продолжить, перенести, удалить (sessions -h)
+  agentmeister ps                  запущенные сессии: кто ждет ответа, перейти во вкладку
+  agentmeister restore             вернуть сессии, открытые до перезагрузки или сбоя
+  agentmeister usage               токены и активное время по проектам (--days N, --project P)
 
 Изнутри Claude Code (они же /restart, /forget, /fresh, /slim)
-  claudemeister restart             закрыть и открыть эту же сессию, с claude update
-  claudemeister forget              удалить эту сессию без следа и открыть чистую
-  claudemeister fresh               новая сессия без названия, эта остается в /resume
-  claudemeister slim                сжать эту сессию и открыть снова
+  agentmeister restart             закрыть и открыть эту же сессию, с claude update
+  agentmeister forget              удалить эту сессию без следа и открыть чистую
+  agentmeister fresh               новая сессия без названия, эта остается в /resume
+  agentmeister slim                сжать эту сессию и открыть снова
 
 Режимы (on, off)
-  claudemeister humanize            правила письма без признаков нейросети; check <файл>, rules
-  claudemeister guard               вопрос перед чтением ключей и опасными командами; test, log
-  claudemeister buildlog            выжимка длинного вывода сборок для Claude; test <файл>
-  claudemeister notify              уведомления, когда Claude ждет; after <сек>, test, telegram
-  claudemeister lid                 не засыпать с закрытой крышкой; setup, release, remove
+  agentmeister humanize            правила письма без признаков нейросети; check <файл>, rules
+  agentmeister guard               вопрос перед чтением ключей и опасными командами; test, log
+  agentmeister buildlog            выжимка длинного вывода сборок для Claude; test <файл>
+  agentmeister notify              уведомления, когда Claude ждет; after <сек>, test, telegram
+  agentmeister lid                 не засыпать с закрытой крышкой; setup, release, remove
 
 Прокси через свой VPS
-  claudemeister proxy               состояние; setup, test, update, restart, remove (proxy -h)
+  agentmeister proxy               состояние; setup, test, update, restart, remove (proxy -h)
 
 Инструменты проекта (Claude зовет их и сам)
-  claudemeister brief               где мы остановились: git, прошлая сессия, бэклог (/where)
-  claudemeister todo                бэклог проекта между сессиями (/todo, todo -h)
-  claudemeister parallel "<…>"      задача в своей ветке и worktree, во втором окне (/parallel)
-  claudemeister ask <пр> <…>        спросить отдельный Claude про другой проект (/ask)
-  claudemeister release-notes       материал для "Что нового" к релизу (/release-notes)
-  claudemeister shot                снимок окна приложения (/shot)
-  claudemeister deps                устаревшие зависимости Gradle в gradle/libs.versions.toml
+  agentmeister brief               где мы остановились: git, прошлая сессия, бэклог (/where)
+  agentmeister todo                бэклог проекта между сессиями (/todo, todo -h)
+  agentmeister parallel "<…>"      задача в своей ветке и worktree, во втором окне (/parallel)
+  agentmeister ask <пр> <…>        спросить отдельный Claude про другой проект (/ask)
+  agentmeister release-notes       материал для "Что нового" к релизу (/release-notes)
+  agentmeister shot                снимок окна приложения (/shot)
+  agentmeister deps                устаревшие зависимости Gradle в gradle/libs.versions.toml
 
 Установка
-  claudemeister setup               команды, хуки, MCP-сервер, хук zsh, прокси, promptsill (setup -h)
-  claudemeister doctor              проверить установку
-  claudemeister alias               короткое имя cm; on, off
-  claudemeister --version           версия
+  agentmeister setup               команды, хуки, MCP-сервер, хук zsh, прокси, promptsill (setup -h)
+  agentmeister doctor              проверить установку
+  agentmeister alias               короткое имя am; on, off
+  agentmeister --version           версия
 
 caffeinate (по умолчанию) не даёт Mac уснуть, пока идёт сессия:
 удобно для долгих задач и Remote Control с телефона. Экран при этом гаснуть может.
 С закрытой крышкой на батарее Mac все равно уснет, caffeinate этого не отменяет.
-claudemeister lid setup разрешит не засыпать и с закрытой крышкой (спросит пароль sudo).
+agentmeister lid setup разрешит не засыпать и с закрытой крышкой (спросит пароль sudo).
 Папка проектов: ~/Developer, строка projects=<путь> в ~/.config/mnrh/config или MNRH_PROJECTS=<путь>.
 EOF
 }

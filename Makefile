@@ -10,14 +10,17 @@ install:
 		ln -sfn "$(CURDIR)/bin/agentmeister" "$(BIN)/agentmeister"; \
 	else echo "$(BIN)/agentmeister уже занят другой программой" >&2; exit 1; fi
 	@ln -sfn "$(CURDIR)/bin/claudemeister" "$(BIN)/claudemeister"
-	@echo "claudemeister -> $(BIN)/claudemeister (symlink на проект, правки работают сразу)"
-	@if [ ! -e "$(BIN)/cm" ] || [ "$$(readlink "$(BIN)/cm")" = "$(CURDIR)/bin/claudemeister" ]; then \
-		ln -sfn "$(CURDIR)/bin/claudemeister" "$(BIN)/cm" && echo "cm -> $(BIN)/cm (короткое имя)"; \
-	else echo "$(BIN)/cm уже занят другой программой, короткое имя не поставлено"; fi
+	@echo "agentmeister -> $(BIN)/agentmeister"
+	@if [ "$$(readlink "$(BIN)/am")" = "$(CURDIR)/bin/agentmeister" ] || \
+	    { [ ! -e "$(BIN)/am" ] && [ ! -L "$(BIN)/am" ]; }; then \
+		ln -sfn "$(CURDIR)/bin/agentmeister" "$(BIN)/am" && \
+		if [ "$$(readlink "$(BIN)/cm")" = "$(CURDIR)/bin/claudemeister" ]; then rm -f "$(BIN)/cm"; fi; \
+	else echo "$(BIN)/am уже занят другой программой, короткое имя не поставлено"; fi
 
 uninstall:
 	@if [ "$$(readlink "$(BIN)/agentmeister")" = "$(CURDIR)/bin/agentmeister" ]; then rm -f "$(BIN)/agentmeister"; fi
 	@rm -f "$(BIN)/claudemeister"
+	@if [ "$$(readlink "$(BIN)/am")" = "$(CURDIR)/bin/agentmeister" ]; then rm -f "$(BIN)/am"; fi
 	@if [ "$$(readlink "$(BIN)/cm")" = "$(CURDIR)/bin/claudemeister" ]; then rm -f "$(BIN)/cm"; fi
 	@echo "agentmeister удален из $(BIN)"
 
@@ -29,7 +32,7 @@ test:
 	@bash -n libexec/claudemeister/claude.sh
 	@for f in libexec/claudemeister/*.py libexec/claudemeister/lib/*.py; do /usr/bin/python3 -m py_compile "$$f" || exit 1; done
 	@./bin/claudemeister --version | grep -qx "$$(cat VERSION)"
-	@./bin/claudemeister help | grep -q 'claudemeister setup'
+	@./bin/agentmeister help | grep -q 'agentmeister setup'
 	@printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/claudemeister mcp | grep -q open_claude
 	@./bin/claudemeister deps status -h >/dev/null
 	@swiftc -typecheck -swift-version 5 share/claudemeister/notify/main.swift

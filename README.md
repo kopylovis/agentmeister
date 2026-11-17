@@ -59,7 +59,7 @@ brew install kopylovis/tap/agentmeister
 agentmeister
 ```
 
-`claudemeister` and `cm` still run the same command.
+`claudemeister` and `am` still run the same command.
 
 ### Codex
 
@@ -78,8 +78,8 @@ It prints a snapshot in the terminal. Use `/statusline` in Codex to set the fiel
 
 Run `agentmeister setup` to configure Claude Code.
 
-The formula also installs `cm`, a short name for `claudemeister`. `cm kcalm`, `cm ps` and `cm proxy` work the same.
-If `cm` is missing, `claudemeister alias on` or the "Short name cm" menu item adds it. Neither touches a `cm`
+The formula also installs `am`, a short name for `agentmeister`. `am kcalm`, `am ps` and `am proxy` work the same.
+If `am` is missing, `agentmeister alias on` or the "Short name am" menu item adds it. Neither touches an `am`
 that belongs to another program, and `claudemeister alias off` removes only its own.
 
 Homebrew also installs mihomo for `claudemeister -x`. `claudemeister setup` puts `/restart`, `/forget`, `/slim`
@@ -126,7 +126,7 @@ claudemeister setup
 ```
 
 `make install` puts a symlink to the checkout into `~/.local/bin`, so edits take effect without reinstalling.
-It adds `cm` next to it unless `~/.local/bin/cm` already belongs to another program.
+It adds `am` next to it unless `~/.local/bin/am` already belongs to another program.
 `make uninstall` removes it, `make test` runs the checks.
 
 ### Releasing

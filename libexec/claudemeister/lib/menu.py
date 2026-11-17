@@ -293,9 +293,8 @@ IN_FRAME = os.environ.get("MNRH_IN_FRAME") == "1"
 REDRAW = "\x1b]7777;mnrh-redraw\x07"
 FRAME, FRAME_DIM, ACCENT, ROW_BG = "38;5;110", "38;5;240", "38;5;110", "48;5;238"
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-# имя над рамками и папка share/<имя>/icons: этот же файл лежит в mnrh, имя берется по bin/ проекта
-BRAND = next((name for name in ("claudemeister", "mnrh") if os.path.exists(os.path.join(ROOT, "bin", name))),
-             "claudemeister")
+# Этот файл есть и в mnrh. Имя проекта и каталог его ресурсов могут отличаться.
+BRAND = "mnrh" if os.path.exists(os.path.join(ROOT, "bin", "mnrh")) else "agentmeister"
 
 
 _ICONS = None
@@ -337,7 +336,8 @@ def icons():
     _ICONS = {}
     if not images_ok():
         return _ICONS
-    folder = os.path.join(ROOT, "share", BRAND, "icons")
+    assets = "mnrh" if BRAND == "mnrh" else "claudemeister"
+    folder = os.path.join(ROOT, "share", assets, "icons")
     try:
         import base64
         import json

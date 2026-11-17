@@ -1,4 +1,4 @@
-"""claudemeister doctor: одной командой проверить, что все части claudemeister на месте и работают."""
+"""agentmeister doctor: одной командой проверить, что все части claudemeister на месте и работают."""
 import json
 import os
 import shlex
@@ -11,7 +11,7 @@ from mnrhlib import BAD, CM, OK, ROOT, WARN, promptsill_path, read_config, tilde
 from claude_proc import CLAUDE_BIN  # noqa: E402
 import claude_settings  # noqa: E402
 
-USAGE = """claudemeister doctor    проверить установку: claude, команды, хуки, статус в iTerm2, MCP-сервер, хук zsh,
+USAGE = """agentmeister doctor    проверить установку: claude, команды, хуки, статус в iTerm2, MCP-сервер, хук zsh,
                        уведомления, promptsill, прокси, крышку, хранение переписок. Код выхода 1, если что-то сломано"""
 
 
@@ -34,9 +34,9 @@ def version():
 def check_install():
     where = "Homebrew" if any(f"/Cellar/{name}/" in ROOT + "/" for name in ("agentmeister", "claudemeister")) \
         else f"из папки {tilde(ROOT)}"
-    rows = [("ok", f"claudemeister {version()}, {where}")]
-    if not shutil.which("claudemeister"):
-        rows.append(("bad", "claudemeister нет в PATH, а команды и хуки вызывают его по имени"))
+    rows = [("ok", f"agentmeister {version()}, {where}")]
+    if not (shutil.which("agentmeister") or shutil.which("claudemeister")):
+        rows.append(("bad", "agentmeister нет в PATH, а команды и хуки вызывают его по имени"))
     claude = shutil.which(CLAUDE_BIN)
     if not claude:
         return rows + [("bad", f"нет {CLAUDE_BIN} в PATH: поставь Claude Code")]
@@ -61,9 +61,9 @@ def check_commands():
         except OSError:
             missing.append(name)
     if missing:
-        return [("bad", f"нет команд {', '.join(missing)}: claudemeister setup")]
+        return [("bad", f"нет команд {', '.join(missing)}: agentmeister setup")]
     if stale:
-        return [("warn", f"команды {', '.join(stale)} от другой версии: claudemeister setup обновит их")]
+        return [("warn", f"команды {', '.join(stale)} от другой версии: agentmeister setup обновит их")]
     return [("ok", f"команды /restart, /forget и еще {len(pages) - 2} на месте")]
 
 
@@ -76,13 +76,13 @@ def check_settings():
     lost = claude_settings.missing(settings, exact=True)
     if lost:
         names = sorted({f"{event} {cmd}" for event, cmd, _, _ in lost})
-        rows.append(("bad", f"нет хуков или они старые: {', '.join(names)}. claudemeister setup поставит"))
+        rows.append(("bad", f"нет хуков или они старые: {', '.join(names)}. agentmeister setup поставит"))
     else:
         rows.append(("ok", "хуки Claude Code на месте"))
     days = settings.get("cleanupPeriodDays")
     rows.append(("ok", f"переписки хранятся {days} дней") if isinstance(days, int) and days >= 90 else
                 ("warn", f"переписки удаляются через {days or 30} дней, поиск по сессиям их потеряет. "
-                         "claudemeister setup поставит 365"))
+                         "agentmeister setup поставит 365"))
     line = claude_settings.statusline_command(settings)
     if "promptsill" in line:
         rows.append(("ok", "строка состояния promptsill"))
@@ -111,7 +111,7 @@ def iterm_rows(settings):
             old.add(os.path.expanduser(words[0]))
     if not old:
         return [("ok", "статус в iTerm2: it2 handle-agent-hook")] if new else []
-    fix = "iTerm2 > Install Claude Code Integration поставит it2 handle-agent-hook, потом снова claudemeister doctor"
+    fix = "iTerm2 > Install Claude Code Integration поставит it2 handle-agent-hook, потом снова agentmeister doctor"
     gone = sorted(p for p in old if not os.path.exists(p))
     if gone:
         return [("bad", f"хуки iTerm2 вызывают {', '.join(map(tilde, gone))}, а файла нет. {fix}")]
@@ -130,7 +130,7 @@ def check_mcp():
     from mcp_server import MCP_NAME
     listed, registered = setup_cmd.mcp_get(MCP_NAME)
     if not listed:
-        return [("bad", f"MCP-сервер {MCP_NAME} не подключен: claudemeister setup")]
+        return [("bad", f"MCP-сервер {MCP_NAME} не подключен: agentmeister setup")]
     rows = []
     if registered[1:] != ["mcp"] or os.path.realpath(registered[0]) != os.path.realpath(CM):
         rows.append(("warn", f"MCP-сервер подключен к {' '.join(registered)}, а не к {tilde(CM)} mcp"))
@@ -149,35 +149,35 @@ def check_zsh():
     if any(setup_cmd.is_zsh_hook(line) for line in setup_cmd.zshrc_lines()):
         return [("ok", f"хук перезапуска в {tilde(setup_cmd.ZSHRC)}")]
     return [("warn", f"нет хука перезапуска в {tilde(setup_cmd.ZSHRC)}: /restart вернется во вкладку только в "
-                     "Terminal и iTerm2. claudemeister setup добавит")]
+                     "Terminal и iTerm2. agentmeister setup добавит")]
 
 
 def check_notify():
     import claude_notify
     if not claude_notify.enabled():
-        return [("ok", "уведомления выключены (claudemeister notify on)")]
+        return [("ok", "уведомления выключены (agentmeister notify on)")]
     if os.path.isdir(claude_notify.AGENT.app):
         return [("ok", f"уведомления: {tilde(claude_notify.AGENT.app)}")]
-    return [("bad", "уведомления включены, но приложения нет: claudemeister setup соберет его (нужен swiftc)")]
+    return [("bad", "уведомления включены, но приложения нет: agentmeister setup соберет его (нужен swiftc)")]
 
 
 def check_proxy():
     import claude_proxy
     if claude_proxy.configured():
-        return [("ok", "прокси через VPS настроен (проверить выход: claudemeister proxy test)")]
-    return [("ok", "прокси через VPS не настроен, claudemeister -x недоступен")]
+        return [("ok", "прокси через VPS настроен (проверить выход: agentmeister proxy test)")]
+    return [("ok", "прокси через VPS не настроен, agentmeister -x недоступен")]
 
 
 def check_lid():
     import claude_lid
     if not claude_lid.switched_on():
-        return [("ok", "крышка: выключено, закрытая крышка усыпит Mac (claudemeister lid on)")]
+        return [("ok", "крышка: выключено, закрытая крышка усыпит Mac (agentmeister lid on)")]
     if claude_lid.ready():
         return [("ok", f"крышка: caffeinate-сессии не уснут и с закрытой крышкой (на батарее до "
                        f"{claude_lid.LOW_BATTERY}% заряда)")]
     if claude_lid.disabled() and not claude_lid.watcher_pid():
-        return [("warn", "сон отключен (pmset disablesleep 1), а сторожа нет: claudemeister lid release")]
-    return [("ok", "крышка: закрытая крышка усыпит Mac и в caffeinate-сессии (claudemeister lid setup)")]
+        return [("warn", "сон отключен (pmset disablesleep 1), а сторожа нет: agentmeister lid release")]
+    return [("ok", "крышка: закрытая крышка усыпит Mac и в caffeinate-сессии (agentmeister lid setup)")]
 
 
 def check_modes():
@@ -209,7 +209,7 @@ def main(args):
                 worst = level
     print()
     print({"ok": "Все в порядке.", "warn": "Работает, но есть что поправить.",
-           "bad": "Есть поломки, начни с claudemeister setup."}[worst])
+           "bad": "Есть поломки, начни с agentmeister setup."}[worst])
     return 1 if worst == "bad" else 0
 
 

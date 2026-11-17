@@ -25,7 +25,7 @@ class Doctor(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("нет /nonexistent/claude в PATH", r.stdout)
         self.assertIn("нет команд", r.stdout)
-        self.assertIn("claudemeister setup", r.stdout)
+        self.assertIn("agentmeister setup", r.stdout)
         self.assertNotIn("Traceback", r.stdout + r.stderr)
 
 
