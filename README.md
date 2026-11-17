@@ -63,8 +63,8 @@ agentmeister
 
 ### Codex
 
-When both CLIs are installed, "Open a project" asks which agent to start. For Codex, "Resume session"
-opens Codex's own picker in the selected folder. From the shell, use `agentmeister --harness codex <project>`.
+When both CLIs are installed, "Open a project" asks which agent to start. The menu lists saved Codex sessions
+in the selected folder before starting Codex. From the shell, use `agentmeister --harness codex <project>`.
 To resume a known session, pass `-- resume <id>` after the project.
 
 `agentmeister --harness codex setup` installs the humanize hooks and registers the MCP tools for project tasks
