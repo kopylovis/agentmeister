@@ -7,7 +7,7 @@ import tempfile
 import textwrap
 import unittest
 
-LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "libexec", "claudemeister", "lib")
+LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "libexec", "agentmeister", "lib")
 
 
 def in_sandbox(code):

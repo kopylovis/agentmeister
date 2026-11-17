@@ -8,7 +8,7 @@ import unittest
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                "libexec", "claudemeister", "lib"))
+                                "libexec", "agentmeister", "lib"))
 import claude_parallel as p  # noqa: E402
 
 # Поддельный gh: пишет вызовы в calls.log, отвечает по файлам в FAKE_GH_STATE и «сливает» PR прямо в голый репозиторий
