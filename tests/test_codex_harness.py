@@ -20,7 +20,16 @@ class CodexHarness(unittest.TestCase):
         args, forwarded = codex_harness.launch_args(command[2:])
         self.assertEqual(command[:2], ["--harness", "codex"])
         self.assertEqual((args.project, args.mode, args.net), ("/project path", "normal", "direct"))
-        self.assertEqual(forwarded, ["resume", sid])
+        self.assertEqual(forwarded, ["resume", "-C", "/project path", sid])
+
+    def test_renamed_project_keeps_old_session_path_without_duplicate_menu_item(self):
+        with tempfile.TemporaryDirectory() as home:
+            root = Path(home).resolve()
+            project, alias = root / "new", root / "old"
+            project.mkdir()
+            alias.symlink_to(project, target_is_directory=True)
+            self.assertEqual(codex_sessions.project_paths(str(project)), [str(project), str(alias)])
+            self.assertEqual(open_flow.project_dirs(str(root)), [str(project)])
 
     def test_picker_lists_named_local_sessions(self):
         sid = "11111111-2222-4333-8444-555555555555"

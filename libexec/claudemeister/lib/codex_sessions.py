@@ -9,6 +9,17 @@ import unicodedata
 from mnrhlib import UUID_RE, tilde, tr
 
 
+def project_paths(cwd):
+    real = os.path.realpath(cwd)
+    parent = os.path.dirname(real)
+    try:
+        with os.scandir(parent) as entries:
+            aliases = [entry.path for entry in entries if entry.is_symlink() and os.path.realpath(entry.path) == real]
+    except OSError:
+        aliases = []
+    return [real, *sorted(aliases)]
+
+
 def list_threads(cwd):
     codex = shutil.which("codex")
     if not codex:
@@ -35,7 +46,8 @@ def list_threads(cwd):
 
             request(1, "initialize", {"clientInfo": {"name": "agentmeister", "version": "1"}})
             send({"method": "initialized"})
-            params = {"cwd": os.path.realpath(cwd), "sortKey": "updated_at", "limit": 100,
+            paths = project_paths(cwd)
+            params = {"cwd": paths[0] if len(paths) == 1 else paths, "sortKey": "updated_at", "limit": 100,
                       "sourceKinds": ["cli", "vscode", "appServer", "exec", "unknown"]}
             threads, seen, request_id = [], set(), 2
             while True:
