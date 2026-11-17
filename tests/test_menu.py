@@ -5,6 +5,7 @@ import termios
 import threading
 import tty
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 os.environ["MNRH_ICONS"] = "emoji"  # раскладку проверяем на emoji, картинки отдельно в Icons
@@ -193,6 +194,19 @@ class Marks(unittest.TestCase):
 
 
 class Framed(unittest.TestCase):
+    def test_finished_output_keeps_actions_inside_frame(self):
+        out = menu.Output()
+        out.feed("\n".join(f"line {i}" for i in range(25)) + "\n")
+        screen = menu.Screen()
+        with patch.object(menu, "screen_size", return_value=(14, 60)), \
+                patch.object(menu, "write_all") as write, patch.object(mnrhlib, "lang", return_value="en"):
+            menu.draw_output(screen, out, "setup", running=False)
+        rows = ANSI.sub("", write.call_args.args[1]).split("\r\n")
+        self.assertIn("line 24", rows[-4])
+        self.assertIn("Enter  Back to menu", rows[-3])
+        self.assertIn("q  Quit", rows[-3])
+        self.assertIn("╰", rows[-2])
+
     def test_output_keeps_colors_and_handles_carriage_return(self):
         out = menu.Output()
         out.feed("one\n\x1b[32mtwo\x1b[0m\nprogress 10%\rprogress 100%\n")

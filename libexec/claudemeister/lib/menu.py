@@ -818,7 +818,7 @@ def draw_output(screen, out, title, running, code=0, back=0):
     строки и вопросы программы шли на месте."""
     rows, cols = screen_size(screen.fd)
     w, h = max(20, cols - 4), max(5, rows - 3)
-    inner = h - 2
+    inner = h - (2 if running else 3)
     raw = out.lines[:-1] if out.lines[-1] == "" and not running else out.lines
     # широкие строки переносятся, а не обрезаются: таблицы бывают шире окна
     lines = [part for line in raw for part in fold(line, w - 3)]
@@ -830,7 +830,15 @@ def draw_output(screen, out, title, running, code=0, back=0):
         hint = tr("выполняется · Ctrl+C прервать", "running · Ctrl+C to stop")
     else:
         state = (tr("готово", "done") if code == 0 else tr(f"код {code}", f"exit {code}"))
-        hint = tr("Enter в меню · ↑↓ листать · q выход", "Enter menu · ↑↓ scroll · q quit")
+        back_button = "\x1b[1;7m Enter \x1b[0m " + tr("В меню", "Back to menu")
+        quit_button = "\x1b[1;7m q \x1b[0m " + tr("Выйти", "Quit")
+        if width(back_button) + width(quit_button) + 4 > w - 2:
+            back_button = "\x1b[1;7m Enter \x1b[0m " + tr("Меню", "Menu")
+        body += [""] * (inner - len(body))
+        body.append(f" {back_button}   {quit_button}")
+        hint = tr("Esc назад · Ctrl+C выйти", "Esc back · Ctrl+C quit")
+        if len(lines) > inner:
+            hint = tr("↑↓ листать · ", "↑↓ scroll · ") + hint
     head = f" › {title}  ·  {state} "
     frame = (["  " + cut(brand(), cols - 2)] + ["  " + line for line in box(head, body, w, h, True)]
              + ["  " + f"\x1b[2m{cut(hint, cols - 4)}\x1b[0m"])
