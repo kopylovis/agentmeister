@@ -4,51 +4,57 @@
 
 <p align="center"><a href="README.md">English</a> · Русский</p>
 
-Запуск [Claude Code](https://code.claude.com) и Codex на macOS с выбором проекта и сессии. Для Claude Code есть
-перезапуск и сжатие сессии изнутри Claude, прокси через свой сервер для отдельных сессий, защита
-секретов и вопрос перед необратимыми командами, уведомления, правила письма без признаков нейросети и MCP-сервер с инструментами
-для поиска по прошлым сессиям, бэклога, параллельных задач, снимков окон и заметок к релизу.
+Запуск [Claude Code](https://code.claude.com) и Codex на macOS с выбором проекта и сессии. В обоих агентах
+работают правила письма humanize, бэклог и заметки к релизу. Отдельную сессию можно пустить через свой прокси.
+В Claude Code также есть перезапуск и сжатие сессии, уведомления и вопросы перед опасными командами.
 
 ```
-# Запуск
-claudemeister                меню: сессии, переключатели режимов, прокси, установка
-claudemeister kcalm          сразу в проекте (достаточно начала имени)
-claudemeister root           в домашней папке
-claudemeister ... -x         эта сессия через свой VPS
-claudemeister ... -i         без записи на диск
-claudemeister sessions       сохраненные сессии: продолжить, перенести, удалить
-claudemeister ps             запущенные сессии и кто ждет ответа
-claudemeister restore        вернуть сессии после перезагрузки или сбоя
-claudemeister usage          токены и активное время по проектам и моделям
+# Меню для Claude Code и Codex
+agentmeister                меню: сессии, переключатели режимов, прокси, установка
+
+# Codex из терминала
+agentmeister --harness codex kcalm        выбрать сессию проекта
+agentmeister --harness codex setup       установить хуки, навык и MCP
+agentmeister --harness codex statusline  вывести снимок promptsill
+
+# Claude Code из терминала
+agentmeister kcalm          сразу в проекте (достаточно начала имени)
+agentmeister root           в домашней папке
+agentmeister ... -x         эта сессия через свой VPS
+agentmeister ... -i         без истории запросов Claude Code
+agentmeister sessions       сохраненные сессии: продолжить, перенести, удалить
+agentmeister ps             запущенные сессии и кто ждет ответа
+agentmeister restore        вернуть сессии после перезагрузки или сбоя
+agentmeister usage          токены и активное время по проектам и моделям
 
 # Изнутри Claude Code, они же /restart, /forget, /fresh, /slim
-claudemeister restart        закрыть, claude update, открыть эту же сессию
-claudemeister forget         удалить эту сессию и открыть чистую
-claudemeister fresh          новая сессия, эта остается в /resume
-claudemeister slim           сжать эту сессию и открыть снова
+agentmeister restart        закрыть, claude update, открыть эту же сессию
+agentmeister forget         удалить эту сессию и открыть чистую
+agentmeister fresh          новая сессия, эта остается в /resume
+agentmeister slim           сжать эту сессию и открыть снова
 
 # Режимы: on, off
-claudemeister humanize       правила письма без признаков нейросети; check <файл>
-claudemeister guard          вопрос перед чтением ключей и опасными командами
-claudemeister buildlog       Claude получает выжимку длинного вывода сборок
-claudemeister notify         уведомления, когда Claude ждет; telegram, phone
-claudemeister lid            не засыпать с закрытой крышкой; setup, remove
+agentmeister humanize       правила письма для Claude Code и Codex
+agentmeister guard          вопрос перед чтением ключей и опасными командами
+agentmeister buildlog       Claude получает выжимку длинного вывода сборок
+agentmeister notify         уведомления, когда Claude ждет; telegram, phone
+agentmeister lid            не засыпать с закрытой крышкой; setup, remove
 
 # Прокси через свой VPS
-claudemeister proxy          состояние; setup, test, update, restart, remove
+agentmeister proxy          состояние; setup, test, update, restart, remove
 
-# Инструменты проекта, Claude зовет их и сам через MCP и slash-команды
-claudemeister brief          где мы остановились: git, прошлая сессия, бэклог
-claudemeister todo           бэклог проекта между сессиями
-claudemeister parallel       задача в своем worktree, во втором окне Claude
-claudemeister ask            спросить отдельный Claude про другой проект
-claudemeister release-notes  материал для "Что нового" к релизу
-claudemeister shot [прил.]   снимок окна приложения
-claudemeister deps           устаревшие зависимости Gradle
+# Инструменты проекта
+agentmeister brief          где мы остановились: git, прошлая сессия, бэклог
+agentmeister todo           бэклог проекта между сессиями
+agentmeister parallel       задача в своем worktree, во втором окне Claude
+agentmeister ask            спросить отдельный Claude про другой проект
+agentmeister release-notes  материал для "Что нового" к релизу
+agentmeister shot [прил.]   снимок окна приложения
+agentmeister deps           устаревшие зависимости Gradle
 
 # Установка
-claudemeister setup          команды, хуки, MCP-сервер, хук zsh, promptsill
-claudemeister doctor         проверить установку
+agentmeister setup          команды, хуки, MCP-сервер, хук zsh, promptsill
+agentmeister doctor         проверить установку
 ```
 
 ## Установка
@@ -58,7 +64,7 @@ brew install kopylovis/tap/agentmeister
 agentmeister
 ```
 
-Команды `claudemeister` и `am` по-прежнему работают.
+`am` открывает то же меню. Для старых скриптов есть имя `claudemeister`.
 
 ### Codex
 
@@ -66,10 +72,25 @@ agentmeister
 в выбранной папке до запуска Codex. Из терминала можно запустить `agentmeister --harness codex <проект>`.
 Если знаешь ID сессии, допиши после проекта `-- resume <id>`.
 
-`agentmeister --harness codex setup` подключает хуки humanize и инструменты MCP для задач проекта и проверки
-зависимостей Gradle. С promptsill 0.8.0 и новее настройка также включает строку с лимитами и контекстом в Codex.
-Новые хуки нужно подтвердить через `/hooks`. Настройка `agentmeister humanize on|off` действует для обоих агентов.
-`agentmeister --harness codex setup --remove` убирает хуки и регистрацию MCP.
+`agentmeister --harness codex setup` подключает хуки humanize, устанавливает навык `$agentmeister` и
+регистрирует инструменты MCP для бэклога, заметок к релизу и проверки зависимостей Gradle.
+
+Подтверди новые хуки через `/hooks` в Codex. Команда `agentmeister humanize` показывает состояние режима
+и хуков Codex. Команды `agentmeister humanize on` и `off` меняют настройку для обоих агентов. Если режим включен,
+Codex получает правила через хуки. После ответа хук `Stop` проверяет текст и передает найденные замечания
+в следующий ход.
+
+Введи `$agentmeister` в поле ввода Codex или выбери навык в `/skills`. [Навыки Codex](https://learn.chatgpt.com/docs/build-skills)
+
+```text
+$agentmeister humanize status
+$agentmeister todo list
+$agentmeister where
+$agentmeister release-notes с v1.13.0
+```
+
+С promptsill 0.8.0 и новее setup также настраивает строку Codex с лимитами и контекстом.
+`agentmeister --harness codex setup --remove` убирает установленный навык, хуки и регистрацию MCP.
 
 `agentmeister --harness codex statusline` вызывает `promptsill codex`, если команда есть в установленной версии
 promptsill. Результат выводится в терминал. Поля под строкой ввода меняются через `/statusline` в Codex.
@@ -80,9 +101,9 @@ promptsill. Результат выводится в терминал. Поля 
 
 Формула ставит и `am`, короткое имя для `agentmeister`. `am kcalm`, `am ps`, `am proxy` работают так же.
 Если `am` нет, его ставит `agentmeister alias on` или пункт "Короткое имя am" в меню. Чужой `am` они не
-трогают, `claudemeister alias off` убирает только свой.
+трогают, `agentmeister alias off` убирает только свой.
 
-Homebrew ставит заодно mihomo для `claudemeister -x`. `claudemeister setup` кладёт команды `/restart`,
+Homebrew ставит заодно mihomo для `agentmeister -x`. `agentmeister setup` кладёт команды `/restart`,
 `/forget`, `/slim` и другие в `~/.claude/commands`, хуки в `~/.claude/settings.json`, хук zsh в `~/.zshrc`
 и регистрирует MCP-сервер `claudemeister`. Если прокси через VPS еще не настроен, setup спрашивает, настроить
 ли его сейчас (`--country KZ` сразу задает страну выхода). Если нет строки состояния
@@ -91,26 +112,26 @@ Homebrew ставит заодно mihomo для `claudemeister -x`. `claudemeis
 Claude Code удаляет переписки старше `cleanupPeriodDays`, по умолчанию через 30 дней, и вместе с ними пропадает
 все, что могли найти `session_search` и `/resume`. setup ставит 365, если у тебя нет своего значения.
 
-Какие шаги сделаны, setup записывает в `~/.config/mnrh/claude-setup.json`. Если `claudemeister` запустить
+Какие шаги сделаны, setup записывает в `~/.config/mnrh/claude-setup.json`. Если `agentmeister` запустить
 до setup или после обновления, в котором в setup появился новый шаг, он перечислит ненастроенное и предложит
-настроить. "Не предлагать" больше не спрашивает про эти шаги, `claudemeister setup` все равно настроит их.
+настроить. "Не предлагать" больше не спрашивает про эти шаги, `agentmeister setup` все равно настроит их.
 
 Каждый старт сессии записывается в `~/.cache/mnrh/open/`: папка, вкладка терминала, caffeinate, прокси
-и флаги запуска, а обычный выход запись убирает. `claudemeister ps` показывает открытые сессии с состоянием
+и флаги запуска, а обычный выход запись убирает. `agentmeister ps` показывает открытые сессии с состоянием
 (ждет тебя, работает, свободна) и переходит во вкладку выбранной в Terminal или iTerm2. После перезагрузки,
-обновления macOS или падения `claudemeister restore` открывает сессии, чьи записи остались, каждую в своем
+обновления macOS или падения `agentmeister restore` открывает сессии, чьи записи остались, каждую в своем
 окне с `--resume`, тем же режимом, прокси и флагами. Сессии, запущенные с `-i`, не записываются.
 
-`claudemeister doctor` проверяет все это разом: Claude Code в PATH, команды и совпадают ли они с этой версией,
+`agentmeister doctor` проверяет все это разом: Claude Code в PATH, команды и совпадают ли они с этой версией,
 хуки, срок хранения переписок, строку состояния, ответ MCP-сервера на `tools/list`, хук zsh, приложение
 уведомлений и прокси. Если в хуках есть интеграция iTerm2 со старым `cc-status`, предупреждает, что с iTerm2 3.7.7
 ее стоит переустановить на `it2 handle-agent-hook`. Если что-то сломано, выходит с кодом 1 и пишет, что это
 исправит.
 
-Обновление: `brew upgrade claudemeister`. Открытые сессии подхватят новую версию сами: перед каждым
+Обновление: `brew upgrade agentmeister`. Открытые сессии подхватят новую версию сами: перед каждым
 запросом MCP-сервер проверяет, не сменился ли его код (`brew upgrade` или `git pull` в папке проекта), и если
-сменился, заменяет себя новым на том же соединении, не теряя запрос. Убрать из Claude Code: `claudemeister setup --remove`.
-Удаление: `brew uninstall claudemeister`.
+сменился, заменяет себя новым на том же соединении, не теряя запрос. Убрать из Claude Code: `agentmeister setup --remove`.
+Удаление: `brew uninstall agentmeister`.
 
 Папка проектов по умолчанию `~/Developer`, другую задает строка `projects=<путь>` в `~/.config/mnrh/config`
 или `MNRH_PROJECTS=<путь>`. Читающие MCP-инструменты (`session_search`, `session_read`, `usage_report`,
@@ -119,10 +140,10 @@ Claude Code удаляет переписки старше `cleanupPeriodDays`, 
 ### Из исходников, для разработки
 
 ```bash
-git clone https://github.com/kopylovis/agentmeister ~/Developer/claudemeister
-cd ~/Developer/claudemeister
+git clone https://github.com/kopylovis/agentmeister ~/Developer/agentmeister
+cd ~/Developer/agentmeister
 make install
-claudemeister setup
+agentmeister setup
 ```
 
 `make install` кладёт в `~/.local/bin` символическую ссылку на проект, поэтому правки работают без
@@ -132,17 +153,17 @@ claudemeister setup
 
 1. Поднять номер в `VERSION`, через PR.
 2. Поставить подписанный тег на коммит в `main`: `git tag -s v$(cat VERSION) -m v$(cat VERSION)` и запушить его.
-3. В `kopylovis/homebrew-tap` в `Formula/claudemeister.rb` обновить `tag:` и `revision:`
+3. В `kopylovis/homebrew-tap` в `Formula/agentmeister.rb` обновить `tag:` и `revision:`
    (`git rev-parse v$(cat VERSION)^{commit}`).
 
 ## Требования
 
 macOS, bash и `/usr/bin/python3` из Xcode Command Line Tools (`xcode-select --install`). Для уведомлений
-нужен `swiftc` оттуда же, для `claudemeister -x` нужен mihomo.
+нужен `swiftc` оттуда же, для `agentmeister -x` нужен mihomo.
 
-## Как работает `claudemeister`
+## Как работает `agentmeister`
 
-`claudemeister` без аргументов в терминале открывает меню действий. В нем четыре группы: сессии (проект,
+`agentmeister` без аргументов в терминале открывает меню действий. В нем четыре группы: сессии (проект,
 домашняя папка, сохраненные, запущенные, вернуть после перезагрузки), режимы, прокси через VPS и установка.
 Выбранное запускается, а полная команда печатается, чтобы в следующий раз набрать ее сразу. После действия
 можно вернуться в меню. Режимы humanize, guard, buildlog, уведомления и крышка показаны как `[вкл]` или
@@ -160,7 +181,7 @@ macOS, bash и `/usr/bin/python3` из Xcode Command Line Tools (`xcode-select -
 возвращает простые списки в строку. Меню говорит на языке macOS, русском или английском. Строка `lang=en` или
 `lang=ru` в `~/.config/mnrh/config` выбирает язык явно. `MNRH_NO_MENU=1` пропускает меню и сразу открывает
 выбор проекта.
-`claudemeister open` показывает каталоги папки проектов (по умолчанию `~/Developer`, другую задает строка `projects=<путь>` в `~/.config/mnrh/config` или `MNRH_PROJECTS`) с текущей веткой и датой последнего коммита.
+`agentmeister open` показывает каталоги папки проектов (по умолчанию `~/Developer`, другую задает строка `projects=<путь>` в `~/.config/mnrh/config` или `MNRH_PROJECTS`) с текущей веткой и датой последнего коммита.
 Выбор стрелками ↑↓ и Enter. Цифра сразу ставит курсор на пункт (`0` — домашний
 каталог, `1` и `0` подряд — десятый), буквы фильтруют список по имени, Esc
 сбрасывает фильтр или выходит.
@@ -179,21 +200,21 @@ macOS, bash и `/usr/bin/python3` из Xcode Command Line Tools (`xcode-select -
 - **обычная** — просто `claude`.
 
 `-k` и `-n` выбирают режим без вопроса, всё после `--` передаётся claude:
-`claudemeister kcalm -k -- --continue`. Закрытую крышку на батарее caffeinate не
+`agentmeister kcalm -k -- --continue`. Закрытую крышку на батарее caffeinate не
 перебивает: Mac с закрытой крышкой без зарядки все равно уснет.
 
-Это обходит `claudemeister lid setup`. Он спрашивает пароль sudo и ставит
+Это обходит `agentmeister lid setup`. Он спрашивает пароль sudo и ставит
 `/etc/sudoers.d/mnrh-pmset`, правило без пароля ровно на `pmset -a disablesleep 1` и
 `pmset -a disablesleep 0`. Дальше каждая caffeinate-сессия запускает сторожа. Он включает
 `disablesleep`, пока жива хоть одна такая сессия, и снимает его через две минуты после
 последней, этого хватает на перезапуск с `claude update`. Еще он снимает запрет, когда батарея садится до
 15%, и присылает уведомление. В закрытой сумке Mac греется, так что следи за этим сам.
-`claudemeister lid` показывает, держит ли сторож крышку сейчас. `off` выключает режим, правило при этом
+`agentmeister lid` показывает, держит ли сторож крышку сейчас. `off` выключает режим, правило при этом
 остается, и `on` возвращает режим без пароля. `release` отпускает крышку до следующей caffeinate-сессии,
 `remove` выключает режим и убирает правило. Журнал сторожа лежит в `~/.local/state/mnrh/lid.log`. Правило и
-сторож общие с `mnrh sleep lid`: если ты настроил его в mnrh, claudemeister подхватит его сам.
+сторож общие с `mnrh sleep lid`: если ты настроил его в mnrh, agentmeister подхватит его сам.
 
-### Сессия через свой сервер: `claudemeister proxy`
+### Сессия через свой сервер: `agentmeister proxy`
 
 После режима спрашивается сеть, если прокси настроен: напрямую или через сервер. Через
 сервер идет только эта сессия и запущенные из нее программы, которые читают `HTTPS_PROXY`
@@ -206,8 +227,8 @@ macOS, bash и `/usr/bin/python3` из Xcode Command Line Tools (`xcode-select -
 VLESS (в том числе XHTTP) и Hysteria2 и берет из подписки первый живой сервер. Настройка один раз:
 
 ```bash
-claudemeister proxy setup 'https://…/sub/…' --country KZ   # ссылка на подписку, как в Happ
-claudemeister proxy test                                    # выход напрямую и через сервер: IP и страна
+agentmeister proxy setup 'https://…/sub/…' --country KZ   # ссылка на подписку, как в Happ
+agentmeister proxy test                                    # выход напрямую и через сервер: IP и страна
 ```
 
 `--country` защищает аккаунт: если сервер выведет не в ту страну, сессия через прокси не
@@ -215,8 +236,8 @@ claudemeister proxy test                                    # выход нап�
 только серверы с подходящим именем. Зашифрованные ссылки `happ://crypt…` читает только Happ,
 нужна обычная `https://`.
 
-`claudemeister proxy` показывает версию mihomo и, если в Homebrew есть новее, подсказывает
-`claudemeister proxy update`. Эта команда делает `brew upgrade mihomo`. Если mihomo запущен, а сессий
+`agentmeister proxy` показывает версию mihomo и, если в Homebrew есть новее, подсказывает
+`agentmeister proxy update`. Эта команда делает `brew upgrade mihomo`. Если mihomo запущен, а сессий
 через VPS нет, она останавливает его, и новая версия поднимется с первой сессией. Если сессии идут,
 она спрашивает, перезапустить ли mihomo сейчас. Запросы, которые идут в эту секунду, при этом
 оборвутся, Claude Code их повторит. Без перезапуска новая версия заработает после последней сессии.
@@ -226,7 +247,7 @@ claudemeister proxy test                                    # выход нап�
 прописывает новый интерфейс и перезагружает конфиг mihomo. Если после обрыва группа стоит на REJECT,
 он сразу просит mihomo перепроверить сервер, а не ждать плановой проверки раз в пять минут. Если сервер
 и при живой сети недоступен 30 секунд, сторож перезапускает mihomo, но не чаще раза в пять минут. Журнал
-сторожа лежит в `~/.local/state/mnrh/proxy/watch.log`. `claudemeister proxy restart` перезапускает mihomo
+сторожа лежит в `~/.local/state/mnrh/proxy/watch.log`. `agentmeister proxy restart` перезапускает mihomo
 руками, сессии через VPS при этом остаются открытыми.
 
 mihomo слушает `127.0.0.1:17890`, стартует с первой сессией через сервер и останавливается
@@ -237,23 +258,23 @@ localhost. `/restart` и окна, которые открывают `open_claud
 К серверу mihomo ходит через Wi-Fi или Ethernet в обход TUN-туннеля Happ и других VPN, так
 что Happ можно включать и выключать во время сессии, сессия этого не заметит. Это важно,
 когда Happ подключен к тому же серверу: через его туннель сервер сам до себя не достучится.
-Подписку claudemeister скачивает тем же путем при каждом запуске mihomo; если не вышло, берет прошлую
+Подписку agentmeister скачивает тем же путем при каждом запуске mihomo; если не вышло, берет прошлую
 копию. Если живых серверов в подписке нет, соединения отклоняются, а не уходят напрямую.
-Адреса серверов из подписки claudemeister узнает через DNS системы и записывает в `hosts` конфига mihomo.
+Адреса серверов из подписки agentmeister узнает через DNS системы и записывает в `hosts` конфига mihomo.
 Сам mihomo в DNS не ходит. Иначе при корпоративном VPN, где DNS-сервер доступен только через
 туннель, его запрос через Wi-Fi не доходит, и mihomo не узнает адрес сервера.
 Настройка, ссылка и подписка лежат в `~/.config/mnrh/proxy/` с доступом только для тебя.
-Страну выхода claudemeister проверяет при каждом запуске mihomo и передает сессии в
-`PROMPTSILL_PROXY_LABEL`, по ней promptsill пишет в строке состояния `proxy KZ`. Еще claudemeister
+Страну выхода agentmeister проверяет при каждом запуске mihomo и передает сессии в
+`PROMPTSILL_PROXY_LABEL`, по ней promptsill пишет в строке состояния `proxy KZ`. Еще agentmeister
 спрашивает у mihomo через unix-сокет `~/.local/state/mnrh/proxy/mihomo.sock`, какой сервер
 из подписки выбран и по какому протоколу, и передает протокол с IP в `PROMPTSILL_PROXY_DETAIL`.
 В macOS Terminal строка выглядит как `proxy KZ vless 203.0.113.7`. В iTerm2, Ghostty и других
 терминалах со ссылками остается `proxy KZ`, а Cmd-клик открывает страницу с подробностями
 (`exit.html` в той же папке). Все это снято при запуске mihomo. Если fallback потом переключится
-на другой сервер, текущий покажет `claudemeister proxy`. Если mihomo
-нет, `setup` предложит поставить его через brew; формула claudemeister ставит его сама.
+на другой сервер, текущий покажет `agentmeister proxy`. Если mihomo
+нет, `setup` предложит поставить его через brew; формула agentmeister ставит его сама.
 
-## Как работает `claudemeister sessions`
+## Как работает `agentmeister sessions`
 
 Claude Code хранит сессии в `~/.claude/projects/<путь-папки>/<id>.jsonl`, рядом папка
 `<id>/` с субагентами и большими выводами инструментов. `claude --resume` видит только
@@ -274,7 +295,7 @@ Claude Code хранит сессии в `~/.claude/projects/<путь-папк�
 - `search <слова>` — поиск по всем сессиям всех проектов (подробно ниже), `show <id> [N]` —
   прочитать сессию с сообщения `N`, `-10` — последние десять.
 
-## Сжатие старых сессий: `claudemeister sessions slim`
+## Сжатие старых сессий: `agentmeister sessions slim`
 
 Большая сессия почти целиком состоит из скриншотов и выводов инструментов: у authmeister
 из 481 МБ ~330 МБ занимают картинки (каждая хранится дважды — для модели и копия для
@@ -297,16 +318,16 @@ Claude Code хранит сессии в `~/.claude/projects/<путь-папк�
 сжатия. Дата сессии не меняется. Открытые сессии не сжимаются.
 
 ```
-claudemeister sessions slim              что можно освободить по всем закрытым сессиям
-claudemeister sessions slim <id> --copy  сжатая копия с новым id — открыть и проверить
-claudemeister sessions slim <id>         сжать (спросит подтверждение, -y без вопроса)
-claudemeister sessions slim <id> --undo  вернуть оригинал
+agentmeister sessions slim              что можно освободить по всем закрытым сессиям
+agentmeister sessions slim <id> --copy  сжатая копия с новым id — открыть и проверить
+agentmeister sessions slim <id>         сжать (спросит подтверждение, -y без вопроса)
+agentmeister sessions slim <id> --undo  вернуть оригинал
 ```
 
 Изнутри Claude Code — `/slim` (или попросить «сожми эту сессию», инструмент `slim` в MCP).
 Открытую сессию сжимать нельзя, поэтому `/slim` работает как `/restart`: сначала считает,
 сколько освободится, и если меньше 5 МБ — ничего не закрывает и просто говорит об этом.
-Иначе Claude закрывается, во вкладке выполняется `claudemeister sessions slim <id> -y`,
+Иначе Claude закрывается, во вкладке выполняется `agentmeister sessions slim <id> -y`,
 и сессия открывается снова с теми же флагами и caffeinate. После открытия Claude
 показывает, сколько было и стало, или почему сжать не вышло (тогда сессия открыта как
 была). `/slim list` — что можно сжать среди закрытых сессий, `/slim <id>` — сжать одну из них.
@@ -323,7 +344,7 @@ claudemeister sessions slim <id> --undo  вернуть оригинал
 после `/compact`. Обычный вывод инструментов и служебные сообщения не индексируются. От длинной
 ошибки берутся первые 600 и последние 900 символов, а отказы самого Claude Code (нет
 разрешения, «сначала прочитай файл») пропускаются. `roles=["error"]` (в терминале
-`claudemeister sessions search -r error <слова>`) ищет только по ошибкам: так находится, как
+`agentmeister sessions search -r error <слова>`) ищет только по ошибкам: так находится, как
 уже чинили такую же ошибку. Все слова должны встретиться в
 одном сообщении (если такого нет, показываются сообщения хотя бы с половиной слов). Регистр и
 форма слова не важны: слова сводятся к основе (для русского стеммер Snowball, для английского
@@ -341,9 +362,9 @@ claudemeister sessions slim <id> --undo  вернуть оригинал
 Индекс обновляется в фоне при старте каждой сессии (хук `SessionStart`). У удалённых сессий,
 в том числе через `/forget` и `sessions rm`, индекс удаляется сразу.
 
-## Расход: `claudemeister usage`
+## Расход: `agentmeister usage`
 
-`claudemeister usage [--days N] [--project P] [--top N]` показывает, сколько ушло на Claude Code за последние
+`agentmeister usage [--days N] [--project P] [--top N]` показывает, сколько ушло на Claude Code за последние
 N дней (по умолчанию 7, считая сегодня; `--days 0` — за всё время): по проектам число сессий, активное время,
 запросы к модели и токены по видам (вход без кэша, выход, чтение кэша, запись в кэш); по моделям то же без
 времени; и самые тяжёлые сессии по сумме токенов с названиями. Токены берутся из поля `usage` у ответов
@@ -358,19 +379,19 @@ N дней (по умолчанию 7, считая сегодня; `--days 0` �
 следующие — 0,05 с, а ещё кэш обновляется в фоне при старте сессии. Переписанная сессия (`slim`)
 считается заново, у удалённой кэш удаляется.
 
-## Устаревшие зависимости: `claudemeister deps`
+## Устаревшие зависимости: `agentmeister deps`
 
 Разбирает `gradle/libs.versions.toml` (версии, библиотеки, плагины), сверяет с Google Maven,
 Maven Central и Gradle Plugin Portal и показывает, что обновилось, насколько (мажорная,
 минорная, патч) и какие библиотеки на этой версии. Ещё — версию Gradle wrapper и что
 обновлять вместе: Kotlin и KSP, AGP и Gradle, Compose Multiplatform и Kotlin. Варианты
 вроде `-jre`/`-android` сравниваются только между собой, alpha/beta/rc — с `--pre`.
-`claudemeister deps status` (и `claudemeister deps` без терминала) — текущий проект, а если в нём нет каталога, все проекты. Ответы
+`agentmeister deps status` (и `agentmeister deps` без терминала) — текущий проект, а если в нём нет каталога, все проекты. Ответы
 репозиториев кешируются на 6 часов. Для Claude то же самое — инструмент `deps_outdated`.
 
 ## Команды в Claude Code
 
-`claudemeister setup` кладёт в `~/.claude/commands/`:
+`agentmeister setup` кладёт в `~/.claude/commands/`:
 
 | Команда | Что делает |
 |---|---|
@@ -393,9 +414,9 @@ Maven Central и Gradle Plugin Portal и показывает, что обнов
 ответ Claude (обычно там итог работы) — и открытые задачи бэклога. Тебе показывается одна
 строка: «claudemeister: прошлая сессия «…» (вчера) · незакоммичено 3 · в бэклоге 2 · /where —
 подробнее». Только для новых сессий в терминале: не после `--resume`, `/clear`, `/forget`
-и не в `claude -p`. Выключить: `claudemeister brief off`.
+и не в `claude -p`. Выключить: `agentmeister brief off`.
 
-## Бэклог: `claudemeister todo`
+## Бэклог: `agentmeister todo`
 
 Задачи «на потом», которые живут между сессиями, в отличие от списка задач внутри одной
 сессии. По одному файлу на проект: `~/.config/mnrh/todo/<проект>.md`, обычный чек-лист.
@@ -441,17 +462,17 @@ git worktree от текущего коммита в `~/Developer/.worktrees/<п
 работает в worktree, а исходная сессия остаётся как была. Без `--fork` второй Claude
 начинает новую сессию только с задачей.
 
-Worktree claudemeister по-прежнему делает сам, а не через `claude --worktree`: этот флаг
+Worktree agentmeister по-прежнему делает сам, а не через `claude --worktree`: этот флаг
 кладёт worktree в `<репозиторий>/.claude/worktrees/` на ветку `worktree-<имя>` от ветки по
 умолчанию на remote, а `/parallel` ответвляется от текущего коммита, запоминает исходную
 ветку для `merge` и `pr` и открывает своё окно с caffeinate и Remote Control. `--tmux`
 требует `--worktree`, поэтому он тоже не используется.
 
 ```
-claudemeister parallel list            ветки, коммиты, работает ли там Claude
-claudemeister parallel merge <ветка>   влить в исходную ветку (без пуша), убрать worktree
-claudemeister parallel drop <ветка>    выбросить
-claudemeister parallel pr <ветка>      пуш, PR, ждать CI, слить PR, убрать worktree
+agentmeister parallel list            ветки, коммиты, работает ли там Claude
+agentmeister parallel merge <ветка>   влить в исходную ветку (без пуша), убрать worktree
+agentmeister parallel drop <ветка>    выбросить
+agentmeister parallel pr <ветка>      пуш, PR, ждать CI, слить PR, убрать worktree
 ```
 
 Слияние не начнётся, пока там открыт Claude, есть незакоммиченное или основная папка
@@ -468,7 +489,7 @@ claudemeister parallel pr <ветка>      пуш, PR, ждать CI, слит�
 запусти `parallel pr` снова. `--no-merge` только пушит и открывает PR. В Claude Code то же
 самое — `parallel_finish` с `action: "pr"`.
 
-## Снимок окна: `claudemeister shot`
+## Снимок окна: `agentmeister shot`
 
 `/shot chrome почему кнопка съехала` — снимок переднего окна Chrome (или Safari,
 Simulator, Android Studio, Figma, VS Code…), Claude смотрит на него и отвечает. Без
@@ -487,7 +508,7 @@ Simulator, Android Studio, Figma, VS Code…), Claude смотрит на нег
 
 ## Как работает перезапуск Claude Code
 
-`claudemeister setup` кладёт `~/.claude/commands/restart.md`, `forget.md`, `fresh.md` и `slim.md` и регистрирует
+`agentmeister setup` кладёт `~/.claude/commands/restart.md`, `forget.md`, `fresh.md` и `slim.md` и регистрирует
 MCP-сервер `claudemeister` с инструментами `restart`, `forget`, `fresh`, `slim`, `open_claude`, `session_search`,
 `session_read` и другими (scope user, во всех проектах). Дальше в любой сессии:
 
@@ -498,7 +519,7 @@ MCP-сервер `claudemeister` с инструментами `restart`, `forge
   `file-history` и `session-env`, экран и прокрутка терминала очищаются, и в той же папке
   открывается чистый Claude. В отличие
   от встроенного `/clear`, старое не остаётся в `/resume`. Чтобы сессия с самого начала не попадала
-  на диск, запусти ее как `claudemeister -i`. Он ставит `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`, и Claude Code
+  на диск, запусти ее как `agentmeister -i`. Он ставит `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`, и Claude Code
   не пишет ни переписку, ни историю промптов. Такую сессию нельзя открыть заново, поэтому `/restart`
   и `/slim` в ней отказываются.
 - `/fresh` (или «начни новую сессию», инструмент `fresh`) делает то же, что `/forget`, но старую
@@ -508,12 +529,12 @@ MCP-сервер `claudemeister` с инструментами `restart`, `forge
   CLAUDE.md и подхватывается поставленное обновление, а caffeinate, прокси и твои флаги сохраняются.
 
 У Claude Code с версии 2.1.288 есть свой `/restart`. Он ставит скачанное обновление и продолжает сессию,
-но только в нативной установке и на тарифах Pro и Max. `/restart` из claudemeister занимает это имя: он
+но только в нативной установке и на тарифах Pro и Max. `/restart` из agentmeister занимает это имя: он
 вдобавок запускает `claude update`, сохраняет caffeinate, прокси и флаги запуска и работает в Terminal,
 iTerm2 и других терминалах через хук zsh. Встроенный остается доступен как `/update`.
 - «открой Claude в kcalm» — инструмент `open_claude`: без проекта он возвращает в чат список
   проектов (ветка, последний коммит) и режимов, Claude спрашивает, что выбрать, и открывает
-  новое окно того же терминала (Terminal или iTerm2) с `claudemeister <проект> -k|-n`. Можно
+  новое окно того же терминала (Terminal или iTerm2) с `agentmeister <проект> -k|-n`. Можно
   передать первый запрос и `--continue`. Remote Control (`/rc`) включается сразу
   (`--remote-control <проект>`, выключить — `remote_control: false`). В ответ — окно, tty, pid
   и ссылка claude.ai/code на сессию, чтобы продолжить с телефона или в браузере.
@@ -532,7 +553,7 @@ iTerm2 и других терминалах через хук zsh. Встрое�
 Как команда попадает обратно во вкладку:
 
 - **хук zsh** (основной способ, любой терминал — Android Studio, VS Code, Terminal, iTerm2).
-  `claudemeister setup` добавляет в `~/.zshrc` строку с `share/claudemeister/restart.zsh`. Перед
+  `agentmeister setup` добавляет в `~/.zshrc` строку с `share/claudemeister/restart.zsh`. Перед
   закрытием Claude в `~/.cache/mnrh/restart/<tty>` кладётся задание, и zsh выполняет его
   перед следующим приглашением. Задания старше двух минут игнорируются. Работает во
   вкладках, открытых после установки;
@@ -543,14 +564,14 @@ iTerm2 и других терминалах через хук zsh. Встрое�
 После запуска Claude показывает под строкой ввода, что произошло: «Claude Code перезапущен
 (обновлён 2.1.278 → 2.1.280). Сессия «…» продолжается» или «прошлая сессия «…» удалена… Это
 новая чистая сессия». Это хук `SessionStart` в `~/.claude/settings.json` (его ставит
-`claudemeister setup`): перед закрытием в `~/.cache/mnrh/notice/<id сессии>.json` кладётся
+`agentmeister setup`): перед закрытием в `~/.cache/mnrh/notice/<id сессии>.json` кладётся
 записка, хук её показывает и удаляет. Модели это не отправляется. `/forget` для этого
 запускает новую сессию с заранее известным `--session-id`.
 
 ### Пустые сессии не копятся
 
 После `/clear` Claude заводит новую сессию, и если сразу закрыть его, в `/resume` остаётся
-«мусор»: внутри только запись о самой команде `/clear` и метаданные. `claudemeister setup`
+«мусор»: внутри только запись о самой команде `/clear` и метаданные. `agentmeister setup`
 ставит хук `SessionEnd`: при закрытии своя сессия удаляется, если в ней нет ни одного
 ответа Claude и ни одного твоего сообщения (служебные `/команды` не в счёт). Если Claude
 закрыли крестиком и хук не успел, при следующем старте в этом же проекте хук `SessionStart`
@@ -560,9 +581,9 @@ iTerm2 и других терминалах через хук zsh. Встрое�
 ### Строка состояния
 
 Строку состояния рисует отдельная открытая программа
-[promptsill](https://github.com/kopylovis/promptsill). Если ее нет, `claudemeister setup` предлагает поставить ее
+[promptsill](https://github.com/kopylovis/promptsill). Если ее нет, `agentmeister setup` предлагает поставить ее
 через Homebrew (`brew install kopylovis/tap/promptsill`) и прописывает ее в `statusLine`,
-если своей строки ещё нет, и заменяет прежнюю `claudemeister statusline`. Две строки под вводом:
+если своей строки ещё нет, и заменяет прежнюю `agentmeister statusline`. Две строки под вводом:
 
 ```
 Opus · context ██▏   42% · 5h ███▏  63% +23%, runs out at 15:10, resets at 17:00 · week 35%
@@ -572,9 +593,9 @@ master ↑3 ±5 · vite :5173 · memory 9.9/16 GB · swap 1.5 · Gradle 2 (3.1 G
 Что в ней: контекст, лимиты подписки с темпом расхода, таймер кэша, git, dev-серверы проекта
 и занятые порты, версия Node, память, демоны Gradle, симуляторы. Подписи по-английски, по-русски —
 при русской локали или с `promptsill install --lang ru`. Подробности — в README promptsill.
-`claudemeister statusline …` передаёт команды promptsill.
+`agentmeister statusline …` передаёт команды promptsill.
 
-### Защита секретов и опасных команд: `claudemeister guard`
+### Защита секретов и опасных команд: `agentmeister guard`
 
 Хук `PreToolUse` следит за тремя вещами:
 
@@ -596,11 +617,11 @@ master ↑3 ±5 · vite :5173 · memory 9.9/16 GB · swap 1.5 · Gradle 2 (3.1 G
 («спросить» у него превращается в «запретить» или «разрешить»), поэтому guard задерживает
 вызов, а Claude спрашивает тебя в чате, зачем ему это нужно. Ответишь «да» (или «ок»,
 «давай», «yes») — тот же вызов пройдёт; ответ привязан к этому вызову и к твоему
-сообщению после вопроса, модель не может ответить за тебя. `claudemeister guard skip
+сообщению после вопроса, модель не может ответить за тебя. `agentmeister guard skip
 destructive` выключает правило, `guard test '<команда>'` показывает решение, `guard log` —
 последние срабатывания.
 
-### Длинный вывод сборок: `claudemeister buildlog`
+### Длинный вывод сборок: `agentmeister buildlog`
 
 Gradle или xcodebuild легко выводят тысячи строк, и все они попадают в контекст Claude. Хук
 `PostToolUse` для Bash смотрит на команды с `./gradlew` или `gradle`, `xcodebuild`, `swift build` или
@@ -620,21 +641,21 @@ following build commands failed» у xcodebuild, итоговые строки (
 вроде `$?`, потому что такой `echo` Claude Code считает безопасным и не спрашивает разрешения, а правила вроде
 `Bash(./gradlew:*)` продолжают срабатывать. Цена в том, что код возврата теряется и Claude Code показывает
 упавший вызов как успешный. Команды в несколько строк, с heredoc, комментарием или `&` в конце хук не трогает,
-их упавший вывод доходит до Claude как раньше. `claudemeister buildlog off` выключает
+их упавший вывод доходит до Claude как раньше. `agentmeister buildlog off` выключает
 хук, `on` включает, `buildlog test <файл>` показывает, что увидит Claude для сохранённого лога.
 
 В iTerm2 3.7.7 и новее сборка, которая идет дольше полутора секунд, подписана во вкладке рядом со статусом
 Claude, например `gradlew :app:assembleDebug` или `xcodebuild test`. Подпись ставит `it2 session set-status
---detail`. Хук iTerm2 стирает ее на любом событии Claude Code, поэтому claudemeister ставит ее с задержкой, а
+--detail`. Хук iTerm2 стирает ее на любом событии Claude Code, поэтому agentmeister ставит ее с задержкой, а
 по концу сборки ее убирает тот же хук iTerm2. Работает и в tmux. `buildlog off` выключает и подпись.
 
 ### Уведомления, когда Claude ждёт тебя
 
-`claudemeister setup` ставит хуки `UserPromptSubmit`, `Stop` и `Notification` (асинхронные,
+`agentmeister setup` ставит хуки `UserPromptSubmit`, `Stop` и `Notification` (асинхронные,
 Claude их не ждёт). Уведомление macOS приходит, когда Claude:
 
 - просит разрешение на инструмент или задаёт вопрос (в том числе от MCP-сервера);
-- закончил ход, который шёл дольше 20 секунд (`claudemeister notify after <сек>`);
+- закончил ход, который шёл дольше 20 секунд (`agentmeister notify after <сек>`);
 - минуту ждёт ответа, а уведомления о готовом ответе не было.
 
 Заголовок — проект и что случилось, ниже название сессии и начало ответа. Если ты и так
@@ -647,22 +668,22 @@ Terminal и iTerm2 (по tty, как `/restart`), а в Android Studio, VS Code 
 Показывает их маленькое приложение `~/Library/Application Support/claudemeister/claudemeister Notify.app`
 (собирается из `share/claudemeister/notify/main.swift`). В первый раз macOS спросит, можно ли ему
 показывать уведомления, а при первом нажатии — можно ли ему управлять Terminal или iTerm2.
-`claudemeister notify test` — пробное уведомление, `notify off` / `on` — выключить и
+`agentmeister notify test` — пробное уведомление, `notify off` / `on` — выключить и
 включить, `notify sound off` — без звука.
 
 Те же уведомления могут приходить в Telegram, когда тебя нет за Mac: экран заблокирован или
-2 минуты никто не трогал мышь и клавиатуру. `claudemeister notify telegram` подключает бота:
+2 минуты никто не трогал мышь и клавиатуру. `agentmeister notify telegram` подключает бота:
 создаёшь его у @BotFather, вводишь токен (или копируешь его и запускаешь команду не из
-терминала — claudemeister возьмёт токен из буфера обмена и очистит буфер), нажимаешь Start в чате с
+терминала — agentmeister возьмёт токен из буфера обмена и очистит буфер), нажимаешь Start в чате с
 ботом. Токен лежит в Связке ключей (`mnrh-telegram`), в конфиге — только номер чата.
 `telegram test` — пробное сообщение, `telegram away <сек>` — через сколько секунд без ввода
 считать, что тебя нет, `telegram always` — присылать всегда, `telegram off` — отключить и
 удалить токен. Если ты смотришь на вкладку Claude, но отошёл, уведомление придёт только в
 Telegram. Ошибки отправки пишутся в `~/.cache/mnrh/notify/errors.log`.
 
-На запросы разрешения можно отвечать из Telegram. `claudemeister notify telegram approve on`
+На запросы разрешения можно отвечать из Telegram. `agentmeister notify telegram approve on`
 включает это (по умолчанию выключено) и ставит в `~/.claude/settings.json` блокирующий хук
-`PermissionRequest` (его ставит и `claudemeister setup`, с таймаутом 600 секунд). Когда Claude
+`PermissionRequest` (его ставит и `agentmeister setup`, с таймаутом 600 секунд). Когда Claude
 просит разрешение, а тебя нет за Mac, бот присылает проект, название сессии, инструмент и команду
 или путь с кнопками «Разрешить» и «Отклонить», и Claude получает твой ответ. Если ты вернулся к
 Mac, за 9,5 минуты никто не ответил или Telegram недоступен, хук выходит без решения, и Claude
@@ -671,7 +692,7 @@ Mac, хук сразу выходит и ничего не меняет. Воп�
 Mac. Нажатия принимаются только из чата, где при подключении нажали Start, а кнопки каждого
 сообщения несут случайный номер, который годится только для этого запроса. Если запрос уже пришёл
 в Telegram с кнопками, обычное сообщение «нужно разрешение» туда второй раз не идёт.
-`claudemeister notify telegram approve off` — выключить.
+`agentmeister notify telegram approve off` — выключить.
 
 Цена удобства: разрешить команду на твоём Mac может любой, кто откроет твой Telegram (телефон без
 блокировки, Telegram Desktop или веб-версия, где ты вошёл), и любой, у кого есть токен бота, а он
@@ -682,19 +703,19 @@ Mac. Нажатия принимаются только из чата, где п
 приходит с его предупреждением, но кнопка разрешает его так же, как ответ в терминале. Включай,
 только если у аккаунта Telegram есть пароль и двухэтапная проверка.
 
-Или в Tossling на телефоне, через свой ntfy: `claudemeister notify phone away` — когда тебя нет за Mac,
+Или в Tossling на телефоне, через свой ntfy: `agentmeister notify phone away` — когда тебя нет за Mac,
 `phone always` — всегда, `phone off` — выключить, `phone test` — пробное. Уходят в канал `claude`,
 вопросы и просьбы о разрешении — с высоким приоритетом. На телефоне: Tossling → Уведомления → + → `claude`.
 
 С Remote Control Claude Code сам присылает push в приложение Claude на телефоне. Если сессия
 подключена (`/remote-control`, `--remote-control` или «Enable Remote Control for all sessions») и в
-`/config` включено **Push when actions required** (`inputNeededNotifEnabled`), claudemeister не шлёт
+`/config` включено **Push when actions required** (`inputNeededNotifEnabled`), agentmeister не шлёт
 запросы разрешения и вопросы этой сессии в Telegram и Tossling, чтобы они не приходили дважды;
-уведомление на Mac остаётся. Подключение claudemeister видит по `CLAUDE_CODE_BRIDGE_SESSION_ID`:
+уведомление на Mac остаётся. Подключение agentmeister видит по `CLAUDE_CODE_BRIDGE_SESSION_ID`:
 Claude Code v2.1.199 и новее задаёт его в командах хуков, пока Remote Control подключён. «Готово» и
 «ждёт тебя» уходят как раньше: о них Claude присылает push, только если сам решит. Если в `/config`
 написано «No mobile registered», открой приложение Claude на телефоне или выключи переключатель,
-и эти уведомления снова пойдут через claudemeister.
+и эти уведомления снова пойдут через agentmeister.
 
 Иконка claudemeister Notify — `share/claudemeister/icon.png`, 1024×1024 (скругленная копия для README лежит в `docs/icon.png`),
 картинка до края без прозрачности: macOS 26 сама скругляет её, а иконку с полями или

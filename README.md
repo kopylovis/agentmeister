@@ -5,51 +5,60 @@
 <p align="center">English · <a href="README.ru.md">Русский</a></p>
 
 A macOS toolkit for starting [Claude Code](https://code.claude.com) or Codex in a project and resuming saved sessions.
+Both agents can use humanize writing rules, manage the project backlog and prepare release notes. You can run
+individual sessions through your proxy.
 In Claude Code, you can restart or slim the current session, get notified when Claude is waiting and review risky
-commands before they run. Both agents can use the project backlog over MCP and run individual sessions through your proxy.
+commands before they run.
 
 The menu follows the macOS language, Russian or English. Other messages are in Russian for now.
 
 ```
-# Start a session
-claudemeister                menu: sessions, mode switches, proxy, install
-claudemeister kcalm          straight into a project (a name prefix is enough)
-claudemeister root           in the home folder
-claudemeister ... -x         this session through your own VPS
-claudemeister ... -i         nothing written to disk
-claudemeister sessions       saved sessions: resume, move, delete, search, slim
-claudemeister ps             running sessions and who is waiting; jump to a tab
-claudemeister restore        reopen sessions after a reboot or crash
-claudemeister usage          tokens and active time per project and model
+# Open the menu for Claude Code or Codex
+agentmeister                menu: sessions, mode switches, proxy, install
+
+# Codex from the shell
+agentmeister --harness codex kcalm        choose a session in a project
+agentmeister --harness codex setup       install hooks, the skill and MCP
+agentmeister --harness codex statusline  print a promptsill snapshot
+
+# Claude Code from the shell
+agentmeister kcalm          straight into a project (a name prefix is enough)
+agentmeister root           in the home folder
+agentmeister ... -x         this session through your own VPS
+agentmeister ... -i         skip Claude Code prompt history
+agentmeister sessions       saved sessions: resume, move, delete, search, slim
+agentmeister ps             running sessions and who is waiting; jump to a tab
+agentmeister restore        reopen sessions after a reboot or crash
+agentmeister usage          tokens and active time per project and model
 
 # From inside Claude Code, also as /restart, /forget, /fresh, /slim
-claudemeister restart        quit, claude update, reopen the same session
-claudemeister forget         delete this session and open a clean one
-claudemeister fresh          new session, this one stays in /resume
-claudemeister slim           slim this session down and reopen it
+agentmeister restart        quit, claude update, reopen the same session
+agentmeister forget         delete this session and open a clean one
+agentmeister fresh          new session, this one stays in /resume
+agentmeister slim           slim this session down and reopen it
 
 # Modes: on, off
-claudemeister humanize       writing rules without AI tells; check <file>
-claudemeister guard          ask before touching keys and risky commands
-claudemeister buildlog       Claude gets a digest of long build output
-claudemeister notify         tell you when Claude is waiting; telegram, phone
-claudemeister lid            stay awake with the lid closed; setup, remove
+agentmeister humanize       writing rules for Claude Code and Codex
+agentmeister guard          ask before touching keys and risky commands
+agentmeister buildlog       Claude gets a digest of long build output
+agentmeister notify         tell you when Claude is waiting; telegram, phone
+agentmeister lid            stay awake with the lid closed; setup, remove
 
 # Proxy through your VPS
-claudemeister proxy          status; setup, test, update, restart, remove
+agentmeister proxy          status; setup, test, update, restart, remove
 
-# Project tools, Claude also calls them through MCP and slash commands
-claudemeister brief          where we left off: git, last session, backlog
-claudemeister todo           project backlog between sessions
-claudemeister parallel       a task in its own worktree, with a second Claude
-claudemeister ask            ask a read-only Claude about another project
-claudemeister release-notes  material for "What's new" in a release
-claudemeister shot [app]     screenshot of an app window
-claudemeister deps           outdated Gradle dependencies
+# Project tools
+agentmeister brief          where we left off: git, last session, backlog
+agentmeister todo           project backlog between sessions
+agentmeister parallel       a task in its own worktree, with a second Claude
+agentmeister ask            ask a read-only Claude about another project
+agentmeister release-notes  material for "What's new" in a release
+agentmeister shot [app]     screenshot of an app window
+agentmeister deps           outdated Gradle dependencies
 
 # Install
-claudemeister setup          commands, hooks, MCP server, zsh hook, promptsill
-claudemeister doctor         check the install
+agentmeister setup          commands, hooks, MCP server, zsh hook, promptsill
+agentmeister doctor         check the install
 ```
 
 ## Install
@@ -59,7 +68,7 @@ brew install kopylovis/tap/agentmeister
 agentmeister
 ```
 
-`claudemeister` and `am` still run the same command.
+`am` is the short name. `claudemeister` remains a compatibility alias.
 
 ### Codex
 
@@ -67,10 +76,25 @@ When both CLIs are installed, "Open a project" asks which agent to start. The me
 in the selected folder before starting Codex. From the shell, use `agentmeister --harness codex <project>`.
 To resume a known session, pass `-- resume <id>` after the project.
 
-`agentmeister --harness codex setup` installs the humanize hooks and registers the MCP tools for project tasks
-and Gradle dependencies. With promptsill 0.8.0 or newer, setup also enables the live Codex footer with rate limits
-and context. Review the hooks with `/hooks` in Codex. The hooks follow the shared `agentmeister humanize on|off`
-setting. `agentmeister --harness codex setup --remove` removes the hooks and MCP registration.
+`agentmeister --harness codex setup` installs the humanize hooks and the `$agentmeister` skill. It also
+registers MCP tools for the project backlog, release notes and Gradle dependencies.
+
+Trust the new hooks in Codex with `/hooks`. The `agentmeister humanize` command shows the current setting and
+whether the Codex hooks are configured. Use `agentmeister humanize on` or `off` to change the setting for both
+agents. With humanize enabled, Codex receives the writing rules through the hooks. After each reply, the
+`Stop` hook checks the text and carries any findings into the next turn.
+
+Use `$agentmeister` in the Codex input field or pick it from `/skills`. [Codex skills](https://learn.chatgpt.com/docs/build-skills)
+
+```text
+$agentmeister humanize status
+$agentmeister todo list
+$agentmeister where
+$agentmeister release-notes since v1.13.0
+```
+
+With promptsill 0.8.0 or newer, setup also configures the live Codex footer with rate limits and context.
+`agentmeister --harness codex setup --remove` removes the installed skill, hooks and MCP registration.
 
 `agentmeister --harness codex statusline` runs `promptsill codex` if your version of promptsill includes that command.
 It prints a snapshot in the terminal. Use `/statusline` in Codex to change its live footer.
@@ -81,9 +105,9 @@ Run `agentmeister setup` to configure Claude Code.
 
 The formula also installs `am`, a short name for `agentmeister`. `am kcalm`, `am ps` and `am proxy` work the same.
 If `am` is missing, `agentmeister alias on` or the "Short name am" menu item adds it. Neither touches an `am`
-that belongs to another program, and `claudemeister alias off` removes only its own.
+that belongs to another program, and `agentmeister alias off` removes only its own.
 
-Homebrew also installs mihomo for `claudemeister -x`. `claudemeister setup` puts `/restart`, `/forget`, `/slim`
+Homebrew also installs mihomo for `agentmeister -x`. `agentmeister setup` puts `/restart`, `/forget`, `/slim`
 and the other commands into `~/.claude/commands`, hooks into `~/.claude/settings.json` and a zsh hook into
 `~/.zshrc`, and registers the `claudemeister` MCP server. If the VPS proxy isn't set up yet, setup asks whether
 to do it now (`--country KZ` sets the expected exit country). If the
@@ -92,25 +116,25 @@ to do it now (`--country KZ` sets the expected exit country). If the
 Claude Code deletes transcripts older than `cleanupPeriodDays`, 30 days by default, and with them goes everything
 `session_search` and `/resume` could find. setup sets it to 365 unless you already have your own value.
 
-setup records the steps it has done in `~/.config/mnrh/claude-setup.json`. If you run `claudemeister` before
+setup records the steps it has done in `~/.config/mnrh/claude-setup.json`. If you run `agentmeister` before
 setup, or after an update that added a setup step, it lists what isn't configured and offers to do it. "Не
-предлагать" (don't offer) stops asking about those steps; `claudemeister setup` still configures them.
+предлагать" (don't offer) stops asking about those steps; `agentmeister setup` still configures them.
 
 Every session start records the session in `~/.cache/mnrh/open/` with its folder, terminal tab, caffeinate,
-proxy and launch flags, and a normal exit removes the record. `claudemeister ps` lists the open sessions with
+proxy and launch flags, and a normal exit removes the record. `agentmeister ps` lists the open sessions with
 their state (waiting for you, working, idle) and jumps to the chosen one's tab in Terminal or iTerm2. After a
-reboot, a macOS update or a crash, `claudemeister restore` reopens the sessions whose records are left, each in
+reboot, a macOS update or a crash, `agentmeister restore` reopens the sessions whose records are left, each in
 its own window with `--resume`, the same mode, proxy and flags. Sessions started with `-i` aren't recorded.
 
-`claudemeister doctor` checks all of it in one go: Claude Code on PATH, the commands and whether they match this
+`agentmeister doctor` checks all of it in one go: Claude Code on PATH, the commands and whether they match this
 version, the hooks, transcript retention, the status line, the MCP server answering `tools/list`, the zsh hook,
 the notification app and the proxy. If the hooks still call the old iTerm2 `cc-status`, it warns that iTerm2 3.7.7
 installs `it2 handle-agent-hook` instead. It exits with 1 when something is broken and says what fixes it.
 
-Update with `brew upgrade claudemeister`. Open sessions pick up the new version on their own: before each
+Update with `brew upgrade agentmeister`. Open sessions pick up the new version on their own: before each
 request the MCP server checks whether its code changed (a `brew upgrade` or a `git pull` in a checkout) and, if
-so, replaces itself with the new one on the same connection, without losing the request. `claudemeister setup --remove` takes everything out of Claude Code,
-and `brew uninstall claudemeister` removes the program.
+so, replaces itself with the new one on the same connection, without losing the request. `agentmeister setup --remove` takes everything out of Claude Code,
+and `brew uninstall agentmeister` removes the program.
 
 The projects folder is `~/Developer` by default. Set another one with a `projects=<path>` line in
 `~/.config/mnrh/config` or with `MNRH_PROJECTS=<path>`. setup puts the read-only MCP tools (`session_search`,
@@ -120,10 +144,10 @@ doesn't ask before using them.
 ### From source, for development
 
 ```bash
-git clone https://github.com/kopylovis/agentmeister ~/Developer/claudemeister
-cd ~/Developer/claudemeister
+git clone https://github.com/kopylovis/agentmeister ~/Developer/agentmeister
+cd ~/Developer/agentmeister
 make install
-claudemeister setup
+agentmeister setup
 ```
 
 `make install` puts a symlink to the checkout into `~/.local/bin`, so edits take effect without reinstalling.
@@ -134,17 +158,17 @@ It adds `am` next to it unless `~/.local/bin/am` already belongs to another prog
 
 1. Bump `VERSION` in a PR.
 2. Put a signed tag on the commit in `main` (`git tag -s v$(cat VERSION) -m v$(cat VERSION)`) and push it.
-3. In `kopylovis/homebrew-tap`, update `tag:` and `revision:` in `Formula/claudemeister.rb`
+3. In `kopylovis/homebrew-tap`, update `tag:` and `revision:` in `Formula/agentmeister.rb`
    (`git rev-parse v$(cat VERSION)^{commit}`).
 
 ## Requirements
 
 macOS, bash and `/usr/bin/python3` from the Xcode Command Line Tools (`xcode-select --install`). Notifications
-need `swiftc` from the same tools. `claudemeister -x` needs mihomo.
+need `swiftc` from the same tools. `agentmeister -x` needs mihomo.
 
-## How `claudemeister` works
+## How `agentmeister` works
 
-Without arguments in a terminal, `claudemeister` opens an action menu with four groups: sessions (a project, the
+Without arguments in a terminal, `agentmeister` opens an action menu with four groups: sessions (a project, the
 home folder, saved ones, running ones, reopening after a reboot), modes, the VPS proxy and install. It runs the
 chosen action and prints the full command so you can type it directly next time. Afterwards you can go back to
 the menu. The humanize, guard, buildlog, notification and lid modes show as `[on]` or `[off]`, and Enter switches
@@ -164,7 +188,7 @@ Ctrl+C quits.
 follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in `~/.config/mnrh/config` picks
 one explicitly. `MNRH_NO_MENU=1` skips the menu and goes straight to the project list.
 
-`claudemeister open` lists the folders in the projects folder with their current branch and last commit date.
+`agentmeister open` lists the folders in the projects folder with their current branch and last commit date.
 Move with ↑↓ and press Enter. A digit jumps to that item (`0` is the home folder, `1` then `0` is the tenth),
 letters filter the list by name, and Esc clears the filter or exits.
 
@@ -182,19 +206,19 @@ Then you pick a mode the same way:
 - normal just runs `claude`.
 
 `-k` and `-n` choose the mode without asking, and everything after `--` goes to claude:
-`claudemeister kcalm -k -- --continue`. caffeinate doesn't help with a closed lid on battery: the Mac sleeps anyway.
+`agentmeister kcalm -k -- --continue`. caffeinate doesn't help with a closed lid on battery: the Mac sleeps anyway.
 
-`claudemeister lid setup` gets around that. It asks for your sudo password and installs
+`agentmeister lid setup` gets around that. It asks for your sudo password and installs
 `/etc/sudoers.d/mnrh-pmset`, a passwordless rule for exactly `pmset -a disablesleep 1` and
 `pmset -a disablesleep 0`. From then on each caffeinate session starts a watcher. It turns `disablesleep` on
 while at least one such session is alive and off two minutes after the last one ends, which covers a restart with
 `claude update`. It also lets go when the battery drops to 15%, with a notification. A Mac in a closed bag gets
-hot, so keep an eye on that yourself. `claudemeister lid` shows whether the watcher holds the lid now. `off` turns
+hot, so keep an eye on that yourself. `agentmeister lid` shows whether the watcher holds the lid now. `off` turns
 the mode off and keeps the rule, so `on` brings it back without a password. `release` lets go until the next
 caffeinate session, and `remove` turns the mode off and deletes the rule. The watcher's log is `~/.local/state/mnrh/lid.log`. The rule and the
-watcher are shared with `mnrh sleep lid`, so if you set it up in mnrh, claudemeister picks it up.
+watcher are shared with `mnrh sleep lid`, so if you set it up in mnrh, agentmeister picks it up.
 
-### A session through your own server: `claudemeister proxy`
+### A session through your own server: `agentmeister proxy`
 
 If the proxy is configured, the next question is the network: direct or through your server. Only this session
 goes through the server, together with the programs it starts that read `HTTPS_PROXY` (gh, npm, curl, git over
@@ -206,15 +230,15 @@ It runs on [mihomo](https://wiki.metacubex.one) (`brew install mihomo`), which s
 and Hysteria2 and uses the first live server from the subscription. One-time setup:
 
 ```bash
-claudemeister proxy setup 'https://…/sub/…' --country KZ   # subscription link, the same one Happ uses
-claudemeister proxy test                                    # exit IP and country, direct and through the server
+agentmeister proxy setup 'https://…/sub/…' --country KZ   # subscription link, the same one Happ uses
+agentmeister proxy test                                    # exit IP and country, direct and through the server
 ```
 
 `--country` protects the account: if the server exits in another country, the proxied session refuses to
 start instead of showing up from an unexpected place. `--only <pattern>` keeps only the servers whose names
 match. Encrypted `happ://crypt…` links can only be read by Happ, so use the plain `https://` one.
 
-`claudemeister proxy` shows the mihomo version and suggests `claudemeister proxy update` when Homebrew has a
+`agentmeister proxy` shows the mihomo version and suggests `agentmeister proxy update` when Homebrew has a
 newer one. That command runs `brew upgrade mihomo`. If mihomo is running with no proxied sessions, it stops it
 and the new version starts with the next session. If sessions are running, it asks whether to restart mihomo
 now. Requests in flight at that moment break and Claude Code retries them. Without a restart the new version
@@ -225,7 +249,7 @@ VPS group. When the network comes back on another interface (Wi-Fi instead of Et
 the new interface into the config and reloads mihomo. When the group sits on REJECT after a drop, it asks mihomo
 to check the server right away instead of waiting for the five-minute check. When the server stays unreachable
 for 30 seconds while the network is up, it restarts mihomo, at most once every five minutes. Its log is
-`~/.local/state/mnrh/proxy/watch.log`. `claudemeister proxy restart` restarts mihomo by hand and keeps the
+`~/.local/state/mnrh/proxy/watch.log`. `agentmeister proxy restart` restarts mihomo by hand and keeps the
 proxied sessions open.
 
 mihomo listens on `127.0.0.1:17890`, starts with the first proxied session and stops after the last. The
@@ -234,24 +258,24 @@ that `open_claude` and `/parallel` open from such a session also go through the 
 
 mihomo reaches the server over Wi-Fi or Ethernet, bypassing the TUN tunnel of Happ and other VPNs, so you can
 turn Happ on and off during a session without the session noticing. This matters when Happ is connected to the
-same server, since the server can't reach itself through its own tunnel. claudemeister downloads the
+same server, since the server can't reach itself through its own tunnel. agentmeister downloads the
 subscription the same way each time mihomo starts and falls back to the previous copy if that fails. If no
-server in the subscription is alive, connections are refused instead of going direct. claudemeister resolves the
+server in the subscription is alive, connections are refused instead of going direct. agentmeister resolves the
 subscription's server names through the system DNS and writes them into the `hosts` section of the mihomo
 config, so mihomo never does DNS itself. Without this, a corporate VPN whose DNS server is only reachable
 through the tunnel would leave mihomo unable to find the server, because its query goes out over Wi-Fi.
 
-Settings, the link and the subscription live in `~/.config/mnrh/proxy/`, readable only by you. claudemeister
+Settings, the link and the subscription live in `~/.config/mnrh/proxy/`, readable only by you. agentmeister
 checks the exit country every time mihomo starts and passes it to the session in `PROMPTSILL_PROXY_LABEL`, which
 promptsill shows as `proxy KZ` in the status line. It also asks mihomo over the unix socket
 `~/.local/state/mnrh/proxy/mihomo.sock` which server from the subscription is selected and with which protocol,
 and passes the protocol and IP in `PROMPTSILL_PROXY_DETAIL`. In macOS Terminal the status line shows
 `proxy KZ vless 203.0.113.7`. In iTerm2, Ghostty and other terminals with link support it stays `proxy KZ`, and
 Cmd-click opens a page with the details (`exit.html` in the same folder). All of this is captured when mihomo
-starts. If the fallback later switches servers, `claudemeister proxy` shows the current one. If mihomo is
-missing, `setup` offers to install it with brew; the claudemeister formula installs it anyway.
+starts. If the fallback later switches servers, `agentmeister proxy` shows the current one. If mihomo is
+missing, `setup` offers to install it with brew; the agentmeister formula installs it anyway.
 
-## How `claudemeister sessions` works
+## How `agentmeister sessions` works
 
 Claude Code keeps sessions in `~/.claude/projects/<folder-path>/<id>.jsonl`, next to an `<id>/` folder with
 subagents and large tool outputs. `claude --resume` only sees sessions of the current folder, so after you move a
@@ -270,7 +294,7 @@ window and won't be touched. Pick one with the arrows, then resume it (caffeinat
 - `search <words>` searches all sessions of all projects (see below), `show <id> [N]` reads a session from
   message `N`, and `-10` shows the last ten.
 
-## Slimming old sessions: `claudemeister sessions slim`
+## Slimming old sessions: `agentmeister sessions slim`
 
 A big session is mostly screenshots and tool outputs. In one 481 MB session about 330 MB were images (each
 stored twice, once for the model and once for the screen), while the conversation text was a few megabytes.
@@ -292,16 +316,16 @@ nothing is written. The original is compressed into `~/.cache/mnrh/slim-backup/`
 Open sessions are never slimmed.
 
 ```
-claudemeister sessions slim              how much all closed sessions could free up
-claudemeister sessions slim <id> --copy  a slimmed copy with a new id, to open and check
-claudemeister sessions slim <id>         slim it (asks first; -y doesn't)
-claudemeister sessions slim <id> --undo  restore the original
+agentmeister sessions slim              how much all closed sessions could free up
+agentmeister sessions slim <id> --copy  a slimmed copy with a new id, to open and check
+agentmeister sessions slim <id>         slim it (asks first; -y doesn't)
+agentmeister sessions slim <id> --undo  restore the original
 ```
 
 From inside Claude Code use `/slim` (or ask "slim this session", which calls the `slim` MCP tool). An open
 session can't be slimmed, so `/slim` works like `/restart`. It first estimates how much it would free, and if
 that's under 5 MB it closes nothing and just says so. Otherwise Claude quits, the tab runs
-`claudemeister sessions slim <id> -y`, and the session reopens with the same flags and caffeinate. After it
+`agentmeister sessions slim <id> -y`, and the session reopens with the same flags and caffeinate. After it
 reopens, Claude shows the size before and after, or why slimming failed (the session is then opened as it was).
 `/slim list` shows what can be slimmed among closed sessions, and `/slim <id>` slims one of them.
 
@@ -316,7 +340,7 @@ covers your prompts, Claude's answers, the commands it ran (`$ …`, or the file
 errors those tools returned and the summaries after `/compact`. Normal tool output and system messages aren't
 indexed. Of a long error only the first 600 and the last 900 characters are kept, and Claude Code's own refusals
 (permission denied, "read the file first") are skipped. `roles=["error"]` (in the terminal
-`claudemeister sessions search -r error <words>`) searches errors only, to find how the same error was fixed
+`agentmeister sessions search -r error <words>`) searches errors only, to find how the same error was fixed
 before. All words must appear in one
 message (if no message has them all, messages with at least half of them are shown). Case and word form don't
 matter: words are reduced to their stems (a Snowball stemmer for Russian, the first Porter steps for English),
@@ -334,9 +358,9 @@ takes under 0.1 s. The index is refreshed in the background when each session st
 `SessionStart` hook). When a session is deleted, including through `/forget` and `sessions rm`, its index goes
 with it.
 
-## Usage: `claudemeister usage`
+## Usage: `agentmeister usage`
 
-`claudemeister usage [--days N] [--project P] [--top N]` shows how much Claude Code was used over the last N days
+`agentmeister usage [--days N] [--project P] [--top N]` shows how much Claude Code was used over the last N days
 (7 by default, today included; `--days 0` means all time): per project, the number of sessions, active time,
 model requests and tokens by kind (input without cache, output, cache read, cache write); per model, the same
 without time; and the heaviest sessions by total tokens, with their titles. Tokens come from the `usage` field
@@ -351,19 +375,19 @@ search index, only new lines are read. The first run over all sessions takes abo
 the cache is also refreshed in the background when a session starts. A rewritten session (`slim`) is counted
 again from scratch, and a deleted one loses its cache.
 
-## Outdated dependencies: `claudemeister deps`
+## Outdated dependencies: `agentmeister deps`
 
 Parses `gradle/libs.versions.toml` (versions, libraries, plugins), checks Google Maven, Maven Central and the
 Gradle Plugin Portal, and shows what has a newer version, how big the jump is (major, minor, patch) and which
 libraries use that version. It also shows the Gradle wrapper version and what has to move together: Kotlin and
 KSP, AGP and Gradle, Compose Multiplatform and Kotlin. Variants such as `-jre`/`-android` are only compared with
-each other, and alpha/beta/rc only with `--pre`. `claudemeister deps status` (and `claudemeister deps` outside a
+each other, and alpha/beta/rc only with `--pre`. `agentmeister deps status` (and `agentmeister deps` outside a
 terminal) checks the current project, or all projects if the current one has no catalog. Repository answers are
 cached for 6 hours. Claude gets the same through the `deps_outdated` tool.
 
 ## Commands in Claude Code
 
-`claudemeister setup` puts these into `~/.claude/commands/`:
+`agentmeister setup` puts these into `~/.claude/commands/`:
 
 | Command | What it does |
 |---|---|
@@ -386,9 +410,9 @@ previous session in this folder (title, last prompt and Claude's last answer, wh
 and the open backlog items. You see one line, like
 "claudemeister: прошлая сессия «…» (вчера) · незакоммичено 3 · в бэклоге 2 · /where — подробнее". This only
 happens for new sessions in a terminal, not after `--resume`, `/clear` or `/forget`, and not in `claude -p`.
-Turn it off with `claudemeister brief off`.
+Turn it off with `agentmeister brief off`.
 
-## Backlog: `claudemeister todo`
+## Backlog: `agentmeister todo`
 
 Tasks for later that live between sessions, unlike the task list inside a single session. One file per project,
 `~/.config/mnrh/todo/<project>.md`, a plain checklist. The project is the git root of the current folder;
@@ -430,16 +454,16 @@ project's git worktrees, and a fork starts in the folder it was launched from, s
 while the original session stays as it was. Without `--fork` the second Claude starts a new session with only
 the task.
 
-claudemeister keeps creating the worktree itself instead of using `claude --worktree`: that flag puts worktrees
+agentmeister keeps creating the worktree itself instead of using `claude --worktree`: that flag puts worktrees
 in `<repo>/.claude/worktrees/` on a `worktree-<name>` branch from the default branch of the remote, while
 `/parallel` branches from the current commit, records the base branch for `merge` and `pr`, and opens its own
 window with caffeinate and Remote Control. `--tmux` needs `--worktree`, so it isn't used either.
 
 ```
-claudemeister parallel list            branches, commits, whether Claude is working there
-claudemeister parallel merge <branch>  merge into the original branch (no push), remove the worktree
-claudemeister parallel drop <branch>   throw it away
-claudemeister parallel pr <branch>     push, open a PR, wait for CI, merge it, remove the worktree
+agentmeister parallel list            branches, commits, whether Claude is working there
+agentmeister parallel merge <branch>  merge into the original branch (no push), remove the worktree
+agentmeister parallel drop <branch>   throw it away
+agentmeister parallel pr <branch>     push, open a PR, wait for CI, merge it, remove the worktree
 ```
 
 A merge won't start while Claude is open there, while there are uncommitted changes, or while the main folder is
@@ -455,7 +479,7 @@ branch is checked out there and clean. If CI fails, the PR stays open, the workt
 are listed: fix them in the worktree, commit, and run `parallel pr` again. `--no-merge` only pushes and opens the
 PR. In Claude Code the same is `parallel_finish` with `action: "pr"`.
 
-## Window screenshot: `claudemeister shot`
+## Window screenshot: `agentmeister shot`
 
 `/shot chrome why did the button move` takes a screenshot of Chrome's front window (or Safari, Simulator,
 Android Studio, Figma, VS Code…), and Claude looks at it and answers. Without an app it lists windows, hiding
@@ -473,7 +497,7 @@ Sonnet; a simple question costs about 30k tokens and 5 to 10 seconds.
 
 ## How restarting Claude Code works
 
-`claudemeister setup` puts `restart.md`, `forget.md`, `fresh.md` and `slim.md` into `~/.claude/commands/` and
+`agentmeister setup` puts `restart.md`, `forget.md`, `fresh.md` and `slim.md` into `~/.claude/commands/` and
 registers the `claudemeister` MCP server with the tools `restart`, `forget`, `fresh`, `slim`, `open_claude`,
 `session_search`, `session_read` and others (user scope, in every project). Then, in any session:
 
@@ -483,7 +507,7 @@ registers the `claudemeister` MCP server with the tools `restart`, `forget`, `fr
   conversation is deleted from disk together with its lines in `history.jsonl`, `file-history` and
   `session-env`, the screen and terminal scrollback are cleared, and a clean Claude opens in the same folder.
   Unlike the built-in `/clear`, nothing stays behind in `/resume`. To keep a session off the disk from the
-  start, launch it with `claudemeister -i`: it sets `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`, so Claude Code writes
+  start, launch it with `agentmeister -i`: it sets `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1`, so Claude Code writes
   neither the transcript nor the prompt history. Such a session can't be reopened, so `/restart` and `/slim`
   refuse in it.
 - `/fresh` (or "start a new session", the `fresh` tool) does the same as `/forget` but leaves the old session
@@ -493,12 +517,12 @@ registers the `claudemeister` MCP server with the tools `restart`, `forget`, `fr
   your flags kept.
 
 Claude Code has its own `/restart` since 2.1.288. It applies an installed update and resumes the session, on a
-native install with a Pro or Max plan. claudemeister's `/restart` takes the name: it also runs `claude update`,
+native install with a Pro or Max plan. agentmeister's `/restart` takes the name: it also runs `claude update`,
 keeps caffeinate, the proxy and your launch flags, and works in Terminal, iTerm2 and other terminals through the
 zsh hook. The built-in one stays available as `/update`.
 - "open Claude in kcalm" uses the `open_claude` tool. Without a project it returns the list of projects (branch,
   last commit) and modes to the chat, Claude asks which one, and opens a new window of the same terminal (Terminal
-  or iTerm2) with `claudemeister <project> -k|-n`. You can pass a first prompt and `--continue`. Remote Control
+  or iTerm2) with `agentmeister <project> -k|-n`. You can pass a first prompt and `--continue`. Remote Control
   (`/rc`) is on from the start (`--remote-control <project>`; turn it off with `remote_control: false`). The reply
   contains the window, tty, pid and the claude.ai/code link to the session, so you can continue from your phone
   or a browser. If Claude Code doesn't trust the folder yet (no `hasTrustDialogAccepted` for it or a parent in
@@ -507,7 +531,7 @@ zsh hook. The built-in one stays available as `/update`.
   with `trust: true`, which sets the flag before launch. Worktrees from `/parallel` inherit trust from their
   project.
 
-What happens under the hood: claudemeister finds its own `claude` in the process tree and its record in
+What happens under the hood: agentmeister finds its own `claude` in the process tree and its record in
 `~/.claude/sessions/<pid>.json` (session id, folder, terminal). A separate detached process sends it SIGTERM,
 so Claude quits cleanly with the session already on disk, and the same tab runs
 `cd <folder> && { claude update; claude --resume <id>; }`. Launch flags (`--model`,
@@ -516,7 +540,7 @@ so Claude quits cleanly with the session already on disk, and the same tab runs
 How the command gets back into the tab:
 
 - The zsh hook is the main way and works in any terminal (Android Studio, VS Code, Terminal, iTerm2).
-  `claudemeister setup` adds a line with `share/claudemeister/restart.zsh` to `~/.zshrc`. Before Claude quits,
+  `agentmeister setup` adds a line with `share/claudemeister/restart.zsh` to `~/.zshrc`. Before Claude quits,
   a job is written to `~/.cache/mnrh/restart/<tty>`, and zsh runs it before the next prompt. Jobs older than two
   minutes are ignored. It works in tabs opened after setup.
 - AppleScript is the fallback for Terminal and iTerm2 when the hook isn't loaded in that tab. The first time,
@@ -526,14 +550,14 @@ How the command gets back into the tab:
 After it starts, Claude shows what happened under the input line: "Claude Code перезапущен (обновлён 2.1.278 →
 2.1.280). Сессия «…» продолжается" (restarted and updated, the session continues) or that the previous session
 was deleted and this is a clean one. That's the `SessionStart` hook in `~/.claude/settings.json`, installed by
-`claudemeister setup`: before quitting, a note is written to `~/.cache/mnrh/notice/<session id>.json`, and the
+`agentmeister setup`: before quitting, a note is written to `~/.cache/mnrh/notice/<session id>.json`, and the
 hook shows and deletes it. The model doesn't see it. That's why `/forget` starts the new session with a known
 `--session-id`.
 
 ### Empty sessions don't pile up
 
 After `/clear` Claude starts a new session, and if you quit right away, `/resume` is left with junk: the
-session contains only the `/clear` record and metadata. `claudemeister setup` installs a `SessionEnd` hook that
+session contains only the `/clear` record and metadata. `agentmeister setup` installs a `SessionEnd` hook that
 deletes its own session on exit if it has no answer from Claude and no message from you (service `/commands`
 don't count). If Claude was closed with the window's close button and the hook didn't get to run, the next
 `SessionStart` in the same project removes such empty sessions older than a minute in the background, as long as
@@ -543,9 +567,9 @@ count as conversation.
 ### Status line
 
 The status line is a separate open source program,
-[promptsill](https://github.com/kopylovis/promptsill). If it's missing, `claudemeister setup` offers to install
+[promptsill](https://github.com/kopylovis/promptsill). If it's missing, `agentmeister setup` offers to install
 it with Homebrew (`brew install kopylovis/tap/promptsill`) and puts it into `statusLine` unless you already have
-your own, replacing the older `claudemeister statusline`. Two lines under the input:
+your own, replacing the older `agentmeister statusline`. Two lines under the input:
 
 ```
 Opus · context ██▏   42% · 5h ███▏  63% +23%, runs out at 15:10, resets at 17:00 · week 35%
@@ -555,9 +579,9 @@ master ↑3 ±5 · vite :5173 · memory 9.9/16 GB · swap 1.5 · Gradle 2 (3.1 G
 It shows the context, subscription limits with the pace of use, a cache timer, git, the project's dev servers
 and busy ports, the Node version, memory, Gradle daemons and simulators. Labels are in English, or in Russian
 with a Russian locale or `promptsill install --lang ru`. See the promptsill README for details.
-`claudemeister statusline …` passes commands on to promptsill.
+`agentmeister statusline …` passes commands on to promptsill.
 
-### Guarding secrets and destructive commands: `claudemeister guard`
+### Guarding secrets and destructive commands: `agentmeister guard`
 
 The `PreToolUse` hook watches three things:
 
@@ -577,10 +601,10 @@ It asks rather than refuses. In the default mode Claude Code shows its own "allo
 In `auto` mode and with `--dangerously-skip-permissions` Claude Code can't do that (its "ask" turns into "deny"
 or "allow"), so guard holds the call and Claude asks you in the chat why it needs it. Answer "yes" (or "ok",
 "да", "давай") and the same call goes through. The answer is tied to that call and to your message after the
-question, so the model can't answer for you. `claudemeister guard skip destructive` turns a rule off,
+question, so the model can't answer for you. `agentmeister guard skip destructive` turns a rule off,
 `guard test '<command>'` shows the decision, and `guard log` shows recent hits.
 
-### Long build output: `claudemeister buildlog`
+### Long build output: `agentmeister buildlog`
 
 A Gradle or xcodebuild run easily prints thousands of lines, and all of them land in Claude's context. The
 `PostToolUse` hook for Bash looks at commands that run `./gradlew` or `gradle`, `xcodebuild`, `swift build` or
@@ -600,22 +624,22 @@ failed. Short output from a failed build stays whole with the same note added. T
 as `$?`, because Claude Code treats such an `echo` as safe and doesn't ask for permission, and rules like
 `Bash(./gradlew:*)` keep matching. The cost is that the exit code is lost and Claude Code shows the failed call
 as successful. Multi-line commands, heredocs, comments and commands ending in `&` are left alone, and their
-failed output reaches Claude as before. `claudemeister buildlog off` turns the hook off, `on`
+failed output reaches Claude as before. `agentmeister buildlog off` turns the hook off, `on`
 turns it back on, and `buildlog test <file>` shows what Claude would see for a saved log.
 
 In iTerm2 3.7.7 and later, a build that runs longer than a second and a half is named in the tab next to
 Claude's status, for example `gradlew :app:assembleDebug` or `xcodebuild test`. It is set with `it2 session
-set-status --detail`. The iTerm2 hook clears that text on every Claude Code event, so claudemeister sets it after
+set-status --detail`. The iTerm2 hook clears that text on every Claude Code event, so agentmeister sets it after
 a short delay, and the same iTerm2 hook clears it when the build ends. It works inside tmux too.
 `buildlog off` turns it off along with the digest.
 
 ### Notifications when Claude is waiting for you
 
-`claudemeister setup` installs the `UserPromptSubmit`, `Stop` and `Notification` hooks (asynchronous, Claude
+`agentmeister setup` installs the `UserPromptSubmit`, `Stop` and `Notification` hooks (asynchronous, Claude
 doesn't wait for them). A macOS notification arrives when Claude:
 
 - asks for permission to use a tool or asks a question (including one from an MCP server);
-- finishes a turn that took longer than 20 seconds (`claudemeister notify after <sec>`);
+- finishes a turn that took longer than 20 seconds (`agentmeister notify after <sec>`);
 - has been waiting for an answer for a minute with no "done" notification.
 
 The title is the project and what happened; below it are the session title and the start of the answer. If you're
@@ -626,20 +650,20 @@ one, and after your next prompt it's removed from Notification Center.
 
 They're shown by a small app, `~/Library/Application Support/claudemeister/claudemeister Notify.app`, built from
 `share/claudemeister/notify/main.swift`. The first time, macOS asks whether it may show notifications, and on the
-first click, whether it may control Terminal or iTerm2. `claudemeister notify test` sends a test notification,
+first click, whether it may control Terminal or iTerm2. `agentmeister notify test` sends a test notification,
 `notify off` and `on` turn them off and on, and `notify sound off` mutes them.
 
 The same notifications can go to Telegram when you're away from the Mac: the screen is locked or nobody has
-touched the mouse and keyboard for 2 minutes. `claudemeister notify telegram` connects a bot: create it with
-@BotFather, enter the token (or copy it and run the command outside a terminal, and claudemeister takes the token
+touched the mouse and keyboard for 2 minutes. `agentmeister notify telegram` connects a bot: create it with
+@BotFather, enter the token (or copy it and run the command outside a terminal, and agentmeister takes the token
 from the clipboard and clears it), then press Start in the chat with the bot. The token is kept in the Keychain
 (`mnrh-telegram`); the config only holds the chat id. `telegram test` sends a test message,
 `telegram away <sec>` sets how long without input counts as away, `telegram always` sends every time, and
 `telegram off` disconnects and deletes the token. If you're looking at Claude's tab but have walked away, the
 notification only goes to Telegram. Send errors are logged to `~/.cache/mnrh/notify/errors.log`.
 
-Permission requests can also be answered from Telegram. `claudemeister notify telegram approve on` turns it on
-(off by default) and adds a blocking `PermissionRequest` hook to `~/.claude/settings.json` (`claudemeister setup`
+Permission requests can also be answered from Telegram. `agentmeister notify telegram approve on` turns it on
+(off by default) and adds a blocking `PermissionRequest` hook to `~/.claude/settings.json` (`agentmeister setup`
 installs it too, with a 600-second timeout). When Claude asks for permission and you're away from the Mac, the bot
 sends the project, session title, tool and command or path with "Разрешить" and "Отклонить" buttons, and Claude
 gets your answer. If you come back to the Mac, nobody answers within 9.5 minutes, or Telegram can't be reached,
@@ -648,7 +672,7 @@ buttons. While you're at the Mac, the hook exits at once and changes nothing. Qu
 plan approval stay on the Mac. Only presses from the chat that pressed Start during setup count, and each
 message's buttons carry a random id that is valid for that one request. When the request is already in Telegram
 with buttons, the regular "permission needed" message isn't sent there a second time.
-`claudemeister notify telegram approve off` turns it off.
+`agentmeister notify telegram approve off` turns it off.
 
 The trade-off: anyone who can open your Telegram (an unlocked phone, a logged-in Telegram Desktop or web session)
 can allow a command on your Mac, and so can anyone holding the bot token, which sits in the Keychain. The message
@@ -658,19 +682,19 @@ masked command can't be fully read from the phone; the message says so, and then
 it touches keys comes with guard's warning, but the button allows it just like the terminal prompt would. Turn it
 on only if your Telegram account has a password and two-step verification.
 
-Or to Tossling on your phone through your own ntfy: `claudemeister notify phone away` when you're away from the
+Or to Tossling on your phone through your own ntfy: `agentmeister notify phone away` when you're away from the
 Mac, `phone always` every time, `phone off` to turn it off, `phone test` for a test. They go to the `claude`
 channel, and questions and permission requests use high priority. On the phone, add the `claude` channel in
 Tossling's notification settings.
 
 With Remote Control, Claude Code pushes to the Claude app on your phone itself. If the session is connected
 (`/remote-control`, `--remote-control` or "Enable Remote Control for all sessions") and **Push when actions
-required** is on in `/config` (`inputNeededNotifEnabled`), claudemeister doesn't send permission requests and
+required** is on in `/config` (`inputNeededNotifEnabled`), agentmeister doesn't send permission requests and
 questions to Telegram or Tossling for that session, so they don't arrive twice; the Mac notification stays.
-claudemeister sees the connection through `CLAUDE_CODE_BRIDGE_SESSION_ID`, which Claude Code v2.1.199 and later
+agentmeister sees the connection through `CLAUDE_CODE_BRIDGE_SESSION_ID`, which Claude Code v2.1.199 and later
 sets in hook commands while Remote Control is connected. "Done" and "waiting for you" still go out as before:
 Claude sends its own push for those only when it decides to. If `/config` shows "No mobile registered",
-open the Claude app on the phone, or turn the toggle off to get these through claudemeister again.
+open the Claude app on the phone, or turn the toggle off to get these through agentmeister again.
 
 The claudemeister Notify icon is `share/claudemeister/icon.png`, 1024×1024 (a rounded copy for the README is in
 `docs/icon.png`). It fills the whole square with no transparency: macOS 26 rounds it itself and puts an icon with
