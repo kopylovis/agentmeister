@@ -77,12 +77,16 @@ in the selected folder before starting Codex. From the shell, use `agentmeister 
 To resume a known session, pass `-- resume <id>` after the project.
 
 `agentmeister --harness codex setup` installs the humanize hooks and the `$agentmeister` skill. It also
-registers MCP tools for the project backlog, release notes and Gradle dependencies.
+installs notification hooks and registers MCP tools for the project backlog, release notes and Gradle dependencies.
 
 Trust the new hooks in Codex with `/hooks`. The `agentmeister humanize` command shows the current setting and
 whether the Codex hooks are configured. Use `agentmeister humanize on` or `off` to change the setting for both
 agents. With humanize enabled, Codex receives the writing rules through the hooks. After each reply, the
 `Stop` hook checks the text and carries any findings into the next turn.
+
+With `agentmeister notify on`, Codex CLI sends notifications for permission requests and long turns. It uses the same
+channels and delay as Claude Code. When a hook can identify the terminal tab, clicking the Mac notification can return
+to that tab. `agentmeister doctor` reports whether the Codex notification hooks are trusted.
 
 Use `$agentmeister` in the Codex input field or pick it from `/skills`. [Codex skills](https://learn.chatgpt.com/docs/build-skills)
 

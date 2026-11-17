@@ -174,20 +174,20 @@ def check_codex_mcp(config):
     return "bad", "Codex MCP не ответил на tools/list."
 
 
-def check_codex_hooks(request, cwd):
-    try:
-        hooks = request("hooks/list", {"cwds": [cwd]})["data"][0]["hooks"]
-    except (OSError, ValueError, KeyError, IndexError):
-        count = codex_harness.configured_humanize_hooks()
-        return "warn", (f"Codex humanize, настроено {count if count is not None else '?'} из "
-                        f"{len(codex_harness.HOOK_EVENTS)} хуков. Статус доверия виден в /hooks.")
+def check_codex_hooks(hooks, name="humanize-hook"):
+    label = "Codex " + name.removesuffix("-hook")
+    events = codex_harness.HOOK_COMMANDS[name]
+    if hooks is None:
+        count = codex_harness.configured_hooks(name)
+        return "warn", (f"{label}, настроено {count if count is not None else '?'} из "
+                        f"{len(events)} хуков. Статус доверия виден в /hooks.")
     trusted = {hook["eventName"] for hook in hooks if hook.get("enabled") and not hook.get("matcher")
-               and hook.get("trustStatus") == "trusted" and is_hook(hook.get("command"), "humanize-hook")}
-    expected = {event[0].lower() + event[1:] for event in codex_harness.HOOK_EVENTS}
+               and hook.get("trustStatus") == "trusted" and is_hook(hook.get("command"), name)}
+    expected = {event[0].lower() + event[1:] for event in events}
     count = len(trusted & expected)
     if count != len(expected):
-        return "bad", f"Codex humanize, подтверждено {count} из {len(expected)} хуков. Проверь {CODEX_SETUP} и /hooks."
-    return "ok", f"Codex humanize, подтверждено {count} из {len(expected)} хуков"
+        return "bad", f"{label}, подтверждено {count} из {len(expected)} хуков. Проверь {CODEX_SETUP} и /hooks."
+    return "ok", f"{label}, подтверждено {count} из {len(expected)} хуков"
 
 
 def check_codex():
@@ -203,7 +203,13 @@ def check_codex():
         with codex_harness.app_server(codex, cwd, experimental=True) as request:
             config = request("config/read", {"cwd": cwd})["config"]
             rows.append(check_codex_mcp(config))
-            rows.append(check_codex_hooks(request, cwd))
+            try:
+                hooks = request("hooks/list", {"cwds": [cwd]})["data"][0]["hooks"]
+            except (OSError, ValueError, KeyError, IndexError):
+                hooks = None
+            rows.append(check_codex_hooks(hooks))
+            if read_config().get("notify", "on") != "off":
+                rows.append(check_codex_hooks(hooks, "notify-hook"))
             skills = request("skills/list", {"cwds": [cwd]})["data"]
     except (OSError, ValueError, KeyError, TypeError):
         return rows + [("bad", "Codex App Server не вернул данные установки.")]

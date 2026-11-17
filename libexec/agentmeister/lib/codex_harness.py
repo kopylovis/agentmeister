@@ -15,6 +15,8 @@ from mnrhlib import CM, HOME, ROOT, find_project, hook_command, is_hook, prompts
 
 
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop")
+NOTIFY_EVENTS = ("UserPromptSubmit", "PermissionRequest", "Stop")
+HOOK_COMMANDS = {"humanize-hook": HOOK_EVENTS, "notify-hook": NOTIFY_EVENTS}
 MCP = "claudemeister"
 MCP_ARGS = ["--harness", "codex", "mcp"]
 SKILL_OWNER = "<!-- Managed by agentmeister. -->"
@@ -126,11 +128,15 @@ def hooks_path():
 
 
 def configured_humanize_hooks():
+    return configured_hooks("humanize-hook")
+
+
+def configured_hooks(name):
     try:
         hooks = json.loads(hooks_path().read_text(encoding="utf-8")).get("hooks", {})
-        return sum(any(handler.get("type") == "command" and is_hook(handler.get("command"), "humanize-hook")
+        return sum(any(handler.get("type") == "command" and is_hook(handler.get("command"), name)
                        for group in hooks.get(event, []) if not group.get("matcher")
-                       for handler in group["hooks"]) for event in HOOK_EVENTS)
+                       for handler in group["hooks"]) for event in HOOK_COMMANDS[name])
     except FileNotFoundError:
         return 0
     except (OSError, ValueError, AttributeError, KeyError, TypeError):
@@ -146,18 +152,19 @@ def configure_hooks(remove):
     if not isinstance(data, dict) or not isinstance(data.get("hooks", {}), dict):
         raise ValueError(f"{path} has an invalid hooks structure")
     hooks = data.setdefault("hooks", {})
-    command = hook_command("humanize-hook --codex")
     changed = False
-    for event in HOOK_EVENTS:
+    for event in dict.fromkeys(HOOK_EVENTS + NOTIFY_EVENTS):
+        commands = [name for name, events in HOOK_COMMANDS.items() if event in events]
         groups = hooks.get(event, [])
         if not isinstance(groups, list) or any(not isinstance(g, dict) or not isinstance(g.get("hooks"), list)
                                                for g in groups):
             raise ValueError(f"{path} has invalid {event} hooks")
-        existing = False
+        existing = set()
         for group in groups[:]:
             for handler in group["hooks"][:]:
                 cmd = handler.get("command", "") if isinstance(handler, dict) else ""
-                if not isinstance(cmd, str) or not is_hook(cmd, "humanize-hook"):
+                name = next((n for n in commands if isinstance(cmd, str) and is_hook(cmd, n)), None)
+                if name is None:
                     continue
                 if remove and cmd.split()[-1:] == ["--codex"]:
                     group["hooks"].remove(handler)
@@ -165,13 +172,18 @@ def configure_hooks(remove):
                         groups.remove(group)
                     changed = True
                 elif not group.get("matcher"):
-                    existing = True
-        if not remove and not existing:
-            handler = {"type": "command", "command": command}
-            if event != "Stop":
-                handler["additionalContextLimit"] = 0
-            groups.append({"hooks": [handler]})
-            changed = True
+                    existing.add(name)
+        if not remove:
+            for name in commands:
+                if name in existing:
+                    continue
+                handler = {"type": "command", "command": hook_command(f"{name} --codex")}
+                if name == "humanize-hook" and event != "Stop":
+                    handler["additionalContextLimit"] = 0
+                if name == "notify-hook" and event != "UserPromptSubmit":
+                    handler.update({"async": True, "timeout": 60})
+                groups.append({"hooks": [handler]})
+                changed = True
         if groups:
             hooks[event] = groups
         elif event in hooks:
@@ -261,8 +273,8 @@ def setup(codex, argv):
         subprocess.run([codex, "mcp", "add", MCP, "--", CM] + MCP_ARGS, check=True)
     configure_skill(remove)
     if not remove:
-        print(tr("Хуки humanize и MCP настроены. Подтверди новые хуки в Codex через /hooks.",
-                 "Configured humanize hooks and MCP. Trust the new hooks in Codex with /hooks."))
+        print(tr("Хуки humanize и notify, MCP настроены. Подтверди новые хуки в Codex через /hooks.",
+                 "Configured humanize and notify hooks and MCP. Trust the new hooks in Codex with /hooks."))
         configure_footer()
     return 0
 
