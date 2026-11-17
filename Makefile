@@ -29,8 +29,8 @@ test:
 	@./bin/agentmeister --version | grep -qx "$$(cat VERSION)"
 	@./bin/agentmeister --harness codex --help | grep -q 'agentmeister'
 	@/usr/bin/python3 -m unittest discover -s tests -q 2>&1 | tail -1 | grep -qx OK || /usr/bin/python3 -m unittest discover -s tests
-	@bash -n libexec/claudemeister/claude.sh
-	@for f in libexec/claudemeister/*.py libexec/claudemeister/lib/*.py; do /usr/bin/python3 -m py_compile "$$f" || exit 1; done
+	@bash -n libexec/agentmeister/claude.sh
+	@for f in libexec/agentmeister/*.py libexec/agentmeister/lib/*.py; do /usr/bin/python3 -m py_compile "$$f" || exit 1; done
 	@./bin/claudemeister --version | grep -qx "$$(cat VERSION)"
 	@./bin/agentmeister help | grep -q 'agentmeister setup'
 	@printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/claudemeister mcp | grep -q open_claude
@@ -50,8 +50,8 @@ test:
 	@./bin/claudemeister setup -h | grep -q -- '--country'
 	@./bin/claudemeister doctor -h | grep -q 'проверить установку'
 	@./bin/claudemeister ps -h | grep -q restore
-	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/claudemeister/lib/claude_setup.py pending | grep -q '^fresh commands .*proxy promptsill$$'
-	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/claudemeister/lib/claude_setup.py check </dev/null | wc -c | grep -q '^ *0$$'
+	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/agentmeister/lib/claude_setup.py pending | grep -q '^fresh commands .*proxy promptsill$$'
+	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/agentmeister/lib/claude_setup.py check </dev/null | wc -c | grep -q '^ *0$$'
 	@./bin/claudemeister buildlog -h | grep -q PostToolUse
 	@echo junk | ./bin/claudemeister buildlog-hook | wc -c | grep -q '^ *0$$'
 	@echo '{"tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{"stdout":"x"}}' | ./bin/claudemeister buildlog-hook | wc -c | grep -q '^ *0$$'

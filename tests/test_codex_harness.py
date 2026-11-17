@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "libexec" / "claudemeister" / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "libexec" / "agentmeister" / "lib"))
 import codex_harness
 import codex_sessions
 import open_flow
