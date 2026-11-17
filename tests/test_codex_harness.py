@@ -13,6 +13,25 @@ import open_flow
 
 
 class CodexHarness(unittest.TestCase):
+    def test_skill_setup_keeps_a_user_owned_skill(self):
+        with tempfile.TemporaryDirectory() as home, patch.object(codex_harness, "HOME", home):
+            path = Path(home) / ".agents" / "skills" / "agentmeister" / "SKILL.md"
+            codex_harness.configure_skill(False)
+            installed = path.read_text()
+            self.assertIn(codex_harness.SKILL_OWNER, installed)
+            codex_harness.configure_skill(False)
+            self.assertEqual(path.read_text(), installed)
+            path.write_text(codex_harness.SKILL_OWNER + "\nold version")
+            codex_harness.configure_skill(False)
+            self.assertEqual(path.read_text(), installed)
+            codex_harness.configure_skill(True)
+            self.assertFalse(path.exists())
+
+            path.write_text("My own skill")
+            codex_harness.configure_skill(False)
+            codex_harness.configure_skill(True)
+            self.assertEqual(path.read_text(), "My own skill")
+
     def test_resume_command_preserves_project_and_launch_options(self):
         sid = "11111111-2222-4333-8444-555555555555"
         state = {"dir": "/project path", "sid": sid, "mode": "normal", "net": "direct"}

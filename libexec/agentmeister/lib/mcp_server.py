@@ -136,7 +136,7 @@ READ_ONLY = [t["name"] for t in EXTRA_TOOLS if (t.get("annotations") or {}).get(
 
 def tools():
     if os.environ.get("MNRH_MCP_HARNESS") == "codex":
-        return [gradle_deps.TOOL] + mnrh_todo.TOOLS
+        return [gradle_deps.TOOL] + mnrh_todo.TOOLS + release_notes.TOOLS
     return [TOOL, FORGET_TOOL, FRESH_TOOL, SLIM_TOOL, claude_open.TOOL] + EXTRA_TOOLS
 
 
