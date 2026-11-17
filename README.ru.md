@@ -67,11 +67,12 @@ agentmeister
 Если знаешь ID сессии, допиши после проекта `-- resume <id>`.
 
 `agentmeister --harness codex setup` подключает хуки humanize и инструменты MCP для задач проекта и проверки
-зависимостей Gradle. Новые хуки нужно подтвердить в Codex через `/hooks`. Настройка `agentmeister humanize on|off`
-действует для обоих агентов. `agentmeister --harness codex setup --remove` убирает интеграцию с Codex.
+зависимостей Gradle. С promptsill 0.8.0 и новее настройка также включает строку с лимитами и контекстом в Codex.
+Новые хуки нужно подтвердить через `/hooks`. Настройка `agentmeister humanize on|off` действует для обоих агентов.
+`agentmeister --harness codex setup --remove` убирает хуки и регистрацию MCP.
 
 `agentmeister --harness codex statusline` вызывает `promptsill codex`, если команда есть в установленной версии
-promptsill. Результат выводится в терминал. Поля под строкой ввода настраиваются через `/statusline` в самом Codex.
+promptsill. Результат выводится в терминал. Поля под строкой ввода меняются через `/statusline` в Codex.
 
 ### Claude Code
 
