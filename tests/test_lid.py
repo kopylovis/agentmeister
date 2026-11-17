@@ -31,7 +31,7 @@ class Lid(unittest.TestCase):
         lid.SUDOERS = "/nonexistent-cm/sudoers.d/mnrh-pmset"
         self.assertFalse(lid.ready())
         self.assertFalse(lid.keep())
-        self.assertIn("claudemeister lid setup", lid.status_lines()[0])
+        self.assertIn("agentmeister lid setup", lid.status_lines()[0])
 
     def test_disabled_reads_pmset(self):
         lid.run = lambda cmd, **kw: " SleepDisabled\t\t1\n hibernatemode 3\n"

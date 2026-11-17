@@ -1,9 +1,9 @@
-"""claudemeister lid: Mac не засыпает от закрытой крышки, пока идут caffeinate-сессии Claude.
+"""agentmeister lid: Mac не засыпает от закрытой крышки, пока идут caffeinate-сессии Claude.
 
 caffeinate -is держит Mac от простоя, а от сети и с закрытой крышкой. На батарее крышку
 перебивает только pmset disablesleep 1: его держит сторож, пока жива хоть одна caffeinate-сессия
 Claude, и снимает через GRACE секунд после последней или когда батарея садится до LOW_BATTERY.
-pmset нужен root: claudemeister lid setup ставит правило sudoers ровно на две команды.
+pmset нужен root: agentmeister lid setup ставит правило sudoers ровно на две команды.
 
 Перенесено из mnrh sleep lid. Правило, pid-файл и журнал те же, что у mnrh: уже настроенное правило
 подхватывается, и при обоих установленных сторож все равно один.
@@ -114,7 +114,7 @@ def watch():
                     held = want
                     log("держу: крышка не усыпляет" if want else "отпустил")
                 else:
-                    log("sudo -n pmset не сработал: claudemeister lid setup")
+                    log("sudo -n pmset не сработал: agentmeister lid setup")
                     break
             time.sleep(POLL)
     finally:
@@ -128,7 +128,7 @@ def watch():
 
 
 def switched_on():
-    """Не выключено ли командой claudemeister lid off (строка lid=off в конфиге)."""
+    """Не выключено ли командой agentmeister lid off (строка lid=off в конфиге)."""
     return read_config().get("lid", "on") != "off"
 
 
@@ -184,16 +184,16 @@ def remove():
 def status_lines():
     lines = []
     if not switched_on():
-        lines.append("Крышка: выключено, закрытая крышка усыпит Mac и в caffeinate-сессии. Включить: claudemeister lid on")
+        lines.append("Крышка: выключено, закрытая крышка усыпит Mac и в caffeinate-сессии. Включить: agentmeister lid on")
         return lines
     if not ready():
         lines.append("Крышка: закрытая крышка на батарее усыпит Mac и в caffeinate-сессии. "
-                     "Чтобы не усыпляла: claudemeister lid setup")
+                     "Чтобы не усыпляла: agentmeister lid setup")
         return lines
     n = len(sessions())
     if disabled():
         lines.append(f"Крышка: Mac не уснёт и с закрытой крышкой, caffeinate-сессий Claude {n}"
-                     + (f", сторож pid {watcher_pid()}" if watcher_pid() else ", сторожа нет: claudemeister lid release"))
+                     + (f", сторож pid {watcher_pid()}" if watcher_pid() else ", сторожа нет: agentmeister lid release"))
     else:
         lines.append("Крышка: правило есть, сейчас не держу" + (f" (сессий {n}, сторож их подхватит)" if n else ""))
     return lines
@@ -202,12 +202,12 @@ def status_lines():
 def main(args):
     cmd = args[0] if args else "status"
     if cmd in ("-h", "--help"):
-        print("claudemeister lid           держит ли сейчас крышка Mac от сна")
-        print("claudemeister lid setup     правило sudoers для pmset: caffeinate-сессии Claude не уснут и с закрытой")
+        print("agentmeister lid           держит ли сейчас крышка Mac от сна")
+        print("agentmeister lid setup     правило sudoers для pmset: caffeinate-сессии Claude не уснут и с закрытой")
         print(f"                            крышкой на батарее (до {LOW_BATTERY}% заряда)")
-        print("claudemeister lid on | off  включить или выключить (on без правила сначала поставит его)")
-        print("claudemeister lid release   отпустить сейчас, до следующей caffeinate-сессии")
-        print("claudemeister lid remove    выключить и убрать правило")
+        print("agentmeister lid on | off  включить или выключить (on без правила сначала поставит его)")
+        print("agentmeister lid release   отпустить сейчас, до следующей caffeinate-сессии")
+        print("agentmeister lid remove    выключить и убрать правило")
         return 0
     if cmd == "watch":
         watch()
@@ -227,7 +227,7 @@ def main(args):
     elif cmd == "off":
         write_config(lid="off")
         release()
-        print("Выключено: крышка снова усыпляет Mac. Правило sudoers осталось, claudemeister lid on вернет режим.")
+        print("Выключено: крышка снова усыпляет Mac. Правило sudoers осталось, agentmeister lid on вернет режим.")
     elif cmd == "release":
         release()
         print("Отпустил: крышка снова усыпляет Mac, до следующей caffeinate-сессии.")
@@ -236,7 +236,7 @@ def main(args):
         if os.path.exists(LOG):
             print(f"Журнал сторожа: {tilde(LOG)}")
     else:
-        print(f"claudemeister lid: не знаю {cmd}, см. claudemeister lid -h", file=sys.stderr)
+        print(f"agentmeister lid: не знаю {cmd}, см. agentmeister lid -h", file=sys.stderr)
         return 2
     return 0
 

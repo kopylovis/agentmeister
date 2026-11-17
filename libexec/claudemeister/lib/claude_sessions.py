@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""claudemeister sessions: список, меню, продолжить, перенести, удалить, уборка; slim — в session_slim."""
+"""agentmeister sessions: список, меню, продолжить, перенести, удалить, уборка; slim — в session_slim."""
 import collections
 import os
 import shutil
@@ -16,16 +16,16 @@ CLAUDE_BIN = os.environ.get("MNRH_CLAUDE_BIN", "claude")
 
 
 def usage():
-    print("claudemeister sessions     сохранённые сессии: выбрать стрелками, продолжить, перенести, удалить")
-    print("claudemeister sessions -l  просто список")
-    print("claudemeister sessions resume <id> [-n] продолжить в её папке (по умолчанию через caffeinate, -n обычная)")
-    print("claudemeister sessions mv <id> <папка>  перенести в другую папку: путь, имя проекта из папки проектов или root")
-    print("claudemeister sessions rm <id>... [-y]  удалить вместе с историей запросов этой сессии")
-    print("claudemeister sessions clean [-y]       битые ссылки, сессии без единого ответа, папки удалённых проектов")
-    print("claudemeister sessions search <слова>   поиск по всем сессиям; -p <проект>, -d <дней>, -r error — по ошибкам")
-    print("claudemeister sessions show <id> [N]    прочитать сессию с сообщения N (из search), -N — с конца")
-    print("claudemeister sessions slim             что даст сжатие старых частей сессий (скриншоты, длинные выводы)")
-    print("claudemeister sessions slim <id> [-y]   сжать; --copy — сжатую копию с новым id для проверки;")
+    print("agentmeister sessions     сохранённые сессии: выбрать стрелками, продолжить, перенести, удалить")
+    print("agentmeister sessions -l  просто список")
+    print("agentmeister sessions resume <id> [-n] продолжить в её папке (по умолчанию через caffeinate, -n обычная)")
+    print("agentmeister sessions mv <id> <папка>  перенести в другую папку: путь, имя проекта из папки проектов или root")
+    print("agentmeister sessions rm <id>... [-y]  удалить вместе с историей запросов этой сессии")
+    print("agentmeister sessions clean [-y]       битые ссылки, сессии без единого ответа, папки удалённых проектов")
+    print("agentmeister sessions search <слова>   поиск по всем сессиям; -p <проект>, -d <дней>, -r error — по ошибкам")
+    print("agentmeister sessions show <id> [N]    прочитать сессию с сообщения N (из search), -N — с конца")
+    print("agentmeister sessions slim             что даст сжатие старых частей сессий (скриншоты, длинные выводы)")
+    print("agentmeister sessions slim <id> [-y]   сжать; --copy — сжатую копию с новым id для проверки;")
     print("                                      --undo — вернуть оригинал; --keep N — не трогать N последних")
     print("                                      отрезков между /compact (по умолчанию 2)")
     print()
@@ -72,14 +72,14 @@ def resolve_dest(arg):
     if len(names) == 1:
         return names[0]
     if names:
-        sys.exit(f"claudemeister sessions: «{arg}» подходит к нескольким проектам: "
+        sys.exit(f"agentmeister sessions: «{arg}» подходит к нескольким проектам: "
                  + " ".join(os.path.basename(p) for p in names))
-    sys.exit(f"claudemeister sessions: папки «{arg}» нет")
+    sys.exit(f"agentmeister sessions: папки «{arg}» нет")
 
 
 def move(s, dest):
     if s["running"]:
-        sys.exit("claudemeister sessions: сессия сейчас открыта, сначала закрой её")
+        sys.exit("agentmeister sessions: сессия сейчас открыта, сначала закрой её")
     dest = os.path.abspath(dest)
     tdir = os.path.join(PROJECTS, encode(dest))
     if tdir == s["pdir"]:
@@ -87,7 +87,7 @@ def move(s, dest):
         return
     target = os.path.join(tdir, s["id"] + ".jsonl")
     if os.path.lexists(target):
-        sys.exit(f"claudemeister sessions: в {tilde(tdir)} уже есть сессия с таким id")
+        sys.exit(f"agentmeister sessions: в {tilde(tdir)} уже есть сессия с таким id")
     os.makedirs(tdir, exist_ok=True)
     olds = {s["cwd"], s["started_in"]} - {None}
     changed = 0
@@ -112,10 +112,10 @@ def move(s, dest):
 
 def resume(s, mode):
     if s["running"]:
-        sys.exit("claudemeister sessions: сессия уже открыта в другом окне")
+        sys.exit("agentmeister sessions: сессия уже открыта в другом окне")
     if not os.path.isdir(s["cwd"]):
-        sys.exit(f"claudemeister sessions: папки {tilde(s['cwd'])} больше нет, перенеси сессию: "
-                 f"claudemeister sessions mv {s['id'][:8]} <папка>")
+        sys.exit(f"agentmeister sessions: папки {tilde(s['cwd'])} больше нет, перенеси сессию: "
+                 f"agentmeister sessions mv {s['id'][:8]} <папка>")
     os.chdir(s["cwd"])
     print(f"-> {tilde(s['cwd'])} · {mode} · {s['title'] or s['id']}")
     sys.stdout.flush()
@@ -125,7 +125,7 @@ def resume(s, mode):
     try:
         os.execvp(cmd[0], cmd)
     except OSError as e:
-        sys.exit(f"claudemeister sessions: не запустился {cmd[0]}: {e}")
+        sys.exit(f"agentmeister sessions: не запустился {cmd[0]}: {e}")
 
 
 def clean(assume_yes):
@@ -418,15 +418,15 @@ def main():
             i += 1
         days = opts.get("-d")
         if days is not None and not days.isdigit():
-            sys.exit("claudemeister sessions: после -d нужно число дней")
+            sys.exit("agentmeister sessions: после -d нужно число дней")
         roles = opts.get("-r", "").split(",") if opts.get("-r") else None
         if roles and not set(roles) <= set(claude_search.ROLES):
-            sys.exit("claudemeister sessions: после -r одна из ролей: " + ", ".join(claude_search.ROLES))
+            sys.exit("agentmeister sessions: после -r одна из ролей: " + ", ".join(claude_search.ROLES))
         text, err = claude_search.search(" ".join(rest), project=opts.get("-p"), days=int(days) if days else None,
                                          roles=roles,
                                          exclude=[os.environ["CLAUDE_CODE_SESSION_ID"]]
                                          if os.environ.get("CLAUDE_CODE_SESSION_ID") else None)
-        print(text.replace("session_read с id и at=<номер после #>", "claudemeister sessions show <id> <номер после #>"))
+        print(text.replace("session_read с id и at=<номер после #>", "agentmeister sessions show <id> <номер после #>"))
         return 1 if err else 0
     elif cmd == "show" and len(args) in (2, 3):
         at = None
@@ -434,7 +434,7 @@ def main():
             try:
                 at = int(args[2].lstrip("#"))
             except ValueError:
-                sys.exit("claudemeister sessions: номер сообщения — число, например 120 или -10")
+                sys.exit("agentmeister sessions: номер сообщения — число, например 120 или -10")
         text, err = claude_search.read(args[1], at=at)
         print(text)
         return 1 if err else 0
