@@ -44,14 +44,14 @@ def write_json(path, data, mode=None, newline=False, **dump):
 
 
 def hook_command(sub):
-    return f"{shlex.quote(CM)} {sub}"
+    agentmeister = shutil.which("agentmeister") or os.path.join(ROOT, "bin", "agentmeister")
+    return f"{shlex.quote(agentmeister)} {sub}"
 
 
 def is_hook(command, sub):
-    """Хук claudemeister <sub> или старый, из mnrh: mnrh claude <sub>."""
-    # после имени может стоять кавычка: shlex.quote берет в кавычки путь с пробелом
-    # только программа с именем claudemeister или mnrh claude; ~/bin/my-claude notice чужой, его не трогаем
-    return re.search(rf"(?:\bmnrh['\"]?\s+claude|(?:^|[/\s'\"])claudemeister)['\"]?\s+{re.escape(sub)}(?:\s|$)",
+    """Наш хук agentmeister, claudemeister или mnrh claude."""
+    return re.search(rf"(?:\bmnrh['\"]?\s+claude|(?:^|[/\s'\"])(?:agentmeister|claudemeister))"
+                     rf"['\"]?\s+{re.escape(sub)}(?:\s|$)",
                      command or "") is not None
 
 
