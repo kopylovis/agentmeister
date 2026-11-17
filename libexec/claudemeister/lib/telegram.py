@@ -1,4 +1,3 @@
-import getpass
 import html
 import json
 import os
@@ -11,6 +10,7 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from menu import secret
 from mnrhlib import read_config, write_config
 
 SERVICE = "mnrh-telegram"
@@ -124,7 +124,7 @@ def send(title, subtitle, body):
 
 def read_token():
     if sys.stdin.isatty():
-        return getpass.getpass("Токен бота (при вводе не виден): ").strip()
+        return secret("Токен бота (при вводе не виден): ").strip()
     clip = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()
     if TOKEN_RE.match(clip):
         subprocess.run(["pbcopy"], input="", text=True)
