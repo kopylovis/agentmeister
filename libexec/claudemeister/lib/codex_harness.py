@@ -78,9 +78,25 @@ def launch(codex, args, passthrough):
     os.execvp(cmd[0], cmd)
 
 
-def configure_hooks(remove):
+def hooks_path():
     home = Path(os.environ.get("CODEX_HOME") or Path(HOME) / ".codex").expanduser()
-    path = home / "hooks.json"
+    return home / "hooks.json"
+
+
+def configured_humanize_hooks():
+    try:
+        hooks = json.loads(hooks_path().read_text(encoding="utf-8")).get("hooks", {})
+        return sum(any(handler.get("type") == "command" and is_hook(handler.get("command"), "humanize-hook")
+                       for group in hooks.get(event, []) if not group.get("matcher")
+                       for handler in group["hooks"]) for event in HOOK_EVENTS)
+    except FileNotFoundError:
+        return 0
+    except (OSError, ValueError, AttributeError, KeyError, TypeError):
+        return None
+
+
+def configure_hooks(remove):
+    path = hooks_path()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:

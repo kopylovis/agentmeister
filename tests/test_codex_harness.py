@@ -51,6 +51,7 @@ class CodexHarness(unittest.TestCase):
             custom = {"hooks": [{"type": "command", "command": "/usr/bin/true"}]}
             original = {"hooks": {"UserPromptSubmit": [custom]}}
             path.write_text(json.dumps(original))
+            self.assertEqual(codex_harness.configured_humanize_hooks(), 0)
             codex_harness.configure_hooks(False)
             installed = path.read_text()
             codex_harness.configure_hooks(False)
@@ -58,5 +59,6 @@ class CodexHarness(unittest.TestCase):
             groups = json.loads(installed)["hooks"]
             self.assertEqual(groups["UserPromptSubmit"][0], custom)
             self.assertEqual(set(groups), set(codex_harness.HOOK_EVENTS))
+            self.assertEqual(codex_harness.configured_humanize_hooks(), len(codex_harness.HOOK_EVENTS))
             codex_harness.configure_hooks(True)
             self.assertEqual(json.loads(path.read_text()), original)
