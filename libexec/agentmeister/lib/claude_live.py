@@ -7,11 +7,12 @@ caffeinate, прокси и флаги запуска. SessionEnd (хук sessio
 """
 import json
 import os
+import shutil
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, CLAUDE_HOME, CM, OK, WARN, confirm, paint, tilde, write_json  # noqa: E402
+from mnrhlib import CACHE, CLAUDE_HOME, CM, OK, WARN, confirm, paint, run, tilde, tr, write_json  # noqa: E402
 
 OPEN = os.path.join(CACHE, "open")
 KEEP_DAYS = 30
@@ -151,6 +152,22 @@ def ps_cmd(args):
     return 0
 
 
+def status_cmd():
+    from claude_proc import CLAUDE_BIN
+
+    binary = shutil.which(CLAUDE_BIN)
+    if not binary:
+        print(tr("Claude Code отсутствует в PATH.", "Claude Code is missing from PATH."))
+        return 1
+    version = run([binary, "--version"], timeout=5).strip().split()
+    print("Claude Code" + (f" {version[0]}" if version else ""))
+    sessions = live()
+    print(tr(f"Открытых сессий {len(sessions)}", f"Open sessions {len(sessions)}"))
+    for session in sessions:
+        print(row(session))
+    return 0
+
+
 def lost():
     """Записи сессий, которые были открыты, но закрылись не сами: процесса нет, переписка на месте."""
     from session_store import by_id
@@ -208,6 +225,11 @@ def restore_cmd(args):
 
 def main(argv):
     cmd, args = (argv[0] if argv else "ps"), argv[1:]
+    if cmd == "status":
+        if args in (["-h"], ["--help"]):
+            print("agentmeister --harness claude status")
+            return 0
+        return status_cmd()
     if cmd in ("-h", "--help", "help") or "-h" in args:
         print(USAGE)
         return 0
