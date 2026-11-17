@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import shutil
@@ -76,6 +77,33 @@ class NativePush(unittest.TestCase):
         # «Готово» и долгое ожидание Claude присылает, только если сам решит: их не отключаем
         self.assertFalse(self.native(rc, True, notification_type="idle_prompt"))
         self.assertFalse(self.native(rc, True, hook_event_name="Stop"))
+
+
+class CodexNotify(unittest.TestCase):
+    def test_codex_cli_can_notify_when_daemon_has_no_terminal(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(claude_notify, "STATE", tmp), \
+                mock.patch.object(claude_notify, "enabled", return_value=True), \
+                mock.patch.object(claude_notify, "after", return_value=0), \
+                mock.patch.object(claude_notify, "codex_terminal", return_value=None), \
+                mock.patch.object(claude_notify, "ensure_app", return_value=True), \
+                mock.patch.object(claude_notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(claude_notify.ntfy_alert, "configured", return_value=False), \
+                mock.patch.object(claude_notify, "post") as post:
+            path = os.path.join(tmp, "rollout.jsonl")
+            with open(path, "w") as f:
+                json.dump({"type": "session_meta", "payload": {"originator": "codex-tui"}}, f)
+            payload = {"session_id": "a812d4fa-e535-463a-8369-f1433fa25652", "cwd": "/project",
+                       "transcript_path": path}
+            for event, extra in (("UserPromptSubmit", {}), ("PermissionRequest", {"tool_name": "Bash"}),
+                                 ("Stop", {"last_assistant_message": "Проверки прошли."})):
+                data = dict(payload, hook_event_name=event, **extra)
+                with mock.patch.object(claude_notify.sys, "stdin", io.StringIO(json.dumps(data))):
+                    self.assertEqual(claude_notify.hook(codex=True), 0)
+            approval, done = [call.args for call in post.call_args_list]
+            self.assertEqual(approval[:3], ("project: Нужно разрешение", "", "Bash"))
+            self.assertIn("Готово", done[0])
+            self.assertEqual(done[2], "Проверки прошли.")
+            self.assertIsNone(done[-1])
 
 
 if __name__ == "__main__":

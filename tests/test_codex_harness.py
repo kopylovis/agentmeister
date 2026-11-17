@@ -77,7 +77,8 @@ class CodexHarness(unittest.TestCase):
             self.assertEqual(path.read_text(), installed)
             groups = json.loads(installed)["hooks"]
             self.assertEqual(groups["UserPromptSubmit"][0], custom)
-            self.assertEqual(set(groups), set(codex_harness.HOOK_EVENTS))
+            self.assertEqual(set(groups), set(codex_harness.HOOK_EVENTS + codex_harness.NOTIFY_EVENTS))
             self.assertEqual(codex_harness.configured_humanize_hooks(), len(codex_harness.HOOK_EVENTS))
+            self.assertEqual(codex_harness.configured_hooks("notify-hook"), len(codex_harness.NOTIFY_EVENTS))
             codex_harness.configure_hooks(True)
             self.assertEqual(json.loads(path.read_text()), original)
