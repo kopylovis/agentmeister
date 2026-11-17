@@ -22,7 +22,12 @@ fi
 case "${1:-}" in
   --harness)
     case "${2:-}" in
-      claude) shift 2; exec "$ROOT/bin/agentmeister" "$@" ;;
+      claude)
+        shift 2
+        if [ "${1:-}" = status ]; then
+          exec /usr/bin/python3 "$LIBEXEC/lib/claude_live.py" "$@"
+        fi
+        exec "$ROOT/bin/agentmeister" "$@" ;;
       codex) shift 2; exec /usr/bin/python3 "$LIBEXEC/lib/codex_harness.py" "$@" ;;
       *) echo 'agentmeister: --harness требует claude или codex' >&2; exit 2 ;;
     esac ;;

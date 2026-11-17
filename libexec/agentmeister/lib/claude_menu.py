@@ -46,9 +46,20 @@ ITEMS = [
      "agentmeister usage --days N --project P.",
      "Tokens and active time per project and model for the last 7 days. Pick another range or project "
      "with agentmeister usage --days N --project P."),
+    (None, "", "Агенты", "Harness", "", ""),
+    ("--harness claude status", "📊", "Статус Claude Code", "Claude Code status",
+     "Версия Claude Code и состояние открытых сессий.", "Claude Code version and the state of open sessions."),
     ("--harness codex statusline", "📊", "Статус Codex", "Codex status",
      "Последние сохраненные лимиты и контекст Codex, данные проекта и Mac. Выводит promptsill.",
      "Show the latest saved Codex limits and context with project and Mac details from promptsill."),
+    ("setup", "🧰", "Настроить Claude Code", "Set up Claude Code",
+     "Поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh и MCP-сервер. "
+     "Прокси тоже настроит, если его еще нет.",
+     "Install /restart, /forget and the other commands, Claude Code hooks, the zsh hook and the "
+     "MCP server. Sets up the proxy too if it is missing."),
+    ("--harness codex setup", "🧰", "Настроить Codex", "Set up Codex",
+     "Подключить хуки, MCP и навык $agentmeister. С promptsill можно включить строку с лимитами.",
+     "Install hooks, MCP tools and the $agentmeister skill. With promptsill, set up the footer with rate limits."),
     (None, "", "Режимы, Enter переключает", "Modes, Enter switches", "", ""),
     ("mode humanize", "📝", "Без признаков нейросети", "No AI tells",
      "В начале каждой сессии Claude получает правила письма. Ответы, коммиты и документация выходят без "
@@ -89,22 +100,14 @@ ITEMS = [
      "Обновить mihomo через Homebrew и перезапустить его, если он запущен.",
      "Update mihomo with Homebrew and restart it if it is running."),
     (None, "", "Установка", "Install", "", ""),
-    ("setup", "🧰", "Настроить Claude Code", "Set up Claude Code",
-     "Поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh и MCP-сервер. "
-     "Прокси тоже настроит, если его еще нет.",
-     "Install /restart, /forget and the other commands, Claude Code hooks, the zsh hook and the "
-     "MCP server. Sets up the proxy too if it is missing."),
-    ("--harness codex setup", "🧰", "Настроить Codex", "Set up Codex",
-     "Подключить хуки humanize и MCP. Если установлен promptsill, включить строку с лимитами под полем ввода Codex.",
-     "Install the humanize hooks and MCP tools. If promptsill is installed, enable the Codex footer with rate limits."),
     ("mode alias", "🔤", "Короткое имя am", "Short name am",
      "Команда am открывает то же меню, что и agentmeister. "
      "Если имя am уже занято, ссылка не изменится.",
      "The am command opens the same menu as agentmeister. "
      "An existing command named am keeps its place."),
     ("doctor", "🔍", "Проверить установку", "Check the install",
-     "Проверить, что agentmeister в PATH, Claude Code найден, а хуки и MCP-сервер на месте.",
-     "Check that agentmeister is on PATH, Claude Code is found and the hooks and MCP server are in place."),
+     "Проверить установку agentmeister и настройки интеграции с Claude Code и Codex.",
+     "Check the Agentmeister install and its integrations with Claude Code and Codex."),
     ("help", "❓", "Справка", "Help",
      "Все команды agentmeister с флагами.",
      "Every agentmeister command with its flags."),
