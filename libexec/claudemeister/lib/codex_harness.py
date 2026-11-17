@@ -64,8 +64,7 @@ def launch(codex, args, passthrough):
         if state is None:
             return 130
         cwd, mode, net = state["dir"], state["mode"], state["net"]
-        if state["sid"] == "resume":
-            passthrough = ["resume"]
+        passthrough = open_flow.codex_resume_args(state["sid"])
     cmd = [codex] + passthrough
     if mode == "caffeinate":
         cmd = ["caffeinate", "-is"] + cmd
