@@ -20,6 +20,7 @@ help() {
   claudemeister                     меню (MNRH_NO_MENU=1 сразу к выбору проекта)
   claudemeister open                выбрать проект в папке проектов
   claudemeister <имя>               сразу в проекте (начала имени хватит) или в папке по пути
+  claudemeister --harness codex     запустить Codex или настроить его через setup
   claudemeister root                в домашней папке
   claudemeister ... -k | -n         caffeinate или обычная сессия, без вопроса
   claudemeister ... -x | -d         через свой VPS или напрямую, без вопроса
