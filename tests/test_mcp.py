@@ -40,7 +40,7 @@ class Reload(unittest.TestCase):
         self.send(request(1, "initialize"))
         self.assertTrue(self.read()["result"]["capabilities"]["tools"]["listChanged"])
         pid = self.proc.pid
-        lib = os.path.join(self.copy, "libexec", "claudemeister", "lib", "mnrhlib.py")
+        lib = os.path.join(self.copy, "libexec", "agentmeister", "lib", "mnrhlib.py")
         later = time.time() + 5
         os.utime(lib, (later, later))
         # два запроса одним куском: оба должны дойти до нового процесса

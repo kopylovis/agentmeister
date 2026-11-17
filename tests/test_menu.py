@@ -10,7 +10,7 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 os.environ["MNRH_ICONS"] = "emoji"  # раскладку проверяем на emoji, картинки отдельно в Icons
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                                "libexec", "claudemeister", "lib"))
+                                "libexec", "agentmeister", "lib"))
 import mnrhlib  # noqa: E402
 import claude_menu as m  # noqa: E402
 import menu  # noqa: E402
