@@ -68,11 +68,12 @@ in the selected folder before starting Codex. From the shell, use `agentmeister 
 To resume a known session, pass `-- resume <id>` after the project.
 
 `agentmeister --harness codex setup` installs the humanize hooks and registers the MCP tools for project tasks
-and Gradle dependencies. Review the hooks with `/hooks` in Codex. The hooks follow the shared
-`agentmeister humanize on|off` setting. Use `agentmeister --harness codex setup --remove` to remove the integration.
+and Gradle dependencies. With promptsill 0.8.0 or newer, setup also enables the live Codex footer with rate limits
+and context. Review the hooks with `/hooks` in Codex. The hooks follow the shared `agentmeister humanize on|off`
+setting. `agentmeister --harness codex setup --remove` removes the hooks and MCP registration.
 
 `agentmeister --harness codex statusline` runs `promptsill codex` if your version of promptsill includes that command.
-It prints a snapshot in the terminal. Use `/statusline` in Codex to set the fields under its prompt.
+It prints a snapshot in the terminal. Use `/statusline` in Codex to change its live footer.
 
 ### Claude Code
 
