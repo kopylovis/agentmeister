@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import open_flow
@@ -14,6 +15,7 @@ from mnrhlib import CM, HOME, ROOT, find_project, hook_command, is_hook, prompts
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop")
 MCP = "claudemeister"
 MCP_ARGS = ["--harness", "codex", "mcp"]
+SKILL_OWNER = "<!-- Managed by agentmeister. -->"
 
 
 def executable():
@@ -159,6 +161,39 @@ def configure_footer():
         print(result.stderr.strip() or "promptsill codex install failed", file=sys.stderr)
 
 
+def configure_skill(remove):
+    path = Path(HOME) / ".agents" / "skills" / "agentmeister" / "SKILL.md"
+    if path.parent.is_symlink() or path.is_symlink():
+        return
+    try:
+        current = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        current = None
+    if current is not None and SKILL_OWNER not in current.splitlines():
+        if not remove:
+            print(tr("Навык agentmeister уже есть. Сохранил существующий файл.",
+                     "The existing agentmeister skill was kept."))
+        return
+    if remove:
+        if current is not None:
+            path.unlink()
+        return
+
+    source = Path(ROOT) / "share" / "agentmeister" / "skills" / "agentmeister" / "SKILL.md"
+    text = source.read_text(encoding="utf-8")
+    if text != current:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as out:
+            temporary = Path(out.name)
+            try:
+                out.write(text)
+                out.close()
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
+    print(tr("Команды для Codex доступны через $agentmeister.", "Use $agentmeister for project commands in Codex."))
+
+
 def setup(codex, argv):
     parser = argparse.ArgumentParser(prog="agentmeister --harness codex setup")
     parser.add_argument("--remove", action="store_true")
@@ -184,6 +219,7 @@ def setup(codex, argv):
         subprocess.run([codex, "mcp", "remove", MCP], check=True)
     elif not remove and (not existing or migrate):
         subprocess.run([codex, "mcp", "add", MCP, "--", CM] + MCP_ARGS, check=True)
+    configure_skill(remove)
     if not remove:
         print(tr("Хуки humanize и MCP настроены. Подтверди новые хуки в Codex через /hooks.",
                  "Configured humanize hooks and MCP. Trust the new hooks in Codex with /hooks."))
