@@ -123,6 +123,26 @@ def configure_hooks(remove):
         write_json(str(path), data, mode=0o600, newline=True, indent=2, ensure_ascii=False)
 
 
+def configure_footer():
+    path = promptsill_path()
+    if not path:
+        print(tr("Строку состояния Codex настраивает promptsill. Установка через brew install kopylovis/tap/promptsill.",
+                 "Install promptsill with brew install kopylovis/tap/promptsill to set up the Codex footer."))
+        return
+    try:
+        result = subprocess.run([path, "codex", "install"], capture_output=True, text=True, timeout=8)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"promptsill: {error}", file=sys.stderr)
+        return
+    if result.returncode == 0:
+        print(result.stdout.strip())
+    elif result.returncode == 2:
+        print(tr("Для строки состояния Codex обнови promptsill до версии 0.8.0 или новее.",
+                 "Update promptsill to 0.8.0 or later to set up the Codex footer."), file=sys.stderr)
+    else:
+        print(result.stderr.strip() or "promptsill codex install failed", file=sys.stderr)
+
+
 def setup(codex, argv):
     parser = argparse.ArgumentParser(prog="agentmeister --harness codex setup")
     parser.add_argument("--remove", action="store_true")
@@ -151,6 +171,7 @@ def setup(codex, argv):
     if not remove:
         print(tr("Хуки humanize и MCP настроены. Подтверди новые хуки в Codex через /hooks.",
                  "Configured humanize hooks and MCP. Trust the new hooks in Codex with /hooks."))
+        configure_footer()
     return 0
 
 
