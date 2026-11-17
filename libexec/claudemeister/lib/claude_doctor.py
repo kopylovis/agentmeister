@@ -32,7 +32,8 @@ def version():
 
 
 def check_install():
-    where = "Homebrew" if "/Cellar/claudemeister/" in ROOT + "/" else f"из папки {tilde(ROOT)}"
+    where = "Homebrew" if any(f"/Cellar/{name}/" in ROOT + "/" for name in ("agentmeister", "claudemeister")) \
+        else f"из папки {tilde(ROOT)}"
     rows = [("ok", f"claudemeister {version()}, {where}")]
     if not shutil.which("claudemeister"):
         rows.append(("bad", "claudemeister нет в PATH, а команды и хуки вызывают его по имени"))

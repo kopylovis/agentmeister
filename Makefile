@@ -5,6 +5,10 @@ BIN := $(PREFIX)/bin
 
 install:
 	@mkdir -p "$(BIN)"
+	@if [ "$$(readlink "$(BIN)/agentmeister")" = "$(CURDIR)/bin/agentmeister" ] || \
+	    { [ ! -e "$(BIN)/agentmeister" ] && [ ! -L "$(BIN)/agentmeister" ]; }; then \
+		ln -sfn "$(CURDIR)/bin/agentmeister" "$(BIN)/agentmeister"; \
+	else echo "$(BIN)/agentmeister уже занят другой программой" >&2; exit 1; fi
 	@ln -sfn "$(CURDIR)/bin/claudemeister" "$(BIN)/claudemeister"
 	@echo "claudemeister -> $(BIN)/claudemeister (symlink на проект, правки работают сразу)"
 	@if [ ! -e "$(BIN)/cm" ] || [ "$$(readlink "$(BIN)/cm")" = "$(CURDIR)/bin/claudemeister" ]; then \
@@ -12,12 +16,15 @@ install:
 	else echo "$(BIN)/cm уже занят другой программой, короткое имя не поставлено"; fi
 
 uninstall:
+	@if [ "$$(readlink "$(BIN)/agentmeister")" = "$(CURDIR)/bin/agentmeister" ]; then rm -f "$(BIN)/agentmeister"; fi
 	@rm -f "$(BIN)/claudemeister"
 	@if [ "$$(readlink "$(BIN)/cm")" = "$(CURDIR)/bin/claudemeister" ]; then rm -f "$(BIN)/cm"; fi
-	@echo "claudemeister удалён из $(BIN)"
+	@echo "agentmeister удален из $(BIN)"
 
 test:
-	@bash -n bin/claudemeister
+	@bash -n bin/agentmeister
+	@./bin/agentmeister --version | grep -qx "$$(cat VERSION)"
+	@./bin/agentmeister --harness codex --help | grep -q 'agentmeister'
 	@/usr/bin/python3 -m unittest discover -s tests -q 2>&1 | tail -1 | grep -qx OK || /usr/bin/python3 -m unittest discover -s tests
 	@bash -n libexec/claudemeister/claude.sh
 	@for f in libexec/claudemeister/*.py libexec/claudemeister/lib/*.py; do /usr/bin/python3 -m py_compile "$$f" || exit 1; done
