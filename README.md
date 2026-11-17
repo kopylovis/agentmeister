@@ -1,13 +1,12 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="claudemeister icon"></p>
+<p align="center"><img src="docs/icon.png" width="128" alt="agentmeister icon"></p>
 
-<h1 align="center">claudemeister</h1>
+<h1 align="center">agentmeister</h1>
 
 <p align="center">English · <a href="README.ru.md">Русский</a></p>
 
-A toolkit around [Claude Code](https://code.claude.com) on macOS. It starts Claude in a project and lets you
-pick a saved session, restarts or slims the current session from inside Claude, sends single sessions through
-your own proxy server, guards secrets and asks before destructive commands, notifies you when Claude is waiting, and adds an MCP server for searching
-past sessions, a project backlog, parallel tasks, window screenshots and release notes.
+A macOS toolkit for starting [Claude Code](https://code.claude.com) or Codex in a project and resuming saved sessions.
+In Claude Code, you can restart or slim the current session, get notified when Claude is waiting and review risky
+commands before they run. Both agents can use the project backlog over MCP and run individual sessions through your proxy.
 
 The menu follows the macOS language, Russian or English. Other messages are in Russian for now.
 
@@ -56,24 +55,28 @@ claudemeister doctor         check the install
 ## Install
 
 ```bash
-brew install kopylovis/tap/claudemeister
-claudemeister setup
+brew install kopylovis/tap/agentmeister
+agentmeister
 ```
+
+`claudemeister` and `cm` still run the same command.
 
 ### Codex
 
 When both CLIs are installed, "Open a project" asks which agent to start. For Codex, "Resume session"
-opens Codex's own picker in the selected folder. From the shell, use `claudemeister --harness codex <project>`.
+opens Codex's own picker in the selected folder. From the shell, use `agentmeister --harness codex <project>`.
 To resume a known session, pass `-- resume <id>` after the project.
 
-`claudemeister --harness codex setup` installs the humanize hooks and registers the MCP tools for project tasks
+`agentmeister --harness codex setup` installs the humanize hooks and registers the MCP tools for project tasks
 and Gradle dependencies. Review the hooks with `/hooks` in Codex. The hooks follow the shared
-`claudemeister humanize on|off` setting. Use `claudemeister --harness codex setup --remove` to remove the integration.
+`agentmeister humanize on|off` setting. Use `agentmeister --harness codex setup --remove` to remove the integration.
 
-`claudemeister --harness codex statusline` runs `promptsill codex` if your version of promptsill includes that command.
+`agentmeister --harness codex statusline` runs `promptsill codex` if your version of promptsill includes that command.
 It prints a snapshot in the terminal. Use `/statusline` in Codex to set the fields under its prompt.
 
 ### Claude Code
+
+Run `agentmeister setup` to configure Claude Code.
 
 The formula also installs `cm`, a short name for `claudemeister`. `cm kcalm`, `cm ps` and `cm proxy` work the same.
 If `cm` is missing, `claudemeister alias on` or the "Short name cm" menu item adds it. Neither touches a `cm`
@@ -116,7 +119,7 @@ doesn't ask before using them.
 ### From source, for development
 
 ```bash
-git clone https://github.com/kopylovis/claudemeister ~/Developer/claudemeister
+git clone https://github.com/kopylovis/agentmeister ~/Developer/claudemeister
 cd ~/Developer/claudemeister
 make install
 claudemeister setup
