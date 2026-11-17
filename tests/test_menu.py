@@ -60,11 +60,27 @@ class Menu(unittest.TestCase):
     def test_description_names_next_command(self):
         mnrhlib.lang = lambda: "en"
         d = m.Describe.__new__(m.Describe)
-        d.state, d.proxy, d.claude, d.fresh = {"guard": True}, "?", "2.0", False
+        d.state, d.proxy, d.claude, d.codex = {"guard": True}, "?", "2.0", "0.169.0"
         i = next(n for n, item in enumerate(m.ITEMS) if item[0] == "mode guard")
         text = [ANSI.sub("", line) for line in d(i, 40)]
         self.assertIn("$ agentmeister guard off", text)
         self.assertTrue(all(len(line) <= 40 for line in text[:6]))
+
+    def test_codex_setup_shows_detected_versions_and_hooks(self):
+        mnrhlib.lang = lambda: "en"
+        d = m.Describe.__new__(m.Describe)
+        d.state, d.proxy, d.claude, d.fresh = {}, "?", "2.0", threading.Event()
+        with patch.object(m.codex_harness, "executable", return_value="codex"), \
+                patch.object(m, "promptsill_path", return_value="promptsill"), \
+                patch.object(m, "capture", side_effect=["codex-cli 0.169.0\n", "0.9.0\n"]), \
+                patch.object(m.codex_harness, "configured_humanize_hooks", return_value=2):
+            d.ask_codex()
+        self.assertTrue(d.dirty())
+        i = next(n for n, item in enumerate(m.ITEMS) if item[0] == "--harness codex setup")
+        facts = [" ".join(ANSI.sub("", line).split()) for line in d(i, 60)]
+        self.assertIn("Codex 0.169.0", facts)
+        self.assertIn("promptsill 0.9.0", facts)
+        self.assertIn("Humanize hooks 2/3 configured", facts)
 
 
 class Layout(unittest.TestCase):

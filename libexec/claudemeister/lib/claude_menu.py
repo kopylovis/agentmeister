@@ -16,7 +16,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import Cancel, Panel, Quit, Screen, choice, run_framed, show_output  # noqa: E402
-from mnrhlib import CM, DEV, HOME, RESTART_QUEUE, ROOT, tilde, tr  # noqa: E402
+from mnrhlib import CM, DEV, HOME, RESTART_QUEUE, ROOT, promptsill_path, run as capture, tilde, tr  # noqa: E402
 import claude_sessions  # noqa: E402
 import codex_harness  # noqa: E402
 import open_flow  # noqa: E402
@@ -189,13 +189,28 @@ class Describe:
     def __init__(self, state):
         self.state = state
         self.proxy = tr("проверяю", "checking")
-        self.fresh = False
+        self.codex = self.promptsill = self.hooks = self.proxy
+        self.fresh = threading.Event()
         try:
             from claude_proc import claude_version
             self.claude = claude_version() or "?"
         except Exception:
             self.claude = "?"
         threading.Thread(target=self.ask_proxy, daemon=True).start()
+        threading.Thread(target=self.ask_codex, daemon=True).start()
+
+    def ask_codex(self):
+        def installed_version(path, prefix=""):
+            if not path:
+                return tr("не найден", "not found")
+            return capture([path, "--version"], timeout=2).strip().removeprefix(prefix) or "?"
+
+        self.codex = installed_version(codex_harness.executable(), "codex-cli ")
+        self.promptsill = installed_version(promptsill_path())
+        count = codex_harness.configured_humanize_hooks()
+        self.hooks = "?" if count is None else tr(f"{count}/{len(codex_harness.HOOK_EVENTS)} настроено",
+                                                  f"{count}/{len(codex_harness.HOOK_EVENTS)} configured")
+        self.fresh.set()
 
     def ask_proxy(self):
         try:
@@ -208,11 +223,14 @@ class Describe:
                     tr("настроен, mihomo не запущен", "set up, mihomo not running")
         except Exception:
             text = "?"
-        self.proxy, self.fresh = text, True
+        self.proxy = text
+        self.fresh.set()
 
     def dirty(self):
-        fresh, self.fresh = self.fresh, False
-        return fresh
+        if not self.fresh.is_set():
+            return False
+        self.fresh.clear()
+        return True
 
     def __call__(self, i, w):
         key, _, ru, en, desc_ru, desc_en = ITEMS[i]
@@ -227,10 +245,13 @@ class Describe:
         on = [name for name, flag in self.state.items() if flag and name != "alias"]
         facts = [(tr("Версия", "Version"), version()),
                  ("Claude Code", self.claude),
-                 (tr("Папка", "Folder"), tilde(os.getcwd())),
-                 (tr("Проекты", "Projects"), tilde(DEV)),
-                 (tr("Режимы", "Modes"), ", ".join(on) if on else tr("все выключены", "all off")),
-                 (tr("Прокси", "Proxy"), self.proxy)]
+                 ("Codex", self.codex)]
+        if key.startswith("--harness codex "):
+            facts += [("promptsill", self.promptsill), (tr("Хуки humanize", "Humanize hooks"), self.hooks)]
+        facts += [(tr("Папка", "Folder"), tilde(os.getcwd())),
+                  (tr("Проекты", "Projects"), tilde(DEV)),
+                  (tr("Режимы", "Modes"), ", ".join(on) if on else tr("все выключены", "all off")),
+                  (tr("Прокси", "Proxy"), self.proxy)]
         pad = max(len(k) for k, _ in facts) + 3
         lines += ["", "", dim(tr("СЕЙЧАС", "CURRENT SETUP"))]
         lines += [dim(k.ljust(pad)) + v for k, v in facts]
