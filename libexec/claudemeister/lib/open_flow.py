@@ -26,13 +26,16 @@ def bold(text):
 
 
 def project_dirs(dev=None):
-    """Папки в папке проектов, как "$DEV"/*/ в claude.sh: без скрытых, по имени без учета регистра."""
+    """Папки проектов без скрытых папок и ссылок на соседний проект."""
     dev = dev or projects_dir()
     try:
-        names = [n for n in os.listdir(dev) if not n.startswith(".") and os.path.isdir(os.path.join(dev, n))]
+        with os.scandir(dev) as entries:
+            folders = [e for e in entries if not e.name.startswith(".") and e.is_dir()]
     except OSError:
         return []
-    return [os.path.join(dev, n) for n in sorted(names, key=str.lower)]
+    real_folders = {os.path.realpath(e.path) for e in folders if not e.is_symlink()}
+    return [e.path for e in sorted(folders, key=lambda e: e.name.lower())
+            if not e.is_symlink() or os.path.realpath(e.path) not in real_folders]
 
 
 def git_info(path):
@@ -185,15 +188,17 @@ def command(state, harness="claude"):
             "-k" if state["mode"] == "caffeinate" else "-n",
             "-x" if state["net"] == "vps" else "-d"]
     if harness == "codex":
-        resume = codex_resume_args(state["sid"])
+        resume = codex_resume_args(state["sid"], state["dir"])
         return ["--harness", "codex"] + args + (["--", *resume] if resume else ["--new"])
     return args + (["--new"] if state["sid"] == "new" else ["--", "--resume", state["sid"]])
 
 
-def codex_resume_args(sid):
+def codex_resume_args(sid, cwd):
     if sid == "new":
         return []
-    return ["resume"] + ([] if sid == "resume" else [sid])
+    if sid == "resume":
+        return ["resume"]
+    return ["resume", "-C", cwd, sid]
 
 
 def main(argv=None):
