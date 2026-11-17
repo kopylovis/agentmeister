@@ -135,6 +135,8 @@ READ_ONLY = [t["name"] for t in EXTRA_TOOLS if (t.get("annotations") or {}).get(
 
 
 def tools():
+    if os.environ.get("MNRH_MCP_HARNESS") == "codex":
+        return [gradle_deps.TOOL] + mnrh_todo.TOOLS
     return [TOOL, FORGET_TOOL, FRESH_TOOL, SLIM_TOOL, claude_open.TOOL] + EXTRA_TOOLS
 
 
@@ -204,6 +206,7 @@ def mcp():
         sys.stdout.write(json.dumps(msg, ensure_ascii=False) + "\n")
         sys.stdout.flush()
 
+    visible_tools = {tool["name"] for tool in tools()}
     carry = b""
     path = os.environ.pop(PENDING, "")
     if path:
@@ -241,7 +244,8 @@ def mcp():
             send({"jsonrpc": "2.0", "id": rid, "result": {"tools": tools()}})
         elif method == "tools/call":
             params = req.get("params") or {}
-            handler = HANDLERS.get(params.get("name"))
+            name = params.get("name")
+            handler = HANDLERS.get(name) if isinstance(name, str) and name in visible_tools else None
             if not handler:
                 send({"jsonrpc": "2.0", "id": rid, "error": {"code": -32602, "message": "нет такого инструмента"}})
                 continue

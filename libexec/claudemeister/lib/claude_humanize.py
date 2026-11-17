@@ -362,7 +362,7 @@ def emit(event, context):
                      ensure_ascii=False))
 
 
-def hook():
+def hook(codex=False):
     try:
         payload = json.load(sys.stdin)
     except ValueError:
@@ -391,8 +391,11 @@ def hook():
         elif primed:
             emit(event, OFF_NOTE)
             mark(sid, "primed", False)
-    elif event == "Stop" and on and payload.get("transcript_path"):
-        found = check(payload.get("last_assistant_message") or last_reply(payload["transcript_path"]))
+    elif event == "Stop" and on:
+        reply = payload.get("last_assistant_message")
+        if not reply and not codex and payload.get("transcript_path"):
+            reply = last_reply(payload["transcript_path"])
+        found = check(reply or "")
         if found:
             short = "; ".join(f"{name} («{frag[:40]}»)" for _, name, frag in found[:6])
             mark(sid, "hits", short)
@@ -456,7 +459,7 @@ def main():
     args = sys.argv[1:]
     if args[:1] == ["humanize-hook"]:
         try:
-            return hook()
+            return hook(codex=args[1:] == ["--codex"])
         except Exception as e:
             log(f"error {e!r}")
             return 0

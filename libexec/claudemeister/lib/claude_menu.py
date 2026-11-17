@@ -6,6 +6,7 @@
 """
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -17,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import Cancel, Panel, Quit, Screen, choice, run_framed, show_output  # noqa: E402
 from mnrhlib import CM, DEV, HOME, RESTART_QUEUE, ROOT, tilde, tr  # noqa: E402
 import claude_sessions  # noqa: E402
+import codex_harness  # noqa: E402
 import open_flow  # noqa: E402
 
 # (команда, значок, по-русски, по-английски, описание по-русски, по-английски). Группа: команда None.
@@ -24,13 +26,11 @@ import open_flow  # noqa: E402
 ITEMS = [
     (None, "", "Сессии", "Sessions", "", ""),
     ("open", "📂", "Открыть проект", "Open a project",
-     "Выбрать проект в папке проектов и запустить в нем Claude Code. Если в проекте есть сохраненные сессии, "
-     "claudemeister предложит продолжить одну из них.",
-     "Pick a project in the projects folder and start Claude Code there. If the project has saved sessions, "
-     "claudemeister offers to resume one."),
+     "Выбрать проект и открыть в нем Claude Code или Codex.",
+     "Choose a project and open it in Claude Code or Codex."),
     ("root", "🏠", "Открыть в домашней папке", "Open in the home folder",
-     "Запустить Claude Code в домашней папке, без привязки к проекту.",
-     "Start Claude Code in the home folder, outside any project."),
+     "Запустить Claude Code или Codex в домашней папке.",
+     "Start Claude Code or Codex in the home folder."),
     ("sessions", "💾", "Сохраненные сессии", "Saved sessions",
      "Сессии в текущей папке. Любую можно продолжить, перенести в другой проект или удалить.",
      "Sessions in the current folder. Resume any of them, move it to another project or delete it."),
@@ -91,6 +91,9 @@ ITEMS = [
      "Прокси тоже настроит, если его еще нет.",
      "Install /restart, /forget and the other commands, Claude Code hooks, the zsh hook and the claudemeister "
      "MCP server. Sets up the proxy too if it is missing."),
+    ("--harness codex setup", "🧰", "Настроить Codex", "Set up Codex",
+     "Подключить хуки humanize и MCP с задачами проекта и проверкой зависимостей Gradle.",
+     "Install the humanize hooks and MCP tools for project tasks and Gradle dependencies."),
     ("mode alias", "🔤", "Короткое имя cm", "Short name cm",
      "Команда cm вместо claudemeister: cm open, cm sessions и так далее. Ставится ссылкой рядом с claudemeister. "
      "Если имя cm уже занято другой программой, claudemeister его не тронет.",
@@ -363,6 +366,16 @@ def main():
         screen.close()
 
 
+def choose_harness(screen):
+    if not codex_harness.executable():
+        return "claude"
+    if not shutil.which(os.environ.get("MNRH_CLAUDE_BIN", "claude")):
+        return "codex"
+    options = [("claude", "Claude Code"), ("codex", "Codex")]
+    i = screen.pick(options, title=tr("Агент", "Agent"), default=0, start=0)
+    return options[i][0] if i is not None else None
+
+
 def loop(screen):
     """Подменю (проект, сессии, запущенные) идут на том же экране, он закрывается только перед запуском команды."""
     at, note = 1, ""
@@ -378,8 +391,11 @@ def loop(screen):
             note = switch(screen, key.split()[1])
             continue
         if key in ("open", "root"):
-            state = open_flow.flow(screen, HOME if key == "root" else None)
-            if state is not None and not launch(screen, open_flow.command(state)):
+            harness = choose_harness(screen)
+            if harness is None:
+                continue
+            state = open_flow.flow(screen, HOME if key == "root" else None, harness=harness)
+            if state is not None and not launch(screen, open_flow.command(state, harness)):
                 return 0
             continue
         if key == "sessions":
