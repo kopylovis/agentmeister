@@ -7,7 +7,6 @@ mihomo запускается с первой такой сессией и ос�
 """
 import base64
 import fcntl
-import getpass
 import ipaddress
 import json
 import os
@@ -21,6 +20,7 @@ import time
 import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from menu import secret  # noqa: E402
 from mnrhlib import BAD, HOME, OK, WARN, paint, tilde  # noqa: E402
 
 CONF_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "mnrh", "proxy")
@@ -690,7 +690,7 @@ def setup(args):
             print("claudemeister proxy setup <ссылка на подписку>", file=sys.stderr)
             return 2
         print("Ссылка на подписку из 3x-ui (та же, что в Happ). На экране её видно не будет.")
-        url = getpass.getpass("Подписка: ").strip()
+        url = secret("Подписка: ").strip()
     if url.startswith("happ://"):
         print(f"{BAD} это зашифрованная ссылка Happ (happ://crypt…), её читает только сам Happ. "
               "Нужна обычная https://… ссылка на подписку от того, кто её выдал")
