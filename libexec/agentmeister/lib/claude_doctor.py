@@ -7,11 +7,12 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import BAD, CM, OK, ROOT, WARN, promptsill_path, read_config, tilde  # noqa: E402
+from mnrhlib import BAD, CM, OK, ROOT, WARN, is_hook, promptsill_path, read_config, tilde  # noqa: E402
 from claude_proc import CLAUDE_BIN  # noqa: E402
 import claude_settings  # noqa: E402
+import codex_harness  # noqa: E402
 
-USAGE = """agentmeister doctor    проверить установку: claude, команды, хуки, статус в iTerm2, MCP-сервер, хук zsh,
+USAGE = """agentmeister doctor    проверить установку Claude Code и Codex, хуки, статус в iTerm2, MCP-сервер, хук zsh,
                        уведомления, promptsill, прокси, крышку, хранение переписок. Код выхода 1, если что-то сломано"""
 
 
@@ -152,6 +153,70 @@ def check_zsh():
                      "Terminal и iTerm2. agentmeister setup добавит")]
 
 
+CODEX_SETUP = "agentmeister --harness codex setup"
+
+
+def check_codex_mcp(config):
+    entry = (config.get("mcp_servers") or {}).get(codex_harness.MCP)
+    if not entry or not entry.get("enabled", True):
+        return "bad", f"Codex MCP выключен или не подключен. Проверь {CODEX_SETUP}"
+    command = shutil.which(entry.get("command") or "")
+    if not command or os.path.realpath(command) != os.path.realpath(CM) or entry.get("args") != codex_harness.MCP_ARGS:
+        return "warn", "Codex MCP указывает на другую команду."
+    req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}) + "\n"
+    code, out = run([command, *codex_harness.MCP_ARGS], timeout=5, stdin=req)
+    try:
+        tools = json.loads(out.splitlines()[0])["result"]["tools"]
+        if code == 0 and isinstance(tools, list) and tools:
+            return "ok", f"Codex MCP отвечает, инструментов {len(tools)}"
+    except (IndexError, ValueError, KeyError, TypeError):
+        pass
+    return "bad", "Codex MCP не ответил на tools/list."
+
+
+def check_codex_hooks(request, cwd):
+    try:
+        hooks = request("hooks/list", {"cwds": [cwd]})["data"][0]["hooks"]
+    except (OSError, ValueError, KeyError, IndexError):
+        count = codex_harness.configured_humanize_hooks()
+        return "warn", (f"Codex humanize, настроено {count if count is not None else '?'} из "
+                        f"{len(codex_harness.HOOK_EVENTS)} хуков. Статус доверия виден в /hooks.")
+    trusted = {hook["eventName"] for hook in hooks if hook.get("enabled") and not hook.get("matcher")
+               and hook.get("trustStatus") == "trusted" and is_hook(hook.get("command"), "humanize-hook")}
+    expected = {event[0].lower() + event[1:] for event in codex_harness.HOOK_EVENTS}
+    count = len(trusted & expected)
+    if count != len(expected):
+        return "bad", f"Codex humanize, подтверждено {count} из {len(expected)} хуков. Проверь {CODEX_SETUP} и /hooks."
+    return "ok", f"Codex humanize, подтверждено {count} из {len(expected)} хуков"
+
+
+def check_codex():
+    codex = codex_harness.executable()
+    if not codex:
+        return [("ok", "Codex отсутствует в PATH, проверка пропущена")]
+    code, out = run([codex, "--version"], timeout=5)
+    if code != 0 or not out.strip():
+        return [("bad", "Codex не ответил на --version")]
+    rows = [("ok", "Codex " + out.splitlines()[0].strip().removeprefix("codex-cli "))]
+    cwd = os.getcwd()
+    try:
+        with codex_harness.app_server(codex, cwd, experimental=True) as request:
+            config = request("config/read", {"cwd": cwd})["config"]
+            rows.append(check_codex_mcp(config))
+            rows.append(check_codex_hooks(request, cwd))
+            skills = request("skills/list", {"cwds": [cwd]})["data"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return rows + [("bad", "Codex App Server не вернул данные установки.")]
+    rows.append(("ok", "Codex видит навык $agentmeister") if any(
+        skill.get("name") == "agentmeister" and skill.get("enabled")
+        for group in skills for skill in group["skills"]
+    ) else ("warn", f"Codex не видит навык $agentmeister. Запусти {CODEX_SETUP}"))
+    footer = (config.get("tui") or {}).get("status_line")
+    rows.append(("ok", f"Строка состояния Codex, полей {len(footer)}") if footer else
+                ("warn", "Строка состояния Codex выключена. Поля можно выбрать через /statusline."))
+    return rows
+
+
 def check_notify():
     import claude_notify
     if not claude_notify.enabled():
@@ -188,7 +253,7 @@ def check_modes():
     return [("ok", "режимы: " + ", ".join(states))]
 
 
-CHECKS = [check_install, check_commands, check_settings, check_iterm, check_mcp, check_zsh, check_notify, check_proxy,
+CHECKS = [check_install, check_commands, check_settings, check_iterm, check_mcp, check_codex, check_zsh, check_notify, check_proxy,
           check_lid, check_modes]
 
 
@@ -209,7 +274,7 @@ def main(args):
                 worst = level
     print()
     print({"ok": "Все в порядке.", "warn": "Работает, но есть что поправить.",
-           "bad": "Есть поломки, начни с agentmeister setup."}[worst])
+           "bad": "Есть ошибки установки. Подробности выше."}[worst])
     return 1 if worst == "bad" else 0
 
 
