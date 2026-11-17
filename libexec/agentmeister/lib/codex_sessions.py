@@ -1,11 +1,8 @@
-import json
 import os
-import shutil
-import subprocess
-import threading
 import time
 import unicodedata
 
+from codex_harness import app_server, executable
 from mnrhlib import UUID_RE, tilde, tr
 
 
@@ -21,48 +18,22 @@ def project_paths(cwd):
 
 
 def list_threads(cwd):
-    codex = shutil.which("codex")
+    codex = executable()
     if not codex:
         raise OSError("codex is missing from PATH")
-    with subprocess.Popen([codex, "app-server", "--listen", "stdio://"], cwd=cwd,
-                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                          encoding="utf-8") as server:
-        timeout = threading.Timer(5, server.kill)
-        timeout.start()
-        try:
-            def send(message):
-                server.stdin.write(json.dumps(message) + "\n")
-                server.stdin.flush()
-
-            def request(request_id, method, params):
-                send({"id": request_id, "method": method, "params": params})
-                for line in server.stdout:
-                    reply = json.loads(line)
-                    if reply.get("id") == request_id:
-                        if "error" in reply:
-                            raise ValueError(reply["error"].get("message", method))
-                        return reply["result"]
-                raise OSError("Codex App Server closed the connection")
-
-            request(1, "initialize", {"clientInfo": {"name": "agentmeister", "version": "1"}})
-            send({"method": "initialized"})
-            paths = project_paths(cwd)
-            params = {"cwd": paths[0] if len(paths) == 1 else paths, "sortKey": "updated_at", "limit": 100,
-                      "sourceKinds": ["cli", "vscode", "appServer", "exec", "unknown"]}
-            threads, seen, request_id = [], set(), 2
-            while True:
-                page = request(request_id, "thread/list", params)
-                threads.extend(page["data"])
-                cursor = page.get("nextCursor")
-                if not cursor or cursor in seen:
-                    return threads
-                seen.add(cursor)
-                params["cursor"] = cursor
-                request_id += 1
-        finally:
-            timeout.cancel()
-            if server.poll() is None:
-                server.kill()
+    with app_server(codex, cwd) as request:
+        paths = project_paths(cwd)
+        params = {"cwd": paths[0] if len(paths) == 1 else paths, "sortKey": "updated_at", "limit": 100,
+                  "sourceKinds": ["cli", "vscode", "appServer", "exec", "unknown"]}
+        threads, seen = [], set()
+        while True:
+            page = request("thread/list", params)
+            threads.extend(page["data"])
+            cursor = page.get("nextCursor")
+            if not cursor or cursor in seen:
+                return threads
+            seen.add(cursor)
+            params["cursor"] = cursor
 
 
 def clean(value):
