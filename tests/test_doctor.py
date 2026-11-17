@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT, "libexec", "claudemeister", "lib"))
+sys.path.insert(0, os.path.join(ROOT, "libexec", "agentmeister", "lib"))
 
 import claude_doctor  # noqa: E402
 
