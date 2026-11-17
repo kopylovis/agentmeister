@@ -60,6 +60,21 @@ brew install kopylovis/tap/claudemeister
 claudemeister setup
 ```
 
+### Codex
+
+When both CLIs are installed, "Open a project" asks which agent to start. For Codex, "Resume session"
+opens Codex's own picker in the selected folder. From the shell, use `claudemeister --harness codex <project>`.
+To resume a known session, pass `-- resume <id>` after the project.
+
+`claudemeister --harness codex setup` installs the humanize hooks and registers the MCP tools for project tasks
+and Gradle dependencies. Review the hooks with `/hooks` in Codex. The hooks follow the shared
+`claudemeister humanize on|off` setting. Use `claudemeister --harness codex setup --remove` to remove the integration.
+
+`claudemeister --harness codex statusline` runs `promptsill codex` if your version of promptsill includes that command.
+It prints a snapshot in the terminal. Use `/statusline` in Codex to set the fields under its prompt.
+
+### Claude Code
+
 The formula also installs `cm`, a short name for `claudemeister`. `cm kcalm`, `cm ps` and `cm proxy` work the same.
 If `cm` is missing, `claudemeister alias on` or the "Short name cm" menu item adds it. Neither touches a `cm`
 that belongs to another program, and `claudemeister alias off` removes only its own.
