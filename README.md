@@ -130,6 +130,7 @@ its own window with `--resume`, the same mode, proxy and flags. Sessions started
 version, the hooks, transcript retention, the status line, the MCP server answering `tools/list`, the zsh hook,
 the notification app and the proxy. If the hooks still call the old iTerm2 `cc-status`, it warns that iTerm2 3.7.7
 installs `it2 handle-agent-hook` instead. It exits with 1 when something is broken and says what fixes it.
+For Codex it checks the CLI, humanize hook trust, MCP response, the `$agentmeister` skill and footer fields.
 
 Update with `brew upgrade agentmeister`. Open sessions pick up the new version on their own: before each
 request the MCP server checks whether its code changed (a `brew upgrade` or a `git pull` in a checkout) and, if

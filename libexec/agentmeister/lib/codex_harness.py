@@ -5,6 +5,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 import open_flow
@@ -20,6 +22,44 @@ SKILL_OWNER = "<!-- Managed by agentmeister. -->"
 
 def executable():
     return shutil.which("codex")
+
+
+@contextmanager
+def app_server(codex, cwd, experimental=False):
+    with subprocess.Popen([codex, "app-server", "--listen", "stdio://"], cwd=cwd,
+                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                          encoding="utf-8") as server:
+        deadline = threading.Timer(5, server.kill)
+        deadline.start()
+        request_id = 0
+
+        def send(message):
+            server.stdin.write(json.dumps(message) + "\n")
+            server.stdin.flush()
+
+        def request(method, params):
+            nonlocal request_id
+            request_id += 1
+            send({"id": request_id, "method": method, "params": params})
+            for line in server.stdout:
+                reply = json.loads(line)
+                if reply.get("id") == request_id:
+                    if "error" in reply:
+                        raise ValueError(reply["error"].get("message", method))
+                    return reply["result"]
+            raise OSError("Codex App Server closed the connection")
+
+        try:
+            params = {"clientInfo": {"name": "agentmeister", "version": "1"}}
+            if experimental:
+                params["capabilities"] = {"experimentalApi": True}
+            request("initialize", params)
+            send({"method": "initialized"})
+            yield request
+        finally:
+            deadline.cancel()
+            if server.poll() is None:
+                server.kill()
 
 
 def launch_args(argv):
