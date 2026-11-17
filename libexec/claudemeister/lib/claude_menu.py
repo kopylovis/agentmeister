@@ -46,6 +46,9 @@ ITEMS = [
      "agentmeister usage --days N --project P.",
      "Tokens and active time per project and model for the last 7 days. Pick another range or project "
      "with agentmeister usage --days N --project P."),
+    ("--harness codex statusline", "📊", "Статус Codex", "Codex status",
+     "Последние сохраненные лимиты и контекст Codex, данные проекта и Mac. Выводит promptsill.",
+     "Show the latest saved Codex limits and context with project and Mac details from promptsill."),
     (None, "", "Режимы, Enter переключает", "Modes, Enter switches", "", ""),
     ("mode humanize", "📝", "Без признаков нейросети", "No AI tells",
      "В начале каждой сессии Claude получает правила письма. Ответы, коммиты и документация выходят без "
@@ -92,8 +95,8 @@ ITEMS = [
      "Install /restart, /forget and the other commands, Claude Code hooks, the zsh hook and the "
      "MCP server. Sets up the proxy too if it is missing."),
     ("--harness codex setup", "🧰", "Настроить Codex", "Set up Codex",
-     "Подключить хуки humanize и MCP с задачами проекта и проверкой зависимостей Gradle.",
-     "Install the humanize hooks and MCP tools for project tasks and Gradle dependencies."),
+     "Подключить хуки humanize и MCP. Если установлен promptsill, включить строку с лимитами под полем ввода Codex.",
+     "Install the humanize hooks and MCP tools. If promptsill is installed, enable the Codex footer with rate limits."),
     ("mode alias", "🔤", "Короткое имя am", "Short name am",
      "Команда am открывает то же меню, что и agentmeister. "
      "Если имя am уже занято, ссылка не изменится.",
