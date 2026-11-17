@@ -235,11 +235,11 @@ class Describe:
 
 
 def pick_action(screen, at=1, note=""):
-    title = f"\x1b[1;35mclaudemeister\x1b[0m  {dim('v' + version())}" + (f"  \x1b[33m{note}\x1b[0m" if note else "")
+    title = f"\x1b[1;35magentmeister\x1b[0m  {dim('v' + version())}" + (f"  \x1b[33m{note}\x1b[0m" if note else "")
     state = modes()
     items = rows(state)
     if not screen.open().roomy():
-        return screen.pick(items, title="claudemeister", default=at, back=tr("выход", "quit"))
+        return screen.pick(items, title="agentmeister", default=at, back=tr("выход", "quit"))
     hint = tr("↑↓ выбрать · Enter запустить · буквы ищут · Tab описание · Esc выход",
               "↑↓ move · Enter run · type to search · Tab description · Esc quit")
     try:
@@ -291,14 +291,14 @@ def shown(args):
 def launch(screen, args):
     """Вернуть обычный терминал, запустить claudemeister args и спросить, вернуться ли в меню."""
     screen.close()
-    print(dim(f"$ claudemeister {shown(args)}"), flush=True)
+    print(dim(f"$ agentmeister {shown(args)}"), flush=True)
     return again(run(args))
 
 
 def framed(screen, args):
     """Команду в рамке на этом же экране, без мигания. Ответ: вернуться ли в меню. При выходе по q вывод
     остается в обычном терминале, его можно прокрутить."""
-    title = f"claudemeister {shown(args)}"
+    title = f"agentmeister {shown(args)}"
     code, out = run_framed(screen, [CM] + args, title)
     if restart_pending():
         screen.close()

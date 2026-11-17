@@ -161,7 +161,7 @@ OWN_BIN = os.path.join(HOME_DIR, "bin", "claudemeister")
 
 def brew_bin():
     """claudemeister из Homebrew в PATH, если этот сервер запущен из Cellar; иначе None."""
-    if "/Cellar/claudemeister/" not in HOME_DIR + "/":
+    if not any(f"/Cellar/{name}/" in HOME_DIR + "/" for name in ("agentmeister", "claudemeister")):
         return None
     return shutil.which("claudemeister")
 

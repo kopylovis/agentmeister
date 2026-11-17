@@ -32,9 +32,9 @@ def is_zsh_hook(line):
 
 def hook_file():
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-    m = re.match(r"(.*)/Cellar/claudemeister/[^/]+/(.*)", root)
+    m = re.match(r"(.*)/Cellar/(agentmeister|claudemeister)/[^/]+/(.*)", root)
     if m:
-        root = f"{m.group(1)}/opt/claudemeister/{m.group(2)}"
+        root = f"{m.group(1)}/opt/{m.group(2)}/{m.group(3)}"
     return os.path.join(root, "share", "claudemeister", "restart.zsh")
 
 
@@ -255,6 +255,6 @@ def setup(args):
     claude_setup.write(*claude_setup.current(), legacy_declined=False)
     if not shutil.which("claudemeister"):
         print(f"! claudemeister нет в PATH, а /restart, /todo и другие команды вызывают его по имени. "
-              f"Поставь его: brew install kopylovis/tap/claudemeister или make install в {tilde(ROOT)}")
+              f"Поставь его: brew install kopylovis/tap/agentmeister или make install в {tilde(ROOT)}")
     print("Подхватится в новых вкладках и сессиях Claude Code; в уже открытых — после перезапуска.")
     return 0

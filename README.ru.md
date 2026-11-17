@@ -1,10 +1,10 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="claudemeister icon"></p>
+<p align="center"><img src="docs/icon.png" width="128" alt="agentmeister icon"></p>
 
-<h1 align="center">claudemeister</h1>
+<h1 align="center">agentmeister</h1>
 
 <p align="center"><a href="README.md">English</a> · Русский</p>
 
-Обвязка для [Claude Code](https://code.claude.com) на macOS: запуск в проекте с выбором сессии,
+Запуск [Claude Code](https://code.claude.com) и Codex на macOS с выбором проекта и сессии. Для Claude Code есть
 перезапуск и сжатие сессии изнутри Claude, прокси через свой сервер для отдельных сессий, защита
 секретов и вопрос перед необратимыми командами, уведомления, правила письма без признаков нейросети и MCP-сервер с инструментами
 для поиска по прошлым сессиям, бэклога, параллельных задач, снимков окон и заметок к релизу.
@@ -54,24 +54,28 @@ claudemeister doctor         проверить установку
 ## Установка
 
 ```bash
-brew install kopylovis/tap/claudemeister
-claudemeister setup
+brew install kopylovis/tap/agentmeister
+agentmeister
 ```
+
+Команды `claudemeister` и `cm` по-прежнему работают.
 
 ### Codex
 
 Если установлены обе CLI, пункт "Открыть проект" предложит выбрать агента. Пункт "Продолжить сессию"
-откроет список сессий Codex в выбранной папке. Из терминала можно запустить `claudemeister --harness codex <проект>`.
+откроет список сессий Codex в выбранной папке. Из терминала можно запустить `agentmeister --harness codex <проект>`.
 Если знаешь ID сессии, допиши после проекта `-- resume <id>`.
 
-`claudemeister --harness codex setup` подключает хуки humanize и инструменты MCP для задач проекта и проверки
-зависимостей Gradle. Новые хуки нужно подтвердить в Codex через `/hooks`. Настройка `claudemeister humanize on|off`
-действует для обоих агентов. `claudemeister --harness codex setup --remove` убирает интеграцию с Codex.
+`agentmeister --harness codex setup` подключает хуки humanize и инструменты MCP для задач проекта и проверки
+зависимостей Gradle. Новые хуки нужно подтвердить в Codex через `/hooks`. Настройка `agentmeister humanize on|off`
+действует для обоих агентов. `agentmeister --harness codex setup --remove` убирает интеграцию с Codex.
 
-`claudemeister --harness codex statusline` вызывает `promptsill codex`, если команда есть в установленной версии
+`agentmeister --harness codex statusline` вызывает `promptsill codex`, если команда есть в установленной версии
 promptsill. Результат выводится в терминал. Поля под строкой ввода настраиваются через `/statusline` в самом Codex.
 
 ### Claude Code
+
+Для настройки Claude Code запусти `agentmeister setup`.
 
 Формула ставит и `cm`, короткое имя для `claudemeister`. `cm kcalm`, `cm ps`, `cm proxy` работают так же.
 Если `cm` нет, его ставит `claudemeister alias on` или пункт "Короткое имя cm" в меню. Чужой `cm` они не
@@ -114,7 +118,7 @@ Claude Code удаляет переписки старше `cleanupPeriodDays`, 
 ### Из исходников, для разработки
 
 ```bash
-git clone https://github.com/kopylovis/claudemeister ~/Developer/claudemeister
+git clone https://github.com/kopylovis/agentmeister ~/Developer/claudemeister
 cd ~/Developer/claudemeister
 make install
 claudemeister setup
