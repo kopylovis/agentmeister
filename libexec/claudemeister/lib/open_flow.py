@@ -65,7 +65,7 @@ class Projects:
 
     def describe(self, i, w):
         if i == 0:
-            return [bold("Домашняя папка"), "~", "", "Claude Code запустится вне проекта."]
+            return [bold("Домашняя папка"), "~", "", "Сессия откроется вне проекта."]
         d = self.dirs[i - 1]
         branch, log = self.info[i - 1]
         lines = [bold(os.path.basename(d)), tilde(d)]
@@ -103,6 +103,9 @@ NETS = [("direct", "🔌 напрямую",
           "которые читают HTTPS_PROXY (gh, npm, curl, git по https). Остальное на Mac ходит напрямую.", "",
           dim("БЕЗ ВОПРОСА"), "claudemeister ... -x"])]
 
+CODEX_SESSIONS = [("new", "Новая сессия", ["Запустить Codex с чистым контекстом."]),
+                  ("resume", "Продолжить сессию", ["Codex откроет список сохраненных сессий в этой папке."])]
+
 
 def choose(screen, options, title, current):
     keys = [k for k, _, _ in options]
@@ -120,7 +123,7 @@ def proxy_ready():
         return False
 
 
-def flow(screen, dir=None, ask_session=True, mode=None, net=None):
+def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claude"):
     """Пройти недостающие шаги. Ответ: {"dir", "sid", "mode", "net"} или None, если Esc на первом шаге.
     sid: "new" или id сессии. Шаги без вопроса (сессий нет) Esc тоже перескакивает."""
     import claude_proxy
@@ -145,8 +148,10 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None):
             projects = projects or Projects()
             got = projects.pick(screen, state["dir"])
         elif step == "session":
-            found = session_list(state["dir"])
-            if not found:
+            found = session_list(state["dir"]) if harness == "claude" else None
+            if harness == "codex":
+                got = choose(screen, CODEX_SESSIONS, "Сессия Codex", state["sid"])
+            elif not found:
                 state["sid"] = "new"
                 got = SKIP
             else:
@@ -175,11 +180,13 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None):
     return state
 
 
-def command(state):
+def command(state, harness="claude"):
     """Аргументы claudemeister, которые запустят выбранное без вопросов."""
     args = ["root" if state["dir"] == HOME else state["dir"],
             "-k" if state["mode"] == "caffeinate" else "-n",
             "-x" if state["net"] == "vps" else "-d"]
+    if harness == "codex":
+        return ["--harness", "codex"] + args + (["--", "resume"] if state["sid"] == "resume" else ["--new"])
     return args + (["--new"] if state["sid"] == "new" else ["--", "--resume", state["sid"]])
 
 

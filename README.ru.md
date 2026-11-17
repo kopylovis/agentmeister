@@ -58,6 +58,21 @@ brew install kopylovis/tap/claudemeister
 claudemeister setup
 ```
 
+### Codex
+
+Если установлены обе CLI, пункт "Открыть проект" предложит выбрать агента. Пункт "Продолжить сессию"
+откроет список сессий Codex в выбранной папке. Из терминала можно запустить `claudemeister --harness codex <проект>`.
+Если знаешь ID сессии, допиши после проекта `-- resume <id>`.
+
+`claudemeister --harness codex setup` подключает хуки humanize и инструменты MCP для задач проекта и проверки
+зависимостей Gradle. Новые хуки нужно подтвердить в Codex через `/hooks`. Настройка `claudemeister humanize on|off`
+действует для обоих агентов. `claudemeister --harness codex setup --remove` убирает интеграцию с Codex.
+
+`claudemeister --harness codex statusline` вызывает `promptsill codex`, если команда есть в установленной версии
+promptsill. Результат выводится в терминал. Поля под строкой ввода настраиваются через `/statusline` в самом Codex.
+
+### Claude Code
+
 Формула ставит и `cm`, короткое имя для `claudemeister`. `cm kcalm`, `cm ps`, `cm proxy` работают так же.
 Если `cm` нет, его ставит `claudemeister alias on` или пункт "Короткое имя cm" в меню. Чужой `cm` они не
 трогают, `claudemeister alias off` убирает только свой.
