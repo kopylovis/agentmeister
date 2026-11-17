@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "libexec", "agentmeister", "lib"))
@@ -15,6 +16,27 @@ def hooks(*commands):
 
 
 class Doctor(unittest.TestCase):
+    def test_codex_hooks_count_only_enabled_and_trusted_handlers(self):
+        base = {"command": "/test/agentmeister humanize-hook --codex", "enabled": True,
+                "trustStatus": "trusted"}
+        hooks = [dict(base, eventName="sessionStart"),
+                 dict(base, eventName="userPromptSubmit", trustStatus="untrusted"),
+                 dict(base, eventName="stop", enabled=False)]
+
+        def request(method, params):
+            self.assertEqual(method, "hooks/list")
+            return {"data": [{"hooks": hooks}]}
+
+        level, text = claude_doctor.check_codex_hooks(request, "/project")
+        self.assertEqual(level, "bad")
+        self.assertIn("1 из 3", text)
+
+    def test_codex_mcp_does_not_start_an_unrelated_command(self):
+        config = {"mcp_servers": {"claudemeister": {"command": "/usr/bin/true", "enabled": True}}}
+        with patch.object(claude_doctor, "run") as run:
+            self.assertEqual(claude_doctor.check_codex_mcp(config)[0], "warn")
+        run.assert_not_called()
+
     def test_fresh_home_is_reported_broken(self):
         home = tempfile.mkdtemp(prefix="cm-doctor-")
         env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=os.path.join(home, ".config"), ZDOTDIR=home,
