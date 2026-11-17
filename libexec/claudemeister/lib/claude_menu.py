@@ -1,6 +1,6 @@
-"""Меню действий claudemeister: claudemeister без аргументов в терминале.
+"""Меню действий agentmeister: agentmeister без аргументов в терминале.
 
-Действие запускается как claudemeister <аргументы>, полная команда печатается, чтобы в следующий раз набрать ее
+Действие запускается как agentmeister <аргументы>, полная команда печатается, чтобы в следующий раз набрать ее
 сразу. После действия можно вернуться в меню. Режимы (humanize, guard, buildlog, уведомления, крышка) по Enter
 переключаются на месте: меню остается и показывает новое состояние. Язык берется из mnrhlib.lang().
 """
@@ -43,9 +43,9 @@ ITEMS = [
      "Reopen the sessions that were running before a reboot or a terminal crash."),
     ("usage", "📊", "Расход", "Usage",
      "Токены и активное время по проектам и моделям за последние 7 дней. Другой срок и проект задают "
-     "claudemeister usage --days N --project P.",
+     "agentmeister usage --days N --project P.",
      "Tokens and active time per project and model for the last 7 days. Pick another range or project "
-     "with claudemeister usage --days N --project P."),
+     "with agentmeister usage --days N --project P."),
     (None, "", "Режимы, Enter переключает", "Modes, Enter switches", "", ""),
     ("mode humanize", "📝", "Без признаков нейросети", "No AI tells",
      "В начале каждой сессии Claude получает правила письма. Ответы, коммиты и документация выходят без "
@@ -61,9 +61,9 @@ ITEMS = [
      "the context."),
     ("mode notify", "🔔", "Уведомления", "Notifications",
      "Уведомление на Mac, когда Claude просит разрешение, задает вопрос или закончил долгий ход, а вы смотрите "
-     "в другую вкладку. Telegram подключает claudemeister notify telegram.",
+     "в другую вкладку. Telegram подключает agentmeister notify telegram.",
      "A Mac notification when Claude asks for permission, asks a question or finishes a long turn while you "
-     "look at another tab. claudemeister notify telegram adds Telegram."),
+     "look at another tab. agentmeister notify telegram adds Telegram."),
     ("mode lid", "💻", "Не спать с закрытой крышкой", "Stay awake with the lid closed",
      "Mac не засыпает с закрытой крышкой, пока идет сессия. При первом включении спросит пароль sudo.",
      "The Mac stays awake with the lid closed while a session runs. The first time it asks for the sudo "
@@ -87,24 +87,24 @@ ITEMS = [
      "Update mihomo with Homebrew and restart it if it is running."),
     (None, "", "Установка", "Install", "", ""),
     ("setup", "🧰", "Настроить Claude Code", "Set up Claude Code",
-     "Поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh и MCP-сервер claudemeister. "
+     "Поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh и MCP-сервер. "
      "Прокси тоже настроит, если его еще нет.",
-     "Install /restart, /forget and the other commands, Claude Code hooks, the zsh hook and the claudemeister "
+     "Install /restart, /forget and the other commands, Claude Code hooks, the zsh hook and the "
      "MCP server. Sets up the proxy too if it is missing."),
     ("--harness codex setup", "🧰", "Настроить Codex", "Set up Codex",
      "Подключить хуки humanize и MCP с задачами проекта и проверкой зависимостей Gradle.",
      "Install the humanize hooks and MCP tools for project tasks and Gradle dependencies."),
-    ("mode alias", "🔤", "Короткое имя cm", "Short name cm",
-     "Команда cm вместо claudemeister: cm open, cm sessions и так далее. Ставится ссылкой рядом с claudemeister. "
-     "Если имя cm уже занято другой программой, claudemeister его не тронет.",
-     "The cm command instead of claudemeister: cm open, cm sessions and so on. It is a link next to claudemeister. "
-     "If another program already owns the name cm, claudemeister leaves it alone."),
+    ("mode alias", "🔤", "Короткое имя am", "Short name am",
+     "Команда am открывает то же меню, что и agentmeister. "
+     "Если имя am уже занято, ссылка не изменится.",
+     "The am command opens the same menu as agentmeister. "
+     "An existing command named am keeps its place."),
     ("doctor", "🔍", "Проверить установку", "Check the install",
-     "Проверить, что claudemeister в PATH, Claude Code найден, а хуки и MCP-сервер на месте.",
-     "Check that claudemeister is on PATH, Claude Code is found and the hooks and MCP server are in place."),
+     "Проверить, что agentmeister в PATH, Claude Code найден, а хуки и MCP-сервер на месте.",
+     "Check that agentmeister is on PATH, Claude Code is found and the hooks and MCP server are in place."),
     ("help", "❓", "Справка", "Help",
-     "Все команды claudemeister с флагами.",
-     "Every claudemeister command with its flags."),
+     "Все команды agentmeister с флагами.",
+     "Every agentmeister command with its flags."),
     ("quit", "🚪", "Выход", "Quit",
      "Закрыть меню. Esc и Ctrl+C делают то же.",
      "Close the menu. Esc and Ctrl+C do the same."),
@@ -220,7 +220,7 @@ class Describe:
             lines += ["", ("\x1b[32m" + tr("Сейчас включено", "On now") + "\x1b[0m" if flag else
                            tr("Сейчас выключено", "Off now")) + dim(tr(", Enter переключит", ", Enter switches it"))]
         if key not in ("quit",):
-            lines += ["", dim(f"$ claudemeister {command(key, self.state)}")]
+            lines += ["", dim(f"$ agentmeister {command(key, self.state)}")]
         on = [name for name, flag in self.state.items() if flag and name != "alias"]
         facts = [(tr("Версия", "Version"), version()),
                  ("Claude Code", self.claude),
@@ -289,7 +289,7 @@ def shown(args):
 
 
 def launch(screen, args):
-    """Вернуть обычный терминал, запустить claudemeister args и спросить, вернуться ли в меню."""
+    """Вернуть обычный терминал, запустить agentmeister args и спросить, вернуться ли в меню."""
     screen.close()
     print(dim(f"$ agentmeister {shown(args)}"), flush=True)
     return again(run(args))
@@ -345,9 +345,9 @@ def switch(screen, name):
     import claude_lid
     if name == "lid" and want == "on" and not claude_lid.ready():
         # правила sudoers еще нет: lid on поставит его и спросит пароль sudo, это надо видеть
-        code, out = run_framed(screen, [CM, "lid", "on"], "claudemeister lid on")
+        code, out = run_framed(screen, [CM, "lid", "on"], "agentmeister lid on")
         if code != 0:
-            show_output(screen, out, "claudemeister lid on", code)
+            show_output(screen, out, "agentmeister lid on", code)
     else:
         done = subprocess.run([CM, name, want], capture_output=True, text=True)
         if done.returncode != 0:

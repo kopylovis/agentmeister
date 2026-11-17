@@ -18,23 +18,23 @@ class Alias(unittest.TestCase):
         self.saved = os.environ.get("PATH"), a.HOME
         os.environ["PATH"] = self.bin + os.pathsep + "/usr/bin:/bin"
         a.HOME = self.tmp
-        os.symlink(a.TARGET, os.path.join(self.bin, "claudemeister"))
+        os.symlink(a.TARGET, os.path.join(self.bin, "agentmeister"))
 
     def tearDown(self):
         os.environ["PATH"], a.HOME = self.saved
         shutil.rmtree(self.tmp)
 
-    def test_on_puts_cm_next_to_claudemeister_and_off_removes_it(self):
+    def test_on_puts_am_next_to_agentmeister_and_off_removes_it(self):
         self.assertFalse(a.enabled())
         self.assertEqual(a.main(["on"]), 0)
         self.assertTrue(a.enabled())
         self.assertEqual(os.path.dirname(a.found()), self.bin)
         self.assertEqual(a.main(["on"]), 0)
         self.assertEqual(a.main(["off"]), 0)
-        self.assertFalse(os.path.lexists(os.path.join(self.bin, "cm")))
+        self.assertFalse(os.path.lexists(os.path.join(self.bin, "am")))
 
-    def test_foreign_cm_is_left_alone(self):
-        other = os.path.join(self.bin, "cm")
+    def test_foreign_am_is_left_alone(self):
+        other = os.path.join(self.bin, "am")
         with open(other, "w") as f:
             f.write("#!/bin/sh\n")
         os.chmod(other, 0o755)

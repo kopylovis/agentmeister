@@ -62,7 +62,7 @@ class Menu(unittest.TestCase):
         d.state, d.proxy, d.claude, d.fresh = {"guard": True}, "?", "2.0", False
         i = next(n for n, item in enumerate(m.ITEMS) if item[0] == "mode guard")
         text = [ANSI.sub("", line) for line in d(i, 40)]
-        self.assertIn("$ claudemeister guard off", text)
+        self.assertIn("$ agentmeister guard off", text)
         self.assertTrue(all(len(line) <= 40 for line in text[:6]))
 
 

@@ -91,17 +91,17 @@ class Projects:
 MODES = [("caffeinate", "☕ caffeinate",
           [bold("caffeinate"), "", "Mac не уснет, пока идет сессия. Удобно для долгих задач и Remote Control с "
            "телефона. Экран при этом гаснуть может.", "", "С закрытой крышкой на батарее Mac все равно уснет, если "
-           "не включен claudemeister lid.", "", dim("БЕЗ ВОПРОСА"), "claudemeister ... -k"]),
+           "не включен agentmeister lid.", "", dim("БЕЗ ВОПРОСА"), "agentmeister ... -k"]),
          ("normal", "🌙 обычная",
-          [bold("Обычная сессия"), "", "Mac засыпает по своим настройкам, как без claudemeister.", "",
-           dim("БЕЗ ВОПРОСА"), "claudemeister ... -n"])]
+          [bold("Обычная сессия"), "", "Mac засыпает по своим настройкам.", "",
+           dim("БЕЗ ВОПРОСА"), "agentmeister ... -n"])]
 
 NETS = [("direct", "🔌 напрямую",
-         [bold("Напрямую"), "", "Сессия ходит в сеть как обычно.", "", dim("БЕЗ ВОПРОСА"), "claudemeister ... -d"]),
+         [bold("Напрямую"), "", "Сессия ходит в сеть как обычно.", "", dim("БЕЗ ВОПРОСА"), "agentmeister ... -d"]),
         ("vps", "🌐 через VPS",
          [bold("Через VPS"), "", "Через mihomo и ваш VPS идет только эта сессия и запущенные из нее программы, "
           "которые читают HTTPS_PROXY (gh, npm, curl, git по https). Остальное на Mac ходит напрямую.", "",
-          dim("БЕЗ ВОПРОСА"), "claudemeister ... -x"])]
+          dim("БЕЗ ВОПРОСА"), "agentmeister ... -x"])]
 
 CODEX_SESSIONS = [("new", "Новая сессия", ["Запустить Codex с чистым контекстом."]),
                   ("resume", "Продолжить сессию", ["Codex откроет список сохраненных сессий в этой папке."])]
@@ -181,7 +181,7 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
 
 
 def command(state, harness="claude"):
-    """Аргументы claudemeister, которые запустят выбранное без вопросов."""
+    """Аргументы agentmeister, которые запустят выбранное без вопросов."""
     args = ["root" if state["dir"] == HOME else state["dir"],
             "-k" if state["mode"] == "caffeinate" else "-n",
             "-x" if state["net"] == "vps" else "-d"]
