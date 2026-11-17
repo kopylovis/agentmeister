@@ -17,7 +17,7 @@ SLASH_FILE = os.path.join(CLAUDE_HOME, "commands", "humanize.md")
 HOOK_CMD = "humanize-hook"
 HOOK_ROWS = claude_settings.rows(HOOK_CMD)
 
-REMINDER = ("claudemeister humanization включена, правила письма из начала сессии действуют для всего, что ты пишешь людям. "
+REMINDER = ("agentmeister humanization включена, правила письма из начала сессии действуют для всего, что ты пишешь людям. "
             "Ответ первым, без вступлений и итогов-пересказов, отдавай только то, что просили. Конкретные факты "
             "вместо значимости, восторгов и штампов. Без канцелярита, \"является\", \"позволяет\", модальной ваты, "
             "усилителей, \"по сути\" и объявленной честности. Длина предложений разная, без обрывков подряд. "
@@ -27,7 +27,7 @@ REMINDER = ("claudemeister humanization включена, правила пис�
             "Кавычки только прямые \"\", елочки нельзя. Букву е с точками не пиши, только е. Двоеточий избегай. "
             "Текст, который пользователь отправит людям, пиши как сообщение в мессенджере (правило 4.7). "
             "Перед отправкой перечитай по разделу 7.")
-OFF_NOTE = "claudemeister humanization выключена, правила письма из этой сессии больше не обязательны, пиши как обычно."
+OFF_NOTE = "agentmeister humanization выключена, правила письма из этой сессии больше не обязательны, пиши как обычно."
 
 S = r"(?:^|(?<=[.!?…]\s)|(?<=\n))"
 MARKERS = [
@@ -421,38 +421,45 @@ def set_state(value, inside):
     sid = current_sid() if inside else None
     if value == "on":
         install_hooks()
-        print("claudemeister humanization включена.")
+        print("agentmeister humanization включена.")
         if inside and rules_text():
             print("Правила ниже действуют в этой сессии с этого ответа:\n")
             print(rules_text())
             mark(sid, "primed", "1")
         else:
-            print("Правила придут в каждую сессию Claude Code (новую и уже открытую) со следующим сообщением.")
+            print("В сессиях Claude Code и Codex с подключенными хуками правила придут со следующим сообщением.")
     else:
-        print("claudemeister humanization выключена. Правила письма больше не обязательны.")
+        print("agentmeister humanization выключена. Правила письма больше не обязательны.")
         mark(sid, "primed", False)
 
 
 def usage():
-    print("claudemeister humanize                  состояние")
-    print("claudemeister humanize on | off         включить или выключить во всех сессиях Claude Code")
-    print("claudemeister humanize switch [on|off]  то же для /humanize; без аргумента переключает")
-    print("claudemeister humanize rules            свод правил, который получает Claude")
-    print("claudemeister humanize check <файл>     найти явные признаки нейросети в тексте (- читает stdin)")
-    print("claudemeister humanize log              что проверка находила в ответах Claude")
+    print("agentmeister humanize                  состояние")
+    print("agentmeister humanize on | off         переключить режим для Claude Code и Codex")
+    print("agentmeister humanize switch [on|off]  то же для /humanize в Claude Code")
+    print("agentmeister humanize rules            показать правила письма")
+    print("agentmeister humanize check <файл>     найти явные признаки нейросети в тексте (- читает stdin)")
+    print("agentmeister humanize log              показать результаты проверки ответов")
     print()
-    print("Правила взяты из эссе Википедии «Признаки сгенерированности текста» (ВП:ПРГЕН). Хук SessionStart отдаёт")
+    print("Правила взяты из эссе Википедии \"Признаки сгенерированности текста\" (ВП:ПРГЕН). Хук SessionStart передает")
     print("их в начале сессии и после сжатия контекста, UserPromptSubmit напоминает о них к каждому сообщению,")
-    print("Stop проверяет ответ и сообщает Claude о найденном в следующем сообщении.")
+    print("Stop проверяет ответ и сообщает агенту о найденном в следующем сообщении.")
+    print("Для Codex подключи хуки через agentmeister --harness codex setup и подтверди их в /hooks.")
 
 
 def status():
-    print(f"claudemeister humanization: {'включена' if enabled() else 'выключена'}. Правила: {tilde(RULES)}")
+    from codex_harness import HOOK_EVENTS, configured_humanize_hooks
+
+    print(f"agentmeister humanization {'включена' if enabled() else 'выключена'}. Правила в {tilde(RULES)}")
     missing = missing_hooks()
     if missing:
-        print(f"! хуки не подключены ({', '.join(missing)}): Claude правил не получит. "
-              f"Подключит claudemeister humanize on или claudemeister setup")
-    print(f"Переключить: /humanize в Claude Code или claudemeister humanize on|off. Лог проверок: {tilde(LOG)}")
+        print(f"Для Claude Code не хватает хуков {', '.join(missing)}. Подключи через agentmeister humanize on.")
+    count = configured_humanize_hooks()
+    if count == len(HOOK_EVENTS):
+        print(f"В Codex настроено {count}/{len(HOOK_EVENTS)} хуков. Статус доверия виден в /hooks.")
+    else:
+        print("Проверь установку хуков Codex через agentmeister --harness codex setup.")
+    print(f"Переключение через agentmeister humanize on|off. Лог проверок в {tilde(LOG)}")
 
 
 def main():
