@@ -230,6 +230,22 @@ class Framed(unittest.TestCase):
         self.assertEqual(code, 3)
         self.assertIn("hi", out.plain())
 
+    def test_questions_go_to_the_frame(self):
+        # в рамке вопрос choice пишется в stdout, иначе его сотрет перерисовка рамки
+        saved, isatty = menu.IN_FRAME, os.isatty
+        try:
+            menu.IN_FRAME, os.isatty = True, lambda fd: fd == 1
+            self.assertEqual(menu.frame_fd(7), 1)
+            menu.IN_FRAME = False
+            self.assertEqual(menu.frame_fd(7), 7)
+        finally:
+            menu.IN_FRAME, os.isatty = saved, isatty
+
+    def test_choice_prompt_shows_as_last_line(self):
+        out = menu.Output()
+        out.feed("list\n\n\r\x1b[K\x1b[1;34mУдалить?\x1b[0m  a\r\x1b[K\x1b[1;34mУдалить?\x1b[0m  b")
+        self.assertEqual(ANSI.sub("", out.lines[-1]), "Удалить?  b")
+
 
 class Icons(unittest.TestCase):
     def tearDown(self):
