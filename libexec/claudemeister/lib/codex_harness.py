@@ -25,7 +25,7 @@ def launch_args(argv):
     if "--" in argv:
         sep = argv.index("--")
         before, after = argv[:sep], argv[sep + 1:]
-    parser = argparse.ArgumentParser(prog="claudemeister --harness codex",
+    parser = argparse.ArgumentParser(prog="agentmeister --harness codex",
                                      description=tr("Запуск и настройка Codex", "Launch and set up Codex"))
     parser.add_argument("project", nargs="?")
     parser.add_argument("-k", "--caffeinate", dest="mode", action="store_const", const="caffeinate")
@@ -125,7 +125,7 @@ def configure_hooks(remove):
 
 
 def setup(codex, argv):
-    parser = argparse.ArgumentParser(prog="claudemeister --harness codex setup")
+    parser = argparse.ArgumentParser(prog="agentmeister --harness codex setup")
     parser.add_argument("--remove", action="store_true")
     remove = parser.parse_args(argv).remove
     listed = subprocess.run([codex, "mcp", "list", "--json"], capture_output=True, text=True, check=True)
