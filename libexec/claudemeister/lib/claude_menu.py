@@ -32,8 +32,8 @@ ITEMS = [
      "Запустить Claude Code или Codex в домашней папке.",
      "Start Claude Code or Codex in the home folder."),
     ("sessions", "💾", "Сохраненные сессии", "Saved sessions",
-     "Сессии в текущей папке. Любую можно продолжить, перенести в другой проект или удалить.",
-     "Sessions in the current folder. Resume any of them, move it to another project or delete it."),
+     "Продолжить сессию в текущей папке. Для Claude Code здесь также есть перенос и удаление сессий.",
+     "Resume a session in the current folder. For Claude Code, you can also move or delete sessions here."),
     ("ps", "👀", "Запущенные сессии", "Running sessions",
      "Какие сессии Claude Code сейчас открыты и какая из них ждет ответа. Из списка можно перейти во вкладку.",
      "Which Claude Code sessions are open right now and which one is waiting for you. Jump to its tab "
@@ -376,6 +376,23 @@ def choose_harness(screen):
     return options[i][0] if i is not None else None
 
 
+def saved_codex(screen):
+    from codex_sessions import session_list
+
+    cwd = os.getcwd()
+    found = session_list(cwd)
+    if not found:
+        return tr("В этой папке нет сессий Codex", "No Codex sessions in this folder")
+    items, describe, title, sessions = found
+    picked = screen.pick(items[1:], title=title, start=0, describe=lambda i, width: describe(i + 1, width))
+    if picked is not None:
+        state = open_flow.flow(screen, cwd, ask_session=False, harness="codex")
+        if state is not None:
+            state["sid"] = sessions[picked]["id"]
+            return launch(screen, open_flow.command(state, "codex"))
+    return True
+
+
 def loop(screen):
     """Подменю (проект, сессии, запущенные) идут на том же экране, он закрывается только перед запуском команды."""
     at, note = 1, ""
@@ -399,6 +416,16 @@ def loop(screen):
                 return 0
             continue
         if key == "sessions":
+            harness = choose_harness(screen)
+            if harness is None:
+                continue
+            if harness == "codex":
+                got = saved_codex(screen)
+                if got is False:
+                    return 0
+                if isinstance(got, str):
+                    note = got
+                continue
             got = claude_sessions.browse(screen)
             if isinstance(got, str):
                 note = got

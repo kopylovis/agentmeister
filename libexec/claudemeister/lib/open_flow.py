@@ -103,10 +103,6 @@ NETS = [("direct", "🔌 напрямую",
           "которые читают HTTPS_PROXY (gh, npm, curl, git по https). Остальное на Mac ходит напрямую.", "",
           dim("БЕЗ ВОПРОСА"), "agentmeister ... -x"])]
 
-CODEX_SESSIONS = [("new", "Новая сессия", ["Запустить Codex с чистым контекстом."]),
-                  ("resume", "Продолжить сессию", ["Codex откроет список сохраненных сессий в этой папке."])]
-
-
 def choose(screen, options, title, current):
     keys = [k for k, _, _ in options]
     i = screen.pick([(k, label) for k, label, _ in options], title=title,
@@ -127,7 +123,10 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
     """Пройти недостающие шаги. Ответ: {"dir", "sid", "mode", "net"} или None, если Esc на первом шаге.
     sid: "new" или id сессии. Шаги без вопроса (сессий нет) Esc тоже перескакивает."""
     import claude_proxy
-    from claude_sessions import session_list
+    if harness == "codex":
+        from codex_sessions import session_list
+    else:
+        from claude_sessions import session_list
     steps = []
     if dir is None:
         steps.append("project")
@@ -141,17 +140,17 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
              "net": net or (claude_proxy.last() if "net" in steps else "direct")}
     if state["net"] not in ("vps", "direct"):
         state["net"] = "direct"
-    projects, skipped, k = None, {}, 0
+    projects, session_lists, skipped, k = None, {}, {}, 0
     while k < len(steps):
         step = steps[k]
         if step == "project":
             projects = projects or Projects()
             got = projects.pick(screen, state["dir"])
         elif step == "session":
-            found = session_list(state["dir"]) if harness == "claude" else None
-            if harness == "codex":
-                got = choose(screen, CODEX_SESSIONS, "Сессия Codex", state["sid"])
-            elif not found:
+            if state["dir"] not in session_lists:
+                session_lists[state["dir"]] = session_list(state["dir"])
+            found = session_lists[state["dir"]]
+            if not found:
                 state["sid"] = "new"
                 got = SKIP
             else:
@@ -186,8 +185,15 @@ def command(state, harness="claude"):
             "-k" if state["mode"] == "caffeinate" else "-n",
             "-x" if state["net"] == "vps" else "-d"]
     if harness == "codex":
-        return ["--harness", "codex"] + args + (["--", "resume"] if state["sid"] == "resume" else ["--new"])
+        resume = codex_resume_args(state["sid"])
+        return ["--harness", "codex"] + args + (["--", *resume] if resume else ["--new"])
     return args + (["--new"] if state["sid"] == "new" else ["--", "--resume", state["sid"]])
+
+
+def codex_resume_args(sid):
+    if sid == "new":
+        return []
+    return ["resume"] + ([] if sid == "resume" else [sid])
 
 
 def main(argv=None):
