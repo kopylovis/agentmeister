@@ -1,4 +1,4 @@
-"""Открытые сессии Claude Code: claudemeister ps показывает их и переводит во вкладку, restore открывает заново
+"""Открытые сессии Claude Code: agentmeister ps показывает их и переводит во вкладку, restore открывает заново
 те, что были открыты, когда Mac перезагрузился или Claude Code упал.
 
 SessionStart (хук notice) записывает каждую сессию в ~/.cache/mnrh/open/<id>.json: папку, терминал, вкладку,
@@ -16,9 +16,9 @@ from mnrhlib import CACHE, CLAUDE_HOME, CM, OK, WARN, confirm, paint, tilde, wri
 OPEN = os.path.join(CACHE, "open")
 KEEP_DAYS = 30
 STATUS = {"waiting": ("ждет тебя", "33"), "busy": ("работает", "36"), "idle": ("свободна", "2")}
-USAGE = """claudemeister ps              открытые сессии Claude Code: статус, проект, название; выбрать и перейти во вкладку
-claudemeister ps -l           только список
-claudemeister restore [-y]    открыть заново сессии, которые были открыты, когда Mac выключился или Claude упал"""
+USAGE = """agentmeister ps              открытые сессии Claude Code: статус, проект, название; выбрать и перейти во вкладку
+agentmeister ps -l           только список
+agentmeister restore [-y]    открыть заново сессии, которые были открыты, когда Mac выключился или Claude упал"""
 
 
 def record_path(sid):

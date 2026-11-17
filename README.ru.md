@@ -58,7 +58,7 @@ brew install kopylovis/tap/agentmeister
 agentmeister
 ```
 
-Команды `claudemeister` и `cm` по-прежнему работают.
+Команды `claudemeister` и `am` по-прежнему работают.
 
 ### Codex
 
@@ -77,8 +77,8 @@ promptsill. Результат выводится в терминал. Поля 
 
 Для настройки Claude Code запусти `agentmeister setup`.
 
-Формула ставит и `cm`, короткое имя для `claudemeister`. `cm kcalm`, `cm ps`, `cm proxy` работают так же.
-Если `cm` нет, его ставит `claudemeister alias on` или пункт "Короткое имя cm" в меню. Чужой `cm` они не
+Формула ставит и `am`, короткое имя для `agentmeister`. `am kcalm`, `am ps`, `am proxy` работают так же.
+Если `am` нет, его ставит `agentmeister alias on` или пункт "Короткое имя am" в меню. Чужой `am` они не
 трогают, `claudemeister alias off` убирает только свой.
 
 Homebrew ставит заодно mihomo для `claudemeister -x`. `claudemeister setup` кладёт команды `/restart`,
@@ -125,7 +125,7 @@ claudemeister setup
 ```
 
 `make install` кладёт в `~/.local/bin` символическую ссылку на проект, поэтому правки работают без
-переустановки. Рядом появляется `cm`, если `~/.local/bin/cm` не занят другой программой. Удаление: `make uninstall`. Проверки: `make test`.
+переустановки. Рядом появляется `am`, если `~/.local/bin/am` не занят другой программой. Для удаления есть `make uninstall`, для проверки `make test`.
 
 ### Выпуск новой версии
 
