@@ -235,7 +235,34 @@ def session_title(sid, path):
     return "" if t == "без названия" else t
 
 
-def message_for(payload, st):
+def codex_terminal(sid):
+    try:
+        processes = subprocess.check_output(["/bin/ps", "-axo", "tty=,args="], text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in processes.splitlines():
+        fields = line.split(None, 2)
+        if len(fields) == 3:
+            tty, executable, args = fields
+            if "?" not in tty and os.path.basename(executable) == "codex" and sid in args.split():
+                return f"/dev/{tty}"
+    return None
+
+
+def codex_cli_session(path):
+    if not isinstance(path, str) or not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            entry = json.loads(f.readline(1 << 20))
+        meta = entry["payload"]
+        return entry.get("type") == "session_meta" and (
+            meta.get("originator") == "codex-tui" or meta.get("source") == "cli")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return False
+
+
+def message_for(payload, st, codex=False):
     event = payload.get("hook_event_name")
     if event == "Stop":
         started = st.get("prompt_at")
@@ -244,6 +271,8 @@ def message_for(payload, st):
         took = int(time.time() - started)
         took = f"{took // 60} мин {took % 60} с" if took >= 60 else f"{took} с"
         return f"Готово за {took}", plain(payload.get("last_assistant_message")) or "Ход закончен"
+    if codex and event == "PermissionRequest":
+        return "Нужно разрешение", plain(payload.get("tool_name")) or "Codex ждет разрешения"
     if event != "Notification":
         return None
     kind, msg = payload.get("notification_type"), payload.get("message") or ""
@@ -281,7 +310,7 @@ def approval_pending(payload, sid):
     return telegram_approve.pending_for(sid)
 
 
-def hook():
+def hook(codex=False):
     # claude -p, который запускает /ask: он отвечает другому Claude, а не человеку, уведомлять не о чем
     if os.environ.get("MNRH_CHILD") == "1":
         return 0
@@ -292,7 +321,7 @@ def hook():
     if not isinstance(payload, dict):
         return 0
     sid = payload.get("session_id") or ""
-    if not UUID_RE.match(sid) or not enabled():
+    if not isinstance(sid, str) or not UUID_RE.fullmatch(sid) or not enabled():
         return 0
     st = load_state(sid)
     event = payload.get("hook_event_name")
@@ -303,31 +332,35 @@ def hook():
             launch(["remove", "--id", sid])
         prune_states()
         return 0
-    if event == "Stop" and payload.get("last_assistant_message"):
+    if event == "Stop" and not codex and payload.get("last_assistant_message"):
         st["last"] = payload["last_assistant_message"][:2000]
         save_state(sid, st)
-    what = message_for(payload, st)
+    what = message_for(payload, st, codex)
     if not what:
         return 0
-    tty = own_terminal()
-    if not tty:
+    tty = codex_terminal(sid) if codex else own_terminal()
+    transcript = payload.get("transcript_path")
+    if not tty and not (codex and codex_cli_session(transcript)):
         return 0
     bundle = os.environ.get("__CFBundleIdentifier", "")
+    if codex and tty and bundle not in TERMINALS:
+        front = front_bundle()
+        bundle = front if front in TERMINALS else ""
     native = native_push(payload)
     to_phone = not native and telegram.wanted() and not approval_pending(payload, sid)
     phone_mode = ntfy_alert.phone_mode()
     to_tossling = not native and ntfy_alert.configured() and (
         phone_mode == "always" or (phone_mode == "away" and telegram.away()))
-    on_mac = not watching(bundle, tty)
+    on_mac = not tty or not watching(bundle, tty)
     if not on_mac and not to_phone and not to_tossling:
         return 0
     head, body = what
     cwd = payload.get("cwd") or ""
-    project = "~" if cwd.rstrip("/") == HOME else os.path.basename(cwd.rstrip("/")) or "Claude"
-    title = session_title(sid, payload.get("transcript_path"))
+    project = "~" if cwd.rstrip("/") == HOME else os.path.basename(cwd.rstrip("/")) or ("Codex" if codex else "Claude")
+    title = "" if codex else session_title(sid, transcript)
     if on_mac and ensure_app():
         cm = cm_path()
-        click = f"{shlex.quote(cm)} focus {shlex.quote(tty)} {shlex.quote(bundle)}" if cm else None
+        click = f"{shlex.quote(cm)} focus {shlex.quote(tty)} {shlex.quote(bundle)}" if cm and tty and bundle else None
         post(f"{project}: {head}", title, body, sid, click)
     if to_phone:
         try:
@@ -340,8 +373,10 @@ def hook():
                                title=f"{project}: {head}", priority=3 if head.startswith("Готово") else 4)
         except ntfy_alert.AlertError as e:
             log_error(f"tossling: {e}")
-    st["notified"] = True
-    save_state(sid, st)
+    current = load_state(sid) if codex else st
+    if current.get("prompt_at") == st.get("prompt_at"):
+        current["notified"] = True
+        save_state(sid, current)
     return 0
 
 
@@ -369,6 +404,10 @@ def status():
         lost = rows
     have = [r[0] for r in rows if r not in lost]
     print("Хуки Claude Code: " + (", ".join(have) if have else "не стоят — claudemeister setup"))
+    from codex_harness import NOTIFY_EVENTS, configured_hooks
+    count = configured_hooks("notify-hook")
+    print(f"Хуки Codex, настроено {count if count is not None else '?'} из {len(NOTIFY_EVENTS)}. "
+          "Проверь доверие в /hooks или запусти agentmeister --harness codex setup.")
     print(telegram.describe())
     if telegram.configured():
         import telegram_approve
@@ -433,7 +472,7 @@ def main():
     args = sys.argv[1:]
     cmd = args[0] if args else ""
     if cmd == "notify-hook":
-        return hook()
+        return hook(codex=args[1:] == ["--codex"])
     if cmd == "focus":
         return focus(args[1] if len(args) > 1 else "", args[2] if len(args) > 2 else "")
     rest = args[1:]

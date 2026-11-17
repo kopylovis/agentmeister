@@ -23,11 +23,7 @@ class Doctor(unittest.TestCase):
                  dict(base, eventName="userPromptSubmit", trustStatus="untrusted"),
                  dict(base, eventName="stop", enabled=False)]
 
-        def request(method, params):
-            self.assertEqual(method, "hooks/list")
-            return {"data": [{"hooks": hooks}]}
-
-        level, text = claude_doctor.check_codex_hooks(request, "/project")
+        level, text = claude_doctor.check_codex_hooks(hooks)
         self.assertEqual(level, "bad")
         self.assertIn("1 из 3", text)
 

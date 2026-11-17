@@ -74,10 +74,10 @@ ITEMS = [
      "Long Gradle and xcodebuild output is cut down to errors and failed tests, so it does not eat "
      "the context."),
     ("mode notify", "🔔", "Уведомления", "Notifications",
-     "Уведомление на Mac, когда Claude просит разрешение, задает вопрос или закончил долгий ход, а вы смотрите "
-     "в другую вкладку. Telegram подключает agentmeister notify telegram.",
-     "A Mac notification when Claude asks for permission, asks a question or finishes a long turn while you "
-     "look at another tab. agentmeister notify telegram adds Telegram."),
+     "Уведомления о запросах разрешения и долгих ответах Claude Code и Codex. "
+     "В Claude Code также приходят уведомления о вопросах. Telegram подключает agentmeister notify telegram.",
+     "Notifications for permission requests and long turns in Claude Code and Codex. "
+     "Claude Code also sends question notifications. agentmeister notify telegram adds Telegram."),
     ("mode lid", "💻", "Не спать с закрытой крышкой", "Stay awake with the lid closed",
      "Mac не засыпает с закрытой крышкой, пока идет сессия. При первом включении спросит пароль sudo.",
      "The Mac stays awake with the lid closed while a session runs. The first time it asks for the sudo "
