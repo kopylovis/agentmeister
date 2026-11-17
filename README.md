@@ -169,8 +169,9 @@ need `swiftc` from the same tools. `agentmeister -x` needs mihomo.
 
 ## How `agentmeister` works
 
-Without arguments in a terminal, `agentmeister` opens an action menu with four groups: sessions (a project, the
-home folder, saved ones, running ones, reopening after a reboot), modes, the VPS proxy and install. It runs the
+Without arguments in a terminal, `agentmeister` opens an action menu. Harness holds setup and status for Claude Code
+and Codex. From the shell, `agentmeister --harness claude status` shows the CLI version and open sessions, and
+`agentmeister --harness codex statusline` shows the latest saved limits and context through promptsill. The menu runs the
 chosen action and prints the full command so you can type it directly next time. Afterwards you can go back to
 the menu. The humanize, guard, buildlog, notification and lid modes show as `[on]` or `[off]`, and Enter switches
 them in place without leaving the menu. The menu fills the screen: the list on the left, and on the right a

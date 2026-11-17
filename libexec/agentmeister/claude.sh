@@ -21,6 +21,8 @@ help() {
   agentmeister open                выбрать проект в папке проектов
   agentmeister <имя>               сразу в проекте (начала имени хватит) или в папке по пути
   agentmeister --harness codex     запустить Codex или настроить его через setup
+  agentmeister --harness claude status   версия и открытые сессии Claude Code
+  agentmeister --harness codex statusline   лимиты и контекст Codex через promptsill
   agentmeister root                в домашней папке
   agentmeister ... -k | -n         caffeinate или обычная сессия, без вопроса
   agentmeister ... -x | -d         через свой VPS или напрямую, без вопроса
