@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -235,7 +236,9 @@ class NoticeHook(unittest.TestCase):
         self.assertIn("уже своя statusLine", text)
         stub = {"type": "command", "command": "/x/mnrh claude statusline", "padding": 0}
         text, data = self.run_hook({"statusLine": stub})
-        self.assertTrue(data["statusLine"]["command"].endswith("claudemeister statusline"))
+        executable, subcommand = shlex.split(data["statusLine"]["command"])
+        self.assertEqual(os.path.basename(executable), "agentmeister")
+        self.assertEqual(subcommand, "statusline")
         self.assertIn("отдельная программа promptsill", text)
         _, data = self.run_hook({"statusLine": stub}, "s.notice_hook(False)")
         self.assertNotIn("statusLine", data)
