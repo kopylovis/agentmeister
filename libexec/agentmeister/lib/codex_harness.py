@@ -30,6 +30,7 @@ HOOK_LABELS = {
 MCP = "claudemeister"
 MCP_ARGS = ["--harness", "codex", "mcp"]
 SKILL_OWNER = "<!-- Managed by agentmeister. -->"
+RESTART_PRESET = {"label": "Restart Codex", "input": "$agentmeister restart"}
 
 
 def executable():
@@ -343,6 +344,43 @@ def configure_skill(remove):
     print(tr("Команды для Codex доступны через $agentmeister.", "Use $agentmeister for project commands in Codex."))
 
 
+def configure_restart_preset(codex, remove):
+    try:
+        with app_server(codex, os.getcwd()) as request:
+            result = request("config/read", {"includeLayers": True})
+            user = next(layer for layer in result["layers"] if layer["name"]["type"] == "user")
+            user_presets = (user["config"].get("tui") or {}).get("presets") or {}
+            owned = next((slot for slot, value in user_presets.items() if value == RESTART_PRESET), None)
+            if remove and owned is None:
+                return
+            effective = (result["config"].get("tui") or {}).get("presets") or {}
+            if not remove and owned is not None and effective.get(owned) != RESTART_PRESET:
+                print(tr("Текущие настройки переопределяют Restart Codex. Используй $agentmeister restart.",
+                         "The active configuration overrides Restart Codex. Use $agentmeister restart."))
+                return
+            if remove or owned is None:
+                used = user_presets.keys() | effective.keys()
+                slot = owned if remove else next((key for key in "9876543210" if key not in used), None)
+                if slot is None:
+                    print(tr("В /presets нет свободного места. Перезапуск доступен через $agentmeister restart.",
+                             "All /presets slots are occupied. Use $agentmeister restart."))
+                    return
+                params = {"keyPath": f"tui.presets.{slot}", "mergeStrategy": "upsert",
+                          "value": None if remove else RESTART_PRESET}
+                if user.get("version"):
+                    params["expectedVersion"] = user["version"]
+                written = request("config/value/write", params)
+                if written.get("status") != "ok" or written.get("overriddenMetadata"):
+                    raise ValueError("Codex could not save the restart preset")
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        print(tr("Не удалось изменить команду в /presets.", "Could not update the command in /presets."),
+              file=sys.stderr)
+        return
+    if not remove:
+        print(tr("Перезапуск доступен в /presets под именем Restart Codex.",
+                 "Choose Restart Codex in /presets."))
+
+
 def setup(codex, argv):
     parser = argparse.ArgumentParser(prog="agentmeister --harness codex setup")
     parser.add_argument("--remove", action="store_true")
@@ -369,6 +407,7 @@ def setup(codex, argv):
     elif not remove and (not existing or migrate):
         subprocess.run([codex, "mcp", "add", MCP, "--", CM] + MCP_ARGS, check=True)
     configure_skill(remove)
+    configure_restart_preset(codex, remove)
     if not remove:
         from setup_cmd import install_restart_hook
         install_restart_hook()
