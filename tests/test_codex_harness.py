@@ -14,6 +14,25 @@ import open_flow
 
 
 class CodexHarness(unittest.TestCase):
+    def test_restart_preset_uses_a_free_slot_and_removes_only_its_own(self):
+        custom = {"label": "My restart", "input": "/quit"}
+        user = {"9": custom}
+        effective = {**user, "8": {"input": "/compact"}}
+        result = {"layers": [{"name": {"type": "user"}, "config": {"tui": {"presets": user}}, "version": "old"}],
+                  "config": {"tui": {"presets": effective}}}
+        with patch.object(codex_harness, "app_server") as app_server:
+            request = app_server.return_value.__enter__.return_value
+            request.side_effect = [result, {"status": "ok"}]
+            codex_harness.configure_restart_preset("codex", False)
+            self.assertEqual(request.call_args.args[1], {"keyPath": "tui.presets.7", "mergeStrategy": "upsert",
+                                                        "value": codex_harness.RESTART_PRESET, "expectedVersion": "old"})
+            request.reset_mock()
+            user["7"] = codex_harness.RESTART_PRESET
+            request.side_effect = [result, {"status": "ok"}]
+            codex_harness.configure_restart_preset("codex", True)
+            self.assertEqual(request.call_args.args[1]["keyPath"], "tui.presets.7")
+            self.assertIsNone(request.call_args.args[1]["value"])
+
     def test_restart_queues_exact_session_and_preserves_proxy(self):
         sid = "11111111-2222-4333-8444-555555555555"
         with tempfile.TemporaryDirectory() as queue, \
