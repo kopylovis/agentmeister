@@ -184,7 +184,7 @@ fi
 [ -n "$net" ] || net=direct
 pre=()
 if [ "$net" = vps ]; then
-  /usr/bin/python3 "$PROXY" configured || { echo "claudemeister: прокси не настроен или нет mihomo: claudemeister proxy setup" >&2; exit 1; }
+  /usr/bin/python3 "$PROXY" configured || { echo "agentmeister: прокси не настроен или нет mihomo: agentmeister proxy setup" >&2; exit 1; }
   pre=(/usr/bin/python3 "$PROXY" run --)
 fi
 

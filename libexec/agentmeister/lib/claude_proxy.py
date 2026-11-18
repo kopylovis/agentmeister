@@ -48,7 +48,7 @@ CHECK_URL = "https://1.1.1.1/cdn-cgi/trace"
 PROBE_URL = "https://www.gstatic.com/generate_204"
 NO_PROXY = "localhost,127.0.0.1,::1,*.local"
 
-TEMPLATE = """# claudemeister proxy: через VPS идут только сессии claudemeister -x. Файл создаёт claudemeister proxy setup.
+TEMPLATE = """# agentmeister proxy: через VPS идут только сессии agentmeister -x. Файл создаёт agentmeister proxy setup.
 # mnrh-country: {country}
 mixed-port: {port}
 bind-address: 127.0.0.1
@@ -265,7 +265,7 @@ def pin_hosts():
     new = re.sub(r"(?m)^# mnrh-hosts:.*\n", "", text)
     new = re.sub(r"(?m)^hosts:\n(?:[ \t]+.*\n?)*", "", new)
     if mapping:
-        new = new.rstrip("\n") + "\n# mnrh-hosts: адреса серверов подписки, claudemeister узнает их через DNS системы при запуске mihomo\n" \
+        new = new.rstrip("\n") + "\n# mnrh-hosts: адреса серверов подписки, agentmeister узнает их через DNS системы при запуске mihomo\n" \
             + "hosts:\n" + "".join(f"  {json.dumps(k)}: {v}\n" for k, v in sorted(mapping.items()))
     if new != text:
         fd = os.open(CONFIG + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -309,7 +309,7 @@ def write_page(info, p):
     body = "".join(f"<tr><th>{html(k)}</th><td>{html(v)}</td></tr>" for k, v in rows if v)
     page = f"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Прокси claudemeister</title>
+<title>Прокси agentmeister</title>
 <style>
 :root {{ color-scheme: light dark; --bg: #fff; --fg: #1d1d1f; --dim: #6e6e73; --line: #e5e5ea; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg: #1c1c1e; --fg: #f5f5f7; --dim: #98989d; --line: #38383a; }} }}
@@ -325,7 +325,7 @@ p {{ color: var(--dim); font-size: 13px; line-height: 1.5; }}
 <h1>Сессия идет через VPS</h1>
 <table>{body}</table>
 <p>Данные на момент запуска mihomo. Если сервер с тех пор сменился, текущий покажет
-<code>claudemeister proxy</code>, а проверка выхода заново <code>claudemeister proxy test</code>.</p>
+<code>agentmeister proxy</code>, а проверка выхода заново <code>agentmeister proxy test</code>.</p>
 </body></html>
 """
     with open(PAGE, "w") as f:
@@ -354,8 +354,8 @@ def refresh_subscription():
             write_private(SUB_FILE, r.stdout)
             return True
     if not os.path.exists(SUB_FILE):
-        raise ProxyError("не скачал подписку и прошлой копии нет. Проверь ссылку: claudemeister proxy setup")
-    print("claudemeister proxy: подписка не скачалась, беру прошлую копию", file=sys.stderr)
+        raise ProxyError("не скачал подписку и прошлой копии нет. Проверь ссылку: agentmeister proxy setup")
+    print("agentmeister proxy: подписка не скачалась, беру прошлую копию", file=sys.stderr)
     return False
 
 
@@ -393,7 +393,7 @@ def start():
             break
         time.sleep(0.5)
     else:
-        print(f"claudemeister proxy: VPS пока не отвечает, запускаю всё равно (лог {tilde(LOG)})", file=sys.stderr)
+        print(f"agentmeister proxy: VPS пока не отвечает, запускаю всё равно (лог {tilde(LOG)})", file=sys.stderr)
     got = trace(proxy_env(p))
     node, proto = active_node()
     info = dict({"ip": got[0], "loc": got[1]} if got else {}, node=node, proto=proto,
@@ -409,7 +409,7 @@ def start():
         if not got or (got[1] or "").upper() != want:
             stop()
             raise ProxyError(f"выход через {fmt(got)}, а нужен {want}. Сессию через прокси не запускаю, "
-                             f"проверь сервер: claudemeister proxy test")
+                             f"проверь сервер: agentmeister proxy test")
 
 
 def stop():
@@ -552,16 +552,16 @@ def proxy_env(p):
 
 def run(cmd):
     if not cmd:
-        print("claudemeister proxy run -- <команда>", file=sys.stderr)
+        print("agentmeister proxy run -- <команда>", file=sys.stderr)
         return 2
     if not configured():
-        print(f"claudemeister proxy: прокси не настроен, сначала claudemeister proxy setup", file=sys.stderr)
+        print(f"agentmeister proxy: прокси не настроен, сначала agentmeister proxy setup", file=sys.stderr)
         return 2
     with locked():
         try:
             start()
         except ProxyError as e:
-            print(f"claudemeister proxy: {e}", file=sys.stderr)
+            print(f"agentmeister proxy: {e}", file=sys.stderr)
             return 1
         ensure_watch()
         os.makedirs(HOLDERS, exist_ok=True)
@@ -573,7 +573,7 @@ def run(cmd):
     try:
         child = subprocess.Popen(cmd, env=proxy_env(port()))
     except OSError as e:
-        print(f"claudemeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
+        print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
         child = None
 
     def forward(sig, _frame):
@@ -687,7 +687,7 @@ def setup(args):
     url = rest[0] if rest else ""
     if not url:
         if not sys.stdin.isatty():
-            print("claudemeister proxy setup <ссылка на подписку>", file=sys.stderr)
+            print("agentmeister proxy setup <ссылка на подписку>", file=sys.stderr)
             return 2
         print("Ссылка на подписку из 3x-ui (та же, что в Happ). На экране её видно не будет.")
         url = secret("Подписка: ").strip()
@@ -717,7 +717,7 @@ def setup(args):
         print(f"{BAD} через VPS ничего не открылось. Проверь подписку, лог: {tilde(LOG)}")
         return 1
     print(f"{OK} напрямую {fmt(direct)}, через VPS {fmt(via)}")
-    print("Запуск: claudemeister <проект> -x, или выбери «через VPS» в меню claudemeister.")
+    print("Запуск: agentmeister <проект> -x, или выбери «через VPS» в меню Agentmeister.")
     return 0
 
 
@@ -780,7 +780,7 @@ def version_line():
     line = f"mihomo {have}" + (" из Homebrew" if from_brew(exe) else f", {tilde(exe)}")
     latest = brew_latest() if from_brew(exe) else None
     if newer(latest, have):
-        line += f", есть {latest}: claudemeister proxy update"
+        line += f", есть {latest}: agentmeister proxy update"
     running = running_version()
     if running and running != have:
         line += f". Запущен еще {running}, новая версия заработает после перезапуска mihomo"
@@ -847,7 +847,7 @@ def fmt(t):
 
 def status(test=False):
     if not configured():
-        print(f"{WARN} прокси не настроен: claudemeister proxy setup")
+        print(f"{WARN} прокси не настроен: agentmeister proxy setup")
         return 1
     p, pid, live = port(), read_pid(), holders()
     want = setting("country")
@@ -861,7 +861,7 @@ def status(test=False):
     if pid and listening(p):
         print(f"{OK} mihomo работает (pid {pid}), сессий через VPS {len(live)}")
         print(f"{OK} сторож сети работает" if watcher_alive() else
-              f"{WARN} сторожа сети нет, он запустится с новой сессией через VPS или claudemeister proxy restart")
+              f"{WARN} сторожа сети нет, он запустится с новой сессией через VPS или agentmeister proxy restart")
         node, proto = active_node()
         if node:
             print(f"{OK} сейчас сервер {node}" + (f", протокол {proto}" if proto else ""))
@@ -909,16 +909,16 @@ def last():
         return "direct"
 
 
-USAGE = """claudemeister proxy                 статус: настроен ли, запущен ли mihomo, сколько сессий через VPS
-claudemeister proxy test            сравнить выход напрямую и через VPS (IP и страна)
-claudemeister proxy setup [ссылка] [--country KZ] [--only KZ]
+USAGE = """agentmeister proxy                 статус: настроен ли, запущен ли mihomo, сколько сессий через VPS
+agentmeister proxy test            сравнить выход напрямую и через VPS (IP и страна)
+agentmeister proxy setup [ссылка] [--country KZ] [--only KZ]
                                   настроить по ссылке на подписку (https://…, как в Happ).
                                   --country: если выход окажется в другой стране, сессия не запустится;
                                   --only: брать из подписки только серверы, чьё имя подходит под это выражение
-claudemeister proxy update          обновить mihomo через Homebrew и перезапустить, если он запущен
-claudemeister proxy restart         перезапустить mihomo, не закрывая сессии через VPS
-claudemeister proxy remove          удалить настройку
-claudemeister proxy run -- <cmd>    запустить команду через VPS (так делает claudemeister -x)
+agentmeister proxy update          обновить mihomo через Homebrew и перезапустить, если он запущен
+agentmeister proxy restart         перезапустить mihomo, не закрывая сессии через VPS
+agentmeister proxy remove          удалить настройку
+agentmeister proxy run -- <cmd>    запустить команду через VPS (так делает agentmeister -x)
 
 Через VPS идёт только сессия, запущенная с -x (или «через VPS» в меню), и запущенные
 из неё программы, которые читают HTTPS_PROXY (gh, npm, curl, git по https, MCP-серверы). git по SSH
@@ -959,7 +959,7 @@ def main(argv):
     if cmd == "last":
         print(last())
         return 0
-    print(f"claudemeister proxy: не знаю «{cmd}»\n\n{USAGE.format(port=port())}", file=sys.stderr)
+    print(f"agentmeister proxy: не знаю «{cmd}»\n\n{USAGE.format(port=port())}", file=sys.stderr)
     return 2
 
 

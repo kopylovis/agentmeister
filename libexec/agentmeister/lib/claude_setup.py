@@ -163,17 +163,17 @@ def proxy_step(country="", only=""):
     if claude_proxy.configured():
         want = claude_proxy.setting("country")
         print(f"{OK} прокси через VPS уже настроен" + (f", выход должен быть в {want}" if want else "")
-              + " (проверить: claudemeister proxy test)")
+              + " (проверить: agentmeister proxy test)")
         if country and country.upper() != want.upper():
             print(f"{WARN} --country {country.upper()} не применил, прокси уже настроен. "
-                  f"Поменять: claudemeister proxy setup --country {country.upper()}")
+                  f"Поменять: agentmeister proxy setup --country {country.upper()}")
         return "done"
     if not sys.stdin.isatty():
-        print(f"{WARN} прокси через VPS не настроен, не терминал. Настроить: claudemeister proxy setup --country KZ")
+        print(f"{WARN} прокси через VPS не настроен, не терминал. Настроить: agentmeister proxy setup --country KZ")
         return None
     print("Прокси через VPS: сессии claudemeister -x ходят через твой сервер (подписка 3x-ui), остальное напрямую.")
     if ask("Настроить прокси сейчас?", [("yes", "Да", "yд"), ("no", "Пропустить", "nн")]) != "yes":
-        print(f"{WARN} прокси пропущен. Настроить потом: claudemeister proxy setup")
+        print(f"{WARN} прокси пропущен. Настроить потом: agentmeister proxy setup")
         return "skipped"
     if not country:
         country = input("Страна выхода, которую проверять при запуске, например KZ (Enter, не проверять): ").strip()
