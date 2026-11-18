@@ -99,7 +99,8 @@ $agentmeister release-notes since v1.13.0
 
 To reopen the same session in Codex CLI, choose "Restart Codex" in `/presets` or enter
 `$agentmeister restart`. Enter `/quit` when prompted.
-`$agentmeister restart --update` also runs `codex update`. The shell command is
+"Update and restart Codex" runs `codex update` after `/quit` and then reopens the session. You can also enter
+`$agentmeister restart --update`. The shell command is
 `agentmeister --harness codex restart <id>`. If Agentmeister can identify the session's terminal and its
 zsh hook is active, it queues the restart for that tab.
 
