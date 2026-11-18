@@ -35,7 +35,7 @@ class Version(unittest.TestCase):
     def test_update_available_and_old_process(self):
         self.fake("1.19.34", latest="1.19.35", running="1.19.33")
         line = p.version_line()
-        self.assertIn("есть 1.19.35: claudemeister proxy update", line)
+        self.assertIn("есть 1.19.35: agentmeister proxy update", line)
         self.assertIn("Запущен еще 1.19.33", line)
 
     def test_not_from_brew_skips_latest(self):
