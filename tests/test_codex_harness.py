@@ -14,7 +14,7 @@ import open_flow
 
 
 class CodexHarness(unittest.TestCase):
-    def test_restart_preset_uses_a_free_slot_and_removes_only_its_own(self):
+    def test_restart_presets_use_free_slots_and_remove_only_their_own(self):
         custom = {"label": "My restart", "input": "/quit"}
         user = {"9": custom}
         effective = {**user, "8": {"input": "/compact"}}
@@ -23,15 +23,26 @@ class CodexHarness(unittest.TestCase):
         with patch.object(codex_harness, "app_server") as app_server:
             request = app_server.return_value.__enter__.return_value
             request.side_effect = [result, {"status": "ok"}]
-            codex_harness.configure_restart_preset("codex", False)
-            self.assertEqual(request.call_args.args[1], {"keyPath": "tui.presets.7", "mergeStrategy": "upsert",
-                                                        "value": codex_harness.RESTART_PRESET, "expectedVersion": "old"})
+            codex_harness.configure_restart_presets("codex", False)
+            self.assertEqual(request.call_args.args, ("config/batchWrite", {
+                "edits": [{"keyPath": f"tui.presets.{slot}", "mergeStrategy": "upsert", "value": preset}
+                          for slot, preset in zip("76", codex_harness.RESTART_PRESETS)],
+                "expectedVersion": "old",
+            }))
             request.reset_mock()
-            user["7"] = codex_harness.RESTART_PRESET
+            user.update(zip("76", codex_harness.RESTART_PRESETS))
+            effective.update(user)
+            request.side_effect = [result]
+            codex_harness.configure_restart_presets("codex", False)
+            request.assert_called_once_with("config/read", {"includeLayers": True})
+            request.reset_mock()
             request.side_effect = [result, {"status": "ok"}]
-            codex_harness.configure_restart_preset("codex", True)
-            self.assertEqual(request.call_args.args[1]["keyPath"], "tui.presets.7")
-            self.assertIsNone(request.call_args.args[1]["value"])
+            codex_harness.configure_restart_presets("codex", True)
+            self.assertEqual(request.call_args.args, ("config/batchWrite", {
+                "edits": [{"keyPath": f"tui.presets.{slot}", "mergeStrategy": "upsert", "value": None}
+                          for slot in "76"],
+                "expectedVersion": "old",
+            }))
 
     def test_restart_queues_exact_session_and_preserves_proxy(self):
         sid = "11111111-2222-4333-8444-555555555555"
