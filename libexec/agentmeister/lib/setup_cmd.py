@@ -1,4 +1,4 @@
-"""claudemeister setup: команды, хуки Claude Code, хук zsh, MCP-сервер; --remove убирает их."""
+"""Настройка команд, хуков и MCP для Claude Code."""
 import os
 import re
 import shutil
@@ -24,6 +24,7 @@ OLD_MCP_NAME = "mnrh"
 # Строка хука перезапуска в ~/.zshrc: новая и та, что ставил mnrh
 ZSH_MARKERS = ("share/claudemeister/restart.zsh", "share/mnrh/restart.zsh")
 ZSHRC = os.path.join(os.environ.get("ZDOTDIR") or HOME, ".zshrc")
+CODEX_SETUP = "agentmeister --harness codex setup"
 
 
 def is_zsh_hook(line):
@@ -93,7 +94,7 @@ def notice_hook(install, rename_rules=False):
                    "✓ строка состояния: promptsill уже стоит в statusLine" if "promptsill" in command else
                    "✓ строка состояния → statusLine (promptsill)" if promptsill else
                    f"! строка состояния теперь отдельная программа promptsill: {PROMPTSILL_HINT}, "
-                   f"потом снова claudemeister setup")
+                   "потом снова agentmeister setup")
     allow_rules = [f"mcp__{MCP_NAME}__{name}" for name in READ_ONLY]
     # разрешения старого MCP-сервера mnrh тоже убираем: инструменты теперь у claudemeister
     old_rules = {f"mcp__{OLD_MCP_NAME}__{name}" for name in READ_ONLY + ["mac_status", "free_memory"]}
@@ -116,24 +117,25 @@ def notice_hook(install, rename_rules=False):
               f"в {tilde(SETTINGS)}")
         print(status_note)
         print("✓ guard: вопрос перед чтением и удалением ключей и перед необратимыми командами (reset --hard, "
-              "push --force, rm -r вне проекта…) → хук PreToolUse (claudemeister guard)")
+              "push --force, rm -r вне проекта…) → хук PreToolUse (agentmeister guard)")
         print("✓ длинный вывод сборок и тестов: Claude видит выжимку, полный лог в ~/.cache/mnrh/logs, в iTerm2 "
               "идущая сборка подписана во вкладке → хуки PreToolUse, PostToolUse и PostToolUseFailure "
-              "(claudemeister buildlog)")
+              "(agentmeister buildlog)")
         print("✓ уведомления, когда Claude ждёт тебя → хуки UserPromptSubmit, Stop и Notification "
-              "(claudemeister notify -h)")
-        print("✓ claudemeister humanization: правила письма без признаков нейросети → хуки SessionStart, UserPromptSubmit "
-              "и Stop; включить: /humanize или claudemeister humanize on")
+              "(agentmeister notify -h)")
+        print("✓ humanize → хуки SessionStart, UserPromptSubmit и Stop. Включить через /humanize "
+              "или agentmeister humanize on")
         print(f"✓ без вопроса о разрешении: {', '.join(READ_ONLY)} (они только читают)")
         days = settings.get("cleanupPeriodDays")
         print(f"✓ переписки хранятся {claude_settings.RETENTION_DAYS} дней вместо 30 → cleanupPeriodDays"
               if retention else f"✓ переписки хранятся {days} дней (cleanupPeriodDays, твое значение)")
 
 
-SETUP_USAGE = """claudemeister setup [--country KZ] [--only <имя>]
+SETUP_USAGE = f"""agentmeister setup [--country KZ] [--only <имя>]
     поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh, MCP-сервер claudemeister
     и настроить прокси через VPS, если он еще не настроен. --country и --only уходят в agentmeister proxy setup
-claudemeister setup --remove    убрать все это (прокси остается, его убирает agentmeister proxy remove)"""
+agentmeister setup --remove    убрать настройку Claude Code
+{CODEX_SETUP}    настроить хуки и MCP для Codex"""
 
 
 def setup_args(args):
@@ -194,8 +196,8 @@ def setup(args):
         return 2
     if not shutil.which(CLAUDE_BIN):
         # без claude не зарегистрировать MCP-сервер, а setup бросил бы работу на полпути с traceback
-        print(f"claudemeister setup: не нашел {CLAUDE_BIN} в PATH. Поставь Claude Code "
-              "(https://docs.claude.com/en/docs/claude-code) и запусти setup снова", file=sys.stderr)
+        print(f"Не нашел {CLAUDE_BIN} в PATH. Для настройки Claude Code сначала установи Claude Code. "
+              f"Для Codex запусти {CODEX_SETUP}.", file=sys.stderr)
         return 1
     if opts["remove"]:
         for f in [COMMAND_FILE, FORGET_FILE, FRESH_FILE, SLIM_FILE, OLD_FORGET_FILE] + \
@@ -248,7 +250,7 @@ def setup(args):
         print(f"✓ MCP-сервер {MCP_NAME}: {tilde(CM)} mcp (инструменты: {', '.join(t['name'] for t in tools())})")
     import claude_notify
     if claude_notify.ensure_app():
-        print(f"✓ приложение уведомлений → {tilde(claude_notify.AGENT.app)}; проверить: claudemeister notify test")
+        print(f"✓ приложение уведомлений → {tilde(claude_notify.AGENT.app)} (agentmeister notify test)")
     else:
         print("✗ не собрал приложение уведомлений: нужен swiftc (xcode-select --install)")
     proxy = claude_setup.proxy_step(opts["country"], opts["only"])
@@ -260,5 +262,6 @@ def setup(args):
     if not shutil.which("claudemeister"):
         print(f"! claudemeister нет в PATH, а /restart, /todo и другие команды вызывают его по имени. "
               f"Поставь его: brew install kopylovis/tap/agentmeister или make install в {tilde(ROOT)}")
-    print("Подхватится в новых вкладках и сессиях Claude Code; в уже открытых — после перезапуска.")
+    print("Настройки Claude Code подхватятся при запуске новой сессии или перезапуске открытой.")
+    print(f"Для Codex запусти {CODEX_SETUP}, затем подтверди хуки через /hooks.")
     return 0
