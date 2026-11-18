@@ -130,8 +130,8 @@ def launch(codex, args, passthrough):
         cmd = ["caffeinate", "-is"] + cmd
     if net == "vps":
         if not claude_proxy.configured():
-            raise ValueError(tr("Прокси не настроен. Запусти claudemeister proxy setup.",
-                                "Set up the proxy with claudemeister proxy setup."))
+            raise ValueError(tr("Прокси не настроен. Запусти agentmeister proxy setup.",
+                                "Set up the proxy with agentmeister proxy setup."))
         cmd = [sys.executable, str(Path(__file__).with_name("claude_proxy.py")), "run", "--"] + cmd
     if cwd:
         os.chdir(cwd)
