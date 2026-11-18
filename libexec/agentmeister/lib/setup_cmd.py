@@ -51,6 +51,20 @@ def write_zshrc(lines):
         f.writelines(lines)
 
 
+def install_restart_hook():
+    hook = hook_file()
+    line = f'[ -f "{hook}" ] && source "{hook}"\n'
+    lines = zshrc_lines()
+    if line in lines:
+        print(f"✓ хук перезапуска уже в {tilde(ZSHRC)}")
+        return
+    lines = [l for l in lines if not is_zsh_hook(l)]
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    write_zshrc(lines + [line])
+    print(f"✓ хук перезапуска → {tilde(ZSHRC)} (работает в новых вкладках терминала)")
+
+
 def rename_rule(rule):
     """mcp__mnrh и mcp__mnrh__<инструмент> → то же для claudemeister; остальные правила как есть."""
     if rule == f"mcp__{OLD_MCP_NAME}":
@@ -214,17 +228,7 @@ def setup(args):
     promptsill = claude_setup.promptsill_step()
     old = old_mcp()
     notice_hook(True, rename_rules=old != "foreign")
-    hook = hook_file()
-    line = f'[ -f "{hook}" ] && source "{hook}"\n'
-    lines = zshrc_lines()
-    if line in lines:
-        print(f"✓ хук перезапуска уже в {tilde(ZSHRC)}")
-    else:
-        lines = [l for l in lines if not is_zsh_hook(l)]
-        if lines and not lines[-1].endswith("\n"):
-            lines[-1] += "\n"
-        write_zshrc(lines + [line])
-        print(f"✓ хук перезапуска → {tilde(ZSHRC)} (работает в новых вкладках терминала)")
+    install_restart_hook()
 
     if remove_old_mcp(old):
         print(f"✓ MCP-сервер {OLD_MCP_NAME} (mnrh claude mcp) убран, его инструменты теперь у {MCP_NAME}")

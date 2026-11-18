@@ -97,6 +97,14 @@ $agentmeister where
 $agentmeister release-notes since v1.13.0
 ```
 
+To reopen the same session in Codex CLI, enter `$agentmeister restart`, then `/quit` when prompted.
+`$agentmeister restart --update` also runs `codex update`. The shell command is
+`agentmeister --harness codex restart <id>`. If Agentmeister can identify the session's terminal and its
+zsh hook is active, it queues the restart for that tab.
+
+In Codex, `/new` starts a fresh session, `/delete` opens the confirmation to delete the current session, and
+`/compact` summarizes the current context. The Claude Code `/slim` command reduces the size of the saved transcript.
+
 With promptsill 0.8.0 or newer, setup also configures the live Codex footer with rate limits and context.
 `agentmeister --harness codex setup --remove` removes the installed skill, hooks and MCP registration.
 
