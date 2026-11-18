@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,15 @@ from mnrhlib import CM, HOME, ROOT, find_project, hook_command, is_hook, prompts
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop")
 NOTIFY_EVENTS = ("UserPromptSubmit", "PermissionRequest", "Stop")
 HOOK_COMMANDS = {"humanize-hook": HOOK_EVENTS, "notify-hook": NOTIFY_EVENTS}
+HOOK_LABELS = {
+    "approve-hook": "Agentmeister approvals",
+    "buildlog-hook": "Agentmeister build digest",
+    "guard-hook": "Agentmeister guard",
+    "humanize-hook": "Agentmeister humanize",
+    "notice": "Agentmeister session start",
+    "notify-hook": "Agentmeister notifications",
+    "session-end": "Agentmeister session cleanup",
+}
 MCP = "claudemeister"
 MCP_ARGS = ["--harness", "codex", "mcp"]
 SKILL_OWNER = "<!-- Managed by agentmeister. -->"
@@ -143,6 +153,33 @@ def configured_hooks(name):
         return None
 
 
+def label_hooks(hooks):
+    changed = False
+    for groups in hooks.values():
+        for group in groups if isinstance(groups, list) else ():
+            handlers = group.get("hooks") if isinstance(group, dict) else None
+            for handler in handlers if isinstance(handlers, list) else ():
+                if not isinstance(handler, dict) or handler.get("type") != "command":
+                    continue
+                command = handler.get("command")
+                if not isinstance(command, str) or handler.get("statusMessage"):
+                    continue
+                try:
+                    args = shlex.split(command)
+                except ValueError:
+                    continue
+                if len(args) < 2:
+                    continue
+                binary = os.path.basename(args[0])
+                name = args[1] if binary in ("agentmeister", "claudemeister") else None
+                if binary == "mnrh" and args[1:2] == ["claude"] and len(args) > 2:
+                    name = args[2]
+                if name in HOOK_LABELS:
+                    handler["statusMessage"] = HOOK_LABELS[name]
+                    changed = True
+    return changed
+
+
 def configure_hooks(remove):
     path = hooks_path()
     try:
@@ -188,6 +225,8 @@ def configure_hooks(remove):
             hooks[event] = groups
         elif event in hooks:
             del hooks[event]
+    if not remove:
+        changed = label_hooks(hooks) or changed
     if changed:
         path.parent.mkdir(parents=True, exist_ok=True)
         write_json(str(path), data, mode=0o600, newline=True, indent=2, ensure_ascii=False)
