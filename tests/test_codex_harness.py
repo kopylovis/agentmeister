@@ -82,3 +82,17 @@ class CodexHarness(unittest.TestCase):
             self.assertEqual(codex_harness.configured_hooks("notify-hook"), len(codex_harness.NOTIFY_EVENTS))
             codex_harness.configure_hooks(True)
             self.assertEqual(json.loads(path.read_text()), original)
+
+    def test_labels_apply_to_existing_agentmeister_hooks(self):
+        def hook(command, **metadata):
+            return {"type": "command", "command": command, **metadata}
+
+        foreign = hook("/tmp/it2 handle-agent-hook")
+        legacy = hook('"/tmp/with spaces/agentmeister" guard-hook')
+        custom = hook("/tmp/claudemeister humanize-hook", statusMessage="My own label")
+        hooks = {"PreToolUse": [{"matcher": "Bash", "hooks": [foreign, legacy, custom]}]}
+        self.assertTrue(codex_harness.label_hooks(hooks))
+        self.assertEqual(legacy["statusMessage"], "Agentmeister guard")
+        self.assertEqual(custom["statusMessage"], "My own label")
+        self.assertNotIn("statusMessage", foreign)
+        self.assertFalse(codex_harness.label_hooks(hooks))
