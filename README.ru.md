@@ -93,6 +93,14 @@ $agentmeister where
 $agentmeister release-notes с v1.13.0
 ```
 
+Чтобы переоткрыть ту же сессию Codex, введи `$agentmeister restart`, затем `/quit` по подсказке.
+`$agentmeister restart --update` также запускает `codex update`. Из терминала доступна команда
+`agentmeister --harness codex restart <id>`. Если Agentmeister определил вкладку и в zsh подключен хук
+перезапуска, сессия откроется в той же вкладке.
+
+В Codex `/new` открывает новую сессию, `/delete` спрашивает подтверждение на удаление текущей, а
+`/compact` сжимает текущий контекст. Команда `/slim` в Claude Code уменьшает размер файла переписки.
+
 С promptsill 0.8.0 и новее setup также настраивает строку Codex с лимитами и контекстом.
 `agentmeister --harness codex setup --remove` убирает установленный навык, хуки и регистрацию MCP.
 

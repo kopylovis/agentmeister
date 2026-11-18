@@ -23,6 +23,7 @@ help() {
   agentmeister --harness codex     запустить Codex или настроить его через setup
   agentmeister --harness claude status   версия и открытые сессии Claude Code
   agentmeister --harness codex statusline   лимиты и контекст Codex через promptsill
+  agentmeister --harness codex restart [ID]   снова открыть сессию Codex
   agentmeister root                в домашней папке
   agentmeister ... -k | -n         caffeinate или обычная сессия, без вопроса
   agentmeister ... -x | -d         через свой VPS или напрямую, без вопроса
