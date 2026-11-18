@@ -93,7 +93,8 @@ $agentmeister where
 $agentmeister release-notes с v1.13.0
 ```
 
-Чтобы переоткрыть ту же сессию Codex, введи `$agentmeister restart`, затем `/quit` по подсказке.
+Чтобы переоткрыть ту же сессию Codex, выбери "Restart Codex" в `/presets` или введи
+`$agentmeister restart`. Затем введи `/quit` по подсказке.
 `$agentmeister restart --update` также запускает `codex update`. Из терминала доступна команда
 `agentmeister --harness codex restart <id>`. Если Agentmeister определил вкладку и в zsh подключен хук
 перезапуска, сессия откроется в той же вкладке.
