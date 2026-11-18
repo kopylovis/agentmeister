@@ -189,6 +189,26 @@ class Check(unittest.TestCase):
         self.assertEqual(after[STATE]["skipped"], [])
 
 
+class Setup(unittest.TestCase):
+    def test_codex_hint_in_help_and_after_claude_setup(self):
+        out, _ = sandbox({}, """
+            import claude_notify
+            import setup_cmd as s
+
+            s.CLAUDE_BIN = "sh"
+            s.mcp_get = lambda name: (name == s.MCP_NAME, [s.CM, "mcp"])
+            claude_notify.ensure_app = lambda: True
+
+            assert s.setup(["--help"]) == 0
+            print("---")
+            assert s.setup([]) == 0
+        """, promptsill=True)
+        help_text, _, setup_output = out.partition("---\n")
+        self.assertIn("agentmeister --harness codex setup", help_text)
+        self.assertIn("Для Codex запусти agentmeister --harness codex setup", setup_output)
+        self.assertIn("/hooks", setup_output)
+
+
 class NoticeHook(unittest.TestCase):
     FOREIGN = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "~/bin/stop.sh"}]}]},
                "permissions": {"allow": ["Bash(ls)"]}, "theme": "dark"}
