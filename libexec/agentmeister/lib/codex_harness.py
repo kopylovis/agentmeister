@@ -12,7 +12,7 @@ from pathlib import Path
 
 import open_flow
 from menu import Quit, Screen
-from mnrhlib import CM, HOME, ROOT, find_project, hook_command, is_hook, promptsill_path, tr, write_json
+from mnrhlib import CM, HOME, RESTART_QUEUE, ROOT, UUID_RE, find_project, hook_command, is_hook, promptsill_path, tr, write_json
 
 
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop")
@@ -80,7 +80,9 @@ def launch_args(argv):
         sep = argv.index("--")
         before, after = argv[:sep], argv[sep + 1:]
     parser = argparse.ArgumentParser(prog="agentmeister --harness codex",
-                                     description=tr("Запуск и настройка Codex", "Launch and set up Codex"))
+                                     description=tr("Запуск и настройка Codex", "Launch and set up Codex"),
+                                     epilog=tr("Для перезапуска сессии используй restart [ID].",
+                                               "Use restart [ID] to reopen a session."))
     parser.add_argument("project", nargs="?")
     parser.add_argument("-k", "--caffeinate", dest="mode", action="store_const", const="caffeinate")
     parser.add_argument("-n", "--normal", dest="mode", action="store_const", const="normal")
@@ -130,6 +132,62 @@ def launch(codex, args, passthrough):
     if cwd:
         os.chdir(cwd)
     os.execvp(cmd[0], cmd)
+
+
+def restart(codex, argv):
+    parser = argparse.ArgumentParser(prog="agentmeister --harness codex restart",
+                                     description=tr("Заново открыть сессию Codex", "Reopen a Codex session"))
+    parser.add_argument("session", nargs="?")
+    parser.add_argument("--after-exit", action="store_true")
+    parser.add_argument("--update", action="store_true")
+    parser.add_argument("-x", "--proxy", action="store_true")
+    options = parser.parse_args(argv)
+    current = os.environ.get("CODEX_THREAD_ID")
+    session = options.session or current
+    if session and not UUID_RE.fullmatch(session):
+        raise ValueError(tr("Нужен UUID сессии Codex.", "Expected a Codex session UUID."))
+    cwd = os.getcwd()
+    proxy = options.proxy or bool(os.environ.get("MNRH_PROXY"))
+
+    if options.after_exit:
+        from claude_notify import codex_terminal
+
+        if not current or session != current:
+            raise ValueError(tr("Для перезапуска нужен ID текущей сессии Codex.",
+                                "Restart after exit needs the current Codex session."))
+        program = shutil.which("agentmeister") or os.path.join(ROOT, "bin", "agentmeister")
+        command = [program, "--harness", "codex", "restart", session]
+        if options.update:
+            command.append("--update")
+        if proxy:
+            command.append("--proxy")
+        line = f"cd {shlex.quote(cwd)} && {shlex.join(command)}"
+        tty = codex_terminal(session) if os.environ.get("MNRH_RESTART_HOOK") == "1" else None
+        if not tty:
+            print(tr("После /quit выполни в терминале", "After /quit, run in the terminal"))
+            print(line)
+            return 0
+        queue = Path(RESTART_QUEUE)
+        queue.mkdir(parents=True, mode=0o700, exist_ok=True)
+        job_path = queue / Path(tty).name
+        try:
+            with job_path.open("x") as job:
+                job.write(line + "\n")
+        except FileExistsError:
+            if job_path.is_symlink() or job_path.read_text(encoding="utf-8") != line + "\n":
+                raise ValueError(tr("Для этой вкладки уже запланирован другой запуск.",
+                                    "Another launch is already queued for this tab."))
+            os.utime(job_path, follow_symlinks=False)
+        print(tr("Введи /quit в течение двух минут. Codex снова откроет эту сессию в той же вкладке.",
+                 "Run /quit within two minutes. Codex will reopen this session in the same tab."))
+        return 0
+
+    if options.update:
+        subprocess.run([codex, "update"], check=True)
+    flags = ["-x", "--"] if proxy else ["--"]
+    resume = ["resume", "-C", cwd, session or "--last"]
+    args, passthrough = launch_args(flags + resume)
+    return launch(codex, args, passthrough)
 
 
 def hooks_path():
@@ -312,6 +370,8 @@ def setup(codex, argv):
         subprocess.run([codex, "mcp", "add", MCP, "--", CM] + MCP_ARGS, check=True)
     configure_skill(remove)
     if not remove:
+        from setup_cmd import install_restart_hook
+        install_restart_hook()
         print(tr("Хуки humanize и notify, MCP настроены. Подтверди новые хуки в Codex через /hooks.",
                  "Configured humanize and notify hooks and MCP. Trust the new hooks in Codex with /hooks."))
         configure_footer()
@@ -330,17 +390,24 @@ def main(argv):
             os.execv(path, [path, "codex"] + argv[1:])
         print("brew install kopylovis/tap/promptsill", file=sys.stderr)
         return 1
+    restarting = argv[:1] == ["restart"]
+    if restarting and any(arg in ("-h", "--help") for arg in argv[1:]):
+        return restart(None, argv[1:])
     configuring = argv[:1] == ["setup"]
     if configuring and any(arg in ("-h", "--help") for arg in argv[1:]):
         return setup(None, argv[1:])
-    if not configuring:
+    if not configuring and not restarting:
         args, passthrough = launch_args(argv)
     codex = executable()
     if not codex:
         print(tr("Команда codex не найдена в PATH.", "The codex command is missing from PATH."), file=sys.stderr)
         return 1
     try:
-        return setup(codex, argv[1:]) if configuring else launch(codex, args, passthrough)
+        if configuring:
+            return setup(codex, argv[1:])
+        if restarting:
+            return restart(codex, argv[1:])
+        return launch(codex, args, passthrough)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(getattr(error, "stderr", "") or str(error), file=sys.stderr)
         return 1

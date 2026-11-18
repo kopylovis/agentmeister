@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,23 @@ import open_flow
 
 
 class CodexHarness(unittest.TestCase):
+    def test_restart_queues_exact_session_and_preserves_proxy(self):
+        sid = "11111111-2222-4333-8444-555555555555"
+        with tempfile.TemporaryDirectory() as queue, \
+                patch.dict(os.environ, {"CODEX_THREAD_ID": sid, "MNRH_RESTART_HOOK": "1", "MNRH_PROXY": "1"}), \
+                patch.object(codex_harness, "RESTART_QUEUE", queue), \
+                patch("claude_notify.codex_terminal", return_value="/dev/ttys123"):
+            self.assertEqual(codex_harness.restart("codex", ["--after-exit", "--update"]), 0)
+            self.assertEqual(codex_harness.restart("codex", ["--after-exit", "--update"]), 0)
+            job = shlex.split((Path(queue) / "ttys123").read_text())
+        self.assertEqual(job[-6:], ["--harness", "codex", "restart", sid, "--update", "--proxy"])
+
+    def test_restart_passes_the_saved_id_to_codex(self):
+        sid = "11111111-2222-4333-8444-555555555555"
+        with patch.object(codex_harness, "launch") as launch:
+            codex_harness.restart("codex", [sid])
+        self.assertEqual(launch.call_args.args[2], ["resume", "-C", os.getcwd(), sid])
+
     def test_skill_setup_keeps_a_user_owned_skill(self):
         with tempfile.TemporaryDirectory() as home, patch.object(codex_harness, "HOME", home):
             path = Path(home) / ".agents" / "skills" / "agentmeister" / "SKILL.md"
