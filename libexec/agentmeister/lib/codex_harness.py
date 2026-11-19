@@ -135,7 +135,13 @@ def launch(codex, args, passthrough):
         cmd = [sys.executable, str(Path(__file__).with_name("claude_proxy.py")), "run", "--"] + cmd
     if cwd:
         os.chdir(cwd)
-    os.execvp(cmd[0], cmd)
+    env = dict(os.environ)
+    if net == "direct":
+        for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+                     "http_proxy", "https_proxy", "all_proxy", "no_proxy", "MNRH_PROXY",
+                     "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL"):
+            env.pop(name, None)
+    os.execvpe(cmd[0], cmd, env)
 
 
 def restart(codex, argv):
