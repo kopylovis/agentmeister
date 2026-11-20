@@ -1,6 +1,7 @@
 import json
 import os
 import shlex
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,74 @@ import open_flow
 
 
 class CodexHarness(unittest.TestCase):
+    def test_launch_isolates_direct_and_vps_sessions_from_shared_daemon(self):
+        sid = "11111111-2222-4333-8444-555555555555"
+        for network in ("-d", "-x"):
+            with self.subTest(network=network), \
+                    patch("claude_proxy.configured", return_value=True), \
+                    patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+                        [], 0, stdout="Usage: codex [OPTIONS]\n  --no-daemon\n")), \
+                    patch.object(os, "execvpe") as execute:
+                args, passthrough = codex_harness.launch_args(["-n", network, "--", "resume", sid])
+                codex_harness.launch("codex", args, passthrough)
+                command = execute.call_args.args[1]
+                self.assertEqual(command[-4:], ["codex", "--no-daemon", "resume", sid])
+
+    def test_launch_keeps_older_codex_and_explicit_no_daemon_working(self):
+        for help_result, forwarded, expected in (
+                (subprocess.CompletedProcess([], 0, stdout="Usage: codex [OPTIONS]\n"), [], []),
+                (subprocess.TimeoutExpired("codex", 5), [], []),
+                (subprocess.CompletedProcess([], 0, stdout="--no-daemon\n"),
+                 ["--no-daemon"], ["--no-daemon"])):
+            with self.subTest(forwarded=forwarded, help_result=help_result), \
+                    patch.object(subprocess, "run", side_effect=[help_result]), \
+                    patch.object(os, "execvpe") as execute:
+                args, passthrough = codex_harness.launch_args(["-n", "-d", "--", *forwarded, "--version"])
+                codex_harness.launch("codex", args, passthrough)
+                self.assertEqual(execute.call_args.args[1], ["codex", *expected, "--version"])
+
+    def test_direct_launch_drops_inherited_proxy_settings(self):
+        proxy = {
+            "HTTP_PROXY": "http://127.0.0.1:9",
+            "HTTPS_PROXY": "http://127.0.0.1:9",
+            "ALL_PROXY": "socks5h://127.0.0.1:9",
+            "NO_PROXY": "localhost",
+            "MNRH_PROXY": "9",
+            "PROMPTSILL_PROXY_LABEL": "XX",
+            "PROMPTSILL_PROXY_DETAIL": "vless 203.0.113.7",
+            "PROMPTSILL_PROXY_URL": "file:///tmp/proxy.html",
+        }
+        proxy.update({name.lower(): value for name, value in list(proxy.items()) if name.endswith("_PROXY")
+                      and name != "MNRH_PROXY"})
+        with tempfile.TemporaryDirectory() as folder:
+            codex = Path(folder) / "codex"
+            codex.write_text(f"#!{sys.executable}\nimport json, os\n"
+                             f"keys = {list(proxy) + ['OPENAI_BASE_URL']!r}\n"
+                             "print(json.dumps({key: os.environ[key] for key in keys if key in os.environ}))\n")
+            codex.chmod(0o755)
+            env = {**os.environ, **proxy, "PATH": folder + os.pathsep + os.environ.get("PATH", ""),
+                   "OPENAI_BASE_URL": "https://api.example.com/v1"}
+            for flags in (["-d"], []):
+                with self.subTest(flags=flags):
+                    result = subprocess.run(
+                        [sys.executable, codex_harness.__file__, folder, "-n", *flags, "--", "--version"],
+                        env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, timeout=5)
+                    child = json.loads(result.stdout)
+                    self.assertEqual({name: child[name] for name in proxy if name in child}, {} if flags else proxy)
+                    self.assertEqual(child["OPENAI_BASE_URL"], env["OPENAI_BASE_URL"])
+
+    def test_proxy_launch_keeps_the_proxy_wrapper(self):
+        args, passthrough = codex_harness.launch_args(["-n", "-x", "--", "--version"])
+        with patch("claude_proxy.configured", return_value=True), \
+                patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="")), \
+                patch.object(os, "execvpe") as execute, patch.object(os, "execvp"):
+            codex_harness.launch("codex", args, passthrough)
+        command = execute.call_args.args[1]
+        self.assertEqual(command[0], sys.executable)
+        self.assertEqual(Path(command[1]).name, "claude_proxy.py")
+        self.assertEqual(command[2:], ["run", "--", "codex", "--version"])
+        self.assertEqual(execute.call_args.args[2], dict(os.environ))
+
     def test_restart_presets_use_free_slots_and_remove_only_their_own(self):
         custom = {"label": "My restart", "input": "/quit"}
         user = {"9": custom}
