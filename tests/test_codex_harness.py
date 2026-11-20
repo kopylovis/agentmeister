@@ -15,6 +15,32 @@ import open_flow
 
 
 class CodexHarness(unittest.TestCase):
+    def test_launch_isolates_direct_and_vps_sessions_from_shared_daemon(self):
+        sid = "11111111-2222-4333-8444-555555555555"
+        for network in ("-d", "-x"):
+            with self.subTest(network=network), \
+                    patch("claude_proxy.configured", return_value=True), \
+                    patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+                        [], 0, stdout="Usage: codex [OPTIONS]\n  --no-daemon\n")), \
+                    patch.object(os, "execvpe") as execute:
+                args, passthrough = codex_harness.launch_args(["-n", network, "--", "resume", sid])
+                codex_harness.launch("codex", args, passthrough)
+                command = execute.call_args.args[1]
+                self.assertEqual(command[-4:], ["codex", "--no-daemon", "resume", sid])
+
+    def test_launch_keeps_older_codex_and_explicit_no_daemon_working(self):
+        for help_result, forwarded, expected in (
+                (subprocess.CompletedProcess([], 0, stdout="Usage: codex [OPTIONS]\n"), [], []),
+                (subprocess.TimeoutExpired("codex", 5), [], []),
+                (subprocess.CompletedProcess([], 0, stdout="--no-daemon\n"),
+                 ["--no-daemon"], ["--no-daemon"])):
+            with self.subTest(forwarded=forwarded, help_result=help_result), \
+                    patch.object(subprocess, "run", side_effect=[help_result]), \
+                    patch.object(os, "execvpe") as execute:
+                args, passthrough = codex_harness.launch_args(["-n", "-d", "--", *forwarded, "--version"])
+                codex_harness.launch("codex", args, passthrough)
+                self.assertEqual(execute.call_args.args[1], ["codex", *expected, "--version"])
+
     def test_direct_launch_drops_inherited_proxy_settings(self):
         proxy = {
             "HTTP_PROXY": "http://127.0.0.1:9",
@@ -48,6 +74,7 @@ class CodexHarness(unittest.TestCase):
     def test_proxy_launch_keeps_the_proxy_wrapper(self):
         args, passthrough = codex_harness.launch_args(["-n", "-x", "--", "--version"])
         with patch("claude_proxy.configured", return_value=True), \
+                patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="")), \
                 patch.object(os, "execvpe") as execute, patch.object(os, "execvp"):
             codex_harness.launch("codex", args, passthrough)
         command = execute.call_args.args[1]
