@@ -40,6 +40,14 @@ def executable():
     return shutil.which("codex")
 
 
+def supports_no_daemon(codex):
+    try:
+        result = subprocess.run([codex, "--help"], capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and "--no-daemon" in result.stdout
+
+
 @contextmanager
 def app_server(codex, cwd, experimental=False):
     with subprocess.Popen([codex, "app-server", "--listen", "stdio://"], cwd=cwd,
@@ -125,7 +133,10 @@ def launch(codex, args, passthrough):
             return 130
         cwd, mode, net = state["dir"], state["mode"], state["net"]
         passthrough = open_flow.codex_resume_args(state["sid"], cwd)
-    cmd = [codex] + passthrough
+    cmd = [codex]
+    if "--no-daemon" not in passthrough and supports_no_daemon(codex):
+        cmd.append("--no-daemon")
+    cmd += passthrough
     if mode == "caffeinate":
         cmd = ["caffeinate", "-is"] + cmd
     if net == "vps":
