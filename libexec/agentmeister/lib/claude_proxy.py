@@ -14,6 +14,7 @@ import re
 import shutil
 import signal
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -534,7 +535,20 @@ def ensure_watch():
 def session_command(p, cmd):
     if not 1 <= p <= 65535:
         raise ValueError(f"Недопустимый порт proxy: {p}")
-    return ["/usr/bin/sandbox-exec", "-p", SESSION_PROFILE.format(port=p), "--", *cmd]
+    profile = SESSION_PROFILE.format(port=p)
+    params = []
+    agent = os.environ.get("SSH_AUTH_SOCK", "")
+    if os.path.isabs(agent):
+        path = os.path.realpath(agent)
+        try:
+            info = os.stat(path)
+        except OSError:
+            pass
+        else:
+            if info.st_uid == os.getuid() and stat.S_ISSOCK(info.st_mode):
+                params = ["-D", f"SSH_AUTH_SOCK={path}"]
+                profile += '(allow network-outbound (literal (param "SSH_AUTH_SOCK")))\n'
+    return ["/usr/bin/sandbox-exec", *params, "-p", profile, "--", *cmd]
 
 
 def proxy_env(p):
@@ -941,7 +955,8 @@ agentmeister proxy run -- <cmd>    запустить команду через 
 
 В режиме "через proxy" (-x) macOS разрешает сессии и ее дочерним процессам подключаться
 только к локальному TCP-порту mihomo. При обрыве запросы завершаются ошибкой. Прямые соединения,
-включая git по SSH, заблокированы и при работающем proxy. Ограничение действует с запуска сессии.
+включая git по SSH, заблокированы и при работающем proxy. Для подписи коммитов доступен локальный
+сокет ssh-agent из SSH_AUTH_SOCK. Ограничение действует с запуска сессии.
 Нужен mihomo: brew install mihomo.
 Он слушает 127.0.0.1:{port}, стартует с первой такой сессией и останавливается после последней.
 К серверу mihomo ходит через Wi-Fi или Ethernet в обход TUN Happ и других VPN, поэтому Happ можно
