@@ -21,8 +21,10 @@ fi
 if [ ! -x "$native" ]; then
   installer=$(mktemp "${TMPDIR:-/tmp}/agentmeister-install.XXXXXXXX")
   trap 'rm -f "$installer"' EXIT
-  curl -q --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+  echo "Скачиваю установщик Claude Code с claude.ai..." >&2
+  curl -q --fail --progress-bar --show-error --location --proto '=https' --proto-redir '=https' \
     https://claude.ai/install.sh > "$installer"
+  echo "Установщик Anthropic скачивает и устанавливает Claude Code..." >&2
   /bin/bash "$installer"
 fi
 "$native" --version

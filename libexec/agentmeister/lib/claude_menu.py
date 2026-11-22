@@ -328,7 +328,8 @@ def framed(screen, args):
     """Команду в рамке на этом же экране, без мигания. Ответ: вернуться ли в меню. При выходе по q вывод
     остается в обычном терминале, его можно прокрутить."""
     title = f"agentmeister {shown(args)}"
-    code, out = run_framed(screen, [CM] + args, title)
+    installing = args[:1] == ["--harness"] and args[2:] == ["install"]
+    code, out = run_framed(screen, [CM] + args, title, show_elapsed=installing)
     if restart_pending():
         screen.close()
         return False
