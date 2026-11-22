@@ -102,8 +102,8 @@ MODES = [("caffeinate", "☕ caffeinate",
 NETS = [("direct", "🔌 напрямую",
          [bold("Напрямую"), "", "Сессия ходит в сеть как обычно.", "", dim("БЕЗ ВОПРОСА"), "agentmeister ... -d"]),
         ("vps", "🌐 через proxy",
-         [bold("Через proxy"), "", "Через mihomo и ваш VPS идет только эта сессия и запущенные из нее программы, "
-          "которые читают HTTPS_PROXY (gh, npm, curl, git по https). Остальное на Mac ходит напрямую.", "",
+         [bold("Через proxy"), "", "Сессия и ее дочерние процессы могут подключаться только к порту mihomo. "
+          "Если proxy недоступен, запросы обрываются. Прямой SSH заблокирован.", "",
           dim("БЕЗ ВОПРОСА"), "agentmeister ... -x"])]
 
 def choose(screen, options, title, current):

@@ -74,7 +74,7 @@ class CodexHarness(unittest.TestCase):
     def test_proxy_launch_keeps_the_proxy_wrapper(self):
         args, passthrough = codex_harness.launch_args(["-n", "-x", "--", "--version"])
         with patch("claude_proxy.configured", return_value=True), \
-                patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="")), \
+                patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="Usage: codex")), \
                 patch.object(os, "execvpe") as execute, patch.object(os, "execvp"):
             codex_harness.launch("codex", args, passthrough)
         command = execute.call_args.args[1]
@@ -82,6 +82,16 @@ class CodexHarness(unittest.TestCase):
         self.assertEqual(Path(command[1]).name, "claude_proxy.py")
         self.assertEqual(command[2:], ["run", "--", "codex", "--version"])
         self.assertEqual(execute.call_args.args[2], dict(os.environ))
+
+    def test_proxy_probe_failure_stops_launch(self):
+        args, passthrough = codex_harness.launch_args(["-n", "-x", "--", "--version"])
+        with patch("claude_proxy.configured", return_value=True), \
+                patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired("codex", 5)) as probe, \
+                patch.object(os, "execvpe") as execute:
+            with self.assertRaises(ValueError):
+                codex_harness.launch("codex", args, passthrough)
+        self.assertEqual(probe.call_args.args[0][0], "/usr/bin/sandbox-exec")
+        execute.assert_not_called()
 
     def test_restart_presets_use_free_slots_and_remove_only_their_own(self):
         custom = {"label": "My restart", "input": "/quit"}

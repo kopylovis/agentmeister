@@ -12,7 +12,7 @@ from pathlib import Path
 
 import open_flow
 from menu import Quit, Screen
-from mnrhlib import CM, HOME, RESTART_QUEUE, ROOT, UUID_RE, find_project, hook_command, is_hook, promptsill_path, tr, write_json
+from mnrhlib import CM, HOME, LOCAL_CLI, RESTART_QUEUE, ROOT, UUID_RE, find_project, hook_command, is_hook, promptsill_path, tr, write_json
 
 
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop")
@@ -63,12 +63,17 @@ def install(argv):
     return subprocess.run([codex, "--version"]).returncode
 
 
-def supports_no_daemon(codex):
+def supports_no_daemon(command, *, proxy=False):
     try:
-        result = subprocess.run([codex, "--help"], capture_output=True, text=True, timeout=5)
+        result = subprocess.run([*command, "--help"], capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
+        result = None
+    if result is None or result.returncode or not result.stdout.strip():
+        if proxy:
+            raise ValueError(tr("Не удалось проверить режим запуска Codex для сессии через proxy.",
+                                "Could not check how to start Codex for a proxy session."))
         return False
-    return result.returncode == 0 and "--no-daemon" in result.stdout
+    return "--no-daemon" in result.stdout
 
 
 @contextmanager
@@ -157,15 +162,18 @@ def launch(codex, args, passthrough):
         cwd, mode, net = state["dir"], state["mode"], state["net"]
         passthrough = open_flow.codex_resume_args(state["sid"], cwd)
     cmd = [codex]
-    if "--no-daemon" not in passthrough and supports_no_daemon(codex):
+    probe = cmd
+    if net == "vps":
+        if not claude_proxy.configured():
+            raise ValueError(tr("Прокси не настроен. Запусти agentmeister proxy setup.",
+                                "Set up the proxy with agentmeister proxy setup."))
+        probe = claude_proxy.session_command(claude_proxy.port(), cmd)
+    if "--no-daemon" not in passthrough and supports_no_daemon(probe, proxy=net == "vps"):
         cmd.append("--no-daemon")
     cmd += passthrough
     if mode == "caffeinate":
         cmd = ["caffeinate", "-is"] + cmd
     if net == "vps":
-        if not claude_proxy.configured():
-            raise ValueError(tr("Прокси не настроен. Запусти agentmeister proxy setup.",
-                                "Set up the proxy with agentmeister proxy setup."))
         cmd = [sys.executable, str(Path(__file__).with_name("claude_proxy.py")), "run", "--"] + cmd
     if cwd:
         os.chdir(cwd)
@@ -199,7 +207,7 @@ def restart(codex, argv):
         if not current or session != current:
             raise ValueError(tr("Для перезапуска нужен ID текущей сессии Codex.",
                                 "Restart after exit needs the current Codex session."))
-        program = shutil.which("agentmeister") or os.path.join(ROOT, "bin", "agentmeister")
+        program = LOCAL_CLI if proxy else shutil.which("agentmeister") or LOCAL_CLI
         command = [program, "--harness", "codex", "restart", session]
         if options.update:
             command.append("--update")
@@ -227,7 +235,10 @@ def restart(codex, argv):
         return 0
 
     if options.update:
-        subprocess.run([codex, "update"], check=True)
+        update = [codex, "update"]
+        if proxy:
+            update = [LOCAL_CLI, "proxy", "run", "--", *update]
+        subprocess.run(update, check=True)
     flags = ["-x", "--"] if proxy else ["--"]
     resume = ["resume", "-C", cwd, session or "--last"]
     args, passthrough = launch_args(flags + resume)
