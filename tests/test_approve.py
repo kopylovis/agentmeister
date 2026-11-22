@@ -194,8 +194,8 @@ class Render(unittest.TestCase):
 class Guard(unittest.TestCase):
     def test_guard_reason_shown(self):
         text = ta.message(payload(tool_name="Read", tool_input={"file_path": "/p/.env"}, cwd="/p"))
-        self.assertIn("claudemeister guard", text)
-        self.assertNotIn("claudemeister guard", ta.message(payload()))
+        self.assertIn("agentmeister guard", text)
+        self.assertNotIn("agentmeister guard", ta.message(payload()))
 
 
 class Wiring(unittest.TestCase):

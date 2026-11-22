@@ -172,7 +172,7 @@ def shrink(text, log_path, failed=False):
     lines = ANSI.sub("", text).rstrip("\n").split("\n")
     idx, repeats, footer = pick(lines)
     size = len(text.encode("utf-8", "replace"))
-    header = (f"[claudemeister buildlog: {FAILED_HEAD if failed else ''}вывод длинный ({len(lines)} строк, {max(1, size // 1024)} КБ), здесь выжимка: "
+    header = (f"[agentmeister buildlog: {FAILED_HEAD if failed else ''}вывод длинный ({len(lines)} строк, {max(1, size // 1024)} КБ), здесь выжимка: "
               f"ошибки, предупреждения, итог и конец. Полный лог: {tilde(log_path)}, ищи в нём grep или читай Read "
               f"с offset, если выжимки мало]")
     compact = render(lines, idx, header, footer, repeats)
@@ -226,10 +226,10 @@ def save(path, cmd, text):
 
 # Хвост, который PreToolUse дописывает к сборке: так упавшая сборка завершается с кодом 0, Claude Code шлет
 # PostToolUse, и ее длинный вывод можно сжать. Текст без подстановок: echo с $? Claude Code просит подтвердить.
-FAIL_MARK = "[claudemeister buildlog: exit code was not 0]"
+FAIL_MARK = "[agentmeister buildlog: exit code was not 0]"
 WRAP = f' || echo "{FAIL_MARK}"'
 FAILED_HEAD = "команда завершилась с ошибкой (код не 0), "
-FAILED_NOTE = ("[claudemeister buildlog: команда завершилась с ошибкой (код не 0). Хук дописал к ней || echo, чтобы "
+FAILED_NOTE = ("[agentmeister buildlog: команда завершилась с ошибкой (код не 0). Хук дописал к ней || echo, чтобы "
                "сжать длинный вывод, поэтому Claude Code показывает вызов как успешный]")
 
 
@@ -450,9 +450,9 @@ def hook():
 
 
 def usage():
-    print("claudemeister buildlog                 включено ли и где логи")
-    print("claudemeister buildlog on | off        включить или выключить")
-    print("claudemeister buildlog test <файл>     что увидит Claude вместо такого вывода")
+    print("agentmeister buildlog                 включено ли и где логи")
+    print("agentmeister buildlog on | off        включить или выключить")
+    print("agentmeister buildlog test <файл>     что увидит Claude вместо такого вывода")
     print()
     print(f"Хук PostToolUse сжимает длинный вывод (больше {MAX_LINES} строк или {MAX_BYTES // 1024} КБ) Gradle, "
           "xcodebuild,")
@@ -470,11 +470,11 @@ def main():
         return tab_child()
     rest = args[1:]
     if not rest:
-        print(f"claudemeister buildlog: {'включён' if enabled() else 'выключен'}. Логи: {tilde(LOGS)}")
+        print(f"agentmeister buildlog: {'включён' if enabled() else 'выключен'}. Логи: {tilde(LOGS)}")
         return 0
     if rest[0] in ("on", "off") and len(rest) == 1:
         write_config(buildlog=rest[0])
-        print(f"claudemeister buildlog {'включён' if rest[0] == 'on' else 'выключен'}")
+        print(f"agentmeister buildlog {'включён' if rest[0] == 'on' else 'выключен'}")
         return 0
     if rest[0] == "test" and len(rest) == 2:
         try:

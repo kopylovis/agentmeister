@@ -36,7 +36,7 @@ def check_install():
     where = "Homebrew" if any(f"/Cellar/{name}/" in ROOT + "/" for name in ("agentmeister", "claudemeister")) \
         else f"из папки {tilde(ROOT)}"
     rows = [("ok", f"agentmeister {version()}, {where}")]
-    if not (shutil.which("agentmeister") or shutil.which("claudemeister")):
+    if not shutil.which("agentmeister"):
         rows.append(("bad", "agentmeister нет в PATH, а команды и хуки вызывают его по имени"))
     claude = shutil.which(CLAUDE_BIN)
     if not claude:

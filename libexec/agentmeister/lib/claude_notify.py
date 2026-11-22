@@ -67,14 +67,14 @@ SELECTED = {
 
 
 def usage():
-    print("claudemeister notify              уведомления, когда Claude ждёт тебя: состояние")
-    print("claudemeister notify on | off     включить или выключить")
-    print(f"claudemeister notify after <сек>  о готовом ответе — только если ход шёл дольше (сейчас "
+    print("agentmeister notify              уведомления, когда Claude ждёт тебя: состояние")
+    print("agentmeister notify on | off     включить или выключить")
+    print(f"agentmeister notify after <сек>  о готовом ответе — только если ход шёл дольше (сейчас "
           f"{after()} с, по умолчанию {DEFAULT_AFTER})")
-    print("claudemeister notify sound on|off звук")
-    print("claudemeister notify test        показать пробное уведомление")
-    print("claudemeister notify telegram    ещё и в Telegram, когда ты не за Mac: подключить бота")
-    print(f"claudemeister notify phone away  ещё и в Tossling на телефон (канал {ntfy_alert.CLAUDE_TOPIC}), когда ты не за Mac")
+    print("agentmeister notify sound on|off звук")
+    print("agentmeister notify test        показать пробное уведомление")
+    print("agentmeister notify telegram    ещё и в Telegram, когда ты не за Mac: подключить бота")
+    print(f"agentmeister notify phone away  ещё и в Tossling на телефон (канал {ntfy_alert.CLAUDE_TOPIC}), когда ты не за Mac")
     print("  … phone always | off | test")
     print("  … telegram test | off | always | away <сек>")
     print("  … telegram approve on | off  разрешать и отклонять запросы Claude кнопками в Telegram, когда ты не за Mac")
@@ -82,7 +82,7 @@ def usage():
     print("Уведомление приходит, если Claude просит разрешение или задаёт вопрос, долго ждёт ответа")
     print("или закончил долгий ход, а ты смотришь не на его вкладку. Нажатие переключает на неё")
     print("(Terminal и iTerm2 — на саму вкладку, в IDE — на окно приложения).")
-    print("Ставит claudemeister setup: хуки UserPromptSubmit, Stop и Notification, для кнопок в Telegram — PermissionRequest.")
+    print("Ставит agentmeister setup: хуки UserPromptSubmit, Stop и Notification, для кнопок в Telegram — PermissionRequest.")
 
 
 def enabled():
@@ -403,7 +403,7 @@ def status():
     except (OSError, ValueError):
         lost = rows
     have = [r[0] for r in rows if r not in lost]
-    print("Хуки Claude Code: " + (", ".join(have) if have else "не стоят — claudemeister setup"))
+    print("Хуки Claude Code: " + (", ".join(have) if have else "не стоят — agentmeister setup"))
     from codex_harness import NOTIFY_EVENTS, configured_hooks
     count = configured_hooks("notify-hook")
     print(f"Хуки Codex, настроено {count if count is not None else '?'} из {len(NOTIFY_EVENTS)}. "
@@ -416,7 +416,7 @@ def status():
         print("Remote Control: в сессии с /remote-control о запросах разрешения и вопросах на телефон пишет сам "
               "Claude (Push when actions required), в Telegram и Tossling они не дублируются")
     mode = ntfy_alert.phone_mode()
-    print("Tossling: " + {"off": "выключено — claudemeister notify phone away",
+    print("Tossling: " + {"off": "выключено — agentmeister notify phone away",
                        "away": f"когда ты не за Mac, канал «{ntfy_alert.CLAUDE_TOPIC}»",
                        "always": f"всегда, канал «{ntfy_alert.CLAUDE_TOPIC}»"}[mode])
 
@@ -430,7 +430,7 @@ def test():
     cm = cm_path()
     click = f"{shlex.quote(cm)} focus {shlex.quote(tty)} {shlex.quote(bundle)}" if cm and tty else None
     print("Отправляю пробное уведомление. В первый раз macOS спросит, можно ли claudemeister Notify их показывать — разреши.")
-    r = post("claudemeister: пробное уведомление", "Claude Code", "Нажми, чтобы вернуться в эту вкладку",
+    r = post("agentmeister: пробное уведомление", "Claude Code", "Нажми, чтобы вернуться в эту вкладку",
              "00000000-0000-0000-0000-000000000000", click, wait=True)
     if r == "ok":
         print("✓ показано")
@@ -464,7 +464,7 @@ def phone(rest):
             return 1
         print("Отправил пробное уведомление")
         return 0
-    print(f"В Tossling: {ntfy_alert.phone_mode()}. claudemeister notify phone away | always | off | test")
+    print(f"В Tossling: {ntfy_alert.phone_mode()}. agentmeister notify phone away | always | off | test")
     return 0
 
 

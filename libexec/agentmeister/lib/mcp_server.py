@@ -1,4 +1,4 @@
-"""MCP-сервер claudemeister: claudemeister mcp."""
+"""MCP-сервер agentmeister: agentmeister mcp."""
 import json
 import os
 import shutil
@@ -20,7 +20,7 @@ import mnrh_todo  # noqa: E402
 import release_notes  # noqa: E402
 import window_shot  # noqa: E402
 
-MCP_NAME = "claudemeister"
+MCP_NAME = "agentmeister"
 
 
 TOOL = {
@@ -158,14 +158,14 @@ def code_stamp():
 
 
 HOME_DIR = os.path.realpath(os.path.join(LIB, "..", "..", ".."))
-OWN_BIN = os.path.join(HOME_DIR, "bin", "claudemeister")
+OWN_BIN = os.path.join(HOME_DIR, "bin", "agentmeister")
 
 
 def brew_bin():
     """claudemeister из Homebrew в PATH, если этот сервер запущен из Cellar; иначе None."""
     if not any(f"/Cellar/{name}/" in HOME_DIR + "/" for name in ("agentmeister", "claudemeister")):
         return None
-    return shutil.which("claudemeister")
+    return shutil.which("agentmeister")
 
 
 def installed_elsewhere():
@@ -175,7 +175,7 @@ def installed_elsewhere():
 
 
 def reload(pending):
-    """Заменить процесс свежим claudemeister mcp на тех же stdin и stdout: Claude Code этого не заметит.
+    """Заменить процесс свежим agentmeister mcp на тех же stdin и stdout: Claude Code этого не заметит.
     Непрочитанные запросы уходят новому процессу через файл."""
     import tempfile
     fd, path = tempfile.mkstemp(prefix="cm-mcp-")
