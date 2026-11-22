@@ -196,7 +196,7 @@ def setup(args):
         return 2
     if not shutil.which(CLAUDE_BIN):
         # без claude не зарегистрировать MCP-сервер, а setup бросил бы работу на полпути с traceback
-        print(f"Не нашел {CLAUDE_BIN} в PATH. Для настройки Claude Code сначала установи Claude Code. "
+        print(f"Не нашел {CLAUDE_BIN} в PATH. Для установки Claude Code запусти agentmeister --harness claude install. "
               f"Для Codex запусти {CODEX_SETUP}.", file=sys.stderr)
         return 1
     if opts["remove"]:
