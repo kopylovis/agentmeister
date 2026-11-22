@@ -44,7 +44,10 @@ class RestartError(Exception):
 
 
 def ps(field, pid):
-    r = subprocess.run(["ps", "-o", f"{field}=", "-p", str(pid)], capture_output=True, text=True)
+    try:
+        r = subprocess.run(["ps", "-o", f"{field}=", "-p", str(pid)], capture_output=True, text=True)
+    except PermissionError:
+        return ""
     return r.stdout.strip()
 
 
