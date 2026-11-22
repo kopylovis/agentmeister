@@ -118,6 +118,14 @@ It prints a snapshot in the terminal. Use `/statusline` in Codex to change its l
 
 Run `agentmeister setup` to configure Claude Code.
 
+In Claude Code, `/import-codex` lists saved Codex sessions in the current directory. Pick a session or pass its
+UUID to import the conversation, plan, Git branch and recorded file changes. Claude can also read the current
+project instructions and selected Markdown notes in Codex memory. Imported text becomes part of the Claude
+conversation. Run `agentmeister setup` after upgrading to install the command.
+
+From a shell, use `agentmeister codex-context sessions`, then `agentmeister codex-context read <UUID>`. Use
+`instructions` for project rules, `memories` to list notes, and `memory <name>` to read one.
+
 The formula also installs `am`, a short name for `agentmeister`. `am kcalm`, `am ps` and `am proxy` work the same.
 If `am` is missing, `agentmeister alias on` or the "Short name am" menu item adds it. Neither touches an `am`
 that belongs to another program, and `agentmeister alias off` removes only its own.

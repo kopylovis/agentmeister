@@ -114,6 +114,15 @@ promptsill. Результат выводится в терминал. Поля 
 
 Для настройки Claude Code запусти `agentmeister setup`.
 
+В Claude Code команда `/import-codex` показывает сессии Codex в текущей папке. Выбери сессию или передай ее
+UUID. Claude прочитает переписку, план, ветку Git и записанные изменения файлов. Можно также прочитать текущие
+инструкции проекта и выбранные заметки памяти Codex. Прочитанный текст попадает в разговор с Claude. После
+обновления запусти `agentmeister setup`, чтобы добавить команду.
+
+В терминале список открывает `agentmeister codex-context sessions`, выбранную сессию читает
+`agentmeister codex-context read <UUID>`. Для инструкций укажи `instructions`, для списка заметок `memories`,
+для чтения заметки `memory <имя>`.
+
 Формула ставит и `am`, короткое имя для `agentmeister`. `am kcalm`, `am ps`, `am proxy` работают так же.
 Если `am` нет, его ставит `agentmeister alias on` или пункт "Короткое имя am" в меню. Чужой `am` они не
 трогают, `agentmeister alias off` убирает только свой.
