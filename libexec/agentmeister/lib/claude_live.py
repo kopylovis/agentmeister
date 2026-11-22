@@ -209,7 +209,7 @@ def restore_cmd(args):
     print(f"Были открыты и закрылись не сами ({len(todo)}):")
     for r in todo:
         s = (by_id(r["sid"]) or [{}])[0]
-        mode = ("caffeinate" if r.get("caffeinate") else "обычная") + (", через VPS" if r.get("proxy") else "")
+        mode = ("caffeinate" if r.get("caffeinate") else "обычная") + (", через proxy" if r.get("proxy") else "")
         print(f"  {r['sid'][:8]}  {tilde(r.get('cwd') or '?'):30} {(s.get('title') or '')[:40]:40} {mode}")
     if not confirm("Открыть их заново, каждую в своем окне?", "-y" in args):
         return 0

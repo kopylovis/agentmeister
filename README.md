@@ -26,7 +26,7 @@ agentmeister --harness codex statusline  print a promptsill snapshot
 agentmeister --harness claude install    install the Claude Code CLI from Anthropic
 agentmeister kcalm          straight into a project (a name prefix is enough)
 agentmeister root           in the home folder
-agentmeister ... -x         this session through your own VPS
+agentmeister ... -x         this session through the proxy
 agentmeister ... -i         skip Claude Code prompt history
 agentmeister sessions       saved sessions: resume, move, delete, search, slim
 agentmeister ps             running sessions and who is waiting; jump to a tab
@@ -46,7 +46,7 @@ agentmeister buildlog       Claude gets a digest of long build output
 agentmeister notify         tell you when Claude is waiting; telegram, phone
 agentmeister lid            stay awake with the lid closed; setup, remove
 
-# Proxy through your VPS
+# Session proxy
 agentmeister proxy          status; setup, test, update, restart, remove
 
 # Project tools
@@ -133,7 +133,7 @@ that belongs to another program, and `agentmeister alias off` removes only its o
 
 Homebrew also installs mihomo for `agentmeister -x`. `agentmeister setup` puts `/restart`, `/forget`, `/slim`
 and the other commands into `~/.claude/commands`, hooks into `~/.claude/settings.json` and a zsh hook into
-`~/.zshrc`, and registers the `claudemeister` MCP server. If the VPS proxy isn't set up yet, setup asks whether
+`~/.zshrc`, and registers the `claudemeister` MCP server. If the proxy isn't set up yet, setup asks whether
 to do it now (`--country KZ` sets the expected exit country). If the
 [promptsill](https://github.com/kopylovis/promptsill) status line is missing, it offers to install it with Homebrew.
 
