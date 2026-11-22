@@ -212,7 +212,7 @@ def setup(args):
         if kept != lines:
             write_zshrc(kept)
         print("Убрал /restart, /forget, /fresh, /slim, /todo, /where, /release-notes, /parallel, /shot, /ask, "
-              f"/humanize, MCP-сервер {MCP_NAME} и хук из {tilde(ZSHRC)}.")
+              f"/humanize, /import-codex, MCP-сервер {MCP_NAME} и хук из {tilde(ZSHRC)}.")
         # claudemeister больше не предлагает setup при запуске; вернуть все: claudemeister setup
         claude_setup.write(set(), set(claude_setup.IDS))
         return 0
