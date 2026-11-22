@@ -52,6 +52,7 @@ help() {
   agentmeister proxy               состояние; setup, test, update, restart, remove (proxy -h)
 
 Инструменты проекта (Claude зовет их и сам)
+  agentmeister codex-context       читать сессии, инструкции и память Codex (codex-context -h)
   agentmeister brief               где мы остановились: git, прошлая сессия, бэклог (/where)
   agentmeister todo                бэклог проекта между сессиями (/todo, todo -h)
   agentmeister parallel "<…>"      задача в своей ветке и worktree, во втором окне (/parallel)
@@ -80,6 +81,7 @@ case "${1:-}" in
   proxy) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_proxy.py" "$@" ;;
   sessions) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_sessions.py" "$@" ;;
   usage) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_usage.py" "$@" ;;
+  codex-context) shift; exec /usr/bin/python3 "$LIB/codex_context.py" "$@" ;;
   brief) exec /usr/bin/python3 "$(dirname "$MENU")/claude_brief.py" "$@" ;;
   ps) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" ps "$@" ;;
   restore) exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" "$@" ;;

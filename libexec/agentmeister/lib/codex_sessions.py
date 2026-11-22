@@ -42,6 +42,18 @@ def clean(value):
     return " ".join("".join(" " if unicodedata.category(ch).startswith("C") else ch for ch in value).split())
 
 
+def project_sessions(threads, cwd):
+    project = os.path.realpath(cwd)
+    for thread in threads:
+        sid = thread.get("sessionId") or thread.get("id")
+        if not isinstance(sid, str) or not UUID_RE.fullmatch(sid) or thread.get("ephemeral"):
+            continue
+        folder = thread.get("cwd")
+        if not isinstance(folder, str) or os.path.realpath(folder) != project:
+            continue
+        yield sid, thread
+
+
 def session_list(cwd):
     items = [("new", tr("Новая сессия", "New session"))]
     info = [[tr("Запустить Codex с чистым контекстом.", "Start Codex with a fresh context.")]]
@@ -54,14 +66,7 @@ def session_list(cwd):
                         "The Codex App Server could not return a session list.")])
         threads = []
         sessions.append({"id": "resume"})
-    project = os.path.realpath(cwd)
-    for thread in threads:
-        sid = thread.get("sessionId") or thread.get("id")
-        if not isinstance(sid, str) or not UUID_RE.fullmatch(sid) or thread.get("ephemeral"):
-            continue
-        folder = thread.get("cwd")
-        if not isinstance(folder, str) or os.path.realpath(folder) != project:
-            continue
+    for sid, thread in project_sessions(threads, cwd):
         preview = clean(thread.get("preview"))
         title = clean(thread.get("name")) or preview or sid[:8]
         timestamp = thread.get("updatedAt")
