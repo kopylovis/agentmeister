@@ -18,6 +18,7 @@ agentmeister --harness codex setup       установить хуки, навы
 agentmeister --harness codex statusline  вывести снимок promptsill
 
 # Claude Code из терминала
+agentmeister --harness claude install    установить Claude Code с сайта Anthropic
 agentmeister kcalm          сразу в проекте (достаточно начала имени)
 agentmeister root           в домашней папке
 agentmeister ... -x         эта сессия через свой VPS
