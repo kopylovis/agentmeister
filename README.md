@@ -246,15 +246,17 @@ watcher are shared with `mnrh sleep lid`, so if you set it up in mnrh, agentmeis
 
 ### Session networking
 
-Choose the proxy in the network menu or start a session with `-x`. macOS restricts Claude Code, Codex
-and their child processes to the local mihomo TCP port. Requests fail when the proxy goes down.
-The agent can retry when the connection returns. Direct SSH, UDP and connections to other localhost
-ports are blocked even while the proxy is up. If macOS cannot apply the restriction, the agent
-will not start. Commands that apply their own macOS sandbox can fail with
-`sandbox_apply: Operation not permitted`.
+For Claude Code, choose the proxy in the network menu or run `agentmeister <project> -x`.
+Claude sends Anthropic API requests through local mihomo, including away from home when the
+configured upstream is reachable. Requests fail if the proxy goes down. macOS blocks direct
+connections to external ports 80 and 443, including HTTPS over TCP and QUIC over UDP. Other
+HTTPS clients in the session, such as `gh`, also use mihomo. SSH on its usual port, local
+servers and Unix sockets are available. Browser sign-in uses the browser's network settings.
 
-Git can sign commits through your running ssh-agent. At launch, Agentmeister allows access to the
-Unix socket named by `SSH_AUTH_SOCK` if it belongs to the current user.
+Codex with `-x` and `agentmeister proxy run -- <command>` use the strict profile. Network access
+is limited to the local mihomo TCP port. Git can sign through the Unix socket named by
+`SSH_AUTH_SOCK` if it belongs to the current user. In either profile, commands that apply a
+second macOS sandbox can fail with `sandbox_apply: Operation not permitted`.
 
 The restriction takes effect at launch. To apply it to an open session, exit and resume through
 the proxy. Other Mac applications keep their own network settings. Use `-d` for a direct session.

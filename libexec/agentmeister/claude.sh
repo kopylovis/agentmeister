@@ -189,7 +189,7 @@ fi
 pre=()
 if [ "$net" = vps ]; then
   /usr/bin/python3 "$PROXY" configured || { echo "agentmeister: прокси не настроен или нет mihomo: agentmeister proxy setup" >&2; exit 1; }
-  pre=(/usr/bin/python3 "$PROXY" run --)
+  pre=(/usr/bin/python3 "$PROXY" run --claude --)
 fi
 
 cd "$dir" || exit 1

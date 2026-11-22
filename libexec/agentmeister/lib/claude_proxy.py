@@ -2,7 +2,7 @@
 
 mihomo слушает HTTP/SOCKS на 127.0.0.1 и отправляет всё через подписку 3x-ui (VLESS, Hysteria2: какой жив).
 К серверу он ходит через физический интерфейс, мимо TUN-туннелей VPN вроде Happ.
-Процесс сессии и его потомки могут подключаться только к локальному порту mihomo.
+Внешний веб-трафик Claude Code идет через mihomo. Для Codex действует отдельный строгий профиль.
 mihomo запускается с первой такой сессией и останавливается после последней.
 """
 import base64
@@ -56,6 +56,17 @@ SESSION_PROFILE = """(version 1)
     (global-name "com.apple.nsurlsessiond")
     (global-name "com.apple.nsurlsessiond.privileged"))
 (allow network-outbound (remote tcp "localhost:{port}"))
+"""
+
+CLAUDE_PROFILE = """(version 1)
+(allow default)
+(deny mach-lookup
+    (global-name "com.apple.nsurlsessiond")
+    (global-name "com.apple.nsurlsessiond.privileged"))
+(deny network-outbound
+    (require-all
+        (require-any (remote ip "*:80") (remote ip "*:443"))
+        (require-not (remote ip "localhost:*"))))
 """
 
 TEMPLATE = """# agentmeister proxy: через proxy идут только сессии agentmeister -x. Файл создаёт agentmeister proxy setup.
@@ -532,9 +543,11 @@ def ensure_watch():
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, cwd="/")
 
 
-def session_command(p, cmd):
+def session_command(p, cmd, *, claude=False):
     if not 1 <= p <= 65535:
         raise ValueError(f"Недопустимый порт proxy: {p}")
+    if claude:
+        return ["/usr/bin/sandbox-exec", "-p", CLAUDE_PROFILE, "--", *cmd]
     profile = SESSION_PROFILE.format(port=p)
     params = []
     agent = os.environ.get("SSH_AUTH_SOCK", "")
@@ -551,13 +564,13 @@ def session_command(p, cmd):
     return ["/usr/bin/sandbox-exec", *params, "-p", profile, "--", *cmd]
 
 
-def proxy_env(p):
+def proxy_env(p, *, claude=False):
     url = f"http://127.0.0.1:{p}"
     env = dict(os.environ)
     for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
         env[name] = url
     env["ALL_PROXY"] = env["all_proxy"] = f"socks5h://127.0.0.1:{p}"
-    env["NO_PROXY"] = env["no_proxy"] = ""
+    env["NO_PROXY"] = env["no_proxy"] = "localhost,127.0.0.1,::1" if claude else ""
     env["MNRH_PROXY"] = str(p)
     # promptsill (строка состояния) покажет "proxy KZ", а рядом "vless 203.0.113.7" или, если терминал
     # умеет ссылки, сделает метку ссылкой на страницу с подробностями. Все это проверено при старте mihomo.
@@ -579,7 +592,7 @@ def proxy_env(p):
     return env
 
 
-def run(cmd):
+def run(cmd, *, claude=False):
     if not cmd:
         print("agentmeister proxy run -- <команда>", file=sys.stderr)
         return 2
@@ -601,7 +614,7 @@ def run(cmd):
     signal.signal(signal.SIGQUIT, signal.SIG_IGN)
     try:
         p = port()
-        child = subprocess.Popen(session_command(p, cmd), env=proxy_env(p))
+        child = subprocess.Popen(session_command(p, cmd, claude=claude), env=proxy_env(p, claude=claude))
     except (OSError, ValueError) as e:
         print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
         child = None
@@ -951,12 +964,11 @@ agentmeister proxy setup [ссылка] [--country KZ] [--only KZ]
 agentmeister proxy update          обновить mihomo через Homebrew и перезапустить, если он запущен
 agentmeister proxy restart         перезапустить mihomo, не закрывая сессии через proxy
 agentmeister proxy remove          удалить настройку
-agentmeister proxy run -- <cmd>    запустить команду через proxy (так делает agentmeister -x)
+agentmeister proxy run -- <cmd>    запустить команду с доступом к сети только через mihomo
 
-В режиме "через proxy" (-x) macOS разрешает сессии и ее дочерним процессам подключаться
-только к локальному TCP-порту mihomo. При обрыве запросы завершаются ошибкой. Прямые соединения,
-включая git по SSH, заблокированы и при работающем proxy. Для подписи коммитов доступен локальный
-сокет ssh-agent из SSH_AUTH_SOCK. Ограничение действует с запуска сессии.
+Claude Code с -x обращается к API Anthropic через mihomo. При обрыве proxy запросы завершаются
+ошибкой. Обычный SSH и локальные сервисы доступны. Внешние HTTP и HTTPS на портах 80 и 443 требуют proxy.
+Для Codex с -x и proxy run сохраняется строгий режим с доступом к порту mihomo и сокету ssh-agent.
 Нужен mihomo: brew install mihomo.
 Он слушает 127.0.0.1:{port}, стартует с первой такой сессией и останавливается после последней.
 К серверу mihomo ходит через Wi-Fi или Ethernet в обход TUN Happ и других VPN, поэтому Happ можно
@@ -985,7 +997,10 @@ def main(argv):
         watch()
         return 0
     if cmd == "run":
-        return run(rest[1:] if rest[:1] == ["--"] else rest)
+        claude = rest[:1] == ["--claude"]
+        if claude:
+            rest = rest[1:]
+        return run(rest[1:] if rest[:1] == ["--"] else rest, claude=claude)
     if cmd == "configured":
         return 0 if configured() and mihomo_bin() else 1
     if cmd == "remember":
