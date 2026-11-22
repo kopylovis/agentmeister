@@ -26,7 +26,7 @@ help() {
   agentmeister --harness codex restart [ID]   снова открыть сессию Codex
   agentmeister root                в домашней папке
   agentmeister ... -k | -n         caffeinate или обычная сессия, без вопроса
-  agentmeister ... -x | -d         через свой VPS или напрямую, без вопроса
+  agentmeister ... -x | -d         через proxy или напрямую, без вопроса
   agentmeister ... --new           новая сессия, не предлагать сохраненные
   agentmeister ... -i              без записи на диск: ни переписки, ни истории промптов
   agentmeister ... -- <аргументы>  аргументы для claude: agentmeister kcalm -- --continue
@@ -48,7 +48,7 @@ help() {
   agentmeister notify              уведомления, когда Claude ждет; after <сек>, test, telegram
   agentmeister lid                 не засыпать с закрытой крышкой; setup, release, remove
 
-Прокси через свой VPS
+Прокси для сессий
   agentmeister proxy               состояние; setup, test, update, restart, remove (proxy -h)
 
 Инструменты проекта (Claude зовет их и сам)
@@ -193,7 +193,7 @@ if [ "$net" = vps ]; then
 fi
 
 cd "$dir" || exit 1
-echo "-> ${dir/#$HOME/~} · $mode$([ "$net" = vps ] && echo ' · через VPS')$([ "${CLAUDE_CODE_SKIP_PROMPT_HISTORY:-}" = 1 ] && echo ' · без записи')"
+echo "-> ${dir/#$HOME/~} · $mode$([ "$net" = vps ] && echo ' · через proxy')$([ "${CLAUDE_CODE_SKIP_PROMPT_HISTORY:-}" = 1 ] && echo ' · без записи')"
 # после claudemeister lid setup сторож держит Mac и с закрытой крышкой; без правила шаг молча пропускается
 if [ "$mode" = caffeinate ]; then
   /usr/bin/python3 "$LIB/claude_lid.py" keep >/dev/null 2>&1

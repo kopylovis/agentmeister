@@ -22,7 +22,7 @@ agentmeister --harness codex statusline  вывести снимок promptsill
 agentmeister --harness claude install    установить Claude Code с сайта Anthropic
 agentmeister kcalm          сразу в проекте (достаточно начала имени)
 agentmeister root           в домашней папке
-agentmeister ... -x         эта сессия через свой VPS
+agentmeister ... -x         эта сессия через proxy
 agentmeister ... -i         без истории запросов Claude Code
 agentmeister sessions       сохраненные сессии: продолжить, перенести, удалить
 agentmeister ps             запущенные сессии и кто ждет ответа
@@ -42,7 +42,7 @@ agentmeister buildlog       Claude получает выжимку длинно�
 agentmeister notify         уведомления, когда Claude ждет; telegram, phone
 agentmeister lid            не засыпать с закрытой крышкой; setup, remove
 
-# Прокси через свой VPS
+# Прокси для сессий
 agentmeister proxy          состояние; setup, test, update, restart, remove
 
 # Инструменты проекта
@@ -130,7 +130,7 @@ UUID. Claude прочитает переписку, план, ветку Git и 
 
 Homebrew ставит заодно mihomo для `agentmeister -x`. `agentmeister setup` кладёт команды `/restart`,
 `/forget`, `/slim` и другие в `~/.claude/commands`, хуки в `~/.claude/settings.json`, хук zsh в `~/.zshrc`
-и регистрирует MCP-сервер `claudemeister`. Если прокси через VPS еще не настроен, setup спрашивает, настроить
+и регистрирует MCP-сервер `claudemeister`. Если прокси еще не настроен, setup спрашивает, настроить
 ли его сейчас (`--country KZ` сразу задает страну выхода). Если нет строки состояния
 [promptsill](https://github.com/kopylovis/promptsill), предлагает поставить ее через Homebrew.
 
@@ -265,7 +265,7 @@ agentmeister proxy test                                    # выход напр
 
 `agentmeister proxy` показывает версию mihomo и, если в Homebrew есть новее, подсказывает
 `agentmeister proxy update`. Эта команда делает `brew upgrade mihomo`. Если mihomo запущен, а сессий
-через VPS нет, она останавливает его, и новая версия поднимется с первой сессией. Если сессии идут,
+через proxy нет, она останавливает его, и новая версия поднимется с первой сессией. Если сессии идут,
 она спрашивает, перезапустить ли mihomo сейчас. Запросы, которые идут в эту секунду, при этом
 оборвутся, Claude Code их повторит. Без перезапуска новая версия заработает после последней сессии.
 
@@ -275,7 +275,7 @@ agentmeister proxy test                                    # выход напр
 он сразу просит mihomo перепроверить сервер, а не ждать плановой проверки раз в пять минут. Если сервер
 и при живой сети недоступен 30 секунд, сторож перезапускает mihomo, но не чаще раза в пять минут. Журнал
 сторожа лежит в `~/.local/state/mnrh/proxy/watch.log`. `agentmeister proxy restart` перезапускает mihomo
-руками, сессии через VPS при этом остаются открытыми.
+руками, сессии через proxy при этом остаются открытыми.
 
 mihomo слушает `127.0.0.1:17890`, стартует с первой сессией через сервер и останавливается
 после последней. Сессия получает `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` и `NO_PROXY` для
