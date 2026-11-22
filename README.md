@@ -18,6 +18,7 @@ agentmeister                menu: sessions, mode switches, proxy, install
 
 # Codex from the shell
 agentmeister --harness codex kcalm        choose a session in a project
+agentmeister --harness codex install     install Codex CLI with Homebrew
 agentmeister --harness codex setup       install hooks, the skill and MCP
 agentmeister --harness codex statusline  print a promptsill snapshot
 
