@@ -61,6 +61,7 @@ help() {
   agentmeister deps                устаревшие зависимости Gradle в gradle/libs.versions.toml
 
 Установка
+  agentmeister --harness claude install   установить Claude Code с claude.ai
   agentmeister setup               команды, хуки, MCP-сервер, хук zsh, прокси, promptsill (setup -h)
   agentmeister doctor              проверить установку
   agentmeister alias               короткое имя am; on, off

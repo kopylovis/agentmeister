@@ -52,6 +52,8 @@ ITEMS = [
     ("--harness codex statusline", "📊", "Статус Codex", "Codex status",
      "Последние сохраненные лимиты и контекст Codex, данные проекта и Mac. Выводит promptsill.",
      "Show the latest saved Codex limits and context with project and Mac details from promptsill."),
+    ("--harness claude install", "📦", "Установить Claude Code", "Install Claude Code",
+     "Скачать и запустить установщик Anthropic.", "Download and run the Anthropic installer."),
     ("setup", "🧰", "Настроить Claude Code", "Set up Claude Code",
      "Поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh и MCP-сервер. "
      "Прокси тоже настроит, если его еще нет.",
