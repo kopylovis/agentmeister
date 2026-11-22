@@ -99,12 +99,19 @@ MODES = [("caffeinate", "☕ caffeinate",
           [bold("Обычная сессия"), "", "Mac засыпает по своим настройкам.", "",
            dim("БЕЗ ВОПРОСА"), "agentmeister ... -n"])]
 
-NETS = [("direct", "🔌 напрямую",
-         [bold("Напрямую"), "", "Сессия ходит в сеть как обычно.", "", dim("БЕЗ ВОПРОСА"), "agentmeister ... -d"]),
-        ("vps", "🌐 через proxy",
-         [bold("Через proxy"), "", "Сессия и ее дочерние процессы могут подключаться только к порту mihomo. "
-          "Если proxy недоступен, запросы обрываются. Прямой SSH заблокирован.", "",
-          dim("БЕЗ ВОПРОСА"), "agentmeister ... -x"])]
+def network_options(harness):
+    if harness == "claude":
+        detail = ("Запросы Claude к Anthropic идут через mihomo. При обрыве proxy они завершаются ошибкой. "
+                  "SSH и локальные сервисы доступны.")
+    else:
+        detail = ("Сессия и ее дочерние процессы могут подключаться только к порту mihomo. "
+                  "Если proxy недоступен, запросы обрываются. Прямой SSH заблокирован.")
+    return [
+        ("direct", "🔌 напрямую", [bold("Напрямую"), "", "Сессия ходит в сеть как обычно.", "",
+                                  dim("БЕЗ ВОПРОСА"), "agentmeister ... -d"]),
+        ("vps", "🌐 через proxy", [bold("Через proxy"), "", detail, "", dim("БЕЗ ВОПРОСА"), "agentmeister ... -x"]),
+    ]
+
 
 def choose(screen, options, title, current):
     keys = [k for k, _, _ in options]
@@ -165,7 +172,7 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
         elif step == "mode":
             got = choose(screen, MODES, f"Режим сессии в {tilde(state['dir'])}", state["mode"])
         else:
-            got = choose(screen, NETS, "Сеть", state["net"])
+            got = choose(screen, network_options(harness), "Сеть", state["net"])
         if got is None:
             k -= 1
             while k >= 0 and skipped.get(k):
