@@ -16,7 +16,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import Cancel, Panel, Quit, Screen, choice, run_framed, show_output  # noqa: E402
-from mnrhlib import CM, DEV, HOME, RESTART_QUEUE, ROOT, promptsill_path, run as capture, tilde, tr  # noqa: E402
+from mnrhlib import DEV, HOME, LOCAL_CLI, RESTART_QUEUE, ROOT, promptsill_path, run as capture, tilde, tr  # noqa: E402
 import claude_sessions  # noqa: E402
 import codex_harness  # noqa: E402
 import open_flow  # noqa: E402
@@ -308,7 +308,7 @@ def run(args):
     # Ctrl-C прерывает действие, а не меню; обработчик на Python в запущенной программе сбрасывается
     old = signal.signal(signal.SIGINT, lambda *_: None)
     try:
-        rc = subprocess.run([CM] + args).returncode
+        rc = subprocess.run([LOCAL_CLI] + args).returncode
     finally:
         signal.signal(signal.SIGINT, old)
     return 128 - rc if rc < 0 else rc
@@ -331,7 +331,7 @@ def framed(screen, args):
     остается в обычном терминале, его можно прокрутить."""
     title = f"agentmeister {shown(args)}"
     installing = args[:1] == ["--harness"] and args[2:] == ["install"]
-    code, out = run_framed(screen, [CM] + args, title, show_elapsed=installing)
+    code, out = run_framed(screen, [LOCAL_CLI] + args, title, show_elapsed=installing)
     if restart_pending():
         screen.close()
         return False
@@ -377,11 +377,11 @@ def switch(screen, name):
     import claude_lid
     if name == "lid" and want == "on" and not claude_lid.ready():
         # правила sudoers еще нет: lid on поставит его и спросит пароль sudo, это надо видеть
-        code, out = run_framed(screen, [CM, "lid", "on"], "agentmeister lid on")
+        code, out = run_framed(screen, [LOCAL_CLI, "lid", "on"], "agentmeister lid on")
         if code != 0:
             show_output(screen, out, "agentmeister lid on", code)
     else:
-        done = subprocess.run([CM, name, want], capture_output=True, text=True)
+        done = subprocess.run([LOCAL_CLI, name, want], capture_output=True, text=True)
         if done.returncode != 0:
             last = (done.stderr or done.stdout).strip().splitlines()
             return tr(f"{name}: не переключилось", f"{name}: did not switch") + (f" ({last[-1][:60]})" if last else "")

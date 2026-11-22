@@ -17,6 +17,7 @@ NOTICES = os.path.join(CACHE, "notice")
 # id сессии Claude Code
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
+LOCAL_CLI = os.path.join(ROOT, "bin", "agentmeister")
 # Команда claudemeister для хуков, MCP и перезапуска. Сначала из PATH: путь /opt/homebrew/bin/claudemeister
 # переживает brew upgrade, а путь в Cellar нет.
 CM = shutil.which("claudemeister") or os.path.join(ROOT, "bin", "claudemeister")
