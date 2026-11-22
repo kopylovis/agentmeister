@@ -708,7 +708,7 @@ class Output:
         return "\n".join(lines)
 
 
-def run_framed(screen, argv, title, env=None):
+def run_framed(screen, argv, title, env=None, show_elapsed=False):
     """Запустить argv в рамке на экране screen: вывод с цветами в рамке, меню программы на том же экране
     (MNRH_IN_FRAME=1). Ответ: (код выхода, Output). Экран не закрывается, поэтому ничего не мигает."""
     import fcntl
@@ -743,9 +743,15 @@ def run_framed(screen, argv, title, env=None):
         out.feed(f"\x1b[31m{e}\x1b[0m\n")
         return 127, out
     shape = (rows, cols)
-    draw_output(screen, out, title, running=True)
+    started = time.monotonic()
+    elapsed = 0 if show_elapsed else None
+    draw_output(screen, out, title, running=True, elapsed=elapsed)
     while True:
         ready = select.select([master], [], [], 0.2)[0]
+        seconds = int(time.monotonic() - started) if show_elapsed else None
+        resized = screen_size(screen.fd) != shape
+        if resized:
+            shape = resize()
         if ready:
             try:
                 data = os.read(master, 65536)
@@ -755,12 +761,11 @@ def run_framed(screen, argv, title, env=None):
                 break
             out.feed(data.decode("utf-8", "replace"))
             out.redraw = False
-            draw_output(screen, out, title, running=True)
         elif proc.poll() is not None:
             break
-        elif screen_size(screen.fd) != shape:
-            shape = resize()
-            draw_output(screen, out, title, running=True)
+        if ready or resized or seconds != elapsed:
+            elapsed = seconds
+            draw_output(screen, out, title, running=True, elapsed=elapsed)
     code = proc.wait()
     signal.signal(signal.SIGINT, old_int)
     while select.select([master], [], [], 0.05)[0]:  # дочитать хвост вывода
@@ -813,7 +818,7 @@ def fold(line, size):
     return parts
 
 
-def draw_output(screen, out, title, running, code=0, back=0):
+def draw_output(screen, out, title, running, code=0, back=0, elapsed=None):
     """Рамка с выводом: последние строки, back строк назад при листании. Курсор в конце вывода, чтобы ввод
     строки и вопросы программы шли на месте."""
     rows, cols = screen_size(screen.fd)
@@ -827,6 +832,8 @@ def draw_output(screen, out, title, running, code=0, back=0):
     body = [" " + line for line in shown]
     if running:
         state = tr("выполняется", "running")
+        if elapsed is not None:
+            state += f" {elapsed // 60}:{elapsed % 60:02d}"
         hint = tr("выполняется · Ctrl+C прервать", "running · Ctrl+C to stop")
     else:
         state = (tr("готово", "done") if code == 0 else tr(f"код {code}", f"exit {code}"))

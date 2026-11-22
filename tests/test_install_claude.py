@@ -36,6 +36,8 @@ chmod +x "$HOME/.local/bin/claude"
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("fixture-version", result.stdout)
         self.assertIn("PATH", result.stdout)
+        self.assertIn("Скачиваю установщик", result.stderr)
+        self.assertIn("устанавливает Claude Code", result.stderr)
         self.env["CURL_STATUS"] = "22"
         self.assertEqual(self.install().returncode, 0)
 
