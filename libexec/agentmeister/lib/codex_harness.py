@@ -49,11 +49,11 @@ def supports_no_daemon(codex):
 
 
 @contextmanager
-def app_server(codex, cwd, experimental=False):
+def app_server(codex, cwd, experimental=False, timeout=5):
     with subprocess.Popen([codex, "app-server", "--listen", "stdio://"], cwd=cwd,
                           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                           encoding="utf-8") as server:
-        deadline = threading.Timer(5, server.kill)
+        deadline = threading.Timer(timeout, server.kill)
         deadline.start()
         request_id = 0
 
