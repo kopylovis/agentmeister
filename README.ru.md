@@ -14,6 +14,7 @@ agentmeister                меню: сессии, переключатели �
 
 # Codex из терминала
 agentmeister --harness codex kcalm        выбрать сессию проекта
+agentmeister --harness codex install     установить Codex CLI через Homebrew
 agentmeister --harness codex setup       установить хуки, навык и MCP
 agentmeister --harness codex statusline  вывести снимок promptsill
 

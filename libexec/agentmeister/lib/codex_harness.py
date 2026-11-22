@@ -40,6 +40,29 @@ def executable():
     return shutil.which("codex")
 
 
+def install(argv):
+    parser = argparse.ArgumentParser(prog="agentmeister --harness codex install",
+                                     description=tr("Установить Codex CLI через Homebrew.", "Install Codex CLI with Homebrew."))
+    parser.parse_args(argv)
+    codex = executable()
+    if not codex:
+        brew = shutil.which("brew")
+        if not brew:
+            print(tr("Для установки Codex нужен Homebrew. Команда brew не найдена в PATH.",
+                     "Installing Codex requires Homebrew. The brew command is missing from PATH."), file=sys.stderr)
+            return 1
+        print(tr("Homebrew скачивает и устанавливает Codex CLI...", "Homebrew is installing Codex CLI..."), flush=True)
+        result = subprocess.run([brew, "install", "--cask", "codex"])
+        if result.returncode:
+            return result.returncode
+        codex = executable()
+        if not codex:
+            print(tr("После установки команда codex не найдена в PATH.",
+                     "Codex was installed but the codex command is missing from PATH."), file=sys.stderr)
+            return 1
+    return subprocess.run([codex, "--version"]).returncode
+
+
 def supports_no_daemon(codex):
     try:
         result = subprocess.run([codex, "--help"], capture_output=True, text=True, timeout=5)
@@ -93,8 +116,8 @@ def launch_args(argv):
         before, after = argv[:sep], argv[sep + 1:]
     parser = argparse.ArgumentParser(prog="agentmeister --harness codex",
                                      description=tr("Запуск и настройка Codex", "Launch and set up Codex"),
-                                     epilog=tr("Для перезапуска сессии используй restart [ID].",
-                                               "Use restart [ID] to reopen a session."))
+                                     epilog=tr("Установка Codex: install. Перезапуск сессии: restart [ID].",
+                                               "Use install to install Codex or restart [ID] to reopen a session."))
     parser.add_argument("project", nargs="?")
     parser.add_argument("-k", "--caffeinate", dest="mode", action="store_const", const="caffeinate")
     parser.add_argument("-n", "--normal", dest="mode", action="store_const", const="normal")
@@ -441,6 +464,8 @@ def setup(codex, argv):
 
 
 def main(argv):
+    if argv[:1] == ["install"]:
+        return install(argv[1:])
     if argv == ["mcp"]:
         os.environ["MNRH_MCP_HARNESS"] = "codex"
         from mcp_server import mcp
