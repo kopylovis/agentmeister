@@ -253,6 +253,9 @@ ports are blocked even while the proxy is up. If macOS cannot apply the restrict
 will not start. Commands that apply their own macOS sandbox can fail with
 `sandbox_apply: Operation not permitted`.
 
+Git can sign commits through your running ssh-agent. At launch, Agentmeister allows access to the
+Unix socket named by `SSH_AUTH_SOCK` if it belongs to the current user.
+
 The restriction takes effect at launch. To apply it to an open session, exit and resume through
 the proxy. Other Mac applications keep their own network settings. Use `-d` for a direct session.
 

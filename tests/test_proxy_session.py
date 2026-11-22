@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import signal
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -14,6 +15,32 @@ import claude_proxy
 
 @unittest.skipUnless(sys.platform == "darwin", "requires the macOS sandbox")
 class ProxySession(unittest.TestCase):
+    def test_only_selected_agent_socket_is_reachable(self):
+        client = """\
+import errno, socket, sys
+
+for path, expected in zip(sys.argv[1:], (0, errno.EPERM)):
+    with socket.socket(socket.AF_UNIX) as conn:
+        result = conn.connect_ex(path)
+        assert result == expected, (result, expected)
+"""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp, \
+                socket.socket(socket.AF_UNIX) as agent, socket.socket(socket.AF_UNIX) as other:
+            path = Path(tmp) / "agent socket"
+            adjacent = str(Path(tmp) / "other")
+            alias = Path(tmp) / "agent-link"
+            agent.bind(str(path))
+            agent.listen()
+            other.bind(adjacent)
+            other.listen()
+            alias.symlink_to(path)
+            with patch.dict(os.environ, SSH_AUTH_SOCK=str(alias)):
+                command = claude_proxy.session_command(17890, [sys.executable, "-c", client, str(alias), adjacent])
+                subprocess.run(command, check=True, timeout=5)
+            for missing in ("", str(Path(tmp) / "missing"), tmp):
+                with self.subTest(missing=missing), patch.dict(os.environ, SSH_AUTH_SOCK=missing):
+                    self.assertNotIn("-D", claude_proxy.session_command(17890, ["true"]))
+
     def test_session_and_children_remain_restricted_after_disconnect(self):
         with tempfile.TemporaryDirectory() as tmp, socket.socket() as proxy, socket.socket() as origin:
             for listener in (proxy, origin):
