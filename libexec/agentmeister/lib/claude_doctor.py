@@ -235,8 +235,8 @@ def check_notify():
 def check_proxy():
     import claude_proxy
     if claude_proxy.configured():
-        return [("ok", "прокси через VPS настроен (проверить выход: agentmeister proxy test)")]
-    return [("ok", "прокси через VPS не настроен, agentmeister -x недоступен")]
+        return [("ok", "прокси настроен (проверить выход: agentmeister proxy test)")]
+    return [("ok", "прокси не настроен, agentmeister -x недоступен")]
 
 
 def check_lid():

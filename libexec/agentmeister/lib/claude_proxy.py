@@ -1,8 +1,8 @@
-"""Прокси через свой VPS только для одной сессии Claude Code.
+"""Прокси для сессий Claude Code и Codex.
 
 mihomo слушает HTTP/SOCKS на 127.0.0.1 и отправляет всё через подписку 3x-ui (VLESS, Hysteria2: какой жив).
 К серверу он ходит через физический интерфейс, мимо TUN-туннелей VPN вроде Happ.
-Системный прокси и TUN не трогаем: через VPS идёт только процесс, которому дали HTTPS_PROXY, и его потомки.
+Системный прокси и TUN не трогаем: через proxy идёт только процесс, которому дали HTTPS_PROXY, и его потомки.
 mihomo запускается с первой такой сессией и останавливается после последней.
 """
 import base64
@@ -48,7 +48,7 @@ CHECK_URL = "https://1.1.1.1/cdn-cgi/trace"
 PROBE_URL = "https://www.gstatic.com/generate_204"
 NO_PROXY = "localhost,127.0.0.1,::1,*.local"
 
-TEMPLATE = """# agentmeister proxy: через VPS идут только сессии agentmeister -x. Файл создаёт agentmeister proxy setup.
+TEMPLATE = """# agentmeister proxy: через proxy идут только сессии agentmeister -x. Файл создаёт agentmeister proxy setup.
 # mnrh-country: {country}
 mixed-port: {port}
 bind-address: 127.0.0.1
@@ -322,7 +322,7 @@ th {{ font-weight: 400; color: var(--dim); width: 45%; }}
 td {{ font-family: ui-monospace, Menlo, monospace; word-break: break-all; }}
 p {{ color: var(--dim); font-size: 13px; line-height: 1.5; }}
 </style></head><body>
-<h1>Сессия идет через VPS</h1>
+<h1>Сессия идет через proxy</h1>
 <table>{body}</table>
 <p>Данные на момент запуска mihomo. Если сервер с тех пор сменился, текущий покажет
 <code>agentmeister proxy</code>, а проверка выхода заново <code>agentmeister proxy test</code>.</p>
@@ -384,7 +384,7 @@ def start():
         time.sleep(0.1)
     if not listening(p):
         raise ProxyError(f"mihomo не поднялся на порту {p}, смотри {tilde(LOG)}")
-    # порт открывается раньше, чем mihomo прочитает подписку: ждём первого настоящего ответа через VPS
+    # порт открывается раньше, чем mihomo прочитает подписку: ждём первого настоящего ответа через proxy
     deadline = time.time() + 15
     while time.time() < deadline:
         r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "4",
@@ -393,7 +393,7 @@ def start():
             break
         time.sleep(0.5)
     else:
-        print(f"agentmeister proxy: VPS пока не отвечает, запускаю всё равно (лог {tilde(LOG)})", file=sys.stderr)
+        print(f"agentmeister proxy: proxy пока не отвечает, запросы могут завершаться ошибкой (лог {tilde(LOG)})", file=sys.stderr)
     got = trace(proxy_env(p))
     node, proto = active_node()
     info = dict({"ip": got[0], "loc": got[1]} if got else {}, node=node, proto=proto,
@@ -463,7 +463,7 @@ def watch_log(text):
 
 
 def restart_mihomo():
-    """Перезапустить mihomo на месте: сессии через VPS остаются, их текущие запросы обрываются. Под locked()."""
+    """Перезапустить mihomo на месте: сессии через proxy остаются, их текущие запросы обрываются. Под locked()."""
     stop()
     start()
 
@@ -609,7 +609,7 @@ def trace(env=None):
 
 
 def check():
-    """Запустить mihomo, если надо, и сравнить выход напрямую и через VPS."""
+    """Запустить mihomo, если надо, и сравнить выход напрямую и через proxy."""
     with locked():
         start()
         was_held = bool(holders())
@@ -700,7 +700,7 @@ def setup(args):
         return 2
     with locked():
         if holders():
-            print(f"{WARN} сейчас идут сессии через VPS ({len(holders())}). Закрой их и повтори setup.")
+            print(f"{WARN} сейчас идут сессии через proxy ({len(holders())}). Закрой их и повтори setup.")
             return 1
         stop()
         old = port() if configured() else None
@@ -714,10 +714,10 @@ def setup(args):
         print(f"{BAD} {e}")
         return 1
     if not via:
-        print(f"{BAD} через VPS ничего не открылось. Проверь подписку, лог: {tilde(LOG)}")
+        print(f"{BAD} через proxy ничего не открылось. Проверь подписку, лог: {tilde(LOG)}")
         return 1
-    print(f"{OK} напрямую {fmt(direct)}, через VPS {fmt(via)}")
-    print("Запуск: agentmeister <проект> -x, или выбери «через VPS» в меню Agentmeister.")
+    print(f"{OK} напрямую {fmt(direct)}, через proxy {fmt(via)}")
+    print('Выбери "через proxy" в меню Agentmeister или запусти agentmeister <проект> -x.')
     return 0
 
 
@@ -810,9 +810,9 @@ def update():
     if not live:
         with locked():
             stop()
-        print(f"{OK} старый mihomo {running} остановлен, новый запустится с первой сессией через VPS")
+        print(f"{OK} старый mihomo {running} остановлен, новый запустится с первой сессией через proxy")
         return 0
-    question = (f"Сейчас через VPS идут сессии ({len(live)}), они работают на mihomo {running}. Перезапустить его сейчас? "
+    question = (f"Сейчас через proxy идут сессии ({len(live)}), они работают на mihomo {running}. Перезапустить его сейчас? "
                 "Запросы, которые идут в эту секунду, оборвутся, Claude Code их повторит [y/N] ")
     if sys.stdin.isatty() and input(question).strip().lower() in ("y", "yes", "д", "да"):
         with locked():
@@ -821,13 +821,13 @@ def update():
             ensure_watch()
         print(f"{OK} mihomo перезапущен, работает {running_version() or after}")
     else:
-        print(f"{OK} mihomo {running} работает, пока идут сессии через VPS. {after} заработает после последней")
+        print(f"{OK} mihomo {running} работает, пока идут сессии через proxy. {after} заработает после последней")
     return 0
 
 
 def restart_cmd():
     if not (read_pid() and listening(port())):
-        print(paint("  mihomo не запущен: он поднимется вместе с первой сессией через VPS", "2"))
+        print(paint("  mihomo не запущен: он поднимется вместе с первой сессией через proxy", "2"))
         return 0
     try:
         with locked():
@@ -859,23 +859,23 @@ def status(test=False):
         if line:
             print(f"{WARN if 'proxy update' in line or 'Запущен еще' in line else OK} {line}")
     if pid and listening(p):
-        print(f"{OK} mihomo работает (pid {pid}), сессий через VPS {len(live)}")
+        print(f"{OK} mihomo работает (pid {pid}), сессий через proxy {len(live)}")
         print(f"{OK} сторож сети работает" if watcher_alive() else
-              f"{WARN} сторожа сети нет, он запустится с новой сессией через VPS или agentmeister proxy restart")
+              f"{WARN} сторожа сети нет, он запустится с новой сессией через proxy или agentmeister proxy restart")
         node, proto = active_node()
         if node:
             print(f"{OK} сейчас сервер {node}" + (f", протокол {proto}" if proto else ""))
     else:
-        print(paint("  mihomo не запущен: он поднимется вместе с первой сессией через VPS", "2"))
+        print(paint("  mihomo не запущен: он поднимется вместе с первой сессией через proxy", "2"))
     if os.environ.get("MNRH_PROXY"):
-        print(f"{OK} эта сессия идёт через VPS")
+        print(f"{OK} эта сессия идёт через proxy")
     if test:
         try:
             direct, via = check()
         except ProxyError as e:
             print(f"{BAD} {e}")
             return 1
-        print(f"{OK if via else BAD} напрямую {fmt(direct)}, через VPS {fmt(via)}")
+        print(f"{OK if via else BAD} напрямую {fmt(direct)}, через proxy {fmt(via)}")
         return 0 if via else 1
     return 0
 
@@ -883,7 +883,7 @@ def status(test=False):
 def remove():
     with locked():
         if holders():
-            print(f"{WARN} сейчас идут сессии через VPS. Закрой их и повтори.")
+            print(f"{WARN} сейчас идут сессии через proxy. Закрой их и повтори.")
             return 1
         stop()
     if os.path.isdir(CONF_DIR):
@@ -909,20 +909,20 @@ def last():
         return "direct"
 
 
-USAGE = """agentmeister proxy                 статус: настроен ли, запущен ли mihomo, сколько сессий через VPS
-agentmeister proxy test            сравнить выход напрямую и через VPS (IP и страна)
+USAGE = """agentmeister proxy                 статус: настроен ли, запущен ли mihomo, сколько сессий через proxy
+agentmeister proxy test            сравнить выход напрямую и через proxy (IP и страна)
 agentmeister proxy setup [ссылка] [--country KZ] [--only KZ]
                                   настроить по ссылке на подписку (https://…, как в Happ).
                                   --country: если выход окажется в другой стране, сессия не запустится;
                                   --only: брать из подписки только серверы, чьё имя подходит под это выражение
 agentmeister proxy update          обновить mihomo через Homebrew и перезапустить, если он запущен
-agentmeister proxy restart         перезапустить mihomo, не закрывая сессии через VPS
+agentmeister proxy restart         перезапустить mihomo, не закрывая сессии через proxy
 agentmeister proxy remove          удалить настройку
-agentmeister proxy run -- <cmd>    запустить команду через VPS (так делает agentmeister -x)
+agentmeister proxy run -- <cmd>    запустить команду через proxy (так делает agentmeister -x)
 
-Через VPS идёт только сессия, запущенная с -x (или «через VPS» в меню), и запущенные
+Через proxy идёт только сессия, запущенная с -x (или «через proxy» в меню), и запущенные
 из неё программы, которые читают HTTPS_PROXY (gh, npm, curl, git по https, MCP-серверы). git по SSH
-(git@github.com:…) идёт мимо VPS, SSH переменные прокси не читает. Остальные программы ходят напрямую.
+(git@github.com:…) идет мимо proxy, SSH переменные прокси не читает. Остальные программы ходят напрямую.
 Нужен mihomo: brew install mihomo.
 Он слушает 127.0.0.1:{port}, стартует с первой такой сессией и останавливается после последней.
 К серверу mihomo ходит через Wi-Fi или Ethernet в обход TUN Happ и других VPN, поэтому Happ можно

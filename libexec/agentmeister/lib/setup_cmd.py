@@ -133,7 +133,7 @@ def notice_hook(install, rename_rules=False):
 
 SETUP_USAGE = f"""agentmeister setup [--country KZ] [--only <имя>]
     поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh, MCP-сервер claudemeister
-    и настроить прокси через VPS, если он еще не настроен. --country и --only уходят в agentmeister proxy setup
+    и настроить прокси, если он еще не настроен. --country и --only уходят в agentmeister proxy setup
 agentmeister setup --remove    убрать настройку Claude Code
 {CODEX_SETUP}    настроить хуки и MCP для Codex"""
 
