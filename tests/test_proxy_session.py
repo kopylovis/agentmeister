@@ -41,6 +41,45 @@ for path, expected in zip(sys.argv[1:], (0, errno.EPERM)):
                 with self.subTest(missing=missing), patch.dict(os.environ, SSH_AUTH_SOCK=missing):
                     self.assertNotIn("-D", claude_proxy.session_command(17890, ["true"]))
 
+    def test_claude_allows_local_tools_and_blocks_direct_web(self):
+        client = """\
+import errno, socket, sys
+
+with socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=1):
+    pass
+with socket.socket() as server:
+    server.bind(("127.0.0.1", 0))
+    server.listen()
+with socket.socket(socket.AF_UNIX) as local:
+    local.connect(sys.argv[2])
+for family, target in [(socket.AF_INET, "192.0.2.1"), (socket.AF_INET6, "2001:db8::1")]:
+    for port in (80, 443):
+        with socket.socket(family) as tcp:
+            tcp.settimeout(1)
+            assert tcp.connect_ex((target, port)) == errno.EPERM
+        with socket.socket(family, socket.SOCK_DGRAM) as udp:
+            try:
+                udp.sendto(b"", (target, port))
+            except PermissionError:
+                pass
+            else:
+                raise AssertionError("direct UDP was allowed")
+"""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp, socket.socket() as local, \
+                socket.socket(socket.AF_UNIX) as unix:
+            local.bind(("127.0.0.1", 0))
+            local.listen()
+            path = str(Path(tmp) / "fixture")
+            unix.bind(path)
+            unix.listen()
+            cmd = [sys.executable, "-c", client, str(local.getsockname()[1]), path]
+            subprocess.run(claude_proxy.session_command(17890, cmd, claude=True), check=True, timeout=5)
+        with patch.dict(os.environ, HTTPS_PROXY="http://old", NO_PROXY="*", no_proxy="*"):
+            env = claude_proxy.proxy_env(17890, claude=True)
+            self.assertEqual(env["HTTPS_PROXY"], "http://127.0.0.1:17890")
+            self.assertEqual(env["no_proxy"], "localhost,127.0.0.1,::1")
+            self.assertEqual(env["no_proxy"], env["NO_PROXY"])
+
     def test_session_and_children_remain_restricted_after_disconnect(self):
         with tempfile.TemporaryDirectory() as tmp, socket.socket() as proxy, socket.socket() as origin:
             for listener in (proxy, origin):
