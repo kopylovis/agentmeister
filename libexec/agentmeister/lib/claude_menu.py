@@ -196,22 +196,19 @@ class Describe:
     def __init__(self, state):
         self.state = state
         self.proxy = tr("проверяю", "checking")
-        self.codex = self.promptsill = self.hooks = self.proxy
+        self.claude = self.codex = self.promptsill = self.hooks = self.proxy
         self.fresh = threading.Event()
-        try:
-            from claude_proc import claude_version
-            self.claude = claude_version() or "?"
-        except Exception:
-            self.claude = "?"
         threading.Thread(target=self.ask_proxy, daemon=True).start()
-        threading.Thread(target=self.ask_codex, daemon=True).start()
+        threading.Thread(target=self.ask_versions, daemon=True).start()
 
-    def ask_codex(self):
+    def ask_versions(self):
         def installed_version(path, prefix=""):
             if not path:
                 return tr("не найден", "not found")
             return capture([path, "--version"], timeout=2).strip().removeprefix(prefix) or "?"
 
+        claude = shutil.which(os.environ.get("MNRH_CLAUDE_BIN", "claude"))
+        self.claude = installed_version(claude).removesuffix(" (Claude Code)")
         self.codex = installed_version(codex_harness.executable(), "codex-cli ")
         self.promptsill = installed_version(promptsill_path())
         count = codex_harness.configured_humanize_hooks()
