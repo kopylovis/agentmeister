@@ -22,6 +22,7 @@ agentmeister --harness codex setup       install hooks, the skill and MCP
 agentmeister --harness codex statusline  print a promptsill snapshot
 
 # Claude Code from the shell
+agentmeister --harness claude install    install the Claude Code CLI from Anthropic
 agentmeister kcalm          straight into a project (a name prefix is enough)
 agentmeister root           in the home folder
 agentmeister ... -x         this session through your own VPS

@@ -24,6 +24,10 @@ case "${1:-}" in
     case "${2:-}" in
       claude)
         shift 2
+        if [ "${1:-}" = install ]; then
+          shift
+          exec /bin/bash "$LIBEXEC/install_claude.sh" "$@"
+        fi
         if [ "${1:-}" = status ]; then
           exec /usr/bin/python3 "$LIBEXEC/lib/claude_live.py" "$@"
         fi
