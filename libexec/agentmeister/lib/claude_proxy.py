@@ -2,7 +2,7 @@
 
 mihomo слушает HTTP/SOCKS на 127.0.0.1 и отправляет всё через подписку 3x-ui (VLESS, Hysteria2: какой жив).
 К серверу он ходит через физический интерфейс, мимо TUN-туннелей VPN вроде Happ.
-Системный прокси и TUN не трогаем: через proxy идёт только процесс, которому дали HTTPS_PROXY, и его потомки.
+Процесс сессии и его потомки могут подключаться только к локальному порту mihomo.
 mihomo запускается с первой такой сессией и останавливается после последней.
 """
 import base64
@@ -46,7 +46,16 @@ SUB_FILE = os.path.join(CONF_DIR, "subscription.txt")
 DEFAULT_PORT = 17890
 CHECK_URL = "https://1.1.1.1/cdn-cgi/trace"
 PROBE_URL = "https://www.gstatic.com/generate_204"
-NO_PROXY = "localhost,127.0.0.1,::1,*.local"
+SESSION_PROFILE = """(version 1)
+(allow default)
+(deny network*)
+(deny system-socket)
+(deny mach-lookup
+    (global-name "com.apple.dnssd.service")
+    (global-name "com.apple.nsurlsessiond")
+    (global-name "com.apple.nsurlsessiond.privileged"))
+(allow network-outbound (remote tcp "localhost:{port}"))
+"""
 
 TEMPLATE = """# agentmeister proxy: через proxy идут только сессии agentmeister -x. Файл создаёт agentmeister proxy setup.
 # mnrh-country: {country}
@@ -387,7 +396,7 @@ def start():
     # порт открывается раньше, чем mihomo прочитает подписку: ждём первого настоящего ответа через proxy
     deadline = time.time() + 15
     while time.time() < deadline:
-        r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "4",
+        r = subprocess.run(["curl", "-q", "--noproxy", "", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "4",
                             "-x", f"http://127.0.0.1:{p}", PROBE_URL], capture_output=True, text=True)
         if r.stdout.strip() == "204":
             break
@@ -522,13 +531,19 @@ def ensure_watch():
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, cwd="/")
 
 
+def session_command(p, cmd):
+    if not 1 <= p <= 65535:
+        raise ValueError(f"Недопустимый порт proxy: {p}")
+    return ["/usr/bin/sandbox-exec", "-p", SESSION_PROFILE.format(port=p), "--", *cmd]
+
+
 def proxy_env(p):
     url = f"http://127.0.0.1:{p}"
     env = dict(os.environ)
     for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
         env[name] = url
     env["ALL_PROXY"] = env["all_proxy"] = f"socks5h://127.0.0.1:{p}"
-    env["NO_PROXY"] = env["no_proxy"] = NO_PROXY
+    env["NO_PROXY"] = env["no_proxy"] = ""
     env["MNRH_PROXY"] = str(p)
     # promptsill (строка состояния) покажет "proxy KZ", а рядом "vless 203.0.113.7" или, если терминал
     # умеет ссылки, сделает метку ссылкой на страницу с подробностями. Все это проверено при старте mihomo.
@@ -571,8 +586,9 @@ def run(cmd):
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGQUIT, signal.SIG_IGN)
     try:
-        child = subprocess.Popen(cmd, env=proxy_env(port()))
-    except OSError as e:
+        p = port()
+        child = subprocess.Popen(session_command(p, cmd), env=proxy_env(p))
+    except (OSError, ValueError) as e:
         print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
         child = None
 
@@ -602,7 +618,10 @@ def run(cmd):
 
 def trace(env=None):
     proxy = env.get("HTTPS_PROXY") if env else None
-    cmd = ["curl", "-s", "--max-time", "12"] + (["-x", proxy] if proxy else []) + [CHECK_URL]
+    cmd = ["curl", "-q", "-s", "--max-time", "12", "--noproxy", "" if proxy else "*"]
+    if proxy:
+        cmd += ["-x", proxy]
+    cmd.append(CHECK_URL)
     out = subprocess.run(cmd, capture_output=True, text=True).stdout
     info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
     return (info.get("ip"), info.get("loc")) if info.get("ip") else None
@@ -920,9 +939,9 @@ agentmeister proxy restart         перезапустить mihomo, не за�
 agentmeister proxy remove          удалить настройку
 agentmeister proxy run -- <cmd>    запустить команду через proxy (так делает agentmeister -x)
 
-Через proxy идёт только сессия, запущенная с -x (или «через proxy» в меню), и запущенные
-из неё программы, которые читают HTTPS_PROXY (gh, npm, curl, git по https, MCP-серверы). git по SSH
-(git@github.com:…) идет мимо proxy, SSH переменные прокси не читает. Остальные программы ходят напрямую.
+В режиме "через proxy" (-x) macOS разрешает сессии и ее дочерним процессам подключаться
+только к локальному TCP-порту mihomo. При обрыве запросы завершаются ошибкой. Прямые соединения,
+включая git по SSH, заблокированы и при работающем proxy. Ограничение действует с запуска сессии.
 Нужен mihomo: brew install mihomo.
 Он слушает 127.0.0.1:{port}, стартует с первой такой сессией и останавливается после последней.
 К серверу mihomo ходит через Wi-Fi или Ethernet в обход TUN Happ и других VPN, поэтому Happ можно
