@@ -10,7 +10,7 @@ import shlex
 import subprocess
 import time
 
-from mnrhlib import HOME, projects_dir, run, settings_path, tilde
+from mnrhlib import HOME, LOCAL_CLI, projects_dir, run, settings_path, tilde
 
 OPEN = {
     "Apple_Terminal": '''
@@ -204,7 +204,7 @@ def open_claude(args, cm):
     name = "~" if target == HOME else os.path.basename(target)
     # из сессии через proxy новое окно тоже идёт через proxy, иначе напрямую, без вопроса в меню
     net = "-x" if os.environ.get("MNRH_PROXY") else "-d"
-    cmd = [cm, "open", target if direct else name, MODES[mode], net, "--new"]
+    cmd = [LOCAL_CLI if net == "-x" else cm, "open", target if direct else name, MODES[mode], net, "--new"]
     rc = args.get("remote_control", True) is not False
     # имя у --remote-control необязательное: без него первый запрос принялся бы за имя
     extra = (["--remote-control", "home" if name == "~" else name] if rc else []) + \

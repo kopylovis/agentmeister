@@ -244,13 +244,17 @@ the mode off and keeps the rule, so `on` brings it back without a password. `rel
 caffeinate session, and `remove` turns the mode off and deletes the rule. The watcher's log is `~/.local/state/mnrh/lid.log`. The rule and the
 watcher are shared with `mnrh sleep lid`, so if you set it up in mnrh, agentmeister picks it up.
 
-### A session through your own server: `agentmeister proxy`
+### Session networking
 
-If the proxy is configured, the next question is the network: direct or through your server. Only this session
-goes through the server, together with the programs it starts that read `HTTPS_PROXY` (gh, npm, curl, git over
-https, MCP servers). git over SSH (`git@github.com:…`) stays direct, because SSH ignores proxy variables. The
-browser, messengers and other terminal windows stay direct, and the system proxy and TUN are left alone. `-x`
-picks the server without asking, `-d` picks direct. The menu remembers your last choice.
+Choose the proxy in the network menu or start a session with `-x`. macOS restricts Claude Code, Codex
+and their child processes to the local mihomo TCP port. Requests fail when the proxy goes down.
+The agent can retry when the connection returns. Direct SSH, UDP and connections to other localhost
+ports are blocked even while the proxy is up. If macOS cannot apply the restriction, the agent
+will not start. Commands that apply their own macOS sandbox can fail with
+`sandbox_apply: Operation not permitted`.
+
+The restriction takes effect at launch. To apply it to an open session, exit and resume through
+the proxy. Other Mac applications keep their own network settings. Use `-d` for a direct session.
 
 It runs on [mihomo](https://wiki.metacubex.one) (`brew install mihomo`), which speaks VLESS (including XHTTP)
 and Hysteria2 and uses the first live server from the subscription. One-time setup:
@@ -279,7 +283,7 @@ for 30 seconds while the network is up, it restarts mihomo, at most once every f
 proxied sessions open.
 
 mihomo listens on `127.0.0.1:17890`, starts with the first proxied session and stops after the last. The
-session gets `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`, and `NO_PROXY` for localhost. `/restart` and the windows
+session gets `HTTPS_PROXY`, `HTTP_PROXY` and `ALL_PROXY` pointing to mihomo. `/restart` and the windows
 that `open_claude` and `/parallel` open from such a session also go through the server.
 
 mihomo reaches the server over Wi-Fi or Ethernet, bypassing the TUN tunnel of Happ and other VPNs, so you can
