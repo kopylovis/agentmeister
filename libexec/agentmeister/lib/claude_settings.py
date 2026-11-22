@@ -149,7 +149,7 @@ def statusline_command(settings):
 
 
 def ensure_statusline(settings, promptsill, install=True):
-    """promptsill (путь или None) в statusLine, если там пусто или заглушка claudemeister statusline.
+    """promptsill (путь или None) в statusLine, если там пусто или заглушка agentmeister statusline.
     Без promptsill заглушка mnrh claude переписывается на claudemeister. install=False убирает нашу строку.
     Чужую statusLine не трогает. Возвращает True, если что-то поменял."""
     line = settings.get("statusLine")

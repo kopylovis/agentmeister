@@ -212,7 +212,7 @@ def handle(name, a, cwd=None):
 def main():
     args = sys.argv[2:] if sys.argv[1:2] == ["release-notes"] else sys.argv[1:]
     if args[:1] in (["-h"], ["--help"]):
-        print("claudemeister release-notes [проект] [--since <тег|коммит>]")
+        print("agentmeister release-notes [проект] [--since <тег|коммит>]")
         print("    материал для «Что нового»: версия, коммиты с прошлого релиза, сессии Claude, языки и лимиты")
         print()
         print("Сами заметки пишет Claude: /release-notes в Claude Code. Сохраняются в fastlane/release_notes/.")

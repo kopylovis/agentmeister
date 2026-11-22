@@ -18,9 +18,9 @@ NOTICES = os.path.join(CACHE, "notice")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 LOCAL_CLI = os.path.join(ROOT, "bin", "agentmeister")
-# Команда claudemeister для хуков, MCP и перезапуска. Сначала из PATH: путь /opt/homebrew/bin/claudemeister
+# Команда agentmeister для хуков, MCP и перезапуска. Сначала из PATH: путь /opt/homebrew/bin/agentmeister
 # переживает brew upgrade, а путь в Cellar нет.
-CM = shutil.which("claudemeister") or os.path.join(ROOT, "bin", "claudemeister")
+CM = shutil.which("agentmeister") or LOCAL_CLI
 # Полный mnrh, если стоит: на нем mac_status, free_memory и сон с закрытой крышкой (mnrh sleep lid).
 MNRH = shutil.which("mnrh")
 
@@ -57,7 +57,7 @@ def is_hook(command, sub):
 
 
 # Хук или statusLine, которые ставил mnrh claude setup: .../mnrh claude <команда>
-# Хуки Claude Code, которые ставит claudemeister setup: (событие, команда claudemeister, async, matcher).
+# Хуки Claude Code, которые ставит agentmeister setup: (событие, команда claudemeister, async, matcher).
 # Старые хуки mnrh claude <команда> setup заменяет этими. Поменял matcher: claude_setup.pending заметит и предложит setup.
 HOOKS = [("SessionStart", "notice", False, None), ("SessionEnd", "session-end", False, None),
          ("UserPromptSubmit", "notify-hook", True, None), ("Stop", "notify-hook", True, None),
@@ -70,7 +70,7 @@ HOOKS = [("SessionStart", "notice", False, None), ("SessionEnd", "session-end", 
 # Таймаут хука в секундах, если не 10. approve-hook ждет ответа из Telegram до 9,5 минуты (telegram_approve.WAIT).
 HOOK_TIMEOUTS = {"approve-hook": 600}
 STATUS_CMD = "statusline"
-LEGACY_CALL = re.compile(r"\bmnrh['\"]?\s+claude\s+\S")
+LEGACY_CALL = re.compile(r"(?:\bclaudemeister['\"]?|\bmnrh['\"]?\s+claude)\s+\S")
 TTY = sys.stdout.isatty()
 
 

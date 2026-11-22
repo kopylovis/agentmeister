@@ -66,7 +66,7 @@ brew install kopylovis/tap/agentmeister
 agentmeister
 ```
 
-`am` открывает то же меню. Для старых скриптов есть имя `claudemeister`.
+`am` открывает то же меню.
 
 ### Codex
 
@@ -130,7 +130,7 @@ UUID. Claude прочитает переписку, план, ветку Git и 
 
 Homebrew ставит заодно mihomo для `agentmeister -x`. `agentmeister setup` кладёт команды `/restart`,
 `/forget`, `/slim` и другие в `~/.claude/commands`, хуки в `~/.claude/settings.json`, хук zsh в `~/.zshrc`
-и регистрирует MCP-сервер `claudemeister`. Если прокси еще не настроен, setup спрашивает, настроить
+и регистрирует MCP-сервер `agentmeister`. Если прокси еще не настроен, setup спрашивает, настроить
 ли его сейчас (`--country KZ` сразу задает страну выхода). Если нет строки состояния
 [promptsill](https://github.com/kopylovis/promptsill), предлагает поставить ее через Homebrew.
 
@@ -446,7 +446,7 @@ Maven Central и Gradle Plugin Portal и показывает, что обнов
 разговор не пересказывается): ветка, незакоммиченное и незапушенное, последний тег, пять
 последних коммитов, прошлая сессия в этой папке — название, последний запрос и последний
 ответ Claude (обычно там итог работы) — и открытые задачи бэклога. Тебе показывается одна
-строка: «claudemeister: прошлая сессия «…» (вчера) · незакоммичено 3 · в бэклоге 2 · /where —
+строка: «agentmeister: прошлая сессия «…» (вчера) · незакоммичено 3 · в бэклоге 2 · /where —
 подробнее». Только для новых сессий в терминале: не после `--resume`, `/clear`, `/forget`
 и не в `claude -p`. Выключить: `agentmeister brief off`.
 
@@ -543,7 +543,7 @@ Simulator, Android Studio, Figma, VS Code…), Claude смотрит на нег
 ## Как работает перезапуск Claude Code
 
 `agentmeister setup` кладёт `~/.claude/commands/restart.md`, `forget.md`, `fresh.md` и `slim.md` и регистрирует
-MCP-сервер `claudemeister` с инструментами `restart`, `forget`, `fresh`, `slim`, `open_claude`, `session_search`,
+MCP-сервер `agentmeister` с инструментами `restart`, `forget`, `fresh`, `slim`, `open_claude`, `session_search`,
 `session_read` и другими (scope user, во всех проектах). Дальше в любой сессии:
 
 - `/restart` — сразу, без участия модели; `/restart --no-update` — без обновления;
@@ -669,7 +669,7 @@ following build commands failed» у xcodebuild, итоговые строки (
 
 Вывод подменяется через `updatedToolOutput`, а его Claude Code принимает только от `PostToolUse`, и это
 событие приходит, только если команда завершилась с кодом 0. Поэтому хук `PreToolUse` дописывает к команде
-сборки `|| echo "[claudemeister buildlog: exit code was not 0]"`. Упавшая сборка печатает эту метку и
+сборки `|| echo "[agentmeister buildlog: exit code was not 0]"`. Упавшая сборка печатает эту метку и
 завершается с кодом 0, а `PostToolUse` убирает метку и пишет в первой строке выжимки, что команда завершилась с
 ошибкой. Короткий вывод упавшей сборки остается целиком, к нему добавляется та же пометка. Хвост без подстановок
 вроде `$?`, потому что такой `echo` Claude Code считает безопасным и не спрашивает разрешения, а правила вроде

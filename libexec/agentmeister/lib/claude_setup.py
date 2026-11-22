@@ -1,4 +1,4 @@
-"""Шаги claudemeister setup и проверка перед запуском claudemeister.
+"""Шаги agentmeister setup и проверка перед запуском claudemeister.
 
 setup записывает в ~/.config/mnrh/claude-setup.json, какие шаги сделаны и от каких отказались.
 claudemeister перед запуском сверяет запись со STEPS. Если setup на этом Mac не запускали или после
@@ -25,9 +25,9 @@ STEPS = [
               "строка состояния; "
               "хранить переписки год, а не 30 дней"),
     ("zsh", "хук перезапуска в ~/.zshrc"),
-    ("mcp", "MCP-сервер claudemeister"),
+    ("mcp", "MCP-сервер agentmeister"),
     ("notify-app", "приложение уведомлений"),
-    ("proxy", "прокси для claudemeister -x"),
+    ("proxy", "прокси для agentmeister -x"),
     ("promptsill", "строка состояния promptsill: лимиты, контекст, порты, память"),
 ]
 IDS = [s for s, _ in STEPS]
@@ -121,6 +121,9 @@ def legacy():
         servers = json.loads(text(os.path.join(HOME, ".claude.json")) or "{}").get("mcpServers") or {}
     except (ValueError, AttributeError):
         return False
+    previous = servers.get("claudemeister") if isinstance(servers, dict) else None
+    if isinstance(previous, dict) and os.path.basename(previous.get("command") or "") in ("agentmeister", "claudemeister") and previous.get("args") == ["mcp"]:
+        return True
     old = servers.get("mnrh") if isinstance(servers, dict) else None
     return isinstance(old, dict) and old.get("args") == ["claude", "mcp"]
 
@@ -191,7 +194,7 @@ def promptsill_step():
         return None
     print("promptsill: строка состояния Claude Code с темпом лимитов, контекстом, dev-серверами, портами и памятью.")
     if ask("Поставить promptsill?", [("yes", "Да", "yд"), ("no", "Пропустить", "nн")]) != "yes":
-        print(f"{WARN} promptsill пропущен. Поставить потом: {PROMPTSILL_HINT}, затем claudemeister setup")
+        print(f"{WARN} promptsill пропущен. Поставить потом: {PROMPTSILL_HINT}, затем agentmeister setup")
         return "skipped"
     brew = shutil.which("brew") or next((p for p in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
                                          if os.access(p, os.X_OK)), None)
@@ -221,7 +224,7 @@ def promptsill_statusline():
 
 
 def check():
-    """Перед запуском claudemeister: предложить setup, если его не делали или появились новые шаги."""
+    """Перед запуском agentmeister: предложить setup, если его не делали или появились новые шаги."""
     if os.environ.get("MNRH_NO_SETUP_CHECK") or not (sys.stdin.isatty() and sys.stdout.isatty()):
         return 0
     steps, fresh = pending()
@@ -229,12 +232,12 @@ def check():
         return 0
     about = dict(STEPS)
     if fresh:
-        print("claudemeister setup на этом Mac еще не запускали. Он ставит:")
+        print("agentmeister setup на этом Mac еще не запускали. Он ставит:")
     elif legacy():
-        print("Команды, хуки и MCP-сервер Claude Code еще вызывают mnrh claude. Теперь это отдельная программа "
-              "claudemeister, setup перепишет их на нее:")
+        print("Найдены старые настройки mnrh claude или claudemeister. Теперь используется "
+              "agentmeister. Обновить настройки?")
     else:
-        print("После обновления в claudemeister setup есть шаги, которые здесь не настроены:")
+        print("После обновления в agentmeister setup есть шаги, которые здесь не настроены:")
     for s in steps:
         print(f"  {about[s]}")
     answer = ask("Настроить сейчас?", [("yes", "Да", "yд"), ("later", "Позже", "lп"), ("never", "Не предлагать", "nн")],
@@ -247,7 +250,7 @@ def check():
             # шаги переноса в записи сделаны (их ставил mnrh claude setup), поэтому отказ помним отдельно
             done, skipped = current()
             write(done, skipped, legacy_declined=True)
-        print("Больше не спрошу. Настроить можно в любой момент: claudemeister setup\n")
+        print("Больше не спрошу. Настроить можно в любой момент: agentmeister setup\n")
     elif answer == "yes" and set(steps) <= ASKS:
         for step in steps:
             result = proxy_step() if step == "proxy" else promptsill_step()

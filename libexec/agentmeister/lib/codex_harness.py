@@ -27,7 +27,7 @@ HOOK_LABELS = {
     "notify-hook": "Agentmeister notifications",
     "session-end": "Agentmeister session cleanup",
 }
-MCP = "claudemeister"
+MCP = "agentmeister"
 MCP_ARGS = ["--harness", "codex", "mcp"]
 SKILL_OWNER = "<!-- Managed by agentmeister. -->"
 RESTART_PRESETS = (
@@ -438,15 +438,43 @@ def configure_restart_presets(codex, remove):
         print(tr(f'В /presets доступен пункт "{label}".', f'Choose "{label}" in /presets.'))
 
 
+def migrate_codex_mcp(codex, remove):
+    with app_server(codex, os.getcwd()) as request:
+        config = request("config/read", {"includeLayers": True})
+        user = next(layer for layer in config["layers"] if layer["name"]["type"] == "user")
+        user_servers = user["config"].get("mcp_servers") or {}
+        effective = config["config"].get("mcp_servers") or {}
+        legacy = user_servers.get("claudemeister") or {}
+        if (os.path.basename(legacy.get("command") or "") not in ("agentmeister", "claudemeister") or
+                legacy.get("args") not in (MCP_ARGS, ["mcp"])):
+            return
+        edits = []
+        if not remove:
+            renamed = dict(legacy, command=CM, args=MCP_ARGS)
+            if MCP in effective and user_servers.get(MCP) != renamed:
+                raise ValueError(f"Conflicting MCP registration: {MCP}")
+            edits.append({"keyPath": "mcp_servers." + MCP, "value": renamed, "mergeStrategy": "replace"})
+        edits.append({"keyPath": "mcp_servers.claudemeister", "value": None, "mergeStrategy": "replace"})
+        params = {"edits": edits, "expectedVersion": user["version"]}
+        if request("config/batchWrite", params).get("status") != "ok":
+            raise ValueError("Could not migrate the Codex MCP registration")
+
+
 def setup(codex, argv):
     parser = argparse.ArgumentParser(prog="agentmeister --harness codex setup")
     parser.add_argument("--remove", action="store_true")
     remove = parser.parse_args(argv).remove
     listed = subprocess.run([codex, "mcp", "list", "--json"], capture_output=True, text=True, check=True)
     servers = json.loads(listed.stdout)
+    legacy = next((s for s in servers if s.get("name") == "claudemeister"), {})
+    transport = legacy.get("transport") or {}
+    if os.path.basename(transport.get("command") or "") in ("claudemeister", "agentmeister"):
+        migrate_codex_mcp(codex, remove)
+        listed = subprocess.run([codex, "mcp", "list", "--json"], capture_output=True, text=True, check=True)
+        servers = json.loads(listed.stdout)
     existing = next((server for server in servers if server.get("name") == MCP), None)
     transport = (existing or {}).get("transport") or {}
-    own_command = transport.get("command") in {CM, os.path.join(ROOT, "bin", "claudemeister")}
+    own_command = transport.get("command") in {CM, LOCAL_CLI}
     ours = own_command and transport.get("args") == MCP_ARGS
     migrate = False
     if own_command and transport.get("args") == ["mcp"] and not remove:
@@ -456,8 +484,8 @@ def setup(codex, argv):
                    ("enabled_tools", "disabled_tools", "startup_timeout_sec", "tool_timeout_sec")) and not any(
                        transport.get(key) for key in ("env", "env_vars", "cwd"))
     if existing and not (ours or migrate or remove):
-        raise ValueError(tr("В Codex уже есть другая настройка MCP с именем claudemeister.",
-                            "Codex already has a different MCP server named claudemeister."))
+        raise ValueError(tr("В Codex уже есть другая настройка MCP с именем agentmeister.",
+                            "Codex already has a different MCP server named agentmeister."))
     configure_hooks(remove)
     if remove and ours:
         subprocess.run([codex, "mcp", "remove", MCP], check=True)

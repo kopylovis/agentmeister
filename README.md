@@ -70,7 +70,7 @@ brew install kopylovis/tap/agentmeister
 agentmeister
 ```
 
-`am` is the short name. `claudemeister` remains a compatibility alias.
+`am` is the short name.
 
 ### Codex
 
@@ -133,7 +133,7 @@ that belongs to another program, and `agentmeister alias off` removes only its o
 
 Homebrew also installs mihomo for `agentmeister -x`. `agentmeister setup` puts `/restart`, `/forget`, `/slim`
 and the other commands into `~/.claude/commands`, hooks into `~/.claude/settings.json` and a zsh hook into
-`~/.zshrc`, and registers the `claudemeister` MCP server. If the proxy isn't set up yet, setup asks whether
+`~/.zshrc`, and registers the `agentmeister` MCP server. If the proxy isn't set up yet, setup asks whether
 to do it now (`--country KZ` sets the expected exit country). If the
 [promptsill](https://github.com/kopylovis/promptsill) status line is missing, it offers to install it with Homebrew.
 
@@ -443,7 +443,7 @@ When a new session starts, the `SessionStart` hook gives Claude a brief about th
 isn't repeated back to you): branch, uncommitted and unpushed changes, the last tag, the last five commits, the
 previous session in this folder (title, last prompt and Claude's last answer, which usually sums up the work)
 and the open backlog items. You see one line, like
-"claudemeister: прошлая сессия «…» (вчера) · незакоммичено 3 · в бэклоге 2 · /where — подробнее". This only
+"agentmeister: прошлая сессия «…» (вчера) · незакоммичено 3 · в бэклоге 2 · /where — подробнее". This only
 happens for new sessions in a terminal, not after `--resume`, `/clear` or `/forget`, and not in `claude -p`.
 Turn it off with `agentmeister brief off`.
 
@@ -533,7 +533,7 @@ Sonnet; a simple question costs about 30k tokens and 5 to 10 seconds.
 ## How restarting Claude Code works
 
 `agentmeister setup` puts `restart.md`, `forget.md`, `fresh.md` and `slim.md` into `~/.claude/commands/` and
-registers the `claudemeister` MCP server with the tools `restart`, `forget`, `fresh`, `slim`, `open_claude`,
+registers the `agentmeister` MCP server with the tools `restart`, `forget`, `fresh`, `slim`, `open_claude`,
 `session_search`, `session_read` and others (user scope, in every project). Then, in any session:
 
 - `/restart` restarts right away without involving the model; `/restart --no-update` skips the update.
@@ -653,7 +653,7 @@ tests`) and the last lines. The first line of the digest names the full log in
 
 The output is replaced through `updatedToolOutput`, which Claude Code only accepts from `PostToolUse`, and that
 event fires only when the command exits with 0. So a `PreToolUse` hook appends
-`|| echo "[claudemeister buildlog: exit code was not 0]"` to the build command. A failed build prints that marker
+`|| echo "[agentmeister buildlog: exit code was not 0]"` to the build command. A failed build prints that marker
 and exits with 0, and `PostToolUse` removes the marker and says in the digest's first line that the command
 failed. Short output from a failed build stays whole with the same note added. The tail has no expansions such
 as `$?`, because Claude Code treats such an `echo` as safe and doesn't ask for permission, and rules like

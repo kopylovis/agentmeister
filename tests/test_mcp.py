@@ -21,7 +21,7 @@ class Reload(unittest.TestCase):
             src = os.path.join(ROOT, name)
             (shutil.copytree if os.path.isdir(src) else shutil.copy2)(src, os.path.join(self.copy, name))
         env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-        self.proc = subprocess.Popen([os.path.join(self.copy, "bin", "claudemeister"), "mcp"], stdin=subprocess.PIPE,
+        self.proc = subprocess.Popen([os.path.join(self.copy, "bin", "agentmeister"), "mcp"], stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, env=env)
 
     def tearDown(self):

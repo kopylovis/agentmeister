@@ -15,6 +15,23 @@ import open_flow
 
 
 class CodexHarness(unittest.TestCase):
+    def test_mcp_rename_moves_user_settings_in_one_versioned_write(self):
+        legacy = {"command": "/tmp/claudemeister", "args": ["mcp"], "enabled": False,
+                  "disabled_tools": ["todo_add"], "env": {"MODE": "test"}}
+        config = {"mcp_servers": {"claudemeister": legacy}}
+        layer = {"name": {"type": "user"}, "version": "previous", "config": config}
+        with patch.object(codex_harness, "app_server") as server:
+            request = server.return_value.__enter__.return_value
+            request.side_effect = [{"layers": [layer], "config": config}, {"status": "ok"}]
+            codex_harness.migrate_codex_mcp("codex", False)
+            method, params = request.call_args.args
+        self.assertEqual(method, "config/batchWrite")
+        self.assertEqual(params["expectedVersion"], "previous")
+        self.assertEqual([(edit["keyPath"], edit["value"]) for edit in params["edits"]],
+                         [("mcp_servers.agentmeister", dict(legacy, command=codex_harness.CM,
+                                                             args=codex_harness.MCP_ARGS)),
+                          ("mcp_servers.claudemeister", None)])
+
     def test_launch_isolates_direct_and_vps_sessions_from_shared_daemon(self):
         sid = "11111111-2222-4333-8444-555555555555"
         for network in ("-d", "-x"):

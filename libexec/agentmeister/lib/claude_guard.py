@@ -599,7 +599,7 @@ def decide(payload):
     if mode not in ("bypassPermissions", "auto", "dontAsk"):
         log(f"ask   {rule:<14} {what}")
         hold_badge(payload.get("session_id"), rule)
-        return {"permissionDecision": "ask", "permissionDecisionReason": f"claudemeister guard: {why}"}
+        return {"permissionDecision": "ask", "permissionDecisionReason": f"agentmeister guard: {why}"}
     sid = payload.get("session_id")
     key = call_key(sid, tool, inp)
     pending = load_pending(sid)
@@ -608,13 +608,13 @@ def decide(payload):
         pending.pop(key)
         save_pending(sid, pending)
         log(f"allow {rule:<14} {what}")
-        return {"permissionDecision": "allow", "permissionDecisionReason": "claudemeister guard: пользователь разрешил"}
+        return {"permissionDecision": "allow", "permissionDecisionReason": "agentmeister guard: пользователь разрешил"}
     pending[key] = time.time()
     save_pending(sid, pending)
     log(f"hold  {rule:<14} {what}")
     hold_badge(sid, rule)
     return {"permissionDecision": "deny", "permissionDecisionReason": (
-        f"claudemeister guard: {why}. Это не отказ: спроси пользователя одним коротким вопросом, выполнить ли это, и объясни "
+        f"agentmeister guard: {why}. Это не отказ: спроси пользователя одним коротким вопросом, выполнить ли это, и объясни "
         f"зачем. Если он ответит «да» — повтори ровно этот же вызов, и он пройдёт. Если нет — не делай и не ищи "
         f"обходной путь.")}
 
@@ -639,11 +639,11 @@ def hook():
 
 
 def usage():
-    print("claudemeister guard                   состояние и правила")
-    print("claudemeister guard on | off          включить или выключить совсем")
-    print("claudemeister guard skip <правило>    не проверять правило; unskip <правило> — вернуть")
-    print("claudemeister guard test '<команда>'  что сделает guard с этой командой (в папке, где запущен)")
-    print("claudemeister guard log               последние решения")
+    print("agentmeister guard                   состояние и правила")
+    print("agentmeister guard on | off          включить или выключить совсем")
+    print("agentmeister guard skip <правило>    не проверять правило; unskip <правило> — вернуть")
+    print("agentmeister guard test '<команда>'  что сделает guard с этой командой (в папке, где запущен)")
+    print("agentmeister guard log               последние решения")
     print()
     print("Хук PreToolUse следит за чтением и удалением секретов и ключей и за необратимыми командами")
     print("(git reset --hard, push --force, rm -r вне проекта, curl | sh…). В обычном режиме Claude Code")
@@ -652,7 +652,7 @@ def usage():
 
 def status():
     skip = skipped()
-    print(f"claudemeister guard: {'включён' if enabled() else 'выключен'}. Лог: {tilde(LOG)}")
+    print(f"agentmeister guard: {'включён' if enabled() else 'выключен'}. Лог: {tilde(LOG)}")
     for rule, text in RULES.items():
         mark = "  выкл" if rule in skip else "  вкл "
         print(f"{mark} {rule:<11} {text}")
@@ -673,7 +673,7 @@ def main():
     if cmd in ("on", "off"):
         write_config(guard=cmd)
         sync_badge(cmd == "on")
-        print(f"claudemeister guard {'включён' if cmd == 'on' else 'выключен'}")
+        print(f"agentmeister guard {'включён' if cmd == 'on' else 'выключен'}")
         return 0
     if cmd in ("skip", "unskip") and len(rest) == 2:
         if rest[1] not in RULES:

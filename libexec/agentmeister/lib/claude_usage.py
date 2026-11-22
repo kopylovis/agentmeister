@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""claudemeister usage: токены и активное время по проектам и моделям из переписок Claude Code.
+"""agentmeister usage: токены и активное время по проектам и моделям из переписок Claude Code.
 
 Берётся поле usage у ответов модели (одно на запрос, хотя строк в переписке у ответа бывает несколько) и время
 строк. Активное время — сумма промежутков меньше 5 минут между соседними строками, вместе с субагентами.
@@ -333,7 +333,7 @@ def handle(a):
     return report(days=days, project=a.get("project") or None, top=int(a.get("top") or 5))
 
 
-USAGE = """claudemeister usage [--days N] [--project P] [--top N]
+USAGE = """agentmeister usage [--days N] [--project P] [--top N]
   токены и активное время Claude Code по проектам и моделям
   --days N     за N последних дней, считая сегодня (по умолчанию 7; 0 — за всё время)
   --project P  только этот проект: имя папки или его начало, ~ — домашний каталог
@@ -355,13 +355,13 @@ def main(argv):
             i += 1
             continue
         if a not in opts or i + 1 >= len(argv):
-            print(f"claudemeister usage: не понимаю {argv[i]}\n\n{USAGE}", file=sys.stderr)
+            print(f"agentmeister usage: не понимаю {argv[i]}\n\n{USAGE}", file=sys.stderr)
             return 2
         opts[a] = argv[i + 1]
         i += 2
     for k in ("--days", "--top"):
         if not opts[k].isdigit():
-            print(f"claudemeister usage: после {k} нужно число", file=sys.stderr)
+            print(f"agentmeister usage: после {k} нужно число", file=sys.stderr)
             return 2
     if not os.path.isdir(claude_search.PROJECTS):
         print("Сессий Claude Code на этом Mac нет.")
