@@ -180,8 +180,8 @@ def proxy_step(country="", only=""):
         return "skipped"
     if not country:
         country = input("Страна выхода, которую проверять при запуске, например KZ (Enter, не проверять): ").strip()
-    claude_proxy.setup((["--country", country] if country else []) + (["--only", only] if only else []))
-    return "done" if claude_proxy.configured() else None
+    code = claude_proxy.setup((["--country", country] if country else []) + (["--only", only] if only else []))
+    return "done" if code == 0 else "failed"
 
 
 def promptsill_step():
@@ -200,11 +200,11 @@ def promptsill_step():
                                          if os.access(p, os.X_OK)), None)
     if not brew:
         print(f"{WARN} нет Homebrew. Поставь его с https://brew.sh, потом {PROMPTSILL_HINT}")
-        return None
+        return "failed"
     r = subprocess.run([brew, "install", "kopylovis/tap/promptsill"])
     if r.returncode != 0 or not promptsill_path():
         print(f"{WARN} promptsill не поставился. Попробуй сам: {PROMPTSILL_HINT}")
-        return None
+        return "failed"
     print(f"{OK} promptsill поставлен")
     return "done"
 
@@ -256,7 +256,7 @@ def check():
             result = proxy_step() if step == "proxy" else promptsill_step()
             if step == "promptsill" and result == "done" and promptsill_path():
                 promptsill_statusline()
-            if result:
+            if result in ("done", "skipped"):
                 record(**{"done" if result == "done" else "skipped": [step]})
         print()
     elif answer == "yes":
