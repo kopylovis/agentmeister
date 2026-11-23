@@ -873,13 +873,19 @@ def show_output(screen, out, title, code):
     """Вывод после конца программы: листать, Enter или Esc в меню (True), q или Ctrl+C выход (False)."""
     back = 0
     while True:
-        draw_output(screen, out, title, running=False, code=code, back=back)
-        rows, _ = screen_size(screen.fd)
+        rows, cols = screen_size(screen.fd)
         page = max(1, rows - 6)
+        raw = out.lines[:-1] if out.lines[-1] == "" else out.lines
+        total = sum(len(fold(line, max(20, cols - 4) - 3)) for line in raw)
+        back = min(back, max(0, total - page))
+        draw_output(screen, out, title, running=False, code=code, back=back)
+        while not PENDING and not select.select([screen.fd], [], [], 0.3)[0]:
+            if screen_size(screen.fd) != (rows, cols):
+                break
+        if not PENDING and screen_size(screen.fd) != (rows, cols):
+            continue
         keys = PENDING[:] if PENDING else split_keys(read_keys(screen.fd))
-        del PENDING[:]
-        _, cols = screen_size(screen.fd)
-        total = sum(len(fold(line, max(20, cols - 4) - 3)) for line in out.lines)
+        PENDING.clear()
         for key in keys:
             if key in ("\r", "\n", "\x1b"):
                 return True
