@@ -81,6 +81,17 @@ class NativePush(unittest.TestCase):
 
 
 class ClaudeNotify(unittest.TestCase):
+    def test_helper_receives_post_arguments_and_confirms_delivery(self):
+        def accept(args, **kwargs):
+            self.assertEqual(args[:4], [claude_notify.AGENT.bin, "post", "--title", "tab name"])
+            self.assertFalse(kwargs.get("shell"))
+            with open(args[args.index("--result") + 1], "w") as receipt:
+                receipt.write("ok")
+
+        with mock.patch.object(claude_notify.subprocess, "Popen", side_effect=accept), \
+                mock.patch.object(claude_notify, "sound", return_value=True):
+            self.assertEqual(claude_notify.post("tab name", "", "ready", "test"), "ok")
+
     def test_interactive_question_without_tty(self):
         sid = "a812d4fa-e535-463a-8369-f1433fa25652"
         data = {"session_id": sid, "hook_event_name": "Notification", "notification_type": "agent_needs_input"}
