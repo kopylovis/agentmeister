@@ -395,14 +395,13 @@ def main():
         screen.close()
 
 
-def choose_harness(screen):
-    if not codex_harness.executable():
-        return "claude"
-    if not shutil.which(os.environ.get("MNRH_CLAUDE_BIN", "claude")):
-        return "codex"
-    options = [("claude", "Claude Code"), ("codex", "Codex")]
-    i = screen.pick(options, title=tr("Агент", "Agent"), default=0, start=0)
-    return options[i][0] if i is not None else None
+def harness_options():
+    options = []
+    if shutil.which(os.environ.get("MNRH_CLAUDE_BIN", "claude")) or not codex_harness.executable():
+        options.append(("claude", "Claude Code"))
+    if codex_harness.executable():
+        options.append(("codex", "Codex"))
+    return options
 
 
 def saved_codex(screen):
@@ -413,13 +412,41 @@ def saved_codex(screen):
     if not found:
         return tr("В этой папке нет сессий Codex", "No Codex sessions in this folder")
     items, describe, title, sessions = found
-    picked = screen.pick(items[1:], title=title, start=0, describe=lambda i, width: describe(i + 1, width))
-    if picked is not None:
+    at = 0
+    while True:
+        picked = screen.pick(items[1:], title=title, start=0, default=at, describe=lambda i, width: describe(i + 1, width))
+        if picked is None:
+            return None
+        at = picked
         state = open_flow.flow(screen, cwd, ask_session=False, harness="codex")
         if state is not None:
             state["sid"] = sessions[picked]["id"]
             return launch(screen, open_flow.command(state, "codex"))
-    return True
+
+
+def session_action(screen, key):
+    options = harness_options()
+    at = 0
+    while True:
+        if len(options) > 1:
+            at = screen.pick(options, title=tr("Агент", "Agent"), default=at, start=0)
+            if at is None:
+                return None
+        harness = options[at][0]
+        result = None
+        if key in ("open", "root"):
+            state = open_flow.flow(screen, HOME if key == "root" else None, harness=harness)
+            if state is not None:
+                return launch(screen, open_flow.command(state, harness))
+        elif harness == "codex":
+            result = saved_codex(screen)
+        else:
+            result = claude_sessions.browse(screen)
+            if isinstance(result, tuple):
+                _, session, mode = result
+                return launch(screen, ["sessions", "resume", session["id"]] + (["-n"] if mode == "normal" else []))
+        if result is not None or len(options) == 1:
+            return result
 
 
 def loop(screen):
@@ -436,32 +463,12 @@ def loop(screen):
         if key.startswith("mode "):
             note = switch(screen, key.split()[1])
             continue
-        if key in ("open", "root"):
-            harness = choose_harness(screen)
-            if harness is None:
-                continue
-            state = open_flow.flow(screen, HOME if key == "root" else None, harness=harness)
-            if state is not None and not launch(screen, open_flow.command(state, harness)):
+        if key in ("open", "root", "sessions"):
+            result = session_action(screen, key)
+            if result is False:
                 return 0
-            continue
-        if key == "sessions":
-            harness = choose_harness(screen)
-            if harness is None:
-                continue
-            if harness == "codex":
-                got = saved_codex(screen)
-                if got is False:
-                    return 0
-                if isinstance(got, str):
-                    note = got
-                continue
-            got = claude_sessions.browse(screen)
-            if isinstance(got, str):
-                note = got
-            elif got:
-                _, s, mode = got
-                if not launch(screen, ["sessions", "resume", s["id"]] + (["-n"] if mode == "normal" else [])):
-                    return 0
+            if isinstance(result, str):
+                note = result
             continue
         if key == "ps":
             note = live_sessions(screen)

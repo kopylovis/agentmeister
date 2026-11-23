@@ -30,6 +30,15 @@ class Menu(unittest.TestCase):
         m.mode_on = lambda name: name in on
         return [(k, ANSI.sub("", t)) for k, t in m.rows()]
 
+    def test_back_from_project_reopens_agent_picker(self):
+        from unittest.mock import Mock
+        screen = Mock()
+        screen.pick.side_effect = [0, None]
+        with patch.object(m, "harness_options", return_value=[("claude", "Claude"), ("codex", "Codex")]), \
+                patch.object(m.open_flow, "flow", return_value=None):
+            self.assertIsNone(m.session_action(screen, "open"))
+        self.assertEqual(screen.pick.call_count, 2)
+
     def test_rows_match_items(self):
         rows = self.plain("ru")
         self.assertEqual(len(rows), len(m.ITEMS))
