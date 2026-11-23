@@ -9,7 +9,7 @@ from mnrhlib import CACHE, CLAUDE_HOME, HOME, UUID_RE, badge, read_config, tilde
 import claude_settings
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
-RULES = os.path.join(ROOT, "share", "claudemeister", "humanize.md")
+RULES = os.path.join(ROOT, "share", "agentmeister", "humanize.md")
 STATE = os.path.join(CACHE, "humanize")
 LOG = os.path.join(HOME, "Library", "Logs", "mnrh-humanize.log")
 SETTINGS = claude_settings.PATH

@@ -81,7 +81,7 @@ def log(text):
 
 
 def notify(text):
-    subprocess.run(["osascript", "-e", f'display notification "{text}" with title "claudemeister"'],
+    subprocess.run(["osascript", "-e", f'display notification "{text}" with title "agentmeister"'],
                    capture_output=True)
 
 

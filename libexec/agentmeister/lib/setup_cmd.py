@@ -22,8 +22,8 @@ SLIM_FILE = os.path.join(COMMANDS, "slim.md")
 SETTINGS = claude_settings.PATH
 # Так MCP-сервер назывался, пока claudemeister был частью mnrh (mnrh claude mcp). setup его убирает.
 OLD_MCP_NAMES = ("mnrh", "claudemeister")
-# Строка хука перезапуска в ~/.zshrc: новая и та, что ставил mnrh
-ZSH_MARKERS = ("share/claudemeister/restart.zsh", "share/mnrh/restart.zsh")
+# Строка хука перезапуска в ~/.zshrc: новая, до переименования в agentmeister и та, что ставил mnrh
+ZSH_MARKERS = ("share/agentmeister/restart.zsh", "share/claudemeister/restart.zsh", "share/mnrh/restart.zsh")
 ZSHRC = os.path.join(os.environ.get("ZDOTDIR") or HOME, ".zshrc")
 CODEX_SETUP = "agentmeister --harness codex setup"
 
@@ -37,7 +37,7 @@ def hook_file():
     m = re.match(r"(.*)/Cellar/(agentmeister|claudemeister)/[^/]+/(.*)", root)
     if m:
         root = f"{m.group(1)}/opt/{m.group(2)}/{m.group(3)}"
-    return os.path.join(root, "share", "claudemeister", "restart.zsh")
+    return os.path.join(root, "share", "agentmeister", "restart.zsh")
 
 
 def zshrc_lines():
@@ -89,7 +89,7 @@ def notice_hook(install, rename_rules=()):
     command = claude_settings.statusline_command(settings)
     ours = is_hook(command, STATUS_CMD) or "promptsill" in command
     promptsill = promptsill_path()
-    # без promptsill заглушка statusline остается, но уже claudemeister, а не mnrh claude
+    # без promptsill заглушка statusline остается, но уже agentmeister, а не mnrh claude
     claude_settings.ensure_statusline(settings, promptsill, install)
     status_note = ("! строка состояния: у тебя уже своя statusLine, не трогаю" if line and not ours else
                    "✓ строка состояния: promptsill уже стоит в statusLine" if "promptsill" in command else
@@ -97,7 +97,7 @@ def notice_hook(install, rename_rules=()):
                    f"! строка состояния теперь отдельная программа promptsill: {PROMPTSILL_HINT}, "
                    "потом снова agentmeister setup")
     allow_rules = [f"mcp__{MCP_NAME}__{name}" for name in READ_ONLY]
-    # разрешения старого MCP-сервера mnrh тоже убираем: инструменты теперь у claudemeister
+    # разрешения старого MCP-сервера mnrh тоже убираем: инструменты теперь у agentmeister
     old_rules = {f"mcp__{server}__{name}" for server in rename_rules for name in READ_ONLY + ["mac_status", "free_memory"]}
     perms = settings.setdefault("permissions", {})
     if rename_rules:
@@ -246,7 +246,7 @@ def setup(args):
             write_zshrc(kept)
         print("Убрал /restart, /forget, /fresh, /slim, /todo, /where, /release-notes, /parallel, /shot, /ask, "
               f"/humanize, /import-codex, MCP-сервер {MCP_NAME} и хук из {tilde(ZSHRC)}.")
-        # claudemeister больше не предлагает setup при запуске; вернуть все: agentmeister setup
+        # agentmeister больше не предлагает setup при запуске; вернуть все: agentmeister setup
         claude_setup.write(set(), set(claude_setup.IDS))
         return 0
     os.makedirs(os.path.dirname(COMMAND_FILE), exist_ok=True)
@@ -273,7 +273,7 @@ def setup(args):
     asked = {"proxy": proxy, "promptsill": promptsill}
     claude_setup.record(set(claude_setup.AUTO) | {s for s, r in asked.items() if r == "done"},
                         {s for s, r in asked.items() if r == "skipped"})
-    # setup все перевел на claudemeister, прежний отказ от переноса больше не нужен
+    # setup все перевел на agentmeister, прежний отказ от переноса больше не нужен
     claude_setup.write(*claude_setup.current(), legacy_declined=False)
     if not shutil.which("agentmeister"):
         print(f"! agentmeister нет в PATH, а /restart, /todo и другие команды вызывают его по имени. "

@@ -1,6 +1,6 @@
-"""~/.claude/settings.json: чтение, атомарная запись, хуки и statusLine claudemeister.
+"""~/.claude/settings.json: чтение, атомарная запись, хуки и statusLine agentmeister.
 
-Хуки берутся из mnrhlib.HOOKS: (событие, команда claudemeister, async, matcher).
+Хуки берутся из mnrhlib.HOOKS: (событие, команда agentmeister, async, matcher).
 """
 import json
 import os
@@ -150,7 +150,7 @@ def statusline_command(settings):
 
 def ensure_statusline(settings, promptsill, install=True):
     """promptsill (путь или None) в statusLine, если там пусто или заглушка agentmeister statusline.
-    Без promptsill заглушка mnrh claude переписывается на claudemeister. install=False убирает нашу строку.
+    Без promptsill заглушка mnrh claude переписывается на agentmeister. install=False убирает нашу строку.
     Чужую statusLine не трогает. Возвращает True, если что-то поменял."""
     line = settings.get("statusLine")
     command = statusline_command(settings)

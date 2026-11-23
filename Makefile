@@ -35,7 +35,7 @@ test:
 	@./bin/agentmeister help | grep -q 'agentmeister setup'
 	@printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/agentmeister mcp | grep -q open_claude
 	@./bin/agentmeister deps status -h >/dev/null
-	@swiftc -typecheck -swift-version 5 share/claudemeister/notify/main.swift
+	@swiftc -typecheck -swift-version 5 share/agentmeister/notify/main.swift
 	@./bin/agentmeister notify -h | grep -q telegram
 	@./bin/agentmeister deps -h >/dev/null
 	@./bin/agentmeister notify -h | grep -q "notify phone"
@@ -120,9 +120,10 @@ test:
 	@echo junk | ./bin/agentmeister notice | wc -c | grep -q '^ *0$$'
 	@echo junk | ./bin/agentmeister session-end | wc -c | grep -q '^ *0$$'
 	@echo '{"session_id":"00000000-0000-0000-0000-000000000000"}' | ./bin/agentmeister notice | wc -c | grep -q '^ *0$$'
+	@zsh -n share/agentmeister/restart.zsh
 	@zsh -n share/claudemeister/restart.zsh
 	@printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' | ./bin/agentmeister mcp | grep '"restart"' | grep -q '"forget"'
-	@test -f share/claudemeister/icon.png
+	@test -f share/agentmeister/icon.png
 	@./bin/agentmeister </dev/null >/dev/null 2>&1; test $$? -eq 2
 	@./bin/agentmeister open </dev/null >/dev/null 2>&1; test $$? -eq 2
 	@! printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | PATH=/usr/bin:/bin ./bin/agentmeister mcp | grep -q '"mac_status"'

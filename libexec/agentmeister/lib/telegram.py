@@ -178,7 +178,7 @@ def setup():
     write_config(telegram_chat=str(ch["id"]), telegram_bot=name)
     who = " ".join(x for x in (ch.get("first_name"), ch.get("last_name")) if x) or ch.get("username") or ch["id"]
     try:
-        call("sendMessage", chat_id=ch["id"], text="claudemeister подключён ✓ Сюда будут приходить уведомления Claude, "
+        call("sendMessage", chat_id=ch["id"], text="agentmeister подключен ✓ Сюда будут приходить уведомления Claude, "
                                                    "когда ты не за Mac.")
     except TelegramError:
         pass

@@ -1,4 +1,4 @@
-"""agentmeister doctor: одной командой проверить, что все части claudemeister на месте и работают."""
+"""agentmeister doctor: одной командой проверить, что все части agentmeister на месте и работают."""
 import json
 import os
 import shlex
