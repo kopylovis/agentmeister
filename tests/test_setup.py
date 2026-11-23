@@ -9,7 +9,7 @@ import textwrap
 import unittest
 
 LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "libexec", "agentmeister", "lib")
-RESTART_MD = "!`claudemeister restart $ARGUMENTS`\n"
+RESTART_MD = "!`agentmeister restart $ARGUMENTS`\n"
 LEGACY_MD = "!`/usr/local/bin/mnrh claude restart $ARGUMENTS`\n"
 sys.path.insert(0, LIB)
 from mnrhlib import HOOKS  # noqa: E402
@@ -65,7 +65,7 @@ def hooks(*rows):
 
 
 def current_hooks():
-    return dict(hooks(*[(e, f"claudemeister {c}", m, a) for e, c, a, m in HOOKS]), cleanupPeriodDays=365)
+    return dict(hooks(*[(e, f"agentmeister {c}", m, a) for e, c, a, m in HOOKS]), cleanupPeriodDays=365)
 
 
 SETTINGS = ".claude/settings.json"
@@ -152,6 +152,10 @@ class Pending(unittest.TestCase):
         self.assertEqual(self.pending(dict(base, **{".claude.json": ours})), ["commands", "hooks", "mcp"])
         self.assertEqual(self.pending(dict(base, **{".claude.json": foreign})), [])
 
+    def test_old_command_prompts_for_migration(self):
+        self.assertEqual(self.pending({RESTART: "!`claudemeister restart $ARGUMENTS`", STATE: DONE,
+                                       SETTINGS: current_hooks()}), ["commands", "hooks", "mcp"])
+
     def test_broken_files_do_not_crash(self):
         for settings in ("not json", "[]", '{"hooks": [1]}', '{"hooks": {"Stop": "x"}}'):
             self.assertEqual(self.pending({RESTART: RESTART_MD, STATE: DONE, SETTINGS: settings}), [], settings)
@@ -190,13 +194,43 @@ class Check(unittest.TestCase):
 
 
 class Setup(unittest.TestCase):
+    def test_mcp_rename_preserves_options_and_adds_before_removing(self):
+        config = {"mcpServers": {"claudemeister": {"command": "/old/claudemeister", "args": ["mcp"],
+                                                   "env": {"MODE": "test"}}}}
+        sandbox({".claude.json": config}, """
+            import json, setup_cmd as s
+            from unittest.mock import patch
+            with patch.object(s.subprocess, "run") as run:
+                assert "claudemeister" in s.configure_mcp()
+            add, remove = [call.args[0] for call in run.call_args_list]
+            assert add[2:6] == ["add-json", "--scope", "user", "agentmeister"]
+            assert json.loads(add[-1]) == dict(command=s.CM, args=["mcp"], type="stdio", env={"MODE":"test"})
+            assert remove[2:] == ["remove", "--scope", "user", "claudemeister"]
+        """)
+
+    def test_foreign_mcp_name_collision_leaves_both_registrations(self):
+        servers = {"agentmeister": {"command": "/bin/other", "args": []},
+                   "claudemeister": {"command": "claudemeister", "args": ["mcp"]}}
+        sandbox({".claude.json": {"mcpServers": servers}}, """
+            import setup_cmd as s
+            from unittest.mock import patch
+            with patch.object(s.subprocess, "run") as run:
+                try:
+                    s.configure_mcp()
+                except ValueError:
+                    pass
+                else:
+                    raise AssertionError("expected a name collision")
+                run.assert_not_called()
+        """)
+
     def test_codex_hint_in_help_and_after_claude_setup(self):
         out, _ = sandbox({}, """
             import claude_notify
             import setup_cmd as s
 
             s.CLAUDE_BIN = "sh"
-            s.mcp_get = lambda name: (name == s.MCP_NAME, [s.CM, "mcp"])
+            s.configure_mcp = lambda remove: []
             claude_notify.ensure_app = lambda: True
 
             assert s.setup(["--help"]) == 0
@@ -231,7 +265,7 @@ class NoticeHook(unittest.TestCase):
         self.assertEqual(commands[0], "~/bin/stop.sh")
         self.assertEqual(data["theme"], "dark")
         self.assertIn("Bash(ls)", data["permissions"]["allow"])
-        self.assertIn("mcp__claudemeister__session_read", data["permissions"]["allow"])
+        self.assertIn("mcp__agentmeister__session_read", data["permissions"]["allow"])
         _, back = self.run_hook(self.FOREIGN, "s.notice_hook(True); s.notice_hook(False)")
         self.assertEqual(back, self.FOREIGN)
 
@@ -265,17 +299,19 @@ class NoticeHook(unittest.TestCase):
 
     def test_old_mcp_rules_are_renamed(self):
         settings = {"permissions": {"allow": ["mcp__mnrh__todo_list", "mcp__mnrh__ask_project", "mcp__other__x"],
-                                    "deny": ["mcp__mnrh"]}}
-        _, data = self.run_hook(settings, "s.notice_hook(True, rename_rules=True)")
+                                    "ask": ["mcp__claudemeister__ask_project", "Bash(claudemeister todo:*)"],
+                                    "deny": ["mcp__mnrh", "mcp__claudemeister"]}}
+        _, data = self.run_hook(settings, "s.notice_hook(True, rename_rules=s.OLD_MCP_NAMES)")
         allow = data["permissions"]["allow"]
-        self.assertIn("mcp__claudemeister__ask_project", allow)
+        self.assertIn("mcp__agentmeister__ask_project", allow)
         self.assertIn("mcp__other__x", allow)
         self.assertFalse(any(r.startswith("mcp__mnrh__") for r in allow))
-        self.assertEqual(allow.count("mcp__claudemeister__todo_list"), 1)
-        self.assertEqual(data["permissions"]["deny"], ["mcp__claudemeister"])
+        self.assertEqual(allow.count("mcp__agentmeister__todo_list"), 1)
+        self.assertEqual(data["permissions"]["deny"], ["mcp__agentmeister"])
+        self.assertEqual(data["permissions"]["ask"], ["mcp__agentmeister__ask_project", "Bash(agentmeister todo:*)"])
         _, data = self.run_hook(settings, "s.notice_hook(True)")
         self.assertIn("mcp__mnrh__ask_project", data["permissions"]["allow"])
-        self.assertNotIn("mcp__mnrh__todo_list", data["permissions"]["allow"])
+        self.assertIn("mcp__mnrh__todo_list", data["permissions"]["allow"])
 
     def test_broken_json_is_left_alone(self):
         out, after = sandbox({SETTINGS: "{oops"}, "import setup_cmd as s; s.notice_hook(True)")

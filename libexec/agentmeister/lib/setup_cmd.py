@@ -1,4 +1,5 @@
 """Настройка команд, хуков и MCP для Claude Code."""
+import json
 import os
 import re
 import shutil
@@ -20,7 +21,7 @@ OLD_FORGET_FILE = os.path.join(COMMANDS, "forget-session.md")
 SLIM_FILE = os.path.join(COMMANDS, "slim.md")
 SETTINGS = claude_settings.PATH
 # Так MCP-сервер назывался, пока claudemeister был частью mnrh (mnrh claude mcp). setup его убирает.
-OLD_MCP_NAME = "mnrh"
+OLD_MCP_NAMES = ("mnrh", "claudemeister")
 # Строка хука перезапуска в ~/.zshrc: новая и та, что ставил mnrh
 ZSH_MARKERS = ("share/claudemeister/restart.zsh", "share/mnrh/restart.zsh")
 ZSHRC = os.path.join(os.environ.get("ZDOTDIR") or HOME, ".zshrc")
@@ -66,17 +67,17 @@ def install_restart_hook():
     print(f"✓ хук перезапуска → {tilde(ZSHRC)} (работает в новых вкладках терминала)")
 
 
-def rename_rule(rule):
-    """mcp__mnrh и mcp__mnrh__<инструмент> → то же для claudemeister; остальные правила как есть."""
-    if rule == f"mcp__{OLD_MCP_NAME}":
-        return f"mcp__{MCP_NAME}"
-    if rule.startswith(f"mcp__{OLD_MCP_NAME}__"):
-        return f"mcp__{MCP_NAME}__" + rule[len(f"mcp__{OLD_MCP_NAME}__"):]
+def rename_rule(rule, names):
+    for name in names:
+        prefix = f"mcp__{name}"
+        if rule == prefix or rule.startswith(prefix + "__"):
+            return "mcp__" + MCP_NAME + rule[len(prefix):]
+    if "claudemeister" in names:
+        return re.sub(r"^Bash\(claudemeister(?=[ ):])", "Bash(agentmeister", rule)
     return rule
 
 
-def notice_hook(install, rename_rules=False):
-    """rename_rules: перевести разрешения старого MCP-сервера mnrh на claudemeister (сервер mnrh был наш)."""
+def notice_hook(install, rename_rules=()):
     try:
         settings = claude_settings.load()
     except ValueError as e:
@@ -97,12 +98,12 @@ def notice_hook(install, rename_rules=False):
                    "потом снова agentmeister setup")
     allow_rules = [f"mcp__{MCP_NAME}__{name}" for name in READ_ONLY]
     # разрешения старого MCP-сервера mnrh тоже убираем: инструменты теперь у claudemeister
-    old_rules = {f"mcp__{OLD_MCP_NAME}__{name}" for name in READ_ONLY + ["mac_status", "free_memory"]}
+    old_rules = {f"mcp__{server}__{name}" for server in rename_rules for name in READ_ONLY + ["mac_status", "free_memory"]}
     perms = settings.setdefault("permissions", {})
     if rename_rules:
         for key in ("allow", "ask", "deny"):
             if isinstance(perms.get(key), list):
-                perms[key] = list(dict.fromkeys(rename_rule(r) for r in perms[key]))
+                perms[key] = list(dict.fromkeys(rename_rule(r, rename_rules) for r in perms[key]))
     allow = [r for r in perms.get("allow", []) if r not in allow_rules and r not in old_rules] + \
         (allow_rules if install else [])
     if allow:
@@ -132,7 +133,7 @@ def notice_hook(install, rename_rules=False):
 
 
 SETUP_USAGE = f"""agentmeister setup [--country KZ] [--only <имя>]
-    поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh, MCP-сервер claudemeister
+    поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh, MCP-сервер agentmeister
     и настроить прокси, если он еще не настроен. --country и --only уходят в agentmeister proxy setup
 agentmeister setup --remove    убрать настройку Claude Code
 {CODEX_SETUP}    настроить хуки и MCP для Codex"""
@@ -147,14 +148,14 @@ def setup_args(args):
         elif a in ("--country", "--only"):
             value = next(it, "").strip()
             if not value or value.startswith("-"):
-                print(f"claudemeister setup: после {a} нужно значение\n\n{SETUP_USAGE}", file=sys.stderr)
+                print(f"agentmeister setup: после {a} нужно значение\n\n{SETUP_USAGE}", file=sys.stderr)
                 return None
             opts[a[2:]] = value
         else:
-            print(f"claudemeister setup: не знаю {a}\n\n{SETUP_USAGE}", file=sys.stderr)
+            print(f"agentmeister setup: не знаю {a}\n\n{SETUP_USAGE}", file=sys.stderr)
             return None
     if opts["country"] and not re.match(r"^[A-Za-z]{2}$", opts["country"]):
-        print("claudemeister setup: --country ждет код страны из двух букв, например KZ", file=sys.stderr)
+        print("agentmeister setup: --country ждет код страны из двух букв, например KZ", file=sys.stderr)
         return None
     return opts
 
@@ -169,21 +170,50 @@ def mcp_get(name):
     return True, ([command.group(1)] if command else []) + (args.group(1).split() if args else [])
 
 
-def old_mcp():
-    """Старый MCP-сервер mnrh: "ours" (mnrh claude mcp), "foreign" (чужой с тем же именем) или "absent"."""
-    listed, registered = mcp_get(OLD_MCP_NAME)
-    if not listed:
-        return "absent"
-    ours = registered[1:] == ["claude", "mcp"] and os.path.basename(registered[0]) == "mnrh"
-    return "ours" if ours else "foreign"
-
-
-def remove_old_mcp(state=None):
-    """Убрать MCP-сервер mnrh, если это наш старый mnrh claude mcp. Чужой сервер с тем же именем не трогает."""
-    if (state or old_mcp()) != "ours":
-        return False
-    subprocess.run([CLAUDE_BIN, "mcp", "remove", "--scope", "user", OLD_MCP_NAME], capture_output=True)
-    return True
+def configure_mcp(remove=False):
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or HOME
+    path = os.path.join(config_dir, ".claude.json")
+    try:
+        with open(path) as stream:
+            servers = json.load(stream).get("mcpServers", {})
+    except FileNotFoundError:
+        servers = {}
+    entries = {}
+    names = []
+    for name in (*OLD_MCP_NAMES, MCP_NAME):
+        entry = servers.get(name)
+        if entry is None:
+            if name in OLD_MCP_NAMES:
+                names.append(name)
+            continue
+        binary = os.path.basename(entry.get("command") or "")
+        if name == "mnrh":
+            owned = binary == "mnrh" and entry.get("args") == ["claude", "mcp"]
+        else:
+            owned = binary in ("agentmeister", "claudemeister") and entry.get("args") == ["mcp"]
+        if not owned:
+            if name == MCP_NAME and not remove:
+                raise ValueError(f"MCP {MCP_NAME} already exists with a different command")
+            continue
+        entries[name] = entry
+        if name in OLD_MCP_NAMES:
+            names.append(name)
+    if not remove:
+        configs = [dict(value, type="stdio", command=CM, args=["mcp"]) for value in entries.values()]
+        if any(dict(config, env=config.get("env") or {}) != dict(configs[0], env=configs[0].get("env") or {})
+               for config in configs[1:]):
+            raise ValueError("Existing MCP registrations have different settings")
+        if MCP_NAME not in entries:
+            config = configs[0] if configs else {"command": CM, "args": ["mcp"], "type": "stdio"}
+            subprocess.run([CLAUDE_BIN, "mcp", "add-json", "--scope", "user", MCP_NAME, json.dumps(config)],
+                           check=True, stdout=subprocess.DEVNULL)
+        elif os.path.basename(entries[MCP_NAME]["command"]) != "agentmeister":
+            raise ValueError(f"Update the command for MCP {MCP_NAME} to {CM} mcp")
+    for name in entries:
+        if remove or name != MCP_NAME:
+            subprocess.run([CLAUDE_BIN, "mcp", "remove", "--scope", "user", name], check=True,
+                           stdout=subprocess.DEVNULL)
+    return names
 
 
 def setup(args):
@@ -199,21 +229,24 @@ def setup(args):
         print(f"Не нашел {CLAUDE_BIN} в PATH. Для установки Claude Code запусти agentmeister --harness claude install. "
               f"Для Codex запусти {CODEX_SETUP}.", file=sys.stderr)
         return 1
+    try:
+        legacy_names = configure_mcp(opts["remove"])
+    except (OSError, ValueError, subprocess.CalledProcessError):
+        print("Не удалось обновить регистрацию MCP agentmeister. Проверь настройки MCP пользователя.", file=sys.stderr)
+        return 1
     if opts["remove"]:
         for f in [COMMAND_FILE, FORGET_FILE, FRESH_FILE, SLIM_FILE, OLD_FORGET_FILE] + \
                 [os.path.join(COMMANDS, f"{n}.md") for n in EXTRA_COMMANDS]:
             if os.path.exists(f):
                 os.remove(f)
-        subprocess.run([CLAUDE_BIN, "mcp", "remove", "--scope", "user", MCP_NAME], capture_output=True)
-        remove_old_mcp()
-        notice_hook(False)
+        notice_hook(False, legacy_names)
         lines = zshrc_lines()
         kept = [l for l in lines if not is_zsh_hook(l)]
         if kept != lines:
             write_zshrc(kept)
         print("Убрал /restart, /forget, /fresh, /slim, /todo, /where, /release-notes, /parallel, /shot, /ask, "
               f"/humanize, /import-codex, MCP-сервер {MCP_NAME} и хук из {tilde(ZSHRC)}.")
-        # claudemeister больше не предлагает setup при запуске; вернуть все: claudemeister setup
+        # claudemeister больше не предлагает setup при запуске; вернуть все: agentmeister setup
         claude_setup.write(set(), set(claude_setup.IDS))
         return 0
     os.makedirs(os.path.dirname(COMMAND_FILE), exist_ok=True)
@@ -228,26 +261,9 @@ def setup(args):
 
     # до хуков: если promptsill поставится сейчас, notice_hook сразу пропишет его в statusLine
     promptsill = claude_setup.promptsill_step()
-    old = old_mcp()
-    notice_hook(True, rename_rules=old != "foreign")
+    notice_hook(True, legacy_names)
     install_restart_hook()
-
-    if remove_old_mcp(old):
-        print(f"✓ MCP-сервер {OLD_MCP_NAME} (mnrh claude mcp) убран, его инструменты теперь у {MCP_NAME}")
-    listed, registered = mcp_get(MCP_NAME)
-    if listed and registered != [CM, "mcp"]:
-        subprocess.run([CLAUDE_BIN, "mcp", "remove", "--scope", "user", MCP_NAME], capture_output=True)
-        print(f"✓ MCP-сервер {MCP_NAME} был подключён к {' '.join(registered) or '?'}, переключаю на {tilde(CM)} mcp")
-        listed = False
-    if listed:
-        print(f"✓ MCP-сервер {MCP_NAME} уже подключён")
-    else:
-        r = subprocess.run([CLAUDE_BIN, "mcp", "add", "--scope", "user", MCP_NAME, "--", CM, "mcp"],
-                           capture_output=True, text=True)
-        if r.returncode != 0:
-            print(f"✗ не подключил MCP: {r.stderr.strip() or r.stdout.strip()}")
-            return 1
-        print(f"✓ MCP-сервер {MCP_NAME}: {tilde(CM)} mcp (инструменты: {', '.join(t['name'] for t in tools())})")
+    print(f"✓ MCP {MCP_NAME}")
     import claude_notify
     if claude_notify.ensure_app():
         print(f"✓ приложение уведомлений → {tilde(claude_notify.AGENT.app)} (agentmeister notify test)")
@@ -259,8 +275,8 @@ def setup(args):
                         {s for s, r in asked.items() if r == "skipped"})
     # setup все перевел на claudemeister, прежний отказ от переноса больше не нужен
     claude_setup.write(*claude_setup.current(), legacy_declined=False)
-    if not shutil.which("claudemeister"):
-        print(f"! claudemeister нет в PATH, а /restart, /todo и другие команды вызывают его по имени. "
+    if not shutil.which("agentmeister"):
+        print(f"! agentmeister нет в PATH, а /restart, /todo и другие команды вызывают его по имени. "
               f"Поставь его: brew install kopylovis/tap/agentmeister или make install в {tilde(ROOT)}")
     print("Настройки Claude Code подхватятся при запуске новой сессии или перезапуске открытой.")
     print(f"Для Codex запусти {CODEX_SETUP}, затем подтверди хуки через /hooks.")

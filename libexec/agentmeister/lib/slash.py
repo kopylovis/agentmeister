@@ -1,4 +1,4 @@
-"""Тексты команд Claude Code (~/.claude/commands/*.md), которые ставит claudemeister setup."""
+"""Тексты команд Claude Code (~/.claude/commands/*.md), которые ставит agentmeister setup."""
 
 EXTRA_COMMANDS = ["todo", "where", "release-notes", "parallel", "shot", "ask", "humanize", "import-codex"]
 
@@ -6,7 +6,7 @@ EXTRA_COMMANDS = ["todo", "where", "release-notes", "parallel", "shot", "ask", "
 EXTRA_SLASH = {
     "import-codex": """---
 description: Перенести контекст из выбранной сессии Codex в этот разговор
-allowed-tools: mcp__claudemeister__codex_context
+allowed-tools: mcp__agentmeister__codex_context
 ---
 Запрос пользователя: $ARGUMENTS
 
@@ -24,24 +24,24 @@ allowed-tools: mcp__claudemeister__codex_context
 """,
     "todo": """---
 description: Бэклог проекта между сессиями: /todo — список, /todo <текст> — добавить, /todo done <N> — сделано
-allowed-tools: Bash(claudemeister todo:*)
+allowed-tools: Bash(agentmeister todo:*)
 ---
-!`claudemeister todo $ARGUMENTS`
+!`agentmeister todo $ARGUMENTS`
 
 Покажи пользователю результат выше как есть, без своих действий и пояснений.
 """,
     "where": """---
 description: Где мы остановились: git, прошлая сессия в этом проекте, бэклог
-allowed-tools: Bash(claudemeister brief:*)
+allowed-tools: Bash(agentmeister brief:*)
 ---
-!`claudemeister brief`
+!`agentmeister brief`
 
 По справке выше коротко скажи пользователю, где остановились (что было сделано и в каком всё состоянии) и
 что логично делать дальше — 2–5 пунктов. Ничего не запускай и не меняй.
 """,
     "release-notes": """---
 description: Заметки к релизу «Что нового» на русском и английском для fastlane; аргументы — проект и/или --since <тег>
-allowed-tools: mcp__claudemeister__release_notes_context, mcp__claudemeister__release_notes_write, mcp__claudemeister__session_search, mcp__claudemeister__session_read
+allowed-tools: mcp__agentmeister__release_notes_context, mcp__agentmeister__release_notes_write, mcp__agentmeister__session_search, mcp__agentmeister__session_read
 ---
 Подготовь заметки к релизу. Аргументы пользователя: «$ARGUMENTS» (может быть имя проекта и --since <тег или коммит>).
 
@@ -53,7 +53,7 @@ allowed-tools: mcp__claudemeister__release_notes_context, mcp__claudemeister__re
 """,
     "parallel": """---
 description: Сделать задачу параллельно: отдельная ветка и worktree, второй Claude в новом окне; list — что идёт
-allowed-tools: mcp__claudemeister__parallel_task, mcp__claudemeister__parallel_list
+allowed-tools: mcp__agentmeister__parallel_task, mcp__agentmeister__parallel_list
 ---
 Аргументы: «$ARGUMENTS».
 
@@ -63,13 +63,13 @@ allowed-tools: mcp__claudemeister__parallel_task, mcp__claudemeister__parallel_l
 пользователь просит взять с собой контекст этой сессии, передай fork: true: второй Claude откроется с копией этой
 переписки, а флаг --fork в task не пиши. Потом коротко скажи пользователю, где
 открылся второй Claude, ссылку Remote Control, если она есть, и как потом закончить: через PR
-(claudemeister parallel pr <ветка>: пуш, PR, CI, слияние и уборка worktree), влить локально или выбросить ветку.
+(agentmeister parallel pr <ветка>: пуш, PR, CI, слияние и уборка worktree), влить локально или выбросить ветку.
 """,
     "shot": """---
 description: Снимок окна приложения (Chrome, Safari, Simulator…): /shot <приложение> [вопрос]; без аргументов — список окон
-allowed-tools: Bash(claudemeister shot:*), Read
+allowed-tools: Bash(agentmeister shot:*), Read
 ---
-!`claudemeister shot $1`
+!`agentmeister shot $1`
 
 Если выше путь к PNG — открой его инструментом Read и ответь на вопрос пользователя о снимке: «$ARGUMENTS»
 (первое слово — приложение). Если вопроса нет — коротко опиши, что видно. Если выше список окон или ошибка —
@@ -77,7 +77,7 @@ allowed-tools: Bash(claudemeister shot:*), Read
 """,
     "ask": """---
 description: Спросить про другой проект: /ask <проект> <вопрос> — ответит отдельный Claude, только чтение
-allowed-tools: mcp__claudemeister__ask_project
+allowed-tools: mcp__agentmeister__ask_project
 ---
 Аргументы: «$ARGUMENTS». Первое слово — проект, остальное — вопрос.
 
@@ -85,10 +85,10 @@ allowed-tools: mcp__claudemeister__ask_project
 нужные факты, чтобы он был понятен без неё. Ответ перескажи пользователю коротко, сохранив пути и код.
 """,
     "humanize": """---
-description: claudemeister humanization: писать без признаков нейросети; /humanize переключает, on, off, status
-allowed-tools: Bash(claudemeister humanize:*)
+description: agentmeister humanization: писать без признаков нейросети; /humanize переключает, on, off, status
+allowed-tools: Bash(agentmeister humanize:*)
 ---
-!`claudemeister humanize switch $ARGUMENTS`
+!`agentmeister humanize switch $ARGUMENTS`
 
 Если выше написано «включена» и есть свод правил, с этого ответа строго следуй ему во всём, что пишешь людям.
 Если «выключена», правила больше не обязательны. Ответь пользователю одной короткой фразой, в каком состоянии режим.
@@ -98,9 +98,9 @@ allowed-tools: Bash(claudemeister humanize:*)
 
 SLIM_SLASH = """---
 description: Сжать эту сессию (старые скриншоты и длинные выводы) и открыть её снова; list — другие сессии
-allowed-tools: Bash(claudemeister slim:*)
+allowed-tools: Bash(agentmeister slim:*)
 ---
-!`claudemeister slim $ARGUMENTS`
+!`agentmeister slim $ARGUMENTS`
 
 Если выше написано «Сжимаю», Claude Code сейчас закроется сам: ничего не делай и ответь одним словом: «Сжимаю».
 Иначе коротко перескажи пользователю, что написано выше, без своих действий.
@@ -109,9 +109,9 @@ allowed-tools: Bash(claudemeister slim:*)
 
 FORGET_SLASH = """---
 description: Забыть эту сессию без следа и открыть чистый Claude Code в той же папке
-allowed-tools: Bash(claudemeister forget:*)
+allowed-tools: Bash(agentmeister forget:*)
 ---
-!`claudemeister forget $ARGUMENTS`
+!`agentmeister forget $ARGUMENTS`
 
 Эта сессия сейчас удалится, и Claude Code откроется заново. Ничего не делай и ответь одним словом: «Забываю».
 """
@@ -119,9 +119,9 @@ allowed-tools: Bash(claudemeister forget:*)
 
 FRESH_SLASH = """---
 description: Новая сессия без названия и с пустым контекстом; эта остаётся в /resume
-allowed-tools: Bash(claudemeister fresh:*)
+allowed-tools: Bash(agentmeister fresh:*)
 ---
-!`claudemeister fresh $ARGUMENTS`
+!`agentmeister fresh $ARGUMENTS`
 
 Claude Code сейчас закроется и откроется с новой сессией. Ничего не делай и ответь одним словом: «Открываю».
 """
@@ -129,9 +129,9 @@ Claude Code сейчас закроется и откроется с новой 
 
 SLASH = """---
 description: Перезапустить Claude Code с этой же сессией (с claude update перед запуском)
-allowed-tools: Bash(claudemeister restart:*)
+allowed-tools: Bash(agentmeister restart:*)
 ---
-!`claudemeister restart $ARGUMENTS`
+!`agentmeister restart $ARGUMENTS`
 
 Claude Code сейчас перезапустится сам. Ничего не делай и ответь одним словом: «Перезапускаюсь».
 """
