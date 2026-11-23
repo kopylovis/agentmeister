@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """agentmeister sessions: список, меню, продолжить, перенести, удалить, уборка; slim — в session_slim."""
 import collections
+from contextlib import ExitStack
 import os
 import shutil
 import stat
+import tempfile
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mac_files import RENAME_EXCL, rename_with_flags
 from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde, tr  # noqa: E402
 from menu import Quit, Screen, pick  # noqa: E402
 from session_store import (PROJECTS, UUID, ago, clip, decode, delete, encode, find, forget_deleted_session, fmt_size, folder,  # noqa: E402
@@ -78,6 +81,21 @@ def resolve_dest(arg):
     sys.exit(f"agentmeister sessions: папки «{arg}» нет")
 
 
+def stage_sidecar(source, staged, olds, dest, rewrite_paths):
+    if os.path.islink(source) or not os.path.isdir(source):
+        shutil.copy2(source, staged, follow_symlinks=False)
+        return 0
+    shutil.copytree(source, staged, symlinks=True)
+    changed = 0
+    if rewrite_paths:
+        for root, _, files in os.walk(staged):
+            for name in files:
+                path = os.path.join(root, name)
+                if name.endswith(".jsonl") and not os.path.islink(path):
+                    changed += rewrite(path, path, olds, dest)
+    return changed
+
+
 def move(s, dest):
     require_idle(s)
     dest = os.path.abspath(dest)
@@ -86,25 +104,44 @@ def move(s, dest):
         print(f"Сессия уже в {tilde(dest)}")
         return
     target = os.path.join(tdir, s["id"] + ".jsonl")
-    if os.path.lexists(target):
-        sys.exit(f"agentmeister sessions: в {tilde(tdir)} уже есть сессия с таким id")
+    extra = os.path.join(tdir, s["id"])
+    if any(os.path.lexists(path) for path in (target, extra)):
+        sys.exit(f"agentmeister sessions: в {tilde(tdir)} уже есть файлы с таким id")
     os.makedirs(tdir, exist_ok=True)
     olds = {s["cwd"], s["started_in"]} - {None}
+    source, sidecar = s["path"], s["extra"]
+    original = file_version(os.lstat(source))
+    sidecar_state = tree_snapshot(sidecar) if os.path.lexists(sidecar) else {}
     changed = 0
-    if s["link"]:
-        os.rename(s["path"], target)
-    else:
-        changed = rewrite(s["path"], target, olds, dest)
-        os.remove(s["path"])
-    if os.path.lexists(s["extra"]):
-        extra = os.path.join(tdir, s["id"])
-        shutil.move(s["extra"], extra)
-        if not s["link"] and os.path.isdir(extra):
-            for root, _, files in os.walk(extra):
-                for f in files:
-                    if f.endswith(".jsonl"):
-                        p = os.path.join(root, f)
-                        changed += rewrite(p, p, olds, dest)
+    with tempfile.TemporaryDirectory(dir=tdir) as staging, tempfile.TemporaryDirectory(dir=s["pdir"]) as backup:
+        transcript = os.path.join(staging, "transcript")
+        staged_extra = os.path.join(staging, "extra")
+        if s["link"]:
+            link = os.readlink(source)
+            if not os.path.isabs(link):
+                link = os.path.relpath(os.path.join(s["pdir"], link), tdir)
+            os.symlink(link, transcript)
+        else:
+            changed = rewrite(source, transcript, olds, dest)
+        if sidecar_state:
+            changed += stage_sidecar(sidecar, staged_extra, olds, dest, rewrite_paths=not s["link"])
+        require_idle(s)
+        current = tree_snapshot(sidecar) if os.path.lexists(sidecar) else {}
+        if current != sidecar_state or file_version(os.lstat(source)) != original:
+            sys.exit("agentmeister sessions: файлы сессии изменились во время переноса")
+
+        with ExitStack() as rollback:
+            if sidecar_state:
+                rename_with_flags(staged_extra, extra, RENAME_EXCL)
+                rollback.callback(os.rename, extra, staged_extra)
+            rename_with_flags(transcript, target, RENAME_EXCL)
+            rollback.callback(os.rename, target, transcript)
+            if sidecar_state:
+                saved = os.path.join(backup, "extra")
+                os.rename(sidecar, saved)
+                rollback.callback(os.rename, saved, sidecar)
+            os.unlink(source)
+            rollback.pop_all()
     remove_if_empty(s["pdir"])
     print(f"Перенесено: {tilde(s['cwd'])} → {tilde(dest)}" + (f", cwd переписан в {changed} строках" if changed else ""))
     print(paint(f"Продолжить: cd {tilde(dest)} && claude --resume {s['id']}", "2"))
