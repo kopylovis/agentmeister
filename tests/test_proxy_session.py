@@ -13,6 +13,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "libexec/agentmeist
 import claude_proxy
 
 
+class ProxySetup(unittest.TestCase):
+    def test_failed_subscription_restores_all_four_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = {name: str(Path(tmp) / file) for name, file in
+                     (("CONFIG", "config.yaml"), ("SUB_URL", "url"), ("SUB_FILE", "subscription.txt"))}
+            with patch.multiple(claude_proxy, CONF_DIR=tmp, STATE=tmp, LOCK=str(Path(tmp) / "lock"), **paths), \
+                    patch.object(claude_proxy, "mihomo_bin", return_value="mihomo"), \
+                    patch.object(claude_proxy, "holders", return_value=[]), patch.object(claude_proxy, "stop"), \
+                    patch.object(claude_proxy, "listening", return_value=False), patch.object(claude_proxy, "start"), \
+                    patch.object(claude_proxy, "check_exit", return_value=(None, None)):
+                claude_proxy.write_config("https://old.example.test", 17890, "KZ")
+                for path in (Path(paths["SUB_FILE"]), Path(tmp) / "vps.yaml"):
+                    path.write_bytes(b"old")
+                old = {p: p.read_bytes() for p in Path(tmp).iterdir()}
+                self.assertEqual(claude_proxy.setup(["https://new.example.test"]), 1)
+                self.assertEqual({p: p.read_bytes() for p in old}, old)
+
+
 @unittest.skipUnless(sys.platform == "darwin", "requires the macOS sandbox")
 class ProxySession(unittest.TestCase):
     def test_only_selected_agent_socket_is_reachable(self):
