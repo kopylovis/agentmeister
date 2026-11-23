@@ -1006,24 +1006,27 @@ def choice(question, options, default=0, back=None, esc=None):
         os.write(out, HIDE.encode())
         draw()
         while True:
-            data = os.read(fd, 16)
-            if data == b"\x1b" and select.select([fd], [], [], 0.05)[0]:
-                data += os.read(fd, 16)
-            key = data.decode("utf-8", "ignore")
-            if key in ("\x1b[D", "\x1bOD"):
-                sel = (sel - 1) % len(options)
-            elif key in ("\x1b[C", "\x1bOC", "\t"):
-                sel = (sel + 1) % len(options)
-            elif key in ("\r", "\n"):
-                result = options[sel][0]
-                break
-            elif key in ("\x1b", "\x03", "\x04"):
-                result = back
-                break
-            elif key.lower() in keys:
-                result = options[keys[key.lower()]][0]
-                break
-            draw()
+            batch = PENDING[:] if PENDING else split_keys(read_keys(fd))
+            PENDING.clear()
+            for n, key in enumerate(batch):
+                if key in ("\x1b[D", "\x1bOD"):
+                    sel = (sel - 1) % len(options)
+                elif key in ("\x1b[C", "\x1bOC", "\t"):
+                    sel = (sel + 1) % len(options)
+                elif key in ("\r", "\n"):
+                    result = options[sel][0]
+                    break
+                elif key in ("\x1b", "\x03", "\x04"):
+                    result = back
+                    break
+                elif key.lower() in keys:
+                    result = options[keys[key.lower()]][0]
+                    break
+            else:
+                draw()
+                continue
+            PENDING[:] = batch[n + 1:]
+            break
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
         label = next((o[1] for o in options if o[0] == result), "")
