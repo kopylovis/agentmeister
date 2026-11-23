@@ -121,11 +121,11 @@ def ensure_app():
 
 def launch(args):
     try:
-        result = subprocess.run(["open", "-g", "-n", "-a", AGENT.app, "--args"] + args,
-                                capture_output=True, text=True, timeout=15)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return f"open: {type(exc).__name__}"
-    return "ok" if not result.returncode else f"open: {result.stderr.strip() or result.returncode}"
+        subprocess.Popen([AGENT.bin, *args], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError as exc:
+        return f"{AGENT.display}: {exc.strerror}"
+    return "ok"
 
 
 def post(title, subtitle, body, sid, click=None, wait=False):
@@ -134,24 +134,18 @@ def post(title, subtitle, body, sid, click=None, wait=False):
         args += ["--click", click]
     if not sound():
         args += ["--sound", "off"]
-    if not wait:
-        return launch(args)
-    fd, result = tempfile.mkstemp(prefix="mnrh-notify-")
-    os.close(fd)
-    os.remove(result)
-    try:
+    with tempfile.TemporaryDirectory(prefix="agentmeister-notify-") as directory:
+        result = os.path.join(directory, "result")
         started = launch(args + ["--result", result])
         if started != "ok":
             return started
-        for _ in range(600):
+        deadline = time.monotonic() + (60 if wait else 3)
+        while time.monotonic() < deadline:
             if os.path.exists(result):
                 with open(result) as f:
                     return f.read().strip()
             time.sleep(0.1)
         return "timeout"
-    finally:
-        with contextlib.suppress(OSError):
-            os.remove(result)
 
 
 def osascript(script, *args, timeout=5):
@@ -451,7 +445,7 @@ def test():
     r = post("agentmeister: пробное уведомление", "Claude Code", "Нажми, чтобы вернуться в эту вкладку",
              "00000000-0000-0000-0000-000000000000", click, wait=True)
     if r == "ok":
-        print("✓ показано")
+        print("Центр уведомлений macOS принял уведомление.")
         return 0
     if r.startswith("denied"):
         print(f"✗ macOS не разрешает уведомления: {settings_path('settings', 'notifications')} → agentmeister Notify → "
