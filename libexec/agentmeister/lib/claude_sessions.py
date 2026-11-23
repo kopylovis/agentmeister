@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde  # noqa: E402
 from menu import Quit, Screen, pick  # noqa: E402
 from session_store import (PROJECTS, UUID, ago, clip, decode, delete, encode, find, fmt_size, folder,  # noqa: E402
-                           is_junk, load, offline, remove_if_empty, rewrite, running_ids, tree_size)
+                           is_junk, load, offline, remove_if_empty, require_idle, rewrite, running_ids, SessionInUse, tree_size)
 import claude_search  # noqa: E402
 
 CLAUDE_BIN = os.environ.get("MNRH_CLAUDE_BIN", "claude")
@@ -78,8 +78,7 @@ def resolve_dest(arg):
 
 
 def move(s, dest):
-    if s["running"]:
-        sys.exit("agentmeister sessions: сессия сейчас открыта, сначала закрой её")
+    require_idle(s)
     dest = os.path.abspath(dest)
     tdir = os.path.join(PROJECTS, encode(dest))
     if tdir == s["pdir"]:
@@ -278,13 +277,19 @@ def browse(screen):
             dest = pick_dest(screen, s)
             if dest:
                 with screen.suspend():
-                    move(s, dest)
+                    try:
+                        move(s, dest)
+                    except SessionInUse as error:
+                        return str(error)
                     input(paint("Enter, к списку ", "2"))
         elif act == "удалить":
             sure = screen.pick([("нет", "🔙 нет, оставить"), ("да", "❌ да, удалить безвозвратно")],
                                title=f"Удалить {clip(s['title'] or s['id'], 50)}?", describe=lambda i, w: details(s))
             if sure == 1:
-                delete(s)
+                try:
+                    delete(s)
+                except SessionInUse as error:
+                    return str(error)
 
 
 def interactive():

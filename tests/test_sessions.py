@@ -176,6 +176,25 @@ class Lookup(unittest.TestCase):
         """)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_session_opened_after_selection_cannot_be_moved_or_deleted(self):
+        r, _ = with_sessions("""
+            import claude_sessions as c, session_store as s
+            session = s.by_id(ids["real"])[0]
+            registry = os.path.join(home, ".claude", "sessions")
+            os.makedirs(registry)
+            with open(os.path.join(registry, f"{os.getpid()}.json"), "w") as f:
+                json.dump({"pid": os.getpid(), "sessionId": session["id"]}, f)
+            for action in (lambda: s.delete(session), lambda: c.move(session, home)):
+                try:
+                    action()
+                except s.SessionInUse:
+                    pass
+                else:
+                    raise AssertionError("active transcript changed")
+            assert os.path.isfile(session["path"])
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_sweep_removes_old_junk_only(self):
         r, _ = with_sessions("""
             import claude_restart as cr

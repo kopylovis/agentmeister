@@ -274,7 +274,10 @@ def drop_junk(path, why):
         return False
     for s in session_store.by_id(sid, meta=False):
         if not s["link"] and os.path.abspath(s["path"]) == os.path.abspath(path):
-            session_store.delete(s)
+            try:
+                session_store.delete(s)
+            except session_store.SessionInUse:
+                return False
             log(f"пустая сессия {sid} удалена ({why})")
             return True
     return False
@@ -417,8 +420,10 @@ def forget_session(sid):
         log(f"forget: сессии {sid} не нашёл")
         return False
     s = found[0]
-    s["running"] = None
-    session_store.delete(s)
+    try:
+        session_store.delete(s)
+    except session_store.SessionInUse:
+        return False
     log(f"forget: удалил {sid}")
     return True
 
