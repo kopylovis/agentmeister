@@ -43,7 +43,16 @@ def read_keys(fd):
         if not more:
             break
         data += more
-    return data.decode("utf-8", "ignore")
+    while True:
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError as error:
+            if error.reason != "unexpected end of data" or not select.select([fd], [], [], 0.05)[0]:
+                return data.decode("utf-8", "replace")
+            extra = os.read(fd, 1)
+            if not extra:
+                return data.decode("utf-8", "replace")
+            data += extra
 
 
 def split_keys(data):
@@ -596,7 +605,10 @@ class Screen:
                 cols, rows = 80, 24
             w = max(20, cols - 4)
             body = [" " + line for line in wrap(list(note), w - 4)]
-            body += ["" if note else None, f" \x1b[1m{question}\x1b[0m  {text}\x1b[7m \x1b[0m"]
+            label = cut(question, w - 7)
+            room = w - 6 - width(label)
+            visible = cut(text[::-1], room)[::-1]
+            body += ["" if note else None, f" \x1b[1m{label}\x1b[0m  {visible}\x1b[7m \x1b[0m"]
             body = [line for line in body if line is not None]
             hint = tr("Enter готово · Esc назад", "Enter done · Esc back")
             lines = (["  " + cut(brand(), cols - 2)] + ["  " + line for line in box(f" › {heading(title)} ", body,

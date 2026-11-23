@@ -190,6 +190,10 @@ class Ask(unittest.TestCase):
     def test_esc_cancels(self):
         self.assertIsNone(self.answer(b"abc\x1b"))
 
+    def test_pasted_path_keeps_utf8_at_read_boundaries(self):
+        text = "a" * 63 + "папка" * 12
+        self.assertEqual(self.answer((text + "\r").encode()), text)
+
     def test_russian_text(self):
         self.assertEqual(self.answer("папка\r".encode()), "папка")
 
