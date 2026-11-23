@@ -195,6 +195,49 @@ class Lookup(unittest.TestCase):
         """)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_move_keeps_source_on_collision_or_publish_failure(self):
+        r, _ = with_sessions("""
+            from pathlib import Path
+            from unittest.mock import patch
+            import claude_sessions as c
+            import session_store as store
+
+            session = store.by_id(ids["real"])[0]
+            dest = Path(home) / "dest"
+            dest.mkdir()
+            target = Path(store.PROJECTS) / store.encode(str(dest))
+            target.mkdir()
+            extra = target / session["id"]
+            extra.write_text("keep")
+            try:
+                c.move(session, str(dest))
+            except SystemExit:
+                pass
+            else:
+                raise AssertionError("collision accepted")
+            assert extra.read_text() == "keep"
+            extra.unlink()
+            rename = c.rename_with_flags
+            def fail_transcript(src, dst, flags):
+                if dst.endswith(".jsonl"):
+                    raise OSError("publish failed")
+                rename(src, dst, flags)
+            with patch.object(c, "rename_with_flags", side_effect=fail_transcript):
+                try:
+                    c.move(session, str(dest))
+                except OSError:
+                    pass
+            assert not list(target.iterdir())
+            assert Path(session["path"]).exists()
+            assert (Path(session["extra"]) / "subagents" / "a.jsonl").exists()
+            c.move(session, str(dest))
+            assert not Path(session["path"]).exists()
+            assert not Path(session["extra"]).exists()
+            assert store.by_id(ids["real"])[0]["started_in"] == str(dest)
+            assert (extra / "subagents" / "a.jsonl").exists()
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_clean_rechecks_each_transcript_after_confirmation(self):
         r, _ = with_sessions("""
             from pathlib import Path
