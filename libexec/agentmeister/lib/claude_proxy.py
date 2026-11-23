@@ -614,6 +614,9 @@ def run(cmd, *, claude=False):
     signal.signal(signal.SIGQUIT, signal.SIG_IGN)
     try:
         p = port()
+        if claude and sys.stdin.isatty() and sys.stdout.isatty():
+            from claude_proxy_restart import supervised_command
+            cmd = supervised_command(cmd)
         child = subprocess.Popen(session_command(p, cmd, claude=claude), env=proxy_env(p, claude=claude))
     except (OSError, ValueError) as e:
         print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
