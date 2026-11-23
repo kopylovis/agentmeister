@@ -157,7 +157,7 @@ class Menu:
         rows, cols = self.size()
         view = self.view()
         title = self.title if not self.title or "\x1b[" in self.title else f"\x1b[{TITLE}m{self.title}\x1b[0m"
-        lines = [title] if self.title else []
+        lines = [cut(title, cols - 1)] if self.title else []
         room = max(3, rows - len(lines) - 3)
         if self.sel in view:
             pos = view.index(self.sel)

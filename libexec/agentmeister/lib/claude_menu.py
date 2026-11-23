@@ -267,7 +267,7 @@ def pick_action(screen, at=1, note=""):
     state = modes()
     items = rows(state)
     if not screen.open().roomy():
-        return screen.pick(items, title="agentmeister", default=at, back=tr("выход", "quit"))
+        return screen.pick(items, title=note or "agentmeister", default=at, back=tr("выход", "quit"))
     hint = tr("↑↓ выбрать · Enter запустить · буквы ищут · Tab описание · Esc выход",
               "↑↓ move · Enter run · type to search · Tab description · Esc quit")
     try:
