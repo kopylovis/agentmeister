@@ -124,7 +124,7 @@ def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None,
         # --resume по id ищет сессию и в git worktree проекта, а форк начинается в папке запуска
         flags = ["--resume", sid, "--fork-session"] + flags
     text, bad = claude_open.open_claude({"path": path, "mode": mode, "prompt": prompt, "flags": flags,
-                                         "trust": claude_open.trusted(root), "remote_control": rc}, cm or "claudemeister")
+                                         "trust": claude_open.trusted(root), "remote_control": rc}, cm or "agentmeister")
     lines = [f"Ветка {name} от {base}, worktree {tilde(path)}."]
     if sid:
         lines.append(f"Второй Claude продолжает эту переписку: форк сессии {sid[:8]}, эта остаётся как была.")
@@ -136,7 +136,7 @@ def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None,
     if dirty:
         lines.append("В основной папке есть незакоммиченные изменения — в worktree их нет, он от последнего коммита.")
     lines.append(text)
-    lines.append(f"Потом: claudemeister parallel pr {name} — через PR, merge {name} — влить локально, "
+    lines.append(f"Потом: agentmeister parallel pr {name} — через PR, merge {name} — влить локально, "
                  f"drop {name} — выбросить.")
     return "\n".join(lines), bad
 
@@ -349,7 +349,7 @@ def pr(branch, project=None, cwd=None, merge=True, log=None):
     has, ok, bad = pr_checks(repo, num, path, log)
     if not ok:
         return (f"CI по PR #{num} не прошёл, сливать не стал. Worktree оставил: {tilde(path)}.\n{bad}\n"
-                f"Почини там, закоммить и снова: claudemeister parallel pr {name}"), True
+                f"Почини там, закоммить и снова: agentmeister parallel pr {name}"), True
     log("CI прошёл." if has else "Проверок у PR нет, сливаю сразу.")
 
     r = gh(path, "pr", "merge", str(num), "-R", repo, how, "--delete-branch", timeout=300)
@@ -430,13 +430,13 @@ def handle(name, a, cwd=None, cm=None):
 def main():
     args = sys.argv[2:] if sys.argv[1:2] == ["parallel"] else sys.argv[1:]
     if not args or args[0] in ("-h", "--help"):
-        print('claudemeister parallel "<задача>" [-p проект] [-b ветка] [-n] [--permission-mode auto] [--no-rc] [--fork]')
+        print('agentmeister parallel "<задача>" [-p проект] [-b ветка] [-n] [--permission-mode auto] [--no-rc] [--fork]')
         print("                         новая ветка и worktree от текущего коммита, в новой вкладке — Claude с задачей;")
         print("                         --fork изнутри Claude: второй Claude продолжает эту переписку (форк сессии)")
-        print("claudemeister parallel list           параллельные задачи этого проекта")
-        print("claudemeister parallel merge <ветка>  влить в исходную ветку (без пуша) и убрать worktree")
-        print("claudemeister parallel drop <ветка>   выбросить ветку и worktree")
-        print("claudemeister parallel pr <ветка> [--no-merge]")
+        print("agentmeister parallel list           параллельные задачи этого проекта")
+        print("agentmeister parallel merge <ветка>  влить в исходную ветку (без пуша) и убрать worktree")
+        print("agentmeister parallel drop <ветка>   выбросить ветку и worktree")
+        print("agentmeister parallel pr <ветка> [--no-merge]")
         print("                         запушить, открыть PR в исходную ветку, дождаться CI, слить, убрать worktree")
         print()
         print(f"Worktree лежат в {tilde(os.path.join(projects_dir(), '.worktrees'))}/<проект>/. В Claude Code: /parallel.")

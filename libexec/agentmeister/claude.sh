@@ -112,14 +112,14 @@ while [ $# -gt 0 ]; do
     --new) new=1 ;;
     -i|--incognito) new=1; export CLAUDE_CODE_SKIP_PROMPT_HISTORY=1 ;;
     --) shift; passthrough=("$@"); break ;;
-    -*) echo "claudemeister: неизвестный флаг $1" >&2; exit 2 ;;
-    *) [ -z "$target" ] && target="$1" || { echo "claudemeister: лишний аргумент $1" >&2; exit 2; } ;;
+    -*) echo "agentmeister: неизвестный флаг $1" >&2; exit 2 ;;
+    *) [ -z "$target" ] && target="$1" || { echo "agentmeister: лишний аргумент $1" >&2; exit 2; } ;;
   esac
   shift
 done
 
 if [ ! -t 0 ] || [ ! -t 1 ]; then
-  echo "claudemeister: нужен терминал — Claude Code интерактивный." >&2
+  echo "agentmeister: нужен терминал — Claude Code интерактивный." >&2
   exit 2
 fi
 
@@ -148,9 +148,9 @@ match() {
   done
   if [ "${#found[@]}" -eq 1 ]; then echo "${found[0]}"; return 0; fi
   if [ "${#found[@]}" -gt 1 ]; then
-    echo "claudemeister: «${q}» подходит к нескольким: $(for f in "${found[@]}"; do printf '%s ' "$(basename "$f")"; done)" >&2
+    echo "agentmeister: «${q}» подходит к нескольким: $(for f in "${found[@]}"; do printf '%s ' "$(basename "$f")"; done)" >&2
   else
-    echo "claudemeister: проекта «${q}» нет в ${DEV/#$HOME/~}" >&2
+    echo "agentmeister: проекта «${q}» нет в ${DEV/#$HOME/~}" >&2
   fi
   return 1
 }
@@ -194,7 +194,7 @@ fi
 
 cd "$dir" || exit 1
 echo "-> ${dir/#$HOME/~} · $mode$([ "$net" = vps ] && echo ' · через proxy')$([ "${CLAUDE_CODE_SKIP_PROMPT_HISTORY:-}" = 1 ] && echo ' · без записи')"
-# после claudemeister lid setup сторож держит Mac и с закрытой крышкой; без правила шаг молча пропускается
+# после agentmeister lid setup сторож держит Mac и с закрытой крышкой; без правила шаг молча пропускается
 if [ "$mode" = caffeinate ]; then
   /usr/bin/python3 "$LIB/claude_lid.py" keep >/dev/null 2>&1
   exec ${pre[@]+"${pre[@]}"} caffeinate -is "$CLAUDE_BIN" "${passthrough[@]+"${passthrough[@]}"}"

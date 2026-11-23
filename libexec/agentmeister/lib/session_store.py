@@ -1,6 +1,6 @@
 """Сессии Claude Code на диске (~/.claude/projects): поиск, чтение, перенос cwd, удаление без следа.
 
-Без меню и вывода: это нужно и хукам (уборка пустых сессий, /forget), и командам claudemeister sessions.
+Без меню и вывода: это нужно и хукам (уборка пустых сессий, /forget), и командам agentmeister sessions.
 """
 import glob
 import json
@@ -18,7 +18,7 @@ CLAUDE = CLAUDE_HOME
 PROJECTS = os.path.join(CLAUDE, "projects")
 UUID = UUID_RE
 # что claudemeister хранит про сессию сам: резервные копии slim, последний ответ для уведомлений, humanize, guard,
-# полные логи сборок (claudemeister buildlog)
+# полные логи сборок (agentmeister buildlog)
 SESSION_CACHES = [os.path.join(CACHE, sub, "{sid}" + tail) for sub, tail in
                   (("slim-backup", ".*.jsonl.gz"), ("notify", ".json"), ("humanize", ".*"), ("guard", ".json"),
                    ("notice", ".json"), ("logs", "/*.log"))]
@@ -263,8 +263,8 @@ def find(ss, prefix):
     if len(hits) == 1:
         return hits[0]
     if hits:
-        sys.exit(f"claudemeister sessions: «{prefix}» подходит к {len(hits)} сессиям, дай больше символов id")
-    sys.exit(f"claudemeister sessions: сессии «{prefix}» нет")
+        sys.exit(f"agentmeister sessions: «{prefix}» подходит к {len(hits)} сессиям, дай больше символов id")
+    sys.exit(f"agentmeister sessions: сессии «{prefix}» нет")
 
 
 def fast_session(sid):
@@ -318,7 +318,7 @@ def remove_if_empty(pdir):
 
 def delete(s):
     if s["running"]:
-        sys.exit("claudemeister sessions: сессия сейчас открыта, сначала закрой её")
+        sys.exit("agentmeister sessions: сессия сейчас открыта, сначала закрой её")
     for p in (s["path"], s["extra"]):
         if os.path.islink(p) or os.path.isfile(p):
             os.remove(p)

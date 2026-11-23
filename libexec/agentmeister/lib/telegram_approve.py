@@ -1,6 +1,6 @@
 """Разрешить или отклонить запрос Claude Code из Telegram, пока тебя нет за Mac.
 
-Хук PermissionRequest (claudemeister approve-hook) блокирующий. Если ответ из Telegram включен
+Хук PermissionRequest (agentmeister approve-hook) блокирующий. Если ответ из Telegram включен
 (telegram_approve=on), бот подключен и ты не за Mac, он присылает в Telegram запрос с кнопками
 «Разрешить» и «Отклонить» и ждет нажатия. Если ты вернулся к Mac, время вышло или что-то пошло
 не так, хук выходит без вывода, и Claude Code спрашивает как обычно.
@@ -104,7 +104,7 @@ def message(payload, title=""):
     parts.append(f"Инструмент: <b>{html.escape(tool)}</b>")
     warn = guard_warning(tool, payload.get("tool_input"), payload.get("cwd"))
     if warn:
-        parts.append(f"⚠️ claudemeister guard: {html.escape(warn)}")
+        parts.append(f"⚠️ agentmeister guard: {html.escape(warn)}")
     if body:
         parts.append(f"<pre>{html.escape(body)}</pre>")
     if note:
@@ -335,7 +335,7 @@ def install_hook():
         data = claude_settings.load()
         added = claude_settings.add_missing_hooks(data, claude_settings.rows("approve-hook"))
     except (OSError, ValueError) as e:
-        print(f"✗ {tilde(claude_settings.PATH)} не читается ({e}), хук не поставил: claudemeister setup")
+        print(f"✗ {tilde(claude_settings.PATH)} не читается ({e}), хук не поставил: agentmeister setup")
         return False
     if added:
         claude_settings.save_atomic(data)
@@ -345,8 +345,8 @@ def install_hook():
 
 def describe():
     if not enabled():
-        return "Разрешения из Telegram: выключены — claudemeister notify telegram approve on"
-    tail = "" if hook_installed() else " (хук PermissionRequest не стоит — claudemeister setup)"
+        return "Разрешения из Telegram: выключены — agentmeister notify telegram approve on"
+    tail = "" if hook_installed() else " (хук PermissionRequest не стоит — agentmeister setup)"
     return "Разрешения из Telegram: кнопки «Разрешить» и «Отклонить», когда ты не за Mac" + tail
 
 
@@ -354,20 +354,20 @@ def main(args):
     value = args[0] if args else ""
     if value == "on":
         if not telegram.configured():
-            print("Сначала подключи бота: claudemeister notify telegram")
+            print("Сначала подключи бота: agentmeister notify telegram")
             return 1
         write_config(telegram_approve="on")
         install_hook()
         print("Когда ты не за Mac, запросы разрешения приходят в Telegram с кнопками «Разрешить» и «Отклонить».")
         print(f"Если ты вернулся к Mac или прошло {WAIT // 60} мин, Claude спросит как обычно.")
-        print("Нажать кнопку может любой, у кого открыт твой Telegram. Выключить: claudemeister notify telegram approve off")
+        print("Нажать кнопку может любой, у кого открыт твой Telegram. Выключить: agentmeister notify telegram approve off")
         return 0
     if value == "off":
         write_config(telegram_approve="off")
         print("Разрешения из Telegram выключены, Claude спрашивает только на Mac")
         return 0
     print(describe())
-    print("claudemeister notify telegram approve on | off")
+    print("agentmeister notify telegram approve on | off")
     return 0 if not value else 2
 
 

@@ -28,7 +28,7 @@ class Doctor(unittest.TestCase):
         self.assertIn("1 из 3", text)
 
     def test_codex_mcp_does_not_start_an_unrelated_command(self):
-        config = {"mcp_servers": {"claudemeister": {"command": "/usr/bin/true", "enabled": True}}}
+        config = {"mcp_servers": {"agentmeister": {"command": "/usr/bin/true", "enabled": True}}}
         with patch.object(claude_doctor, "run") as run:
             self.assertEqual(claude_doctor.check_codex_mcp(config)[0], "warn")
         run.assert_not_called()
@@ -38,7 +38,7 @@ class Doctor(unittest.TestCase):
         env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=os.path.join(home, ".config"), ZDOTDIR=home,
                    PYTHONDONTWRITEBYTECODE="1", MNRH_CLAUDE_BIN="/nonexistent/claude")
         env.pop("MNRH_CLAUDE_HOME", None)
-        r = subprocess.run([os.path.join(ROOT, "bin", "claudemeister"), "doctor"], env=env, capture_output=True,
+        r = subprocess.run([os.path.join(ROOT, "bin", "agentmeister"), "doctor"], env=env, capture_output=True,
                            text=True, timeout=60)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("нет /nonexistent/claude в PATH", r.stdout)
