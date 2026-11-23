@@ -11,6 +11,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
 import claude_notify  # noqa: E402
+import claude_proc  # noqa: E402
 import claude_settings  # noqa: E402
 
 
@@ -79,6 +80,30 @@ class NativePush(unittest.TestCase):
         self.assertFalse(self.native(rc, True, hook_event_name="Stop"))
 
 
+class ClaudeNotify(unittest.TestCase):
+    def test_interactive_question_without_tty(self):
+        sid = "a812d4fa-e535-463a-8369-f1433fa25652"
+        data = {"session_id": sid, "hook_event_name": "Notification", "notification_type": "agent_needs_input"}
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(claude_proc, "CLAUDE", tmp), \
+                mock.patch.object(claude_notify, "STATE", tmp), mock.patch.object(claude_notify, "enabled", return_value=True), \
+                mock.patch.object(claude_notify, "own_terminal", return_value=None), \
+                mock.patch.object(claude_notify, "ensure_app", return_value=True), \
+                mock.patch.object(claude_notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(claude_notify.ntfy_alert, "configured", return_value=False), \
+                mock.patch.object(claude_notify, "post", side_effect=["open failed", "ok"]) as post:
+            os.mkdir(os.path.join(tmp, "sessions"))
+            for session, kind in [(sid, "headless"), ("another", "interactive"), (sid, "interactive"), (sid, "interactive")]:
+                with open(claude_proc.session_file(123), "w") as f:
+                    json.dump({"sessionId": session, "kind": kind, "entrypoint": "cli"}, f)
+                with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(data))):
+                    self.assertEqual(claude_notify.hook(), 0)
+                if session != sid or kind != "interactive":
+                    post.assert_not_called()
+                self.assertEqual(bool(claude_notify.load_state(sid).get("notified")), post.call_count == 2)
+            self.assertEqual(post.call_count, 2)
+            self.assertIsNone(post.call_args.args[-1])
+
+
 class CodexNotify(unittest.TestCase):
     def test_codex_cli_can_notify_when_daemon_has_no_terminal(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(claude_notify, "STATE", tmp), \
@@ -88,7 +113,7 @@ class CodexNotify(unittest.TestCase):
                 mock.patch.object(claude_notify, "ensure_app", return_value=True), \
                 mock.patch.object(claude_notify.telegram, "wanted", return_value=False), \
                 mock.patch.object(claude_notify.ntfy_alert, "configured", return_value=False), \
-                mock.patch.object(claude_notify, "post") as post:
+                mock.patch.object(claude_notify, "post", return_value="ok") as post:
             path = os.path.join(tmp, "rollout.jsonl")
             with open(path, "w") as f:
                 json.dump({"type": "session_meta", "payload": {"originator": "codex-tui"}}, f)
