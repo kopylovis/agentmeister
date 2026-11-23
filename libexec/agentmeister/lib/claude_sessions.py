@@ -3,12 +3,13 @@
 import collections
 import os
 import shutil
+import stat
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde, tr  # noqa: E402
 from menu import Quit, Screen, pick  # noqa: E402
-from session_store import (PROJECTS, UUID, ago, clip, decode, delete, encode, find, fmt_size, folder,  # noqa: E402
+from session_store import (PROJECTS, UUID, ago, clip, decode, delete, encode, find, forget_deleted_session, fmt_size, folder,  # noqa: E402
                            is_junk, load, offline, remove_if_empty, require_idle, rewrite, running_ids, SessionInUse, tree_size)
 import claude_search  # noqa: E402
 
@@ -127,6 +128,63 @@ def resume(s, mode):
         sys.exit(f"agentmeister sessions: не запустился {cmd[0]}: {e}")
 
 
+def file_version(info):
+    return info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def tree_snapshot(path):
+    entries = {}
+
+    def visit(name):
+        info = os.lstat(name)
+        entries[name] = file_version(info)
+        if stat.S_ISDIR(info.st_mode):
+            for child in os.listdir(name):
+                visit(os.path.join(name, child))
+
+    visit(path)
+    return entries
+
+
+def remove_orphan(pdir, home, sessions, snapshot):
+    name = os.path.basename(pdir)
+    if offline(home, name) or (home and os.path.isdir(home)) or decode(name):
+        return False
+    if any(s["running"] for s in sessions) or running_ids().keys() & {s["id"] for s in sessions}:
+        return False
+    if tree_snapshot(pdir) != snapshot:
+        return False
+    # Only unlink listed entries. A new file keeps its parent directory alive.
+    def prune(fd, path):
+        for child in os.listdir(fd):
+            full = os.path.join(path, child)
+            info = os.stat(child, dir_fd=fd, follow_symlinks=False)
+            if file_version(info) != snapshot.get(full):
+                return False
+            if stat.S_ISDIR(info.st_mode):
+                sub = os.open(child, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                try:
+                    if not os.path.samestat(info, os.fstat(sub)) or not prune(sub, full):
+                        return False
+                finally:
+                    os.close(sub)
+                os.rmdir(child, dir_fd=fd)
+            else:
+                os.unlink(child, dir_fd=fd)
+        return True
+
+    fd = os.open(pdir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        if file_version(os.fstat(fd)) != snapshot[pdir] or not prune(fd, pdir):
+            return False
+        os.rmdir(pdir)
+    finally:
+        os.close(fd)
+    for session in sessions:
+        forget_deleted_session(session)
+    return True
+
+
 def clean(assume_yes):
     everything = load()
     broken, empty, orphans, away = [], [], [], []
@@ -134,10 +192,6 @@ def clean(assume_yes):
         pdir = os.path.join(PROJECTS, d)
         if not os.path.isdir(pdir) or os.path.islink(pdir):
             continue
-        for f in os.listdir(pdir):
-            p = os.path.join(pdir, f)
-            if os.path.islink(p) and not os.path.exists(p):
-                broken.append(p)
         sessions = [s for s in everything if s["pdir"] == pdir]
         cwds = collections.Counter(s["cwd"] for s in sessions if s["cwd"])
         home = cwds.most_common(1)[0][0] if cwds else decode(d)
@@ -145,8 +199,20 @@ def clean(assume_yes):
             if offline(home, d):
                 away.append(home or d)
             elif os.listdir(pdir):
-                orphans.append((pdir, home, sessions))
+                try:
+                    snapshot = tree_snapshot(pdir)
+                except OSError:
+                    continue
+                orphans.append((pdir, home, sessions, snapshot))
             continue
+        for f in os.listdir(pdir):
+            path = os.path.join(pdir, f)
+            try:
+                version = file_version(os.lstat(path))
+                if stat.S_ISLNK(version[2]) and not os.path.exists(path):
+                    broken.append((path, version, os.readlink(path)))
+            except FileNotFoundError:
+                continue
         for s in sessions:
             if s["answered"] is False and not s["running"] and not s["link"]:
                 empty.append(s)
@@ -158,12 +224,16 @@ def clean(assume_yes):
         print()
     if broken:
         print(f"Битые ссылки ({len(broken)}):")
-        for p in broken:
-            print(f"  {tilde(p)} → {os.readlink(p)}")
+        for p, _, target in broken:
+            print(f"  {tilde(p)} → {target}")
         if confirm("Удалить?", assume_yes):
-            for p in broken:
-                os.remove(p)
-            did = True
+            for p, version, target in broken:
+                try:
+                    if file_version(os.lstat(p)) == version and os.readlink(p) == target and not os.path.exists(p):
+                        os.unlink(p)
+                        did = True
+                except FileNotFoundError:
+                    continue
         print()
     if empty:
         print(f"Сессии без единого ответа Claude ({len(empty)}, {fmt_size(sum(s['size'] for s in empty))}):")
@@ -182,21 +252,22 @@ def clean(assume_yes):
         print()
     if orphans:
         print("Папки проектов, которых больше нет на диске:")
-        for pdir, home, sessions in orphans:
+        for pdir, home, sessions, _ in orphans:
             mem = " + memory" if os.path.isdir(os.path.join(pdir, "memory")) else ""
             print(f"  {tilde(home) if home else os.path.basename(pdir)}: {len(sessions)} сесс.{mem}, "
                   f"{fmt_size(tree_size(pdir))}")
-        if any(s["running"] for _, _, ss in orphans for s in ss):
+        if any(s["running"] for _, _, ss, _ in orphans for s in ss):
             print("  среди них есть открытые сессии, эти папки пропущу")
         if confirm("Удалить вместе с сессиями и памятью?", assume_yes):
-            for pdir, _, sessions in orphans:
-                if any(s["running"] for s in sessions):
-                    continue
-                for s in sessions:
-                    delete(s)
-                if os.path.isdir(pdir):
-                    shutil.rmtree(pdir)
-            did = True
+            for pdir, home, sessions, snapshot in orphans:
+                try:
+                    removed = remove_orphan(pdir, home, sessions, snapshot)
+                except OSError:
+                    removed = False
+                if removed:
+                    did = True
+                else:
+                    print(f"  {tilde(pdir)}: пропускаю, папка изменилась, занята или недоступна")
         print()
     for d in os.listdir(PROJECTS):
         p = os.path.join(PROJECTS, d)
