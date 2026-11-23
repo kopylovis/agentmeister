@@ -683,7 +683,7 @@ in, there's no notification. Clicking it opens the right tab in Terminal and iTe
 the app window in Android Studio, VS Code and others. A new notification from the same session replaces the old
 one, and after your next prompt it's removed from Notification Center.
 
-They're shown by a small app, `~/Library/Application Support/claudemeister/claudemeister Notify.app`, built from
+They're shown by a small app, `~/Library/Application Support/agentmeister/agentmeister Notify.app`, built from
 `share/claudemeister/notify/main.swift`. The first time, macOS asks whether it may show notifications, and on the
 first click, whether it may control Terminal or iTerm2. `agentmeister notify test` sends a test notification,
 `notify off` and `on` turn them off and on, and `notify sound off` mutes them.
@@ -731,7 +731,7 @@ sets in hook commands while Remote Control is connected. "Done" and "waiting for
 Claude sends its own push for those only when it decides to. If `/config` shows "No mobile registered",
 open the Claude app on the phone, or turn the toggle off to get these through agentmeister again.
 
-The claudemeister Notify icon is `share/claudemeister/icon.png`, 1024×1024 (a rounded copy for the README is in
+The agentmeister Notify icon is `share/claudemeister/icon.png`, 1024×1024 (a rounded copy for the README is in
 `docs/icon.png`). It fills the whole square with no transparency: macOS 26 rounds it itself and puts an icon with
 margins or transparent corners on a gray plate. The build turns the PNG into `AppIcon.icns`, and the helper app
 rebuilds itself when the icon changes. Notification Center remembers the old icon until you restart or log out.
