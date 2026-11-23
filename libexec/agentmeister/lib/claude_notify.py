@@ -15,9 +15,10 @@ from swiftagent import SwiftAgent
 import ntfy_alert
 import telegram
 
-AGENT = SwiftAgent("notify", "claudemeister Notify", "com.claudemeister.notify")
+AGENT = SwiftAgent("notify", "agentmeister Notify", "com.agentmeister.notify")
 # Так приложение называлось, пока было частью mnrh. После сборки нового его удаляем.
 OLD_APP = os.path.join(HOME, "Library", "Application Support", "mnrh", "mnrh Notify.app")
+OLD_CLAUDE_APP = os.path.join(HOME, "Library", "Application Support", "claudemeister", "claudemeister Notify.app")
 STATE = os.path.join(CACHE, "notify")
 DEFAULT_AFTER = 20
 TERMINALS = {"com.apple.Terminal": "Terminal", "com.googlecode.iterm2": "iTerm2"}
@@ -109,8 +110,12 @@ def ensure_app():
     except SystemExit:
         return False
     ok = os.access(AGENT.bin, os.X_OK)
-    if ok and os.path.isdir(OLD_APP):
-        shutil.rmtree(OLD_APP, ignore_errors=True)
+    if ok:
+        for legacy in (OLD_APP, OLD_CLAUDE_APP):
+            if os.path.isdir(legacy):
+                shutil.rmtree(legacy, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            os.rmdir(os.path.dirname(OLD_CLAUDE_APP))
     return ok
 
 
@@ -442,14 +447,14 @@ def test():
     bundle = os.environ.get("__CFBundleIdentifier", "")
     cm = cm_path()
     click = f"{shlex.quote(cm)} focus {shlex.quote(tty)} {shlex.quote(bundle)}" if cm and tty else None
-    print("Отправляю пробное уведомление. В первый раз macOS спросит, можно ли claudemeister Notify их показывать — разреши.")
+    print("Отправляю пробное уведомление. В первый раз macOS спросит, можно ли agentmeister Notify их показывать — разреши.")
     r = post("agentmeister: пробное уведомление", "Claude Code", "Нажми, чтобы вернуться в эту вкладку",
              "00000000-0000-0000-0000-000000000000", click, wait=True)
     if r == "ok":
         print("✓ показано")
         return 0
     if r.startswith("denied"):
-        print(f"✗ macOS не разрешает уведомления: {settings_path('settings', 'notifications')} → claudemeister Notify → "
+        print(f"✗ macOS не разрешает уведомления: {settings_path('settings', 'notifications')} → agentmeister Notify → "
               f"{settings_name('allow')}")
     else:
         print(f"✗ не получилось: {r}")
