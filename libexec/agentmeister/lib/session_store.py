@@ -313,9 +313,17 @@ def remove_if_empty(pdir):
         pass
 
 
+class SessionInUse(SystemExit):
+    pass
+
+
+def require_idle(s):
+    if s["id"] in running_ids():
+        raise SessionInUse("Сессия открыта в другом окне. Сначала закрой ее.")
+
+
 def delete(s):
-    if s["running"]:
-        sys.exit("agentmeister sessions: сессия сейчас открыта, сначала закрой её")
+    require_idle(s)
     for p in (s["path"], s["extra"]):
         if os.path.islink(p) or os.path.isfile(p):
             os.remove(p)
