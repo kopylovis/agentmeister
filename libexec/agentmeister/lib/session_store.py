@@ -324,6 +324,9 @@ def delete(s):
             os.remove(p)
         elif os.path.isdir(p):
             shutil.rmtree(p)
+    remove_if_empty(s["pdir"])
+    if any(not copy["link"] for copy in by_id(s["id"], meta=False)):
+        return
     if not s["link"]:
         for sub in ("file-history", "session-env"):
             p = os.path.join(CLAUDE, sub, s["id"])
@@ -334,7 +337,6 @@ def delete(s):
     claude_search.drop(s["id"])
     import claude_usage
     claude_usage.drop(s["id"])
-    remove_if_empty(s["pdir"])
 
 
 def forget_caches(sid):
