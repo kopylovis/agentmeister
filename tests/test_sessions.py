@@ -235,6 +235,40 @@ class Lookup(unittest.TestCase):
         """)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_clean_preserves_restored_links_and_changed_orphan_trees(self):
+        r, _ = with_sessions("""
+            from pathlib import Path
+            from unittest.mock import patch
+            import claude_sessions as c
+
+            link = Path(pdir) / "broken"
+            link.symlink_to("absent")
+            def replace_link(*args):
+                if link.is_symlink():
+                    link.unlink()
+                    link.write_text("restored")
+                return True
+            with patch.object(c, "confirm", side_effect=replace_link):
+                c.clean(False)
+            assert link.read_text() == "restored"
+            os.rmdir(proj)
+            memory = Path(pdir) / "memory"
+            memory.mkdir()
+            def change_memory(*args):
+                (memory / "new.md").write_text("keep")
+                return True
+            with patch.object(c, "confirm", side_effect=change_memory):
+                c.clean(False)
+            assert (memory / "new.md").is_file()
+            with patch.object(c, "confirm", side_effect=lambda *a: os.mkdir(proj) or True):
+                c.clean(False)
+            assert (memory / "new.md").is_file()
+            os.rmdir(proj)
+            c.clean(True)
+            assert not os.path.exists(pdir)
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_sweep_removes_old_junk_only(self):
         r, _ = with_sessions("""
             import claude_restart as cr
