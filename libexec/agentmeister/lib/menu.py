@@ -287,13 +287,26 @@ class Menu:
 
     summary = None
 
+    def handle_batch(self, keys):
+        for i, key in enumerate(keys):
+            try:
+                done = self.handle(key)
+            except Cancel:
+                PENDING[:] = keys[i + 1:]
+                raise
+            if done:
+                PENDING[:] = keys[i + 1:]
+                return True
+        return False
+
     def run(self):
         self.write(HIDE)
         self.draw()
         while True:
-            for key in split_keys(self.read_key()):
-                if self.handle(key):
-                    return self.sel if self.marks is None else set(self.marks)
+            keys = PENDING[:] if PENDING else split_keys(self.read_key())
+            PENDING.clear()
+            if self.handle_batch(keys):
+                return self.sel if self.marks is None else set(self.marks)
             self.draw()
 
 ALT_ON, ALT_OFF = "\x1b[?1049h", "\x1b[?1049l"
@@ -514,15 +527,8 @@ class Panel(Menu):
                 if self.size() != self.shape or getattr(self.describe, "dirty", lambda: False)():
                     self.draw()
                 continue
-            for n, key in enumerate(keys):
-                try:
-                    done = self.handle(key)
-                except Cancel:
-                    PENDING[:] = keys[n + 1:]
-                    raise
-                if done:
-                    PENDING[:] = keys[n + 1:]
-                    return self.sel if self.marks is None else set(self.marks)
+            if self.handle_batch(keys):
+                return self.sel if self.marks is None else set(self.marks)
             self.draw()
 
 
@@ -886,8 +892,9 @@ def show_output(screen, out, title, code):
             continue
         keys = PENDING[:] if PENDING else split_keys(read_keys(screen.fd))
         PENDING.clear()
-        for key in keys:
+        for i, key in enumerate(keys):
             if key in ("\r", "\n", "\x1b"):
+                PENDING[:] = keys[i + 1:]
                 return True
             if key in ("q", "Q", "й", "Й", "\x03", "\x04"):
                 return False
