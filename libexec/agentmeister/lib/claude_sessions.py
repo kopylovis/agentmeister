@@ -171,8 +171,14 @@ def clean(assume_yes):
             print(f"  {s['id'][:8]}  {row(s)}")
         if confirm("Удалить?", assume_yes):
             for s in empty:
-                delete(s)
-            did = True
+                try:
+                    removed = delete(s, unanswered_only=True)
+                except SessionInUse:
+                    removed = False
+                if removed:
+                    did = True
+                else:
+                    print(f"  {s['id'][:8]}  пропускаю: состояние сессии изменилось или файл недоступен")
         print()
     if orphans:
         print("Папки проектов, которых больше нет на диске:")
