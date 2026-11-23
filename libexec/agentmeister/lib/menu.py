@@ -52,7 +52,7 @@ def split_keys(data):
 
 
 def tr(ru, en):
-    """Строка на языке интерфейса claudemeister; без mnrhlib рядом по-русски."""
+    """Строка на языке интерфейса agentmeister; без mnrhlib рядом по-русски."""
     try:
         from mnrhlib import tr as translate
         return translate(ru, en)
@@ -301,7 +301,7 @@ _ICONS = None
 
 
 def config_value(key):
-    """Строка key=значение из ~/.config/mnrh/config, общего для claudemeister и mnrh."""
+    """Строка key=значение из ~/.config/mnrh/config, общего для agentmeister и mnrh."""
     path = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "mnrh", "config")
     try:
         with open(path, encoding="utf-8") as f:
@@ -336,8 +336,7 @@ def icons():
     _ICONS = {}
     if not images_ok():
         return _ICONS
-    assets = "mnrh" if BRAND == "mnrh" else "claudemeister"
-    folder = os.path.join(ROOT, "share", assets, "icons")
+    folder = os.path.join(ROOT, "share", BRAND, "icons")
     try:
         import base64
         import json

@@ -300,7 +300,7 @@ class Icons(unittest.TestCase):
 
     def test_every_menu_emoji_has_a_picture(self):
         import json
-        folder = os.path.join(menu.ROOT, "share", "claudemeister", "icons")
+        folder = os.path.join(menu.ROOT, "share", "agentmeister", "icons")
         with open(os.path.join(folder, "icons.json"), encoding="utf-8") as f:
             have = json.load(f)
         used = {item[1] for item in m.ITEMS if item[0]}

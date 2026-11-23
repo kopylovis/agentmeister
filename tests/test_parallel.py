@@ -155,7 +155,7 @@ class ParallelPr(unittest.TestCase):
         merge = self.merges()[0]
         self.assertIn("--rebase", merge)
         self.assertIn("--delete-branch", merge)
-        self.assertIn("-R", merge)  # с -R gh не трогает локальную ветку, её убирает claudemeister
+        self.assertIn("-R", merge)  # с -R gh не трогает локальную ветку, её убирает agentmeister
         self.assertFalse(os.path.exists(path))
         self.assertEqual(sh(self.root, "branch", "--list", "parallel/fix"), "")
         self.assertTrue(os.path.isfile(os.path.join(self.root, "fix.txt")), text)

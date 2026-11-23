@@ -1,7 +1,7 @@
-"""Шаги agentmeister setup и проверка перед запуском claudemeister.
+"""Шаги agentmeister setup и проверка перед запуском agentmeister.
 
 setup записывает в ~/.config/mnrh/claude-setup.json, какие шаги сделаны и от каких отказались.
-claudemeister перед запуском сверяет запись со STEPS. Если setup на этом Mac не запускали или после
+agentmeister перед запуском сверяет запись со STEPS. Если setup на этом Mac не запускали или после
 обновления в STEPS появился шаг, которого нет в записи, предлагает настроить.
 Новый шаг в setup: добавь его id и описание в STEPS, и при первом запуске после обновления его предложат.
 Шаг с вопросом еще и в ASKS, а setup записывает его результат сам, как proxy_step.
@@ -58,7 +58,7 @@ def read():
 
 
 def write(done, skipped, legacy_declined=None):
-    """legacy_declined: отказались переводить mnrh claude на claudemeister; None — оставить как было."""
+    """legacy_declined: отказались переводить mnrh claude на agentmeister; None — оставить как было."""
     if legacy_declined is None:
         legacy_declined = bool((raw() or {}).get("legacy_declined"))
     data = {"done": sorted(done), "skipped": sorted(skipped - done)}
@@ -100,7 +100,7 @@ def hooks_outdated():
 
 
 def legacy():
-    """True, если /restart, хуки или MCP-сервер еще из mnrh: вызывают mnrh claude, а не claudemeister."""
+    """True, если /restart, хуки или MCP-сервер еще из mnrh: вызывают mnrh claude, а не agentmeister."""
     def text(path):
         try:
             with open(path) as f:

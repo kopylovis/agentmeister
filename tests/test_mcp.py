@@ -15,7 +15,7 @@ def request(rid, method, **params):
 
 class Reload(unittest.TestCase):
     def setUp(self):
-        # копия claudemeister: тест меняет время файлов, рабочую папку не трогаем
+        # копия agentmeister: тест меняет время файлов, рабочую папку не трогаем
         self.copy = tempfile.mkdtemp(prefix="cm-mcp-test-")
         for name in ("bin", "libexec", "share", "VERSION"):
             src = os.path.join(ROOT, name)
