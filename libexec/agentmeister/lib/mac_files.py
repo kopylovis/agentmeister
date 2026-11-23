@@ -10,4 +10,5 @@ def rename_with_flags(source, destination, flags):
         raise OSError(error, os.strerror(error), source, None, destination)
 
 
+RENAME_SWAP = 2
 RENAME_EXCL = 4
