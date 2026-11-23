@@ -224,6 +224,18 @@ class Setup(unittest.TestCase):
                 run.assert_not_called()
         """)
 
+    def test_failed_setup_steps_are_retried(self):
+        sandbox({}, """
+            import claude_notify, claude_setup, setup_cmd as s
+            s.CLAUDE_BIN = "sh"
+            s.configure_mcp = lambda remove: []
+            claude_notify.ensure_app = lambda: False
+            claude_setup.proxy_step = lambda *args: "failed"
+            claude_setup.write({"notify-app", "proxy"}, set())
+            assert s.setup([]) == 1
+            assert {"notify-app", "proxy"} <= set(claude_setup.pending()[0])
+        """, promptsill=True)
+
     def test_codex_hint_in_help_and_after_claude_setup(self):
         out, _ = sandbox({}, """
             import claude_notify
