@@ -199,7 +199,7 @@ Claude Code и Codex. В терминале `agentmeister --harness claude statu
 включенные режимы, прокси). Tab прячет описание, в узком окне оно скрывается само. В iTerm2 и WezTerm у пунктов свои иконки, в Terminal.app и
 остальных терминалах emoji. Строка `icons=emoji` или `icons=images` в `~/.config/mnrh/config` (или `MNRH_ICONS`)
 выбирает явно. iTerm2 3.7 при первом показе спросит, разрешить ли картинки, нужно ответить Yes и отметить
-"Remember my choice". Иконки рисует `tools/icons.py`, готовые PNG лежат в `share/claudemeister/icons`. Так же выглядят подменю. У проекта справа видны
+"Remember my choice". Иконки рисует `tools/icons.py`, готовые PNG лежат в `share/agentmeister/icons`. Так же выглядят подменю. У проекта справа видны
 ветка и три последних коммита, у сессии последние сообщения, у режима сессии и сети пояснение к варианту.
 Подменю открываются на том же экране. Команды из меню тоже выполняются в рамке: вывод с цветами, их
 собственные списки и вопросы на том же экране, после конца Enter возвращает в меню, а `q` выходит и оставляет
@@ -587,7 +587,7 @@ iTerm2 и других терминалах через хук zsh. Встрое�
 Как команда попадает обратно во вкладку:
 
 - **хук zsh** (основной способ, любой терминал — Android Studio, VS Code, Terminal, iTerm2).
-  `agentmeister setup` добавляет в `~/.zshrc` строку с `share/claudemeister/restart.zsh`. Перед
+  `agentmeister setup` добавляет в `~/.zshrc` строку с `share/agentmeister/restart.zsh`. Перед
   закрытием Claude в `~/.cache/mnrh/restart/<tty>` кладётся задание, и zsh выполняет его
   перед следующим приглашением. Задания старше двух минут игнорируются. Работает во
   вкладках, открытых после установки;
@@ -700,7 +700,7 @@ Terminal и iTerm2 (по tty, как `/restart`), а в Android Studio, VS Code 
 запроса оно убирается из Центра уведомлений.
 
 Показывает их маленькое приложение `~/Library/Application Support/agentmeister/agentmeister Notify.app`
-(собирается из `share/claudemeister/notify/main.swift`). В первый раз macOS спросит, можно ли ему
+(собирается из `share/agentmeister/notify/main.swift`). В первый раз macOS спросит, можно ли ему
 показывать уведомления, а при первом нажатии — можно ли ему управлять Terminal или iTerm2.
 `agentmeister notify test` — пробное уведомление, `notify off` / `on` — выключить и
 включить, `notify sound off` — без звука.
@@ -751,7 +751,7 @@ Claude Code v2.1.199 и новее задаёт его в командах ху�
 написано «No mobile registered», открой приложение Claude на телефоне или выключи переключатель,
 и эти уведомления снова пойдут через agentmeister.
 
-Иконка agentmeister Notify — `share/claudemeister/icon.png`, 1024×1024 (скругленная копия для README лежит в `docs/icon.png`),
+Иконка agentmeister Notify — `share/agentmeister/icon.png`, 1024×1024 (скругленная копия для README лежит в `docs/icon.png`),
 картинка до края без прозрачности: macOS 26 сама скругляет её, а иконку с полями или
 прозрачными углами кладёт на серую подложку. Из PNG при сборке делается `AppIcon.icns`;
 при смене иконки помощник пересобирается сам. Центр уведомлений помнит старую иконку до

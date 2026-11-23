@@ -162,14 +162,14 @@ OWN_BIN = os.path.join(HOME_DIR, "bin", "agentmeister")
 
 
 def brew_bin():
-    """claudemeister из Homebrew в PATH, если этот сервер запущен из Cellar; иначе None."""
+    """agentmeister из Homebrew в PATH, если этот сервер запущен из Cellar; иначе None."""
     if not any(f"/Cellar/{name}/" in HOME_DIR + "/" for name in ("agentmeister", "claudemeister")):
         return None
     return shutil.which("agentmeister")
 
 
 def installed_elsewhere():
-    """brew upgrade ставит новую версию в другую папку Cellar: claudemeister в PATH уже не наш."""
+    """brew upgrade ставит новую версию в другую папку Cellar: agentmeister в PATH уже не наш."""
     found = brew_bin()
     return bool(found) and os.path.dirname(os.path.dirname(os.path.realpath(found))) != HOME_DIR
 

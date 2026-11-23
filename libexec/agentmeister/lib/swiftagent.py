@@ -1,7 +1,7 @@
 """Помощник на Swift, который живёт в фоне как LaunchAgent: сборка в .app, автозапуск, состояние.
 
 Здесь на нем приложение уведомлений agentmeister Notify (в mnrh такая же копия собирает mnrh scroll). Исходник —
-share/claudemeister/<name>/main.swift. Собирается в ~/Library/Application Support/agentmeister/<display>.app только при изменении исходника: macOS
+share/agentmeister/<name>/main.swift. Собирается в ~/Library/Application Support/agentmeister/<display>.app только при изменении исходника: macOS
 выдаёт разрешения (Универсальный доступ и т. п.) конкретной сборке, и лишняя пересборка их сбросит.
 """
 import hashlib
@@ -27,7 +27,7 @@ class SwiftAgent:
         self.url_schemes = tuple(url_schemes)
         self.title = title or display
         self.stable_id = stable_id
-        self.src = os.path.join(ROOT, "share", "claudemeister", name, "main.swift")
+        self.src = os.path.join(ROOT, "share", "agentmeister", name, "main.swift")
         self.app = os.path.join(app_dir or os.path.join(HOME, "Library", "Application Support", "agentmeister"), f"{display}.app")
         self.bin = os.path.join(self.app, "Contents", "MacOS", f"agentmeister-{name}")
         self.stamp = os.path.join(self.app, "Contents", "Resources", "source.sha256")
@@ -132,7 +132,7 @@ class SwiftAgent:
         return m.group(1) if m else "-"
 
     def icon(self):
-        for p in (os.path.join(os.path.dirname(self.src), "icon.png"), os.path.join(ROOT, "share", "claudemeister", "icon.png")):
+        for p in (os.path.join(os.path.dirname(self.src), "icon.png"), os.path.join(ROOT, "share", "agentmeister", "icon.png")):
             if os.path.exists(p):
                 return p
         return None

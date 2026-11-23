@@ -3,7 +3,7 @@
 
 Каждая иконка это цветная плитка со скругленными углами и белым значком линиями, сетка 32x32. Меню
 раскладывает строки по emoji, а в iTerm2 и WezTerm подменяет emoji на эти картинки (menu.py, icons.json).
-Запуск после правки: python3 tools/icons.py [папка], по умолчанию share/claudemeister/icons.
+Запуск после правки: python3 tools/icons.py [папка], по умолчанию share/agentmeister/icons.
 Нужен только тому, кто перерисовывает иконки: готовые PNG лежат в проекте.
 """
 import json
@@ -98,4 +98,4 @@ def main(out):
 
 if __name__ == "__main__":
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, "share", "claudemeister", "icons")))
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, "share", "agentmeister", "icons")))
