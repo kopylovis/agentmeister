@@ -699,7 +699,7 @@ Terminal и iTerm2 (по tty, как `/restart`), а в Android Studio, VS Code 
 приложения. Новое уведомление той же сессии заменяет старое, а после твоего следующего
 запроса оно убирается из Центра уведомлений.
 
-Показывает их маленькое приложение `~/Library/Application Support/claudemeister/claudemeister Notify.app`
+Показывает их маленькое приложение `~/Library/Application Support/agentmeister/agentmeister Notify.app`
 (собирается из `share/claudemeister/notify/main.swift`). В первый раз macOS спросит, можно ли ему
 показывать уведомления, а при первом нажатии — можно ли ему управлять Terminal или iTerm2.
 `agentmeister notify test` — пробное уведомление, `notify off` / `on` — выключить и
@@ -751,7 +751,7 @@ Claude Code v2.1.199 и новее задаёт его в командах ху�
 написано «No mobile registered», открой приложение Claude на телефоне или выключи переключатель,
 и эти уведомления снова пойдут через agentmeister.
 
-Иконка claudemeister Notify — `share/claudemeister/icon.png`, 1024×1024 (скругленная копия для README лежит в `docs/icon.png`),
+Иконка agentmeister Notify — `share/claudemeister/icon.png`, 1024×1024 (скругленная копия для README лежит в `docs/icon.png`),
 картинка до края без прозрачности: macOS 26 сама скругляет её, а иконку с полями или
 прозрачными углами кладёт на серую подложку. Из PNG при сборке делается `AppIcon.icns`;
 при смене иконки помощник пересобирается сам. Центр уведомлений помнит старую иконку до
