@@ -81,6 +81,19 @@ class NativePush(unittest.TestCase):
 
 
 class ClaudeNotify(unittest.TestCase):
+    def test_prompt_installed_in_user_sounds_and_repaired_after_change(self):
+        with tempfile.TemporaryDirectory() as home, mock.patch.object(claude_notify, "HOME", home):
+            target = os.path.join(home, "Library", "Sounds", "Agentmeister-Prompt.wav")
+            source = os.path.join(os.path.dirname(claude_notify.AGENT.src), "Agentmeister-Prompt.wav")
+            with open(source, "rb") as f:
+                expected = f.read()
+            for _ in range(2):
+                claude_notify.install_sound()
+                with open(target, "rb") as f:
+                    self.assertEqual(f.read(), expected)
+                with open(target, "wb") as f:
+                    f.write(b"old sound")
+
     def test_helper_receives_post_arguments_and_confirms_delivery(self):
         def accept(args, **kwargs):
             self.assertEqual(args[:4], [claude_notify.AGENT.bin, "post", "--title", "tab name"])

@@ -48,7 +48,7 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
             content.subtitle = option("--subtitle", self.args) ?? ""
             content.body = option("--body", self.args) ?? ""
             if option("--sound", self.args) != "off" {
-                content.sound = .default
+                content.sound = UNNotificationSound(named: UNNotificationSoundName("Agentmeister-Prompt.wav"))
             }
             let id = option("--id", self.args) ?? UUID().uuidString
             content.threadIdentifier = id
