@@ -195,6 +195,46 @@ class Lookup(unittest.TestCase):
         """)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_clean_rechecks_each_transcript_after_confirmation(self):
+        r, _ = with_sessions("""
+            from pathlib import Path
+            from unittest.mock import patch
+            import claude_sessions as cli
+            from session_store import CLAUDE
+
+            names = ("answered", "replaced", "removed", "invalid", "running", "untouched")
+            paths = {}
+            for n, name in enumerate(names, 1):
+                sid = f"aaaaaaaa-2222-3333-4444-{n:012}"
+                write(sid, [user])
+                paths[name] = Path(pdir) / (sid + ".jsonl")
+            extra = paths["answered"].with_suffix("")
+            extra.mkdir()
+            (extra / "notes.txt").write_text("keep")
+
+            def confirm(question, assume_yes):
+                with paths["answered"].open("a") as out:
+                    print(json.dumps({"type": "assistant", "message": {"content": "done"}}), file=out)
+                replacement = Path(home) / "replacement"
+                replacement.write_bytes(paths["replaced"].read_bytes())
+                replacement.replace(paths["replaced"])
+                paths["removed"].unlink()
+                paths["invalid"].write_text("{")
+                registry = Path(CLAUDE) / "sessions"
+                registry.mkdir()
+                (registry / f"{os.getpid()}.json").write_text(json.dumps({
+                    "pid": os.getpid(), "sessionId": paths["running"].stem}))
+                return True
+
+            with patch.object(cli, "confirm", side_effect=confirm):
+                cli.clean(False)
+            for name in ("answered", "replaced", "invalid", "running"):
+                assert paths[name].is_file(), name
+            assert (extra / "notes.txt").read_text() == "keep"
+            assert not paths["untouched"].exists()
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_sweep_removes_old_junk_only(self):
         r, _ = with_sessions("""
             import claude_restart as cr
