@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import Quit, Screen  # noqa: E402
-from mnrhlib import HOME, projects_dir, tilde  # noqa: E402
+from mnrhlib import HOME, projects_dir, tilde, tr  # noqa: E402
 
 SKIP = object()
 
@@ -60,7 +60,7 @@ class Projects:
         with ThreadPoolExecutor(max_workers=8) as pool:
             self.info = list(pool.map(git_info, self.dirs))
         wide = max([10] + [len(os.path.basename(d)) for d in self.dirs])
-        self.items = [("~", "🏠 ~ (домашний каталог)")]
+        self.items = [("~", tr("🏠 ~ (домашний каталог)", "🏠 ~ (home folder)"))]
         for d, (branch, log) in zip(self.dirs, self.info):
             name = os.path.basename(d)
             last = log[0][0] if log else ""
@@ -68,15 +68,15 @@ class Projects:
 
     def describe(self, i, w):
         if i == 0:
-            return [bold("Домашняя папка"), "~", "", "Сессия откроется вне проекта."]
+            return [bold(tr("Домашняя папка", "Home folder")), "~", "", tr("Сессия откроется вне проекта.", "Open a session outside a project.")]
         d = self.dirs[i - 1]
         branch, log = self.info[i - 1]
         lines = [bold(os.path.basename(d)), tilde(d)]
         if branch:
-            lines.append(f"ветка {branch}")
+            lines.append(tr(f"ветка {branch}", f"branch {branch}"))
         if not log:
-            return lines + ["", "не git-репозиторий"]
-        lines += ["", dim("ПОСЛЕДНИЕ КОММИТЫ")]
+            return lines + ["", tr("Нет истории Git", "No Git history")]
+        lines += ["", dim(tr("ПОСЛЕДНИЕ КОММИТЫ", "RECENT COMMITS"))]
         for when, subj in log:
             lines += [when, "  " + subj]
         return lines
@@ -84,38 +84,50 @@ class Projects:
     def pick(self, screen, current):
         default = 1 if current is None else (0 if current == HOME else
                                              (self.dirs.index(current) + 1 if current in self.dirs else 1))
-        i = screen.pick(self.items, title=f"Проекты в {tilde(self.dev)}", default=default,
+        i = screen.pick(self.items, title=tr(f"Проекты в {tilde(self.dev)}", f"Projects in {tilde(self.dev)}"), default=default,
                         describe=self.describe, start=0)
         if i is None:
             return None
         return HOME if i == 0 else self.dirs[i - 1]
 
 
-MODES = [("caffeinate", "☕ caffeinate",
-          [bold("caffeinate"), "", "Mac не уснет, пока идет сессия. Удобно для долгих задач и Remote Control с "
-           "телефона. Экран при этом гаснуть может.", "", "С закрытой крышкой на батарее Mac все равно уснет, если "
-           "не включен agentmeister lid.", "", dim("БЕЗ ВОПРОСА"), "agentmeister ... -k"]),
-         ("normal", "🌙 обычная",
-          [bold("Обычная сессия"), "", "Mac засыпает по своим настройкам.", "",
-           dim("БЕЗ ВОПРОСА"), "agentmeister ... -n"])]
+def mode_options():
+    hint = dim(tr("БЕЗ ВОПРОСА", "COMMAND"))
+    awake = tr("Mac не уснет во время сессии. Экран может погаснуть.",
+               "Keep the Mac awake during the session. The display can still sleep.")
+    lid = tr("Для работы Claude с закрытой крышкой на батарее включи agentmeister lid.",
+             "Use agentmeister lid to keep Claude running on battery with the lid closed.")
+    normal = tr("Обычная сессия", "Normal session")
+    return [
+        ("caffeinate", "☕ caffeinate", [bold("caffeinate"), "", awake, "", lid, "", hint, "agentmeister ... -k"]),
+        ("normal", tr("🌙 обычная", "🌙 normal"), [bold(normal), "", tr("Mac засыпает по своим настройкам.",
+                    "The Mac follows its sleep settings."), "", hint, "agentmeister ... -n"]),
+    ]
+
 
 def network_options(harness):
     if harness == "claude":
-        detail = ("Запросы Claude к Anthropic идут через mihomo. При обрыве proxy они завершаются ошибкой. "
-                  "SSH и локальные сервисы доступны.")
+        detail = tr("Запросы Claude к Anthropic идут через mihomo. При обрыве proxy они завершаются ошибкой. "
+                    "SSH и локальные сервисы доступны.",
+                    "Claude connects to Anthropic through mihomo. Requests fail if the proxy goes down. "
+                    "SSH and local services remain available.")
     else:
-        detail = ("Сессия и ее дочерние процессы могут подключаться только к порту mihomo. "
-                  "Если proxy недоступен, запросы обрываются. Прямой SSH заблокирован.")
+        detail = tr("Сессия и ее дочерние процессы могут подключаться только к порту mihomo. "
+                    "При обрыве proxy запросы завершаются ошибкой. Прямой SSH заблокирован.",
+                    "The session and its child processes can connect only to the mihomo port. "
+                    "Requests fail if the proxy goes down. Direct SSH is blocked.")
+    direct, proxy = tr("Напрямую", "Direct"), tr("Через proxy", "Through proxy")
+    hint = dim(tr("БЕЗ ВОПРОСА", "COMMAND"))
     return [
-        ("direct", "🔌 напрямую", [bold("Напрямую"), "", "Сессия ходит в сеть как обычно.", "",
-                                  dim("БЕЗ ВОПРОСА"), "agentmeister ... -d"]),
-        ("vps", "🌐 через proxy", [bold("Через proxy"), "", detail, "", dim("БЕЗ ВОПРОСА"), "agentmeister ... -x"]),
+        ("direct", f"🔌 {direct}", [bold(direct), "", tr("Сессия подключается напрямую.", "Connect directly."),
+                                    "", hint, "agentmeister ... -d"]),
+        ("vps", f"🌐 {proxy}", [bold(proxy), "", detail, "", hint, "agentmeister ... -x"]),
     ]
 
 
 def choose(screen, options, title, current):
     keys = [k for k, _, _ in options]
-    i = screen.pick([(k, label) for k, label, _ in options], title=title,
+    i = screen.pick([(f"{k} {label}", label) for k, label, _ in options], title=title,
                     default=keys.index(current) if current in keys else 0,
                     describe=lambda i, w: options[i][2])
     return None if i is None else keys[i]
@@ -170,9 +182,10 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
                                 default=ids.index(state["sid"]) if state["sid"] in ids else 0)
                 got = None if i is None else ids[i]
         elif step == "mode":
-            got = choose(screen, MODES, f"Режим сессии в {tilde(state['dir'])}", state["mode"])
+            got = choose(screen, mode_options(), tr(f"Режим сессии в {tilde(state['dir'])}",
+                                                   f"Session mode in {tilde(state['dir'])}"), state["mode"])
         else:
-            got = choose(screen, network_options(harness), "Сеть", state["net"])
+            got = choose(screen, network_options(harness), tr("Сеть", "Network"), state["net"])
         if got is None:
             k -= 1
             while k >= 0 and skipped.get(k):
