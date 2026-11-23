@@ -374,7 +374,7 @@ def pr(branch, project=None, cwd=None, merge=True, log=None):
 START_TOOL = {
     "name": "parallel_task",
     "description": ("Запустить задачу параллельно: создать git worktree на новой ветке (от текущего коммита проекта) "
-                    "и открыть там второй Claude Code в новом окне терминала с этой задачей и Remote Control. "
+                    "и открыть там второй Claude Code в новой вкладке iTerm2 (в Terminal в новом окне) с этой задачей и Remote Control. "
                     "Второй Claude закоммитит результат в свою ветку; потом parallel_finish вольёт или выбросит её. "
                     "Вызывай, когда пользователь просит сделать что-то параллельно, в фоне или в отдельной ветке."),
     "inputSchema": {"type": "object", "properties": {
@@ -431,7 +431,7 @@ def main():
     args = sys.argv[2:] if sys.argv[1:2] == ["parallel"] else sys.argv[1:]
     if not args or args[0] in ("-h", "--help"):
         print('claudemeister parallel "<задача>" [-p проект] [-b ветка] [-n] [--permission-mode auto] [--no-rc] [--fork]')
-        print("                         новая ветка и worktree от текущего коммита, в новом окне — Claude с задачей;")
+        print("                         новая ветка и worktree от текущего коммита, в новой вкладке — Claude с задачей;")
         print("                         --fork изнутри Claude: второй Claude продолжает эту переписку (форк сессии)")
         print("claudemeister parallel list           параллельные задачи этого проекта")
         print("claudemeister parallel merge <ветка>  влить в исходную ветку (без пуша) и убрать worktree")
