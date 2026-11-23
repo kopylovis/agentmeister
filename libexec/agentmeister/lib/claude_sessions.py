@@ -149,7 +149,7 @@ def clean(assume_yes):
                 orphans.append((pdir, home, sessions))
             continue
         for s in sessions:
-            if not s["answered"] and not s["running"] and not s["link"]:
+            if s["answered"] is False and not s["running"] and not s["link"]:
                 empty.append(s)
 
     did = False
