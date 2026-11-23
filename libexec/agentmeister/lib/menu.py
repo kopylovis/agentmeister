@@ -269,7 +269,7 @@ class Menu:
             for ch in key:
                 if not ch.isprintable():
                     continue
-                if ch.isdigit() and not self.query and self.numbers:
+                if ch in "0123456789" and not self.query and self.numbers:
                     self.jump(ch)
                 else:
                     self.query += ch

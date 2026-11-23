@@ -104,6 +104,11 @@ class Layout(unittest.TestCase):
         self.assertEqual(menu.width(menu.fit("📂 abcdef", 4)), 4)
         self.assertEqual(menu.width(menu.cut("📂📂", 3)), 2)
 
+    def test_superscript_digit_is_search_text(self):
+        picker = menu.Menu(0, [("m²", "m²")], "", "", 1, 0)
+        picker.handle("²")
+        self.assertEqual(picker.query, "²")
+
     def test_split_keys(self):
         self.assertEqual(menu.split_keys("\x1b[B\x1b[B"), ["\x1b[B", "\x1b[B"])
         self.assertEqual(menu.split_keys("ssh\r"), ["ssh", "\r"])
