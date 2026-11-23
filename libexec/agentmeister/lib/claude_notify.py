@@ -121,8 +121,8 @@ def ensure_app():
     try:
         with contextlib.redirect_stdout(sys.stderr):
             AGENT.build()
-    except SystemExit:
-        return False
+    except (SystemExit, OSError) as exc:
+        log_error(f"{AGENT.display}: {exc}")
     ok = os.access(AGENT.bin, os.X_OK)
     if ok:
         try:

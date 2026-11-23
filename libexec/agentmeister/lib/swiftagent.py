@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 
+from mac_files import RENAME_EXCL, RENAME_SWAP, rename_with_flags
 from mnrhlib import CACHE, HOME, WARN, settings_path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -174,7 +175,9 @@ class SwiftAgent:
         if not shutil.which("swiftc"):
             sys.exit("Нужен компилятор Swift из Xcode Command Line Tools: xcode-select --install")
         print(f"Собираю {self.display}...")
-        with tempfile.TemporaryDirectory() as tmp:
+        parent = os.path.dirname(self.app)
+        os.makedirs(parent, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix=".build-", dir=parent) as tmp:
             app = os.path.join(tmp, os.path.basename(self.app))
             contents = os.path.join(app, "Contents")
             binary = os.path.join(contents, "MacOS", os.path.basename(self.bin))
@@ -186,6 +189,8 @@ class SwiftAgent:
             if r.returncode != 0:
                 sys.exit("Сборка не удалась:\n" + r.stderr[-2000:])
             has_icon = self.make_icns(tmp, resources)
+            if self.icon() and not has_icon:
+                sys.exit("Не удалось собрать иконку приложения")
             label = self.build_label()
             if self.service_args is not None:
                 agents = os.path.join(contents, "Library", "LaunchAgents")
@@ -209,11 +214,10 @@ class SwiftAgent:
                                capture_output=True, text=True)
             if r.returncode != 0:
                 sys.exit("Не удалось подписать помощника:\n" + r.stderr)
-            shutil.rmtree(self.app, ignore_errors=True)
-            os.makedirs(os.path.dirname(self.app), exist_ok=True)
-            r = subprocess.run(["ditto", app, self.app], capture_output=True, text=True)
-            if r.returncode != 0:
-                sys.exit("Не удалось положить помощника на место:\n" + r.stderr)
+            try:
+                rename_with_flags(app, self.app, RENAME_EXCL)
+            except FileExistsError:
+                rename_with_flags(app, self.app, RENAME_SWAP)
         lsregister = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/"
                       "Support/lsregister")
         if os.path.exists(lsregister):
