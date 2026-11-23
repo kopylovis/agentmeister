@@ -3,6 +3,7 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -38,6 +39,20 @@ class ResumeFlags(unittest.TestCase):
     def test_split_caffeinate(self):
         self.assertEqual(r.split_caffeinate(["-is", "-t", "60", "claude", "-c"]), (["-is", "-t", "60"],
                                                                                    ["claude", "-c"]))
+
+
+class ProcessLookup(unittest.TestCase):
+    def test_denied_ps_uses_session_pid_if_available(self):
+        with patch.object(r.subprocess, "run", side_effect=PermissionError), \
+                patch.dict(os.environ, {"CLAUDE_PID": "123"}), \
+                patch.object(r.os.path, "exists", side_effect=lambda p: p == r.session_file(123)):
+            self.assertEqual(r.find_claude(), 123)
+
+    def test_denied_ps_without_session_pid(self):
+        with patch.object(r.subprocess, "run", side_effect=PermissionError), \
+                patch.dict(os.environ, {"CLAUDE_PID": ""}), patch.object(r.os.path, "exists", return_value=False):
+            with self.assertRaises(r.RestartError):
+                r.find_claude()
 
 
 class Argv(unittest.TestCase):
