@@ -115,8 +115,12 @@ def ensure_app():
 
 
 def launch(args):
-    subprocess.run(["open", "-g", "-n", "-a", AGENT.app, "--args"] + args,
-                   capture_output=True, timeout=15)
+    try:
+        result = subprocess.run(["open", "-g", "-n", "-a", AGENT.app, "--args"] + args,
+                                capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"open: {type(exc).__name__}"
+    return "ok" if not result.returncode else f"open: {result.stderr.strip() or result.returncode}"
 
 
 def post(title, subtitle, body, sid, click=None, wait=False):
@@ -126,13 +130,14 @@ def post(title, subtitle, body, sid, click=None, wait=False):
     if not sound():
         args += ["--sound", "off"]
     if not wait:
-        launch(args)
-        return "ok"
+        return launch(args)
     fd, result = tempfile.mkstemp(prefix="mnrh-notify-")
     os.close(fd)
     os.remove(result)
     try:
-        launch(args + ["--result", result])
+        started = launch(args + ["--result", result])
+        if started != "ok":
+            return started
         for _ in range(600):
             if os.path.exists(result):
                 with open(result) as f:
@@ -340,8 +345,10 @@ def hook(codex=False):
         return 0
     tty = codex_terminal(sid) if codex else own_terminal()
     transcript = payload.get("transcript_path")
-    if not tty and not (codex and codex_cli_session(transcript)):
-        return 0
+    if not tty:
+        from claude_proc import interactive_session
+        if not (codex_cli_session(transcript) if codex else interactive_session(sid)):
+            return 0
     bundle = os.environ.get("__CFBundleIdentifier", "")
     if codex and tty and bundle not in TERMINALS:
         front = front_bundle()
@@ -358,23 +365,29 @@ def hook(codex=False):
     cwd = payload.get("cwd") or ""
     project = "~" if cwd.rstrip("/") == HOME else os.path.basename(cwd.rstrip("/")) or ("Codex" if codex else "Claude")
     title = "" if codex else session_title(sid, transcript)
+    sent = False
     if on_mac and ensure_app():
         cm = cm_path()
         click = f"{shlex.quote(cm)} focus {shlex.quote(tty)} {shlex.quote(bundle)}" if cm and tty and bundle else None
-        post(f"{project}: {head}", title, body, sid, click)
+        result = post(f"{project}: {head}", title, body, sid, click)
+        sent = result == "ok"
+        if not sent:
+            log_error(result)
     if to_phone:
         try:
             telegram.send(f"{project}: {head}", title, body)
+            sent = True
         except telegram.TelegramError as e:
             log_error(f"telegram: {e}")
     if to_tossling:
         try:
             ntfy_alert.publish(ntfy_alert.CLAUDE_TOPIC, "\n\n".join(p for p in (title, body) if p),
                                title=f"{project}: {head}", priority=3 if head.startswith("Готово") else 4)
+            sent = True
         except ntfy_alert.AlertError as e:
             log_error(f"tossling: {e}")
     current = load_state(sid) if codex else st
-    if current.get("prompt_at") == st.get("prompt_at"):
+    if sent and current.get("prompt_at") == st.get("prompt_at"):
         current["notified"] = True
         save_state(sid, current)
     return 0

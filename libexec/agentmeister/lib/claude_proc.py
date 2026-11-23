@@ -55,6 +55,20 @@ def session_file(pid):
     return os.path.join(CLAUDE, "sessions", f"{pid}.json")
 
 
+def interactive_session(sid):
+    pattern = os.path.join(glob.escape(CLAUDE), "sessions", "[0-9]*.json")
+    for path in glob.iglob(pattern):
+        try:
+            with open(path) as f:
+                info = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if isinstance(info, dict) and info.get("sessionId") == sid:
+            if info.get("kind") == "interactive" and info.get("entrypoint") == "cli":
+                return True
+    return False
+
+
 def find_claude():
     pid = os.getpid()
     for _ in range(30):
