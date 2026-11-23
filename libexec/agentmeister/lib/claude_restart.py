@@ -75,7 +75,10 @@ def plan(update=True, forget=False, slim=False, fresh=False):
         # agentmeister -i: переписка не пишется на диск, открывать заново нечего
         raise RestartError("эта сессия без записи на диск (agentmeister -i), открыть ее заново нечем. "
                            "/fresh или /forget откроют новую, тоже без записи")
-    pid = find_claude()
+    from claude_proxy_restart import CHANNEL, session_pid
+    proxy_restart = os.environ.get("MNRH_PROXY") and not (forget or slim or fresh)
+    channel = os.environ.get(CHANNEL) if proxy_restart else None
+    pid = session_pid(channel) if channel else find_claude()
     try:
         with open(session_file(pid)) as f:
             info = json.load(f)
@@ -85,8 +88,17 @@ def plan(update=True, forget=False, slim=False, fresh=False):
     if not sid:
         raise RestartError("не знаю id текущей сессии")
     cwd = info.get("cwd") or os.getcwd()
+    if channel:
+        if not UUID_RE.fullmatch(sid) or os.environ.get("CLAUDE_CODE_SESSION_ID") not in (None, "", sid):
+            raise RestartError("не удалось подтвердить номер этой прокси-сессии")
+        return {"pid": pid, "sid": sid, "cwd": cwd, "via": "proxy", "channel": channel,
+                "title": info.get("name") or sid}
     tty = ps("tty", pid)
     if not tty or tty in ("??", "-"):
+        if proxy_restart:
+            command = shlex.join(["agentmeister", "-x", cwd, "--", "--resume", sid])
+            raise RestartError(f"не удалось определить терминал этой прокси-сессии. Введи /exit, "
+                               f"затем выполни в терминале:\n{command}")
         raise RestartError("у Claude нет терминала, перезапускать некуда")
     tty = "/dev/" + tty if not tty.startswith("/dev/") else tty
     term = os.environ.get("TERM_PROGRAM", "")
@@ -418,6 +430,11 @@ def detach(p, delay):
 
 def restart(update=True, delay=1.5, dry=False, forget=False, slim=False, fresh=False):
     p = plan(update, forget, slim, fresh)
+    if p["via"] == "proxy":
+        if not dry:
+            from claude_proxy_restart import schedule
+            schedule(p["channel"], p["pid"], p["sid"], update, delay)
+        return p
     preflight(p)
     if dry:
         return p
@@ -451,7 +468,9 @@ def cli(args, forget=False, fresh=False):
     except RestartError as e:
         print(f"agentmeister {name}: {e}", file=sys.stderr)
         return 1
-    if "--dry-run" in args:
+    if "--dry-run" in args and p["via"] == "proxy":
+        print(f"продолжу сессию {p['sid']} в той же вкладке через текущий прокси")
+    elif "--dry-run" in args:
         extra = f"удалю сессию {p['sid']}, " if forget else ""
         print(f"закрою pid {p['pid']}, {extra}в {p['tty']} через {p['via']} выполню:\n  {p['line']}")
     elif forget:
