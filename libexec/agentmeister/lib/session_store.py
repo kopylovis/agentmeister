@@ -127,31 +127,31 @@ def running_ids():
 
 def read_meta(path):
     meta = {"cwd": None, "branch": None, "custom": None, "ai": None, "prompt": None, "answered": False}
+    titles = {"custom-title": ("custom", "customTitle"), "ai-title": ("ai", "aiTitle"),
+              "last-prompt": ("prompt", "lastPrompt")}
     try:
-        f = open(path, encoding="utf-8", errors="replace")
-    except OSError:
-        return meta
-    with f:
-        for line in f:
-            if not meta["answered"] and '"type":"assistant"' in line:
-                meta["answered"] = True
-            if meta["cwd"] is None and '"cwd"' in line:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
                 try:
-                    o = json.loads(line)
-                    meta["cwd"] = o.get("cwd")
-                    meta["branch"] = o.get("gitBranch")
+                    record = json.loads(line)
                 except ValueError:
-                    pass
-            for marker, key, field in (('"custom-title"', "custom", "customTitle"),
-                                       ('"ai-title"', "ai", "aiTitle"),
-                                       ('"last-prompt"', "prompt", "lastPrompt")):
-                if marker in line:
-                    try:
-                        o = json.loads(line)
-                        if o.get(field):
-                            meta[key] = o[field]
-                    except ValueError:
-                        pass
+                    record = None
+                if not isinstance(record, dict):
+                    if not meta["answered"]:
+                        meta["answered"] = None
+                    continue
+                kind = record.get("type")
+                if kind == "assistant":
+                    meta["answered"] = True
+                if meta["cwd"] is None and record.get("cwd"):
+                    meta["cwd"] = record["cwd"]
+                    meta["branch"] = record.get("gitBranch")
+                if isinstance(kind, str) and kind in titles:
+                    key, field = titles[kind]
+                    if record.get(field):
+                        meta[key] = record[field]
+    except (OSError, UnicodeError):
+        meta["answered"] = None
     return meta
 
 
@@ -160,30 +160,27 @@ LOCAL_MARKERS = ("<command-name>", "<local-command-stdout>", "<local-command-std
 
 def is_junk(path):
     try:
-        f = open(path, encoding="utf-8", errors="replace")
-    except OSError:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                record = json.loads(line)
+                if not isinstance(record, dict) or not isinstance(record.get("type"), str):
+                    return False
+                if record["type"] == "assistant":
+                    return False
+                if record["type"] != "user" or record.get("isMeta"):
+                    continue
+                message = record.get("message")
+                content = message.get("content") if isinstance(message, dict) else None
+                if isinstance(content, str):
+                    texts = [content]
+                elif isinstance(content, list) and all(isinstance(b, dict) and b.get("type") == "text" for b in content):
+                    texts = [b.get("text") for b in content]
+                else:
+                    return False
+                if not texts or not all(isinstance(t, str) and t.lstrip().startswith(LOCAL_MARKERS) for t in texts):
+                    return False
+    except (OSError, ValueError):
         return False
-    with f:
-        for line in f:
-            if '"type":"assistant"' in line:
-                return False
-            if '"type":"user"' not in line:
-                continue
-            try:
-                o = json.loads(line)
-            except ValueError:
-                return False
-            if o.get("type") != "user" or o.get("isMeta"):
-                continue
-            c = (o.get("message") or {}).get("content")
-            if isinstance(c, str):
-                texts = [c]
-            elif isinstance(c, list) and all(isinstance(b, dict) and b.get("type") == "text" for b in c):
-                texts = [b.get("text", "") for b in c]
-            else:
-                return False
-            if not texts or not all(any(m in t for m in LOCAL_MARKERS) for t in texts):
-                return False
     return True
 
 
