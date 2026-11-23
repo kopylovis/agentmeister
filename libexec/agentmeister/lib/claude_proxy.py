@@ -17,6 +17,7 @@ import socket
 import stat
 import subprocess
 import sys
+from pathlib import Path
 import time
 import urllib.parse
 
@@ -663,17 +664,21 @@ def check():
         start()
         was_held = bool(holders())
     try:
-        direct, via = trace(), None
-        for _ in range(3):  # подписку mihomo качает при старте, первая попытка может не успеть
-            via = trace(proxy_env(port()))
-            if via:
-                break
-            time.sleep(2)
-        return direct, via
+        return check_exit()
     finally:
         with locked():
             if not was_held and not holders():
                 stop()
+
+
+def check_exit():
+    direct, via = trace(), None
+    for _ in range(3):  # подписку mihomo качает при старте, первая попытка может не успеть
+        via = trace(proxy_env(port()))
+        if via:
+            break
+        time.sleep(2)
+    return direct, via
 
 
 def write_config(url, p, country="", only=""):
@@ -754,17 +759,31 @@ def setup(args):
         stop()
         old = port() if configured() else None
         p = old if old and not listening(old) else free_port()
-        write_config(url, p, country, only)
+        files = [Path(path) for path in (CONFIG, SUB_URL, SUB_FILE, os.path.join(CONF_DIR, "vps.yaml"))]
+        previous = {path: path.read_bytes() if path.exists() else None for path in files}
+        verified = False
+        try:
+            write_config(url, p, country, only)
+            start()
+            direct, via = check_exit()
+            if not via:
+                raise ProxyError("Не удалось подключиться через новую подписку.")
+            verified = True
+        except (OSError, ProxyError) as error:
+            print(f"{BAD} {error}")
+            return 1
+        finally:
+            try:
+                stop()
+            finally:
+                if not verified:
+                    for path, data in previous.items():
+                        if data is None:
+                            path.unlink(missing_ok=True)
+                        else:
+                            write_private(str(path), data)
     print(f"{OK} настройка в {tilde(CONFIG)} (права 600), порт {p}"
           + (f", только серверы «{only}»" if only else "") + (f", выход должен быть в {country.upper()}" if country else ""))
-    try:
-        direct, via = check()
-    except ProxyError as e:
-        print(f"{BAD} {e}")
-        return 1
-    if not via:
-        print(f"{BAD} через proxy ничего не открылось. Проверь подписку, лог: {tilde(LOG)}")
-        return 1
     print(f"{OK} напрямую {fmt(direct)}, через proxy {fmt(via)}")
     print('Выбери "через proxy" в меню Agentmeister или запусти agentmeister <проект> -x.')
     return 0
