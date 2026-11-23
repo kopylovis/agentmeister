@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import codecs
 import os
 import re
 import select
@@ -759,6 +760,7 @@ def run_framed(screen, argv, title, env=None, show_elapsed=False):
         os.close(slave)
         out.feed(f"\x1b[31m{e}\x1b[0m\n")
         return 127, out
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
     shape = (rows, cols)
     started = time.monotonic()
     elapsed = 0 if show_elapsed else None
@@ -776,7 +778,7 @@ def run_framed(screen, argv, title, env=None, show_elapsed=False):
                 data = b""
             if not data:
                 break
-            out.feed(data.decode("utf-8", "replace"))
+            out.feed(decoder.decode(data))
             out.redraw = False
         elif proc.poll() is not None:
             break
@@ -792,7 +794,8 @@ def run_framed(screen, argv, title, env=None, show_elapsed=False):
             break
         if not data:
             break
-        out.feed(data.decode("utf-8", "replace"))
+        out.feed(decoder.decode(data))
+    out.feed(decoder.decode(b"", final=True))
     os.close(master)
     os.close(slave)
     tty.setcbreak(screen.fd)

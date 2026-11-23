@@ -282,14 +282,16 @@ class Framed(unittest.TestCase):
         screen = menu.Screen()
         screen.fd, screen.saved = slave, termios.tcgetattr(slave)
         try:
-            code, out = menu.run_framed(screen, [sys.executable, "-c", "print('hi'); raise SystemExit(3)"], "t")
+            child = ("import os, time; os.write(1, bytes([0xd0])); time.sleep(0.3); "
+                     "os.write(1, bytes([0xaf, 10, 0xd0])); raise SystemExit(3)")
+            code, out = menu.run_framed(screen, [sys.executable, "-c", child], "t")
         finally:
             screen.fd = None
             os.close(slave)
             reader.join(2)
             os.close(master)
         self.assertEqual(code, 3)
-        self.assertIn("hi", out.plain())
+        self.assertEqual(out.plain(), "Я\n�")
 
     def test_questions_go_to_the_frame(self):
         # в рамке вопрос choice пишется в stdout, иначе его сотрет перерисовка рамки
