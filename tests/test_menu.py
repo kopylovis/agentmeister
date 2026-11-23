@@ -39,6 +39,13 @@ class Menu(unittest.TestCase):
             self.assertIsNone(m.session_action(screen, "open"))
         self.assertEqual(screen.pick.call_count, 2)
 
+    def test_launch_choices_follow_the_language_setting(self):
+        with patch.object(mnrhlib, "lang", return_value="en"):
+            self.assertIn("normal", m.open_flow.mode_options()[1][1])
+            self.assertIn("Direct", m.open_flow.network_options("codex")[0][1])
+        with patch.object(mnrhlib, "lang", return_value="ru"):
+            self.assertIn("обычная", m.open_flow.mode_options()[1][1])
+
     def test_rows_match_items(self):
         rows = self.plain("ru")
         self.assertEqual(len(rows), len(m.ITEMS))
