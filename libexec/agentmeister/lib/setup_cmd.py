@@ -265,19 +265,28 @@ def setup(args):
     install_restart_hook()
     print(f"✓ MCP {MCP_NAME}")
     import claude_notify
-    if claude_notify.ensure_app():
+    notify_ready = claude_notify.ensure_app()
+    if notify_ready:
         print(f"✓ приложение уведомлений → {tilde(claude_notify.AGENT.app)} (agentmeister notify test)")
     else:
         print("✗ не собрал приложение уведомлений: нужен swiftc (xcode-select --install)")
     proxy = claude_setup.proxy_step(opts["country"], opts["only"])
-    asked = {"proxy": proxy, "promptsill": promptsill}
-    claude_setup.record(set(claude_setup.AUTO) | {s for s, r in asked.items() if r == "done"},
-                        {s for s, r in asked.items() if r == "skipped"})
-    # setup все перевел на agentmeister, прежний отказ от переноса больше не нужен
-    claude_setup.write(*claude_setup.current(), legacy_declined=False)
+    results = {"proxy": proxy, "promptsill": promptsill, "notify-app": "done" if notify_ready else "failed"}
+    done, skipped = claude_setup.current()
+    done.update(claude_setup.AUTO)
+    for step, result in results.items():
+        if result is None:
+            continue
+        done.discard(step)
+        skipped.discard(step)
+        if result == "done":
+            done.add(step)
+        elif result == "skipped":
+            skipped.add(step)
+    claude_setup.write(done, skipped, legacy_declined=False)
     if not shutil.which("agentmeister"):
         print(f"! agentmeister нет в PATH, а /restart, /todo и другие команды вызывают его по имени. "
               f"Поставь его: brew install kopylovis/tap/agentmeister или make install в {tilde(ROOT)}")
     print("Настройки Claude Code подхватятся при запуске новой сессии или перезапуске открытой.")
     print(f"Для Codex запусти {CODEX_SETUP}, затем подтверди хуки через /hooks.")
-    return 0
+    return 1 if "failed" in results.values() else 0
