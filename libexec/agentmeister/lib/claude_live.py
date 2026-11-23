@@ -185,6 +185,8 @@ def lost():
 
 def reopen(r):
     import claude_open
+    if not claude_open.trusted(r["cwd"]):
+        return f"Открой Claude Code в {tilde(r['cwd'])} и подтверди доверие к папке перед восстановлением.", True
     flags = [f for f in r.get("flags") or [] if f != "--remote-control"]
     rc = "--remote-control" in (r.get("flags") or [])
     saved = os.environ.pop("MNRH_PROXY", None)
@@ -192,7 +194,7 @@ def reopen(r):
         os.environ["MNRH_PROXY"] = "1"
     try:
         return claude_open.open_claude({"placement": "window", "path": r["cwd"], "mode": "caffeinate" if r.get("caffeinate") else "normal",
-                                        "flags": ["--resume", r["sid"]] + flags, "trust": True,
+                                        "flags": ["--resume", r["sid"]] + flags,
                                         "remote_control": rc}, CM)
     finally:
         os.environ.pop("MNRH_PROXY", None)
