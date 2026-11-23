@@ -164,6 +164,18 @@ class Lookup(unittest.TestCase):
         """)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_cleanup_accepts_spaced_json_and_keeps_unreadable_records(self):
+        r, _ = with_sessions("""
+            import session_store as s
+            path = os.path.join(pdir, ids["junk"] + ".jsonl")
+            for data, answered in [(json.dumps({"type": "assistant"}), True), ("{", None)]:
+                with open(path, "w") as f:
+                    f.write(data)
+                assert not s.is_junk(path)
+                assert s.read_meta(path)["answered"] is answered
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_sweep_removes_old_junk_only(self):
         r, _ = with_sessions("""
             import claude_restart as cr
