@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import sys
 import time
 
@@ -184,6 +185,19 @@ def is_junk(path):
     return True
 
 
+def transcript_version(info):
+    if stat.S_ISREG(info.st_mode):
+        return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+    return None
+
+
+def same_transcript(s):
+    try:
+        return s["transcript_version"] is not None and transcript_version(os.lstat(s["path"])) == s["transcript_version"]
+    except OSError:
+        return False
+
+
 _DECODE = object()
 
 
@@ -194,7 +208,8 @@ def entry(path, running=None, home=_DECODE, meta=True):
     d, sid = os.path.basename(pdir), name[:-6]
     if home is _DECODE:
         home = decode(d)
-    link = os.path.islink(path)
+    info = os.lstat(path)
+    link = stat.S_ISLNK(info.st_mode)
     m = read_meta(path) if meta else {"cwd": None, "branch": None, "custom": None, "ai": None, "prompt": None,
                                       "answered": False}
     extra = os.path.join(pdir, sid)
@@ -211,7 +226,8 @@ def entry(path, running=None, home=_DECODE, meta=True):
         "cwd": home or m["cwd"] or d, "started_in": m["cwd"], "branch": m["branch"],
         "title": custom or m["ai"] or m["prompt"] or "",
         "prompt": m["prompt"], "answered": m["answered"],
-        "size": 0 if link else os.lstat(path).st_size + tree_size(extra),
+        "size": 0 if link else info.st_size + tree_size(extra),
+        "transcript_version": transcript_version(info),
         "mtime": os.stat(path).st_mtime,
         "running": (running or {}).get(sid),
     }
@@ -322,16 +338,27 @@ def require_idle(s):
         raise SessionInUse("Сессия открыта в другом окне. Сначала закрой ее.")
 
 
-def delete(s):
+def delete(s, *, unanswered_only=False):
+    if unanswered_only and (not same_transcript(s) or read_meta(s["path"])["answered"] is not False):
+        return False
     require_idle(s)
-    for p in (s["path"], s["extra"]):
+    paths = (s["path"], s["extra"])
+    if unanswered_only:
+        if not same_transcript(s):
+            return False
+        try:
+            os.unlink(s["path"])
+        except FileNotFoundError:
+            return False
+        paths = (s["extra"],)
+    for p in paths:
         if os.path.islink(p) or os.path.isfile(p):
             os.remove(p)
         elif os.path.isdir(p):
             shutil.rmtree(p)
     remove_if_empty(s["pdir"])
     if any(not copy["link"] for copy in by_id(s["id"], meta=False)):
-        return
+        return True
     if not s["link"]:
         for sub in ("file-history", "session-env"):
             p = os.path.join(CLAUDE, sub, s["id"])
@@ -342,6 +369,7 @@ def delete(s):
     claude_search.drop(s["id"])
     import claude_usage
     claude_usage.drop(s["id"])
+    return True
 
 
 def forget_caches(sid):
