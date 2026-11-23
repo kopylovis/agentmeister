@@ -706,7 +706,7 @@ Terminal и iTerm2 (по tty, как `/restart`), а в Android Studio, VS Code 
 (собирается из `share/agentmeister/notify/main.swift`). В первый раз macOS спросит, можно ли ему
 показывать уведомления, а при первом нажатии — можно ли ему управлять Terminal или iTerm2.
 `agentmeister notify test` — пробное уведомление, `notify off` / `on` — выключить и
-включить, `notify sound off` — без звука.
+включить. Команда `notify sound off` отключает звук Prompt.
 
 Те же уведомления могут приходить в Telegram, когда тебя нет за Mac: экран заблокирован или
 2 минуты никто не трогал мышь и клавиатуру. `agentmeister notify telegram` подключает бота:

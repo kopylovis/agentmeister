@@ -1,4 +1,5 @@
 import contextlib
+import filecmp
 import json
 import os
 import re
@@ -101,6 +102,19 @@ def sound():
     return read_config().get("notify_sound", "on") != "off"
 
 
+def install_sound():
+    name = "Agentmeister-Prompt.wav"
+    source = os.path.join(os.path.dirname(AGENT.src), name)
+    directory = os.path.join(HOME, "Library", "Sounds")
+    target = os.path.join(directory, name)
+    if os.path.isfile(target) and filecmp.cmp(source, target, shallow=False):
+        return
+    os.makedirs(directory, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=directory) as tmp:
+        staged = shutil.copyfile(source, os.path.join(tmp, name))
+        os.replace(staged, target)
+
+
 def ensure_app():
     if not os.path.exists(AGENT.src):
         return False
@@ -111,6 +125,10 @@ def ensure_app():
         return False
     ok = os.access(AGENT.bin, os.X_OK)
     if ok:
+        try:
+            install_sound()
+        except OSError as exc:
+            log_error(f"Prompt: {exc}")
         for legacy in (OLD_APP, OLD_CLAUDE_APP):
             if os.path.isdir(legacy):
                 shutil.rmtree(legacy, ignore_errors=True)
