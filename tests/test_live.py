@@ -8,6 +8,21 @@ from test_sessions import in_sandbox  # noqa: E402
 
 
 class Lost(unittest.TestCase):
+    def test_restore_keeps_revoked_trust(self):
+        r, _ = in_sandbox("""
+            import claude_live, claude_open
+            from pathlib import Path
+            from unittest.mock import patch
+            settings = Path(claude_open.CLAUDE_JSON)
+            settings.write_text('{"projects": {}}')
+            with patch.object(claude_open, "open_claude") as launch:
+                _, error = claude_live.reopen({"cwd": str(settings.parent), "sid": "test"})
+                assert error
+                launch.assert_not_called()
+            assert settings.read_text() == '{"projects": {}}'
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_only_dead_sessions_with_a_transcript_come_back(self):
         r, _ = in_sandbox("""
             import json, os, time, claude_live as l
