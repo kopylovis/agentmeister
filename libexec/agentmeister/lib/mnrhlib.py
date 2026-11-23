@@ -9,7 +9,7 @@ import sys
 HOME = os.path.expanduser("~")
 # Папка Claude Code; MNRH_CLAUDE_HOME подменяет ее в тестах
 CLAUDE_HOME = os.environ.get("MNRH_CLAUDE_HOME", os.path.join(HOME, ".claude"))
-# Кеш claudemeister. Путь от mnrh, его же читает share/claudemeister/restart.zsh
+# Кеш agentmeister. Путь от mnrh, его же читает share/agentmeister/restart.zsh
 CACHE = os.path.join(HOME, ".cache", "mnrh")
 # Задания перезапуска для хука zsh (по имени tty) и сообщения после /restart, /forget, /slim (по id новой сессии)
 RESTART_QUEUE = os.path.join(CACHE, "restart")
@@ -57,7 +57,7 @@ def is_hook(command, sub):
 
 
 # Хук или statusLine, которые ставил mnrh claude setup: .../mnrh claude <команда>
-# Хуки Claude Code, которые ставит agentmeister setup: (событие, команда claudemeister, async, matcher).
+# Хуки Claude Code, которые ставит agentmeister setup: (событие, команда agentmeister, async, matcher).
 # Старые хуки mnrh claude <команда> setup заменяет этими. Поменял matcher: claude_setup.pending заметит и предложит setup.
 HOOKS = [("SessionStart", "notice", False, None), ("SessionEnd", "session-end", False, None),
          ("UserPromptSubmit", "notify-hook", True, None), ("Stop", "notify-hook", True, None),

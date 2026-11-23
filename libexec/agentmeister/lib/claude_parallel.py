@@ -132,7 +132,7 @@ def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None,
         lines.append("Скопировал по .worktreeinclude: " + ", ".join(copied) + ".")
     elif copied:
         lines.append("Скопировал неотслеживаемые настройки: " + ", ".join(copied) + " (своего .worktreeinclude "
-                     "у проекта нет, поэтому по списку claudemeister).")
+                     "у проекта нет, поэтому по списку agentmeister).")
     if dirty:
         lines.append("В основной папке есть незакоммиченные изменения — в worktree их нет, он от последнего коммита.")
     lines.append(text)

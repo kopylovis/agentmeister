@@ -204,7 +204,7 @@ are on, the proxy). Tab hides the description, and a narrow window hides it on i
 the items, Terminal.app and other terminals show emoji. An `icons=emoji` or `icons=images` line in
 `~/.config/mnrh/config` (or `MNRH_ICONS`) picks one explicitly. iTerm2 3.7 asks once whether to allow the
 pictures: answer Yes with "Remember my choice". `tools/icons.py` draws the icons, the PNGs live in
-`share/claudemeister/icons`. Submenus look the same: the project list
+`share/agentmeister/icons`. Submenus look the same: the project list
 (branch and the last three commits on the right), sessions (latest messages), session mode and network.
 Submenus open on the same screen. Commands run from the menu stay in a frame too: colored output, their own
 lists and questions on the same screen; afterwards Enter goes back to the menu and `q` quits, leaving the output
@@ -575,7 +575,7 @@ so Claude quits cleanly with the session already on disk, and the same tab runs
 How the command gets back into the tab:
 
 - The zsh hook is the main way and works in any terminal (Android Studio, VS Code, Terminal, iTerm2).
-  `agentmeister setup` adds a line with `share/claudemeister/restart.zsh` to `~/.zshrc`. Before Claude quits,
+  `agentmeister setup` adds a line with `share/agentmeister/restart.zsh` to `~/.zshrc`. Before Claude quits,
   a job is written to `~/.cache/mnrh/restart/<tty>`, and zsh runs it before the next prompt. Jobs older than two
   minutes are ignored. It works in tabs opened after setup.
 - AppleScript is the fallback for Terminal and iTerm2 when the hook isn't loaded in that tab. The first time,
@@ -684,7 +684,7 @@ the app window in Android Studio, VS Code and others. A new notification from th
 one, and after your next prompt it's removed from Notification Center.
 
 They're shown by a small app, `~/Library/Application Support/agentmeister/agentmeister Notify.app`, built from
-`share/claudemeister/notify/main.swift`. The first time, macOS asks whether it may show notifications, and on the
+`share/agentmeister/notify/main.swift`. The first time, macOS asks whether it may show notifications, and on the
 first click, whether it may control Terminal or iTerm2. `agentmeister notify test` sends a test notification,
 `notify off` and `on` turn them off and on, and `notify sound off` mutes them.
 
@@ -731,7 +731,7 @@ sets in hook commands while Remote Control is connected. "Done" and "waiting for
 Claude sends its own push for those only when it decides to. If `/config` shows "No mobile registered",
 open the Claude app on the phone, or turn the toggle off to get these through agentmeister again.
 
-The agentmeister Notify icon is `share/claudemeister/icon.png`, 1024×1024 (a rounded copy for the README is in
+The agentmeister Notify icon is `share/agentmeister/icon.png`, 1024×1024 (a rounded copy for the README is in
 `docs/icon.png`). It fills the whole square with no transparency: macOS 26 rounds it itself and puts an icon with
 margins or transparent corners on a gray plate. The build turns the PNG into `AppIcon.icns`, and the helper app
 rebuilds itself when the icon changes. Notification Center remembers the old icon until you restart or log out.
