@@ -1,8 +1,4 @@
-"""MCP-инструмент open_claude: новый Claude Code в новой вкладке iTerm2 или новом окне Terminal через claudemeister.
-
-Без проекта возвращает список, из которого выбирать (его показывает Claude в чате),
-с проектом — открывает вкладку iTerm2 или окно Terminal, запускает claudemeister и ждёт, пока Claude поднимется.
-"""
+"""Launch Claude Code in an iTerm2 tab or a terminal window."""
 import json
 import os
 import re
@@ -21,21 +17,25 @@ on run argv
     return tty of t
   end tell
 end run''',
-    # в iTerm2 новая вкладка в текущем окне, новое окно только если окон нет
     "iTerm.app": '''
 on run argv
-  tell application "iTerm2"
-    activate
-    if (count of windows) is 0 then
-      set s to current session of (create window with default profile)
+  set launchLine to item 1 of argv
+  set placement to item 2 of argv
+  set openTab to (placement is "tab")
+  tell application id "com.googlecode.iterm2"
+    if placement is "auto" then set openTab to ((count of windows) > 0)
+    if openTab then
+      if not running then error "No open iTerm2 window"
+      if (count of windows) is 0 then error "No open iTerm2 window"
+      tell current window to set newTab to (create tab with default profile)
+      set targetSession to current session of newTab
     else
-      tell current window
-        set t to (create tab with default profile)
-      end tell
-      set s to current session of t
+      set newWindow to (create window with default profile)
+      set targetSession to current session of newWindow
     end if
-    tell s
-      write text (item 1 of argv)
+    activate
+    tell targetSession
+      write text launchLine
       return tty
     end tell
   end tell
@@ -75,8 +75,8 @@ RC_URL = re.compile(r"https://claude\.ai/code/session_\w+")
 TOOL = {
     "name": "open_claude",
     "description": (
-        "Открыть новый Claude Code в терминале, где идёт эта сессия: в iTerm2 новой вкладкой текущего окна, в Terminal новым окном, "
-        "через claudemeister. Вызови сначала без project: получишь список проектов и режимов — покажи его "
+        "Открыть новый Claude Code во вкладке iTerm2 или в окне Terminal "
+        "через agentmeister. Вызови сначала без project: получишь список проектов и режимов — покажи его "
         "пользователю и спроси, что выбрать (если он уже назвал проект, можно сразу). Потом вызови с project "
         "(имя папки или начало имени, «~» — домашний каталог) и mode. Remote Control включается сразу, "
         "ссылка на сессию (claude.ai/code) приходит в ответе — дай её пользователю. "
@@ -85,6 +85,9 @@ TOOL = {
         "type": "object",
         "properties": {
             "project": {"type": "string", "description": "проект: имя папки или его начало; «~» — домашний каталог"},
+            "placement": {"type": "string", "enum": ["tab", "window"],
+                          "description": "tab открывает вкладку в текущем окне iTerm2. По умолчанию в iTerm2 "
+                                         "открывается вкладка, в Terminal окно. window явно запрашивает окно."},
             "mode": {"type": "string", "enum": ["caffeinate", "normal"],
                      "description": "caffeinate — Mac не уснёт, пока идёт сессия (по умолчанию); normal — обычная"},
             "prompt": {"type": "string", "description": "первый запрос для нового Claude (необязательно)"},
@@ -198,6 +201,14 @@ def open_claude(args, cm):
     if mode not in MODES:
         return f"Режим бывает caffeinate или normal, а не «{mode}».", True
 
+    term = terminal()
+    placement = args.get("placement", "tab" if term == "iTerm.app" else "window")
+    if placement not in ("tab", "window"):
+        return "placement должен быть tab или window", True
+    if placement == "tab":
+        term = "iTerm.app"
+    destination = "новую вкладку" if placement == "tab" else "новое окно"
+
     if not trusted(target):
         if args.get("trust") is not True:
             return (f"Claude Code ещё не доверяет папке {tilde(target)}. При запуске он спросит «Do you trust "
@@ -210,7 +221,7 @@ def open_claude(args, cm):
             return f"Не отметил {tilde(target)} доверенной в {tilde(CLAUDE_JSON)}: {e}", True
 
     name = "~" if target == HOME else os.path.basename(target)
-    # из сессии через proxy новая вкладка или окно тоже идёт через proxy, иначе напрямую, без вопроса в меню
+    # из сессии через proxy новое окно тоже идёт через proxy, иначе напрямую, без вопроса в меню
     net = "-x" if os.environ.get("MNRH_PROXY") else "-d"
     cmd = [LOCAL_CLI if net == "-x" else cm, "open", target if direct else name, MODES[mode], net, "--new"]
     rc = args.get("remote_control", True) is not False
@@ -222,16 +233,23 @@ def open_claude(args, cm):
         cmd += ["--"] + extra
     line = " ".join(shlex.quote(c) for c in cmd)
 
-    term = terminal()
-    r = subprocess.run(["osascript", "-e", OPEN[term], line], capture_output=True, text=True, timeout=30)
+    if term == "iTerm.app" and "placement" not in args:
+        placement = "auto"
+        destination = "новую сессию"
+    script_args = [line, placement] if term == "iTerm.app" else [line]
+    try:
+        r = subprocess.run(["osascript", "-e", OPEN[term], *script_args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"Не удалось подтвердить запуск через AppleScript ({exc.__class__.__name__}). Проверь терминал.", True
     tty = r.stdout.strip()
     app = "iTerm2" if term == "iTerm.app" else "Terminal"
-    place = "новую вкладку iTerm2" if term == "iTerm.app" else "новое окно Terminal"
     if r.returncode or not tty.startswith("/dev/"):
         err = (r.stderr or r.stdout).strip()
         hint = (f" Нужно разрешение: {settings_path('settings', 'privacy', 'automation')} → разрешить управлять "
                 f"{app}.") if "-1743" in err or "not allowed" in err.lower() else ""
-        return f"Не получилось открыть {place}: {err or 'osascript без ответа'}.{hint}", True
+        if placement in ("tab", "auto"):
+            hint += f" В iTerm2 нажми ⌘T и выполни в новой вкладке:\n{line}"
+        return f"Не удалось подтвердить запуск в {app} ({err or 'osascript без ответа'}).{hint}", True
 
     pid = None
     for _ in range(40):  # до 20 секунд: caffeinate, node, первый запуск
@@ -242,14 +260,14 @@ def open_claude(args, cm):
     where = f"{tilde(target)}, режим {mode}" + (", через proxy" if net == "-x" else "")
     url = remote_url(term, tty) if pid and rc else ""
     if pid:
-        text = f"Открыл {place} ({tty}): Claude Code запущен в {where}, pid {pid}."
+        text = f"Открыл {destination} {app} ({tty}): Claude Code запущен в {where}, pid {pid}."
         if url:
             text += f" Remote Control включён: {url}"
         elif rc:
-            text += " Remote Control запрошен, но ссылка за 20 секунд не появилась — загляни во вкладку."
+            text += " Remote Control запрошен, но ссылка за 20 секунд не появилась — проверь терминал."
     else:
-        text = (f"Открыл {place} ({tty}) и запустил там `{' '.join(cmd[1:])}`, но за 20 секунд "
-                f"Claude Code не появился — загляни туда ({where}).")
+        text = (f"Открыл {destination} {app} ({tty}) и запустил там `{' '.join(cmd[1:])}`, но за 20 секунд "
+                f"Claude Code не появился — проверь терминал ({where}).")
     if args.get("prompt"):
         text += " Первый запрос передан."
     return text, not pid
