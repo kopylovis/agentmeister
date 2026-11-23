@@ -1,7 +1,7 @@
-"""MCP-инструмент open_claude: новый Claude Code в новом окне терминала через claudemeister.
+"""MCP-инструмент open_claude: новый Claude Code в новой вкладке iTerm2 или новом окне Terminal через claudemeister.
 
 Без проекта возвращает список, из которого выбирать (его показывает Claude в чате),
-с проектом — открывает окно Terminal или iTerm2, запускает claudemeister и ждёт, пока Claude поднимется.
+с проектом — открывает вкладку iTerm2 или окно Terminal, запускает claudemeister и ждёт, пока Claude поднимется.
 """
 import json
 import os
@@ -21,12 +21,20 @@ on run argv
     return tty of t
   end tell
 end run''',
+    # в iTerm2 новая вкладка в текущем окне, новое окно только если окон нет
     "iTerm.app": '''
 on run argv
   tell application "iTerm2"
     activate
-    set w to (create window with default profile)
-    tell current session of w
+    if (count of windows) is 0 then
+      set s to current session of (create window with default profile)
+    else
+      tell current window
+        set t to (create tab with default profile)
+      end tell
+      set s to current session of t
+    end if
+    tell s
       write text (item 1 of argv)
       return tty
     end tell
@@ -67,7 +75,7 @@ RC_URL = re.compile(r"https://claude\.ai/code/session_\w+")
 TOOL = {
     "name": "open_claude",
     "description": (
-        "Открыть новый Claude Code в новом окне терминала (Terminal или iTerm2 — тот, где идёт эта сессия) "
+        "Открыть новый Claude Code в терминале, где идёт эта сессия: в iTerm2 новой вкладкой текущего окна, в Terminal новым окном, "
         "через claudemeister. Вызови сначала без project: получишь список проектов и режимов — покажи его "
         "пользователю и спроси, что выбрать (если он уже назвал проект, можно сразу). Потом вызови с project "
         "(имя папки или начало имени, «~» — домашний каталог) и mode. Remote Control включается сразу, "
@@ -202,7 +210,7 @@ def open_claude(args, cm):
             return f"Не отметил {tilde(target)} доверенной в {tilde(CLAUDE_JSON)}: {e}", True
 
     name = "~" if target == HOME else os.path.basename(target)
-    # из сессии через proxy новое окно тоже идёт через proxy, иначе напрямую, без вопроса в меню
+    # из сессии через proxy новая вкладка или окно тоже идёт через proxy, иначе напрямую, без вопроса в меню
     net = "-x" if os.environ.get("MNRH_PROXY") else "-d"
     cmd = [LOCAL_CLI if net == "-x" else cm, "open", target if direct else name, MODES[mode], net, "--new"]
     rc = args.get("remote_control", True) is not False
@@ -218,11 +226,12 @@ def open_claude(args, cm):
     r = subprocess.run(["osascript", "-e", OPEN[term], line], capture_output=True, text=True, timeout=30)
     tty = r.stdout.strip()
     app = "iTerm2" if term == "iTerm.app" else "Terminal"
+    place = "новую вкладку iTerm2" if term == "iTerm.app" else "новое окно Terminal"
     if r.returncode or not tty.startswith("/dev/"):
         err = (r.stderr or r.stdout).strip()
         hint = (f" Нужно разрешение: {settings_path('settings', 'privacy', 'automation')} → разрешить управлять "
                 f"{app}.") if "-1743" in err or "not allowed" in err.lower() else ""
-        return f"Не получилось открыть окно {app}: {err or 'osascript без ответа'}.{hint}", True
+        return f"Не получилось открыть {place}: {err or 'osascript без ответа'}.{hint}", True
 
     pid = None
     for _ in range(40):  # до 20 секунд: caffeinate, node, первый запуск
@@ -233,14 +242,14 @@ def open_claude(args, cm):
     where = f"{tilde(target)}, режим {mode}" + (", через proxy" if net == "-x" else "")
     url = remote_url(term, tty) if pid and rc else ""
     if pid:
-        text = f"Открыл новое окно {app} ({tty}): Claude Code запущен в {where}, pid {pid}."
+        text = f"Открыл {place} ({tty}): Claude Code запущен в {where}, pid {pid}."
         if url:
             text += f" Remote Control включён: {url}"
         elif rc:
-            text += " Remote Control запрошен, но ссылка за 20 секунд не появилась — загляни в окно."
+            text += " Remote Control запрошен, но ссылка за 20 секунд не появилась — загляни во вкладку."
     else:
-        text = (f"Открыл новое окно {app} ({tty}) и запустил там `{' '.join(cmd[1:])}`, но за 20 секунд "
-                f"Claude Code не появился — загляни в окно ({where}).")
+        text = (f"Открыл {place} ({tty}) и запустил там `{' '.join(cmd[1:])}`, но за 20 секунд "
+                f"Claude Code не появился — загляни туда ({where}).")
     if args.get("prompt"):
         text += " Первый запрос передан."
     return text, not pid
