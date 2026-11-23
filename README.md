@@ -689,7 +689,7 @@ one, and after your next prompt it's removed from Notification Center.
 They're shown by a small app, `~/Library/Application Support/agentmeister/agentmeister Notify.app`, built from
 `share/agentmeister/notify/main.swift`. The first time, macOS asks whether it may show notifications, and on the
 first click, whether it may control Terminal or iTerm2. `agentmeister notify test` sends a test notification,
-`notify off` and `on` turn them off and on, and `notify sound off` mutes them.
+`notify off` and `on` turn them off and on, and `notify sound off` mutes the Prompt chime.
 
 The same notifications can go to Telegram when you're away from the Mac: the screen is locked or nobody has
 touched the mouse and keyboard for 2 minutes. `agentmeister notify telegram` connects a bot: create it with
