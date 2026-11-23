@@ -152,6 +152,18 @@ class Lookup(unittest.TestCase):
         self.assertEqual(r.stdout.splitlines(), ["False", "True", "True False",
                                                  "['33333333-2222-3333-4444-555555555555.jsonl']"])
 
+    def test_cleanup_preserves_another_copy_with_the_same_id(self):
+        r, _ = with_sessions("""
+            import shutil, claude_restart as cr
+            path = os.path.join(pdir, ids["junk"] + ".jsonl")
+            copy = os.path.join(os.path.dirname(pdir), "other", os.path.basename(path))
+            os.makedirs(os.path.dirname(copy))
+            shutil.copyfile(os.path.join(pdir, ids["real"] + ".jsonl"), copy)
+            assert cr.drop_junk(path, "test")
+            assert not os.path.exists(path) and os.path.exists(copy)
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_sweep_removes_old_junk_only(self):
         r, _ = with_sessions("""
             import claude_restart as cr

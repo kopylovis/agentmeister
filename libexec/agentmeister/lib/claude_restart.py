@@ -273,8 +273,7 @@ def drop_junk(path, why):
     if os.path.islink(path) or sid in session_store.running_ids() or not session_store.is_junk(path):
         return False
     for s in session_store.by_id(sid, meta=False):
-        if not s["link"]:
-            s["running"] = None
+        if not s["link"] and os.path.abspath(s["path"]) == os.path.abspath(path):
             session_store.delete(s)
             log(f"пустая сессия {sid} удалена ({why})")
             return True
