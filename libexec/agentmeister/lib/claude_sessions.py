@@ -6,7 +6,7 @@ import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde  # noqa: E402
+from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde, tr  # noqa: E402
 from menu import Quit, Screen, pick  # noqa: E402
 from session_store import (PROJECTS, UUID, ago, clip, decode, delete, encode, find, fmt_size, folder,  # noqa: E402
                            is_junk, load, offline, remove_if_empty, require_idle, rewrite, running_ids, SessionInUse, tree_size)
@@ -340,23 +340,27 @@ def session_list(cwd):
     ss, busy = project_sessions(cwd)
     if not ss:
         return None
-    items = [("новая", "✨ новая сессия")]
+    new = tr("Новая сессия", "New session")
+    messages = tr("сообщ.", "msgs")
+    items = [(new, f"✨ {new}")]
     for x in ss:
-        items.append((x["title"], f"💬 {ago(x['mtime']):>13}  {fmt_size(x['size']):>7}  {x['msgs']:>5} сообщ.  "
+        items.append((x["title"], f"💬 {ago(x['mtime']):>13}  {fmt_size(x['size']):>7}  {x['msgs']:>5} {messages}  "
                                   f"{clip(x['title'], 60)}"))
-    note = f" (еще {busy} открыты в других окнах)" if busy else ""
+    note = tr(f" (еще {busy} открыты в других окнах)", f" ({busy} open in other windows)") if busy else ""
 
     def describe(i, w):
         if i == 0:
-            return ["\x1b[1mНовая сессия\x1b[0m", "", "Пустой контекст. Старые сессии останутся в /resume и в этом списке."]
+            return [f"\x1b[1m{new}\x1b[0m", "", tr("Пустой контекст. Старые сессии останутся в /resume и в этом списке.",
+                    "Start with an empty context. Previous sessions stay available here and in /resume.")]
         x = ss[i - 1]
-        lines = [f"\x1b[1m{x['title']}\x1b[0m", dim(f"{ago(x['mtime'])} · {fmt_size(x['size'])} · {x['msgs']} сообщ."),
-                 "", dim("ПОСЛЕДНИЕ СООБЩЕНИЯ")]
+        lines = [f"\x1b[1m{x['title']}\x1b[0m", dim(f"{ago(x['mtime'])} · {fmt_size(x['size'])} · {x['msgs']} {messages}"),
+                 "", dim(tr("ПОСЛЕДНИЕ СООБЩЕНИЯ", "RECENT MESSAGES"))]
         for role, text in reversed(x["tail"]):
-            lines += ["", dim("вы" if role == "user" else "Claude"), text]
+            lines += ["", dim(tr("вы", "you") if role == "user" else "Claude"), text]
         return lines
 
-    return items, describe, f"Сессии в {folder(os.path.abspath(cwd))}{note}", ss
+    name = folder(os.path.abspath(cwd))
+    return items, describe, tr(f"Сессии в {name}", f"Sessions in {name}") + note, ss
 
 
 def choose_session(cwd):

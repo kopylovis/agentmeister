@@ -11,7 +11,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, CLAUDE_HOME, DEV, HOME, UUID_RE, tilde  # noqa: E402
+from mnrhlib import CACHE, CLAUDE_HOME, DEV, HOME, UUID_RE, tilde, tr  # noqa: E402
 import claude_search  # noqa: E402
 
 CLAUDE = CLAUDE_HOME
@@ -69,22 +69,22 @@ def tree_size(path):
 
 def fmt_size(n):
     if n >= 1 << 30:
-        return f"{n / (1 << 30):.1f} ГБ"
+        return f"{n / (1 << 30):.1f} " + tr("ГБ", "GB")
     if n >= 10 << 20:
-        return f"{n / (1 << 20):.0f} МБ"
+        return f"{n / (1 << 20):.0f} " + tr("МБ", "MB")
     if n >= 1 << 20:
-        return f"{n / (1 << 20):.1f} МБ"
-    return f"{max(1, n // 1024)} КБ" if n else "0"
+        return f"{n / (1 << 20):.1f} " + tr("МБ", "MB")
+    return f"{max(1, n // 1024)} " + tr("КБ", "KB") if n else "0"
 
 
 def ago(ts):
     s = time.time() - ts
     if s < 3600:
-        return f"{max(1, int(s // 60))} мин назад"
+        return f"{max(1, int(s // 60))} " + tr("мин назад", "min ago")
     if s < 86400:
-        return f"{int(s // 3600)} ч назад"
+        return f"{int(s // 3600)} " + tr("ч назад", "h ago")
     if s < 30 * 86400:
-        return f"{int(s // 86400)} дн назад"
+        return f"{int(s // 86400)} " + tr("дн назад", "d ago")
     return time.strftime("%d.%m.%Y", time.localtime(ts))
 
 
