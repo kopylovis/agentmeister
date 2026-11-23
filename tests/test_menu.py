@@ -304,15 +304,13 @@ class Framed(unittest.TestCase):
 
     def test_choice_processes_batched_arrow_and_enter(self):
         master, slave = os.openpty()
-        reader = threading.Thread(target=Ask.drain, args=(master,), daemon=True)
-        reader.start()
         try:
-            with patch.object(menu.os, "open", return_value=os.dup(slave)), \
+            with open(os.devnull, "wb") as output, patch.object(menu, "frame_fd", return_value=output.fileno()), \
+                    patch.object(menu.os, "open", return_value=os.dup(slave)), \
                     patch.object(menu, "read_keys", return_value="\x1b[C\r"):
                 self.assertEqual(menu.choice("test", [("a", "A"), ("b", "B")]), "b")
         finally:
             os.close(slave)
-            reader.join(2)
             os.close(master)
 
     def test_choice_prompt_shows_as_last_line(self):
