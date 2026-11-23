@@ -123,7 +123,7 @@ def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None,
     if sid:
         # --resume по id ищет сессию и в git worktree проекта, а форк начинается в папке запуска
         flags = ["--resume", sid, "--fork-session"] + flags
-    text, bad = claude_open.open_claude({"path": path, "mode": mode, "prompt": prompt, "flags": flags,
+    text, bad = claude_open.open_claude({"placement": "window", "path": path, "mode": mode, "prompt": prompt, "flags": flags,
                                          "trust": claude_open.trusted(root), "remote_control": rc}, cm or "agentmeister")
     lines = [f"Ветка {name} от {base}, worktree {tilde(path)}."]
     if sid:

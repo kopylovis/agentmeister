@@ -556,8 +556,8 @@ native install with a Pro or Max plan. agentmeister's `/restart` takes the name:
 keeps caffeinate, the proxy and your launch flags, and works in Terminal, iTerm2 and other terminals through the
 zsh hook. The built-in one stays available as `/update`.
 - "open Claude in kcalm" uses the `open_claude` tool. Without a project it returns the list of projects (branch,
-  last commit) and modes to the chat, Claude asks which one, and opens a new tab in the current iTerm2 window (a new
-  Terminal window in Terminal) with `agentmeister <project> -k|-n`. You can pass a first prompt and `--continue`. Remote Control
+  last commit) and modes to the chat, Claude asks which one, and opens a tab in the current iTerm2 window or a new Terminal window
+  with `agentmeister <project> -k|-n`. Use `placement: window` for a separate iTerm2 window. You can pass a first prompt and `--continue`. Remote Control
   (`/rc`) is on from the start (`--remote-control <project>`; turn it off with `remote_control: false`). The reply
   contains the tab or window, tty, pid and the claude.ai/code link to the session, so you can continue from your phone
   or a browser. If Claude Code doesn't trust the folder yet (no `hasTrustDialogAccepted` for it or a parent in

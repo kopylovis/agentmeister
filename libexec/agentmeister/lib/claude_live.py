@@ -191,7 +191,7 @@ def reopen(r):
     if r.get("proxy"):
         os.environ["MNRH_PROXY"] = "1"
     try:
-        return claude_open.open_claude({"path": r["cwd"], "mode": "caffeinate" if r.get("caffeinate") else "normal",
+        return claude_open.open_claude({"placement": "window", "path": r["cwd"], "mode": "caffeinate" if r.get("caffeinate") else "normal",
                                         "flags": ["--resume", r["sid"]] + flags, "trust": True,
                                         "remote_control": rc}, CM)
     finally:
