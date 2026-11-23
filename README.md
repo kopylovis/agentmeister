@@ -1,6 +1,9 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="agentmeister icon"></p>
-
-<h1 align="center">agentmeister</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/agentmeister-logo-dark.png">
+    <img src="docs/agentmeister-logo.png" width="480" alt="agentmeister">
+  </picture>
+</h1>
 
 <p align="center">English · <a href="README.ru.md">Русский</a></p>
 
@@ -731,9 +734,10 @@ sets in hook commands while Remote Control is connected. "Done" and "waiting for
 Claude sends its own push for those only when it decides to. If `/config` shows "No mobile registered",
 open the Claude app on the phone, or turn the toggle off to get these through agentmeister again.
 
-The agentmeister Notify icon is `share/agentmeister/icon.png`, 1024×1024 (a rounded copy for the README is in
-`docs/icon.png`). It fills the whole square with no transparency: macOS 26 rounds it itself and puts an icon with
-margins or transparent corners on a gray plate. The build turns the PNG into `AppIcon.icns`, and the helper app
-rebuilds itself when the icon changes. Notification Center remembers the old icon until you restart or log out.
+<img src="docs/icon.png" width="48" alt="agentmeister Notify">
+
+The build converts the opaque 1024×1024 PNG at `share/agentmeister/icon.png` to `AppIcon.icns`.
+macOS rounds the corners. Notify rebuilds the helper when the PNG changes. Notification Center can
+show the previous icon until you log out or restart.
 
 Log: `~/Library/Logs/mnrh-claude-restart.log`.

@@ -1,6 +1,9 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="agentmeister icon"></p>
-
-<h1 align="center">agentmeister</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/agentmeister-logo-dark.png">
+    <img src="docs/agentmeister-logo.png" width="480" alt="agentmeister">
+  </picture>
+</h1>
 
 <p align="center"><a href="README.md">English</a> · Русский</p>
 
@@ -751,11 +754,11 @@ Claude Code v2.1.199 и новее задаёт его в командах ху�
 написано «No mobile registered», открой приложение Claude на телефоне или выключи переключатель,
 и эти уведомления снова пойдут через agentmeister.
 
-Иконка agentmeister Notify — `share/agentmeister/icon.png`, 1024×1024 (скругленная копия для README лежит в `docs/icon.png`),
-картинка до края без прозрачности: macOS 26 сама скругляет её, а иконку с полями или
-прозрачными углами кладёт на серую подложку. Из PNG при сборке делается `AppIcon.icns`;
-при смене иконки помощник пересобирается сам. Центр уведомлений помнит старую иконку до
-перезагрузки или выхода из системы.
+<img src="docs/icon.png" width="48" alt="agentmeister Notify">
+
+При сборке Notify преобразует непрозрачный PNG размером 1024×1024 из `share/agentmeister/icon.png`
+в `AppIcon.icns`. Углы скругляет macOS. Когда PNG меняется, Notify пересобирает приложение.
+Центр уведомлений может показывать прежнюю иконку до выхода из системы или перезагрузки.
 
 Лог: `~/Library/Logs/mnrh-claude-restart.log`.
 
