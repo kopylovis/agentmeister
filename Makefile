@@ -110,8 +110,8 @@ test:
 	@cd /tmp && $(CURDIR)/bin/agentmeister brief >/dev/null
 	@printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/agentmeister mcp | grep '"todo_add"' | grep '"parallel_task"' | grep '"window_screenshot"' | grep '"ask_project"' | grep -q '"release_notes_write"'
 	@printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/agentmeister mcp | grep -q '"slim"'
-	@! ./bin/agentmeister sessions slim no-such-session >/dev/null 2>&1
-	@! ./bin/agentmeister sessions show no-such-session >/dev/null
+	@! MNRH_CLAUDE_HOME=/nonexistent-cm ./bin/agentmeister sessions slim no-such-session >/dev/null 2>&1
+	@! MNRH_CLAUDE_HOME=/nonexistent-cm ./bin/agentmeister sessions show no-such-session >/dev/null
 	@if command -v mnrh >/dev/null; then printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/agentmeister mcp | grep '"session_search"' | grep '"session_read"' | grep '"mac_status"' | grep -q '"free_memory"'; fi
 	@printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./bin/agentmeister mcp | grep -q "\"version\": \"$$(cat VERSION)\""
 	@if command -v mnrh >/dev/null; then printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"mac_status","arguments":{"parts":["ports"]}}}' | ./bin/agentmeister mcp | grep -q '"isError": false'; fi

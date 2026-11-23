@@ -374,12 +374,12 @@ def main():
         return 0
     if args[:1] == ["choose"] and len(args) == 2:
         return choose_session(args[1])
-    if not os.path.isdir(PROJECTS):
-        print(f"Нет {tilde(PROJECTS)}, сессий нет.")
-        return 0
     yes = has_flag(args, "-y", "--yes")
     args = [a for a in args if a not in ("-y", "--yes")]
     cmd = args[0] if args else None
+    if cmd in (None, "-l", "--list", "ls", "list", "clean") and not os.path.isdir(PROJECTS):
+        print(f"Нет {tilde(PROJECTS)}, сессий нет.")
+        return 0
 
     if cmd is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
