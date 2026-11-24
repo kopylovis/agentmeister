@@ -7,6 +7,7 @@
 """
 import json
 import os
+import re
 import sys
 import time
 
@@ -113,6 +114,8 @@ def proxy():
             "protocol": info.get("proto") if isinstance(info.get("proto"), str) else None,
             "ip": info.get("ip") if isinstance(info.get("ip"), str) else None,
             "node": info.get("node") if isinstance(info.get("node"), str) else None,
+            # без сохраненного выбора новая сессия идет через proxy, как в правилах пользователя и в меню
+            "defaultRoute": "direct" if os.path.exists(claude_proxy.LAST) and claude_proxy.last() == "direct" else "proxy",
             "sessions": held}
 
 
@@ -254,7 +257,32 @@ def agent_info(binary):
     except (OSError, subprocess.TimeoutExpired):
         out = []
     version = next((w for w in out if w[:1].isdigit()), None)
-    return {"installed": True, "path": path, "version": version, **signed_in(binary)}
+    real = os.path.realpath(path)
+    via = ("homebrew" if "/Caskroom/" in real or "/Cellar/" in real or real.startswith("/opt/homebrew/") else
+           "installer" if binary == "claude" and "/.local/" in real else "other")
+    return {"installed": True, "path": path, "version": version, "installedVia": via, "model": agent_model(binary),
+            **signed_in(binary)}
+
+
+PLANS = {"claude_max": "Max", "claude_pro": "Pro", "claude_team": "Team", "claude_enterprise": "Enterprise"}
+
+
+def agent_model(binary):
+    """Модель и усилие из настроек агента: ~/.claude/settings.json или ~/.codex/config.toml."""
+    home = os.path.expanduser("~")
+    try:
+        if binary == "claude":
+            with open(os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(home, ".claude"), "settings.json")) as f:
+                s = json.load(f)
+            return " ".join(x for x in (s.get("model"), s.get("effortLevel")) if isinstance(x, str)) or None
+        if binary == "codex":
+            with open(os.path.join(os.environ.get("CODEX_HOME") or os.path.join(home, ".codex"), "config.toml")) as f:
+                text = f.read()
+            found = dict(re.findall(r'^(model|model_reasoning_effort)\s*=\s*"([^"]*)"', text, re.M))
+            return " ".join(x for x in (found.get("model"), found.get("model_reasoning_effort")) if x) or None
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
 
 
 def signed_in(binary):
@@ -264,11 +292,16 @@ def signed_in(binary):
         if binary == "claude":
             with open(os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or home, ".claude.json")) as f:
                 account = json.load(f).get("oauthAccount") or {}
-            return {"signedIn": bool(account), "plan": account.get("billingType")}
+            org = account.get("organizationType")
+            return {"signedIn": bool(account), "email": account.get("emailAddress"),
+                    "plan": PLANS.get(org, org.replace("_", " ") if isinstance(org, str) else None)}
         if binary == "codex":
             with open(os.path.join(os.environ.get("CODEX_HOME") or os.path.join(home, ".codex"), "auth.json")) as f:
                 auth = json.load(f)
-            return {"signedIn": bool(auth.get("tokens") or auth.get("OPENAI_API_KEY")), "plan": auth.get("auth_mode")}
+            mode = auth.get("auth_mode")
+            # email и тариф Codex лежат только внутри id_token, а токены мы не читаем
+            return {"signedIn": bool(auth.get("tokens") or auth.get("OPENAI_API_KEY")), "email": None,
+                    "plan": {"chatgpt": "ChatGPT", "apikey": "API key"}.get(mode, mode)}
     except (OSError, ValueError, AttributeError):
         pass
     return {"signedIn": False, "plan": None}
@@ -307,7 +340,19 @@ def settings():
         import claude_guard
         skipped = claude_guard.skipped()
         return {"on": claude_guard.enabled() if hasattr(claude_guard, "enabled") else cfg.get("guard", "on") != "off",
-                "rules": [{"id": rid, "text": text, "on": rid not in skipped} for rid, text in claude_guard.RULES.items()]}
+                "rules": [{"id": rid, "text": text, "textEn": claude_guard.RULES_EN.get(rid, text), "on": rid not in skipped}
+                          for rid, text in claude_guard.RULES.items()],
+                "log": guard_log(), "logPath": claude_guard.LOG}
+
+    def modes_info():
+        import claude_buildlog
+        import claude_lid
+        try:
+            lid_ready = claude_lid.ready()
+        except Exception:
+            lid_ready = False
+        return {"buildlogDays": claude_buildlog.KEEP_DAYS, "buildlogLines": claude_buildlog.MAX_LINES,
+                "buildlogDir": claude_buildlog.LOGS, "lidReady": lid_ready}
 
     def host_run():
         import host_run as hr
@@ -333,6 +378,7 @@ def settings():
     part("notify", notify)
     part("guard", guard)
     part("hostRun", host_run)
+    part("modesInfo", modes_info)
     part("proxy", proxy_settings)
     part("modes", modes)
     part("claude", lambda: agent_info("claude"))
@@ -352,6 +398,33 @@ def doctor():
             found = [("bad", f"{name}: проверка упала ({e!r})")]
         rows += [{"check": name, "level": level, "text": text} for level, text in found]
     return {"rows": rows}
+
+
+def guard_log(n=4):
+    """Последние срабатывания guard короче, как в окне настроек: "24.11 13:56  hold  secrets-read  /x/.env"."""
+    import claude_guard
+    try:
+        with open(claude_guard.LOG) as f:
+            lines = f.readlines()[-n:]
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        m = re.match(r"\d{4}-(\d\d)-(\d\d) (\d\d:\d\d):\d\d (.*)", line.rstrip("\n"))
+        out.append(f"{m.group(2)}.{m.group(1)} {m.group(3)}  {m.group(4)}" if m else line.rstrip("\n"))
+    return out
+
+
+def guard_test(command):
+    """Что guard сделает с командой: правило и причина или ничего. Как agentmeister guard test, но данными."""
+    import claude_guard
+    text = " ".join(command.split())
+    tool, inp = (("Read", {"file_path": text}) if text and not re.search(r"\s", text) and claude_guard.is_secret(text)
+                 else ("Bash", {"command": text}))
+    found = claude_guard.check(tool, inp, os.getcwd())
+    if not found:
+        return {"rule": None}
+    return {"rule": found[0], "why": found[1], "off": found[0] in claude_guard.skipped()}
 
 
 def lang_setting():
@@ -387,7 +460,9 @@ def main(argv):
             print(f"{mnrhlib.lang()} ({lang_setting()})")
             return 0
         return set_lang(argv[1])
-    if argv and argv[0] == "search":
+    if argv and argv[0] == "guard-test":
+        out = guard_test(" ".join(argv[1:]))
+    elif argv and argv[0] == "search":
         out = search(" ".join(argv[1:]))
     elif argv and argv[0] == "read" and len(argv) > 1:
         out = read(argv[1])

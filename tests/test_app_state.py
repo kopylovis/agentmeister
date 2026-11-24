@@ -197,12 +197,13 @@ class SignedIn(unittest.TestCase):
             with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": home, "CODEX_HOME": os.path.join(home, ".codex")}):
                 self.assertEqual(app_state.signed_in("claude"), {"signedIn": False, "plan": None})
                 with open(os.path.join(home, ".claude.json"), "w") as f:
-                    json.dump({"oauthAccount": {"billingType": "stripe_subscription"}}, f)
-                self.assertEqual(app_state.signed_in("claude"), {"signedIn": True, "plan": "stripe_subscription"})
+                    json.dump({"oauthAccount": {"billingType": "stripe_subscription", "organizationType": "claude_max",
+                                                "emailAddress": "me@example.com"}}, f)
+                self.assertEqual(app_state.signed_in("claude"), {"signedIn": True, "email": "me@example.com", "plan": "Max"})
                 os.makedirs(os.path.join(home, ".codex"))
                 with open(os.path.join(home, ".codex", "auth.json"), "w") as f:
                     json.dump({"auth_mode": "chatgpt", "tokens": {"id_token": "x"}}, f)
-                self.assertEqual(app_state.signed_in("codex"), {"signedIn": True, "plan": "chatgpt"})
+                self.assertEqual(app_state.signed_in("codex"), {"signedIn": True, "email": None, "plan": "ChatGPT"})
 
 
 class Lang(unittest.TestCase):
