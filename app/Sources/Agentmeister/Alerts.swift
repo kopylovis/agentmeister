@@ -45,7 +45,10 @@ struct TabAlert: View {
                               secondary: tab.sessionId != nil && tab.spec.agent == .claude
                                   ? (l.t("Сжать и перезапустить", "Slim and restart"), { tab.slim(note: l.slimming) }) : nil))
         }
-        if tab.running, tab.spec.proxied, proxy?.configured == true, backend.proxyDown {
+        // mihomo останавливается с последней сессией через proxy и поднимается лаунчером новой вкладки:
+        // первые 20 секунд вкладки он может еще стартовать, это не поломка
+        if tab.running, tab.spec.proxied, proxy?.configured == true, backend.proxyDown,
+           Date().timeIntervalSince(tab.startedAt) > 20 {
             items.append(Item(id: "mihomo", tone: .red, icon: "exclamationmark.triangle",
                               title: l.t("mihomo не отвечает, сессия без сети", "mihomo is not responding, the session has no network"),
                               body: l.t("Песочница не пустит агента в сеть мимо proxy. Агент ждет, его ход не потерян.",
