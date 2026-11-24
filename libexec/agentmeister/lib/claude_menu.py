@@ -398,9 +398,7 @@ def framed(screen, args):
 
 def live_details(s, w=60):
     import claude_live
-    label, _ = claude_live.STATUS.get(s.get("status"), (s.get("status") or "?", ""))
-    label = {"waiting": tr("ждет тебя", "waiting for you"), "busy": tr("работает", "working"),
-             "idle": tr("свободна", "idle")}.get(s.get("status"), label)
+    label = tr("ждет тебя", "waiting for you") if s.get("status") == "waiting" else claude_live.status(s)[0]
     facts = [(tr("папка", "folder"), tilde(str(s.get("cwd") or "?"))), (tr("состояние", "state"), label.strip()),
              (tr("с тех пор", "since"), claude_live.ago(s.get("statusUpdatedAt"))), ("pid", str(s.get("pid") or "?"))]
     return ([f"\x1b[1m{claude_live.title(s)}\x1b[0m", ""] + fact_lines([(k, v) for k, v in facts if v], w, pad=12)

@@ -16,10 +16,14 @@ from mnrhlib import CACHE, CLAUDE_HOME, CM, OK, WARN, confirm, paint, run, tilde
 
 OPEN = os.path.join(CACHE, "open")
 KEEP_DAYS = 30
-STATUS = {"waiting": ("ждет тебя", "33"), "busy": ("работает", "36"), "idle": ("свободна", "2")}
+STATUS = {"waiting": (("ждет тебя", "waiting"), "33"), "busy": (("работает", "working"), "36"),
+          "idle": (("свободна", "idle"), "2")}
 USAGE = """agentmeister ps              открытые сессии Claude Code: статус, проект, название; выбрать и перейти во вкладку
 agentmeister ps -l           только список
 agentmeister restore [-y]    открыть заново сессии, которые были открыты, когда Mac выключился или Claude упал"""
+USAGE_EN = """agentmeister ps              open Claude Code sessions: state, project, name; pick one to switch to its tab
+agentmeister ps -l           list only
+agentmeister restore [-y]    reopen sessions that were open when the Mac shut down or Claude crashed"""
 
 
 def record_path(sid):
@@ -95,20 +99,30 @@ def live():
     return sorted(found, key=lambda s: (s.get("status") != "waiting", -(s.get("statusUpdatedAt") or 0)))
 
 
+def status(s):
+    """Подпись состояния на языке интерфейса и цвет."""
+    names, code = STATUS.get(s.get("status"), (None, ""))
+    return (tr(*names) if names else str(s.get("status") or "?")), code
+
+
 def ago(ms):
     if not isinstance(ms, (int, float)):
         return ""
     sec = max(0, time.time() - ms / 1000)
-    return f"{int(sec)} с" if sec < 60 else f"{int(sec // 60)} мин" if sec < 3600 else f"{int(sec // 3600)} ч"
+    if sec < 60:
+        return tr(f"{int(sec)} с", f"{int(sec)} s")
+    if sec < 3600:
+        return tr(f"{int(sec // 60)} мин", f"{int(sec // 60)} min")
+    return tr(f"{int(sec // 3600)} ч", f"{int(sec // 3600)} h")
 
 
 def title(s):
     name = s.get("name") if isinstance(s.get("name"), str) else ""
-    return name or "без названия"
+    return name or tr("без названия", "untitled")
 
 
 def row(s):
-    label, code = STATUS.get(s.get("status"), (s.get("status") or "?", ""))
+    label, code = status(s)
     folder = os.path.basename(str(s.get("cwd") or "").rstrip("/")) or "~"
     since = ago(s.get("statusUpdatedAt"))
     return (f"{paint(label.ljust(10), code)} {folder[:22].ljust(22)} {title(s)[:40].ljust(40)} "
@@ -136,19 +150,20 @@ def jump(s):
 def ps_cmd(args):
     sessions = live()
     if not sessions:
-        print("Открытых сессий Claude Code нет.")
+        print(tr("Открытых сессий Claude Code нет.", "No open Claude Code sessions."))
         return 0
     if "-l" in args or not (sys.stdin.isatty() and sys.stdout.isatty()):
         for s in sessions:
             print(row(s))
         return 0
     from menu import pick
-    at = pick([(str(i), row(s)) for i, s in enumerate(sessions)], title=f"Открытые сессии ({len(sessions)}):",
-              esc="выход")
+    at = pick([(str(i), row(s)) for i, s in enumerate(sessions)], title=tr(f"Открытые сессии ({len(sessions)}):", f"Open sessions ({len(sessions)}):"),
+              esc=tr("выход", "quit"))
     if at is None:
         return 0
     if not jump(sessions[at]):
-        print(f"{WARN} не нашел вкладку этой сессии; она в {tilde(sessions[at].get('cwd') or '?')}")
+        where = tilde(sessions[at].get('cwd') or '?')
+        print(f"{WARN} " + tr(f"не нашел вкладку этой сессии; она в {where}", f"tab of this session not found; it is in {where}"))
     return 0
 
 
@@ -186,7 +201,9 @@ def lost():
 def reopen(r):
     import claude_open
     if not claude_open.trusted(r["cwd"]):
-        return f"Открой Claude Code в {tilde(r['cwd'])} и подтверди доверие к папке перед восстановлением.", True
+        where = tilde(r["cwd"])
+        return tr(f"Открой Claude Code в {where} и подтверди доверие к папке перед восстановлением.",
+                  f"Open Claude Code in {where} and trust the folder before restoring."), True
     flags = [f for f in r.get("flags") or [] if f != "--remote-control"]
     rc = "--remote-control" in (r.get("flags") or [])
     saved = os.environ.pop("MNRH_PROXY", None)
@@ -206,14 +223,15 @@ def restore_cmd(args):
     from session_store import by_id
     todo = lost()
     if not todo:
-        print("Нечего восстанавливать: все сессии закрывались сами.")
+        print(tr("Нечего восстанавливать: все сессии закрывались сами.", "Nothing to restore: every session was closed normally."))
         return 0
-    print(f"Были открыты и закрылись не сами ({len(todo)}):")
+    print(tr(f"Были открыты и закрылись не сами ({len(todo)}):", f"Were open and did not close normally ({len(todo)}):"))
     for r in todo:
         s = (by_id(r["sid"]) or [{}])[0]
-        mode = ("caffeinate" if r.get("caffeinate") else "обычная") + (", через proxy" if r.get("proxy") else "")
+        mode = (("caffeinate" if r.get("caffeinate") else tr("обычная", "normal"))
+                + (tr(", через proxy", ", via proxy") if r.get("proxy") else ""))
         print(f"  {r['sid'][:8]}  {tilde(r.get('cwd') or '?'):30} {(s.get('title') or '')[:40]:40} {mode}")
-    if not confirm("Открыть их заново, каждую в своем окне?", "-y" in args):
+    if not confirm(tr("Открыть их заново, каждую в своем окне?", "Open them again, each in its own window?"), "-y" in args):
         return 0
     bad = 0
     for r in todo:
@@ -233,7 +251,7 @@ def main(argv):
             return 0
         return status_cmd()
     if cmd in ("-h", "--help", "help") or "-h" in args:
-        print(USAGE)
+        print(tr(USAGE, USAGE_EN))
         return 0
     if cmd == "restore":
         return restore_cmd(args)
