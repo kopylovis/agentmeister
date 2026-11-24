@@ -96,6 +96,8 @@ struct AppState: Decodable {
         let mtime: Double
         let size: Int
         let running: Bool
+        /// Есть ли еще папка проекта. Nil в старом ответе app-state.
+        let cwdExists: Bool?
     }
 
     struct Live: Decodable, Hashable {
@@ -139,6 +141,8 @@ struct AppState: Decodable {
 
     /// Выполнен ли вход в агентов, по их собственным файлам.
     var signedIn: [String: Bool]?
+    /// Сколько дней Claude Code хранит переписки.
+    var retentionDays: Int?
     var errors: [String: String] = [:]
 
     init() {}
@@ -162,6 +166,7 @@ struct SearchResults: Decodable {
         let home: String
         let last: Double?
         let count: Int
+        let size: Int?
         let hits: [Hit]
     }
 
