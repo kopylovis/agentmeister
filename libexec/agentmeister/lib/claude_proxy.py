@@ -149,7 +149,7 @@ def port():
 
 def listening(p):
     with socket.socket() as s:
-        s.settimeout(0.3)
+        s.settimeout(1.0)
         return s.connect_ex(("127.0.0.1", p)) == 0
 
 
