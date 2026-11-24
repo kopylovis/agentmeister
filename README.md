@@ -543,8 +543,11 @@ on a different branch than the original one. On a conflict it's aborted.
 worktree has uncommitted changes. It pushes the branch (never tags), opens a PR into the original branch with
 `gh pr create --fill`, or reuses the open one, and picks the merge method from that branch's history: `--merge`
 if it already has merge commits, `--rebase` otherwise. If the PR has checks, it waits for them with
-`gh pr checks --watch`; with no checks it merges right away. After `gh pr merge --delete-branch` it removes the
-worktree and the local branch, like `drop`, and fast-forwards the original branch in the main folder when that
+`gh pr checks --watch`; with no checks it merges right away, unless a workflow in the branch runs on
+`pull_request`: then it waits up to 5 minutes for checks to appear and does not merge without them. It merges only
+the commit it pushed (`--match-head-commit`). After `gh pr merge --delete-branch` it removes the worktree and the
+local branch, like `drop`, unless something changed there while CI ran (Claude opened again, uncommitted files,
+new commits): then both stay and it says why. It also fast-forwards the original branch in the main folder when that
 branch is checked out there and clean. If CI fails, the PR stays open, the worktree stays, and the failing checks
 are listed: fix them in the worktree, commit, and run `parallel pr` again. `--no-merge` only pushes and opens the
 PR. In Claude Code the same is `parallel_finish` with `action: "pr"`.

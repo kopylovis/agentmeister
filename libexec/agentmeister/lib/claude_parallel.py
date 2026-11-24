@@ -242,6 +242,8 @@ def finish(branch, action, project=None, cwd=None):
 # Сколько ждать, пока у свежего PR появятся проверки: GitHub Actions заводит их через несколько секунд
 CHECKS_APPEAR = 15
 CHECKS_APPEAR_ACTIONS = 90
+# если workflow запускается на pull_request, проверки обязаны появиться; ждем дольше и без них не сливаем
+CHECKS_APPEAR_PR = 300
 CI_TIMEOUT = 3 * 3600
 
 
@@ -265,9 +267,27 @@ def github_repo(url):
     return path if host == "github.com" else f"{host}/{path}"
 
 
+def pr_workflows(path):
+    """Workflow GitHub Actions в ветке, которые запускаются на pull_request (или pull_request_target)."""
+    found = []
+    for f in sorted(glob.glob(os.path.join(glob.escape(path), ".github", "workflows", "*.y*ml"))):
+        try:
+            with open(f, encoding="utf-8", errors="replace") as fh:
+                text = re.sub(r"(?m)(^|\s)#.*$", "", fh.read())
+        except OSError:
+            continue
+        if re.search(r"\bpull_request(_target)?\b", text):
+            found.append(os.path.basename(f))
+    return found
+
+
 def pr_checks(repo, num, path, log):
     """-> (есть ли проверки, прошли ли, текст про упавшие)"""
-    wait = CHECKS_APPEAR_ACTIONS if os.path.isdir(os.path.join(path, ".github", "workflows")) else CHECKS_APPEAR
+    expected = pr_workflows(path)
+    if expected:
+        wait = CHECKS_APPEAR_PR
+    else:
+        wait = CHECKS_APPEAR_ACTIONS if os.path.isdir(os.path.join(path, ".github", "workflows")) else CHECKS_APPEAR
     deadline = time.time() + wait
     while True:
         r = gh(path, "pr", "checks", str(num), "-R", repo, "--json", "name,bucket,link")
@@ -280,6 +300,10 @@ def pr_checks(repo, num, path, log):
         if "no checks reported" not in out_of(r) and not isinstance(found, list):
             return True, False, f"gh pr checks не ответил: {out_of(r) or r.returncode}"
         if time.time() >= deadline:
+            if expected:
+                return False, False, (f"за {wait} с у PR не появилось ни одной проверки, хотя {', '.join(expected)} "
+                                      "запускается на pull_request. Посмотри Actions; если проверок и не должно "
+                                      f"быть (фильтр paths или branches), слей сам: gh pr merge {num} -R {repo}")
             return False, True, ""
         time.sleep(5)
     log(f"Жду CI ({len(found)} проверок)…")
@@ -320,6 +344,9 @@ def pr(branch, project=None, cwd=None, merge=True, log=None):
                        capture_output=True, text=True, timeout=300)
     if r.returncode:
         return f"Не запушил {name} в {remote}:\n{out_of(r)}", True
+    # что именно ушло в PR: push обновляет remote-tracking ветку ровно до отправленного коммита
+    pushed = git(root, "rev-parse", "--verify", "--quiet", f"refs/remotes/{remote}/{name}") or \
+        git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}")
     log(f"Запушил {name} в {remote}.")
 
     r = gh(path, "pr", "list", "-R", repo, "--head", name, "--state", "open", "--json", "number,url")
@@ -352,12 +379,26 @@ def pr(branch, project=None, cwd=None, merge=True, log=None):
                 f"Почини там, закоммить и снова: agentmeister parallel pr {name}"), True
     log("CI прошёл." if has else "Проверок у PR нет, сливаю сразу.")
 
-    r = gh(path, "pr", "merge", str(num), "-R", repo, how, "--delete-branch", timeout=300)
+    r = gh(path, "pr", "merge", str(num), "-R", repo, how, "--delete-branch", "--match-head-commit", pushed,
+           timeout=300)
     if r.returncode:
         return f"PR #{num} не слился ({how}), worktree оставил:\n{out_of(r)}", True
-    forget_task(root, e)
     git(root, "branch", "-d", "-r", f"{remote}/{name}")
-    lines = [f"Слил PR #{num} в {base} ({how[2:]}), ветку на GitHub удалил, worktree и локальную ветку убрал."]
+    # CI мог идти часами: за это время в worktree могли снова открыть Claude, что-то поменять или закоммитить
+    keep = []
+    if running_in(path):
+        keep.append("там снова работает Claude")
+    dirty = len(git(path, "status", "--porcelain").splitlines())
+    if dirty:
+        keep.append(f"незакоммичено файлов: {dirty}")
+    if git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}") != pushed:
+        keep.append(f"в ветке {name} есть коммиты, которых нет в PR")
+    if keep:
+        lines = [f"Слил PR #{num} в {base} ({how[2:]}), ветку на GitHub удалил. Worktree {tilde(path)} и ветку {name} "
+                 f"оставил: {'; '.join(keep)}. Когда разберёшься: agentmeister parallel drop {name}."]
+    else:
+        forget_task(root, e)
+        lines = [f"Слил PR #{num} в {base} ({how[2:]}), ветку на GitHub удалил, worktree и локальную ветку убрал."]
     subprocess.run(["git", "-C", root, "fetch", "--no-tags", "-q", remote, base], capture_output=True, timeout=300)
     if git(root, "branch", "--show-current") != base:
         lines.append(f"Основная папка не на {base}, её не трогал.")
