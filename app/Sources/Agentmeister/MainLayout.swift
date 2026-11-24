@@ -291,8 +291,8 @@ struct SidebarRail: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
-            .scrollEdgeEffectStyle(.hard, for: .top)
-            .scrollEdgeEffectStyle(.soft, for: .bottom)
+            // сверху и снизу плотное размытие, как под заголовком Projects в развернутой панели
+            .scrollEdgeEffectStyle(.hard, for: .vertical)
             .safeAreaBar(edge: .top, spacing: 0) {
                 Color.clear.frame(height: 40).frame(maxWidth: .infinity).background(WindowDragArea())
             }
@@ -318,11 +318,13 @@ struct SidebarRail: View {
                 .help(h.running ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
                                 : l.t("host-run не запущен", "host-run isn't running"))
                 .accessibilityLabel(h.running ? l.t("host-run работает", "host-run running") : l.t("host-run не запущен", "host-run isn't running"))
-                // закрепленный значок на своем стекле, как режимы в развернутой панели
+                // закрепленный значок без своей подложки, от списка его отделяет линия
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .glassEffect(.regular, in: .windowCard)
-                .padding([.horizontal, .bottom], 8)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
+                .overlay(alignment: .top) {
+                    Rectangle().fill(Ink.hairline).frame(height: 1).padding(.horizontal, 12)
+                }
             }
             }
         .frame(maxHeight: .infinity)
