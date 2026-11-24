@@ -19,6 +19,42 @@ import claude_settings  # noqa: E402
 import swiftagent  # noqa: E402
 
 
+def pin_lang(case, lang):
+    """Язык уведомлений берется из config или macOS: тест задает его сам."""
+    patcher = mock.patch("mnrhlib.lang", return_value=lang)
+    patcher.start()
+    case.addCleanup(patcher.stop)
+
+
+class BannerText(unittest.TestCase):
+    """Текст уведомления по-английски, если язык не ru, и прежний русский для ru."""
+
+    def messages(self, lang):
+        pin_lang(self, lang)
+        st = {"prompt_at": time.time() - 125, "last": ""}
+        with mock.patch.object(claude_notify, "after", return_value=0):
+            return [claude_notify.message_for({"hook_event_name": "Stop"}, st),
+                    claude_notify.message_for({"hook_event_name": "Stop"}, {"prompt_at": time.time() - 5}),
+                    claude_notify.message_for({"hook_event_name": "PermissionRequest"}, st, codex=True),
+                    claude_notify.message_for({"hook_event_name": "Notification", "notification_type": "permission_prompt",
+                                               "message": "Claude needs your permission to use Bash"}, st),
+                    claude_notify.message_for({"hook_event_name": "Notification",
+                                               "notification_type": "agent_needs_input"}, st),
+                    claude_notify.message_for({"hook_event_name": "Notification", "notification_type": "idle_prompt"}, st)]
+
+    def test_english(self):
+        self.assertEqual(self.messages("en"), [
+            ("Done in 2m 5s", "Turn finished"), ("Done in 5s", "Turn finished"),
+            ("Permission needed", "Codex is waiting for permission"), ("Permission needed", "Bash"),
+            ("Answer needed", "Claude has a question"), ("Waiting for you", "Claude is waiting for your reply")])
+
+    def test_russian(self):
+        self.assertEqual(self.messages("ru"), [
+            ("Готово за 2 мин 5 с", "Ход закончен"), ("Готово за 5 с", "Ход закончен"),
+            ("Нужно разрешение", "Codex ждет разрешения"), ("Нужно разрешение", "Bash"),
+            ("Нужен ответ", "Claude задаёт вопрос"), ("Ждёт тебя", "Claude ждёт ответа")])
+
+
 class Setting(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -207,6 +243,7 @@ class NotifyBuild(unittest.TestCase):
     """Сборка приложения: замок, фон из хука, уборка .build-*. swiftc и настоящий ~/Library не трогаются."""
 
     def setUp(self):
+        pin_lang(self, "ru")  # тесты сверяют русский текст уведомления
         self.dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.dir, True)
         self.agent = swiftagent.SwiftAgent("notify", "agentmeister Notify", "com.agentmeister.notify",
@@ -417,6 +454,9 @@ class ItermSession(unittest.TestCase):
 
 
 class CodexNotify(unittest.TestCase):
+    def setUp(self):
+        pin_lang(self, "ru")  # тесты сверяют русский текст уведомления
+
     def test_codex_cli_can_notify_when_daemon_has_no_terminal(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(claude_notify, "STATE", tmp), \
                 mock.patch.object(claude_notify, "enabled", return_value=True), \

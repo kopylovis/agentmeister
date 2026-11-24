@@ -11,7 +11,7 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, HOME, UUID_RE, read_config, settings_name, settings_path, tilde, write_config, write_json
+from mnrhlib import CACHE, HOME, UUID_RE, read_config, settings_name, settings_path, tilde, tr, write_config, write_json
 from swiftagent import SwiftAgent
 import ntfy_alert
 import telegram
@@ -429,20 +429,24 @@ def message_for(payload, st, codex=False):
         if not started or time.time() - started < after():
             return None
         took = int(time.time() - started)
-        took = f"{took // 60} мин {took % 60} с" if took >= 60 else f"{took} с"
-        return f"Готово за {took}", plain(payload.get("last_assistant_message")) or "Ход закончен"
+        m, sec = divmod(took, 60)
+        took = tr(f"{m} мин {sec} с", f"{m}m {sec}s") if took >= 60 else tr(f"{took} с", f"{took}s")
+        return (tr(f"Готово за {took}", f"Done in {took}"),
+                plain(payload.get("last_assistant_message")) or tr("Ход закончен", "Turn finished"))
     if codex and event == "PermissionRequest":
-        return "Нужно разрешение", plain(payload.get("tool_name")) or "Codex ждет разрешения"
+        return (tr("Нужно разрешение", "Permission needed"),
+                plain(payload.get("tool_name")) or tr("Codex ждет разрешения", "Codex is waiting for permission"))
     if event != "Notification":
         return None
     kind, msg = payload.get("notification_type"), payload.get("message") or ""
     if kind == "permission_prompt":
         m = re.search(r"permission to use (.+?)\.?$", msg)
-        return "Нужно разрешение", (m.group(1) if m else plain(msg))
+        return tr("Нужно разрешение", "Permission needed"), (m.group(1) if m else plain(msg))
     if kind in ("elicitation_dialog", "elicitation_url_dialog", "agent_needs_input"):
-        return "Нужен ответ", plain(msg) or "Claude задаёт вопрос"
+        return tr("Нужен ответ", "Answer needed"), plain(msg) or tr("Claude задаёт вопрос", "Claude has a question")
     if kind == "idle_prompt" and not st.get("notified"):
-        return "Ждёт тебя", plain(st.get("last") or "") or "Claude ждёт ответа"
+        return (tr("Ждёт тебя", "Waiting for you"),
+                plain(st.get("last") or "") or tr("Claude ждёт ответа", "Claude is waiting for your reply"))
     return None
 
 
@@ -550,7 +554,7 @@ def hook(codex=False):
     if to_tossling:
         try:
             ntfy_alert.publish(ntfy_alert.CLAUDE_TOPIC, "\n\n".join(p for p in (title, body) if p),
-                               title=f"{project}: {head}", priority=3 if head.startswith("Готово") else 4)
+                               title=f"{project}: {head}", priority=3 if payload.get("hook_event_name") == "Stop" else 4)
             sent = True
         except ntfy_alert.AlertError as e:
             log_error(f"tossling: {e}")

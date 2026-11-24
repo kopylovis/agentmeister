@@ -652,7 +652,7 @@ def doctor():
         try:
             found = check()
         except Exception as e:
-            found = [("bad", f"{name}: проверка упала ({e!r})")]
+            found = [("bad", mnrhlib.tr(f"{name}: проверка упала ({e!r})", f"{name}: the check crashed ({e!r})"))]
         rows += [{"check": name, "level": level, "text": text} for level, text in found]
     return {"rows": rows}
 
@@ -765,13 +765,20 @@ def set_lang(value):
 
 def main(argv):
     if argv and argv[0] in ("-h", "--help", "help"):
-        print("agentmeister app-state                состояние для десктопного Agentmeister в JSON\n"
-              "agentmeister app-state search <слова>  поиск по всем сессиям\n"
-              "agentmeister app-state read <id>       последние сообщения сессии\n"
-              "agentmeister app-state usage [дней]    статистика, 0 значит за все время\n"
-              "agentmeister app-state settings        что показывает окно настроек\n"
-              "agentmeister app-state doctor          проверки agentmeister doctor\n"
-              "agentmeister app-state lang [ru|en|auto]  язык интерфейса")
+        print(mnrhlib.tr("agentmeister app-state                состояние для десктопного Agentmeister в JSON\n"
+                         "agentmeister app-state search <слова>  поиск по всем сессиям\n"
+                         "agentmeister app-state read <id>       последние сообщения сессии\n"
+                         "agentmeister app-state usage [дней]    статистика, 0 значит за все время\n"
+                         "agentmeister app-state settings        что показывает окно настроек\n"
+                         "agentmeister app-state doctor          проверки agentmeister doctor\n"
+                         "agentmeister app-state lang [ru|en|auto]  язык интерфейса",
+                         "agentmeister app-state                state for the Agentmeister desktop app as JSON\n"
+                         "agentmeister app-state search <words>  search all sessions\n"
+                         "agentmeister app-state read <id>       latest messages of a session\n"
+                         "agentmeister app-state usage [days]    usage stats, 0 means all time\n"
+                         "agentmeister app-state settings        what the settings window shows\n"
+                         "agentmeister app-state doctor          agentmeister doctor checks\n"
+                         "agentmeister app-state lang [ru|en|auto]  interface language"))
         return 0
     if argv and argv[0] == "lang":
         if len(argv) == 1:
@@ -797,7 +804,8 @@ def main(argv):
     elif argv and argv[0] == "usage":
         out = usage(int(argv[1]) if len(argv) > 1 and argv[1].isdigit() else 7)
     elif argv:
-        print(f"agentmeister app-state: не знаю {argv[0]}", file=sys.stderr)
+        print(mnrhlib.tr(f"agentmeister app-state: не знаю {argv[0]}", f"agentmeister app-state: unknown command {argv[0]}"),
+              file=sys.stderr)
         return 2
     else:
         out = collect()
