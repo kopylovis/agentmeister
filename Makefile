@@ -1,7 +1,7 @@
 PREFIX ?= $(HOME)/.local
 BIN := $(PREFIX)/bin
 
-.PHONY: install uninstall test
+.PHONY: install uninstall test app
 
 install:
 	@mkdir -p "$(BIN)"
@@ -132,3 +132,7 @@ test:
 	@printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | ./bin/agentmeister mcp | grep -q '"name": "agentmeister"'
 	@find libexec -name __pycache__ -type d -exec rm -rf {} +
 	@echo "все проверки пройдены"
+
+# Десктопный Agentmeister: release-сборка и app/build/Agentmeister.app. Из обычного терминала, не из proxy-сессии.
+app:
+	@cd app && swift build -c release && ./bundle.sh

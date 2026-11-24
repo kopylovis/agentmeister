@@ -23,6 +23,13 @@ OLD_CLAUDE_APP = os.path.join(HOME, "Library", "Application Support", "claudemei
 STATE = os.path.join(CACHE, "notify")
 DEFAULT_AFTER = 20
 TERMINALS = {"com.apple.Terminal": "Terminal", "com.googlecode.iterm2": "iTerm2"}
+# Десктопный Agentmeister: его вкладка кладет свой id в AGENTMEISTER_TAB, а не ищется по tty через ps.
+# Приложение пишет в FRONT, какая вкладка выбрана и активно ли окно, и забирает из FOCUS запрос открыть вкладку.
+APP_BUNDLE = "com.agentmeister.app"
+APP_TAB_ENV = "AGENTMEISTER_TAB"
+APP_DIR = os.path.join(CACHE, "app")
+APP_FRONT = os.path.join(APP_DIR, "front.json")
+APP_FOCUS = os.path.join(APP_DIR, "focus.json")
 
 FOCUS = {
     "Terminal": '''
@@ -232,7 +239,39 @@ def front_bundle():
     return m.group(1) if m else ""
 
 
+def app_tab():
+    """id вкладки десктопного Agentmeister, в которой идет эта сессия, или пусто."""
+    tab = os.environ.get(APP_TAB_ENV, "").lower()
+    return tab if UUID_RE.match(tab) else ""
+
+
+def app_front():
+    """Вкладка, которая сейчас выбрана в активном окне Agentmeister, или пусто, если окно не впереди."""
+    try:
+        with open(APP_FRONT) as f:
+            front = json.load(f)
+    except (OSError, ValueError):
+        return ""
+    return str(front.get("tab") or "").lower() if isinstance(front, dict) and front.get("active") else ""
+
+
+def focus_app(tab):
+    """Клик по уведомлению из вкладки Agentmeister: запрос в файл, который приложение забирает само, и ссылка
+    agentmeister://, которая выводит окно вперед, если приложение собрано в .app."""
+    if not UUID_RE.match(tab):
+        return 1
+    try:
+        os.makedirs(APP_DIR, exist_ok=True)
+        write_json(APP_FOCUS, {"tab": tab, "at": time.time()})
+    except OSError:
+        pass
+    subprocess.run(["open", f"agentmeister://focus?tab={tab}"], capture_output=True)
+    return 0
+
+
 def watching(bundle, tty):
+    if bundle == APP_BUNDLE and tty.startswith("app:"):
+        return app_front() == tty[4:]
     if not bundle or front_bundle() != bundle:
         return False
     term = TERMINALS.get(bundle)
@@ -242,6 +281,8 @@ def watching(bundle, tty):
 
 
 def focus(tty, bundle):
+    if tty.startswith("app:"):
+        return focus_app(tty[4:])
     term = TERMINALS.get(bundle)
     if term and tty and osascript(FOCUS[term], tty) == "ok":
         return 0
@@ -407,14 +448,17 @@ def hook(codex=False):
     what = message_for(payload, st, codex)
     if not what:
         return 0
-    tty = codex_terminal(sid) if codex else own_terminal()
+    tab = app_tab()
+    tty = "app:" + tab if tab else codex_terminal(sid) if codex else own_terminal()
     transcript = payload.get("transcript_path")
     if not tty:
         from claude_proc import interactive_session
         if not (codex_cli_session(transcript) if codex else interactive_session(sid)):
             return 0
     bundle = os.environ.get("__CFBundleIdentifier", "")
-    if codex and tty and bundle not in TERMINALS:
+    if tab:
+        bundle = APP_BUNDLE
+    elif codex and tty and bundle not in TERMINALS:
         front = front_bundle()
         bundle = front if front in TERMINALS else ""
     native = native_push(payload)
