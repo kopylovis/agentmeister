@@ -87,6 +87,15 @@ def catch_term():
         pass
 
 
+def fit_hint(hint, w):
+    """Подсказка внизу в w клеток. Не влезает: выпадают средние части между « · », самые длинные первыми,
+    чтобы «Esc назад» в конце остался виден, а не обрезался до «Esc н»."""
+    parts = hint.split(" · ")
+    while width(" · ".join(parts)) > w and len(parts) > 2:
+        del parts[max(range(1, len(parts) - 1), key=lambda k: width(parts[k]))]
+    return cut(" · ".join(parts), w)
+
+
 def write_all(fd, text):
     """Записать все: кадр с картинками весит десятки килобайт, и os.write может взять только часть."""
     data = text.encode()
@@ -244,7 +253,7 @@ class Menu:
             hint = tr(f"поиск: {self.query}▏ · Backspace стереть · Esc сбросить",
                       f"search: {self.query}▏ · Backspace to erase · Esc to clear")
         lines.append("")
-        lines.append(f"\x1b[2m{hint[: cols - 1]}\x1b[0m")
+        lines.append(f"\x1b[2m{fit_hint(hint, cols - 1)}\x1b[0m")
         self.clear()
         self.write("\r\n".join(lines))
         self.drawn = len(lines)
@@ -683,7 +692,7 @@ class Panel(Menu):
         title = self.title(side) if callable(self.title) else self.title
         pad = " " * gap
         lines = (([pad + cut(title, cols - gap)] if with_title else []) + [pad + line for line in screen]
-                 + ([pad + f"\x1b[2m{cut(hint, cols - gap * 2)}\x1b[0m"] if with_hint else []))
+                 + ([pad + f"\x1b[2m{fit_hint(hint, cols - gap * 2)}\x1b[0m"] if with_hint else []))
         self.write(with_icons("\x1b[H" + "\x1b[K\r\n".join(lines) + "\x1b[K\x1b[J"))
 
     def stale(self):
@@ -785,7 +794,7 @@ class Screen:
             hint = tr("Enter готово · Esc назад", "Enter done · Esc back")
             lines = (["  " + cut(brand(), cols - 2)] + ["  " + line for line in box(f" › {heading(title)} ", body,
                                                                                      w, max(5, rows - 3), True)]
-                     + ["  " + f"\x1b[2m{hint}\x1b[0m"])
+                     + ["  " + f"\x1b[2m{fit_hint(hint, cols - 4)}\x1b[0m"])
             write_all(self.fd, with_icons("\x1b[H" + "\x1b[K\r\n".join(lines) + "\x1b[K\x1b[J"))
             keys = PENDING[:] if PENDING else split_keys(read_keys(self.fd))
             del PENDING[:]
@@ -1032,7 +1041,7 @@ def draw_output(screen, out, title, running, code=0, back=0, elapsed=None):
             hint = tr("↑↓ листать · ", "↑↓ scroll · ") + hint
     head = f" › {title}  ·  {state} "
     frame = (["  " + cut(brand(), cols - 2)] + ["  " + line for line in box(head, body, w, h, True)]
-             + ["  " + f"\x1b[2m{cut(hint, cols - 4)}\x1b[0m"])
+             + ["  " + f"\x1b[2m{fit_hint(hint, cols - 4)}\x1b[0m"])
     text = "\x1b[H" + "\x1b[K\r\n".join(frame) + "\x1b[K\x1b[J"
     if running:
         # курсор на последней строке вывода: там программа спросит и там будет эхо ввода
