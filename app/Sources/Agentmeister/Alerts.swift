@@ -6,6 +6,7 @@ import SwiftUI
 struct TabAlert: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var ui: UIState
     @ObservedObject var tab: TerminalTab
     @State private var dismissed: Set<String> = []
     @State private var busy = false
@@ -71,7 +72,7 @@ struct TabAlert: View {
                               title: l.t("Codex просит войти снова", "Codex wants you to sign in again"),
                               body: l.t("Вход в ChatGPT истек. Вход откроется через тот же proxy, сессия продолжится после него.",
                                         "The ChatGPT sign-in expired. Sign-in opens through the same proxy, the session continues afterwards."),
-                              primary: (l.t("Войти", "Sign in"), { utility(["proxy", "run", "--claude", "--", "codex", "login"]) }),
+                              primary: (l.t("Войти", "Sign in"), { ui.signingIn = .codex }),
                               secondary: nil))
         }
         if tab.spec.proxied, tab.spec.utility == nil, let h = backend.state.hostRun, !h.running {

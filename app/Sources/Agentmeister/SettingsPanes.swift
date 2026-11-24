@@ -520,6 +520,7 @@ struct AgentCard: View {
     @State private var flags = ""
     @State private var update: String?
     @State private var checking = false
+    @State private var signingIn: LaunchSpec.Agent?
 
     private var name: String { agent == .claude ? "Claude Code" : "Codex" }
     private var proxyReady: Bool { backend.state.proxy?.configured == true }
@@ -570,8 +571,8 @@ struct AgentCard: View {
                         .onChange(of: flags) { UserDefaults.standard.set(flags, forKey: AgentPrefs.flagsKey(agent)) }
                 }
                 FlowLayout(spacing: 8) {
-                    UtilityButton(title: l.t("Сменить аккаунт", "Switch account"),
-                                  args: ["proxy", "run", "--claude", "--"] + (agent == .claude ? ["claude", "auth", "login"] : ["codex", "login"]))
+                    Button(info.signedIn == true ? l.t("Сменить аккаунт", "Switch account") : l.t("Войти", "Sign in")) { signingIn = agent }
+                        .buttonStyle(.glass)
                     UtilityButton(title: agent == .claude ? l.t("Хуки, MCP и slash-команды", "Hooks, MCP and slash commands")
                                                           : l.t("Хуки, навык и MCP", "Hooks, skill and MCP"),
                                   args: agent == .claude ? ["setup"] : ["--harness", "codex", "setup"])
@@ -586,6 +587,9 @@ struct AgentCard: View {
         }
         .frame(maxWidth: .infinity)
         .onAppear { flags = UserDefaults.standard.string(forKey: AgentPrefs.flagsKey(agent)) ?? "" }
+        .sheet(item: $signingIn, onDismiss: { Task { await reload() } }) { agent in
+            AuthDialog(agent: agent)
+        }
     }
 
     private func gridRow(_ title: String, _ value: String, mono: Bool = false) -> some View {
