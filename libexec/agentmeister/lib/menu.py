@@ -148,6 +148,7 @@ class Menu:
         self.digits_at = 0.0
         self.top = 0
         self.drawn = 0
+        self.shape = None
 
     def write(self, s):
         write_all(self.fd, s)
@@ -185,8 +186,12 @@ class Menu:
         rows, cols = self.size()
         view = self.view()
         title = self.title if not self.title or "\x1b[" in self.title else f"\x1b[{TITLE}m{self.title}\x1b[0m"
+        self.shape = (rows, cols)
         lines = [cut(title, cols - 1)] if self.title else []
-        room = max(3, rows - len(lines) - 3)
+        room = rows - len(lines) - 3
+        if len(view) > room:
+            room -= 2  # строки «↑ ещё» и «↓ ещё» тоже занимают место
+        room = max(1, room)
         if self.sel in view:
             pos = view.index(self.sel)
             if pos < self.top:
@@ -318,12 +323,23 @@ class Menu:
                 return True
         return False
 
+    def stale(self):
+        """Пора перерисовать без нажатия: окно поменяло размер."""
+        return self.size() != self.shape
+
     def run(self):
         self.write(HIDE)
         self.draw()
         while True:
-            keys = PENDING[:] if PENDING else split_keys(self.read_key())
-            PENDING.clear()
+            if PENDING:
+                keys = PENDING[:]
+                del PENDING[:]
+            elif select.select([self.fd], [], [], 0.3)[0]:
+                keys = split_keys(self.read_key())
+            else:
+                if self.stale():
+                    self.draw()
+                continue
             if self.handle_batch(keys):
                 return self.sel if self.marks is None else set(self.marks)
             self.draw()
@@ -417,17 +433,25 @@ def brand():
     return f"\x1b[1;35m{BRAND}\x1b[0m{ver}"
 
 
-def box(title, body, w, h, active):
-    """Рамка w на h клеток с заголовком в верхней линии; body: строки внутри, лишние отрезаются."""
+def box(title, body, w, h, active, up="", down=""):
+    """Рамка w на h клеток с заголовком в верхней линии; body: строки внутри, лишние отрезаются. up и down:
+    метки прокрутки («↑ 3», «↓ 5») справа на верхней и нижней линии, чтобы не закрывать текст строк."""
     color = FRAME if active else FRAME_DIM
     title = cut(title, max(0, w - 4))
     head = f"\x1b[{ACCENT if active else FRAME_DIM}m{title}\x1b[0m" if title else ""
-    top = f"\x1b[{color}m╭─\x1b[0m{head}\x1b[{color}m{'─' * max(0, w - 3 - width(title))}╮\x1b[0m"
+
+    def mark(text, room):
+        return f" {text} ─" if text and width(text) + 3 <= room else ""
+
+    up = mark(up, w - 4 - width(title))
+    down = mark(down, w - 3)
+    top = (f"\x1b[{color}m╭─\x1b[0m{head}\x1b[{color}m{'─' * max(0, w - 3 - width(title) - width(up))}"
+           f"{up}╮\x1b[0m")
     side = f"\x1b[{color}m│\x1b[0m"
     lines = [top]
     for k in range(h - 2):
         lines.append(f"{side}{fit(body[k] if k < len(body) else '', w - 2)}\x1b[0m{side}")
-    lines.append(f"\x1b[{color}m╰{'─' * (w - 2)}╯\x1b[0m")
+    lines.append(f"\x1b[{color}m╰{'─' * (w - 2 - width(down))}{down}╯\x1b[0m")
     return lines
 
 
@@ -553,6 +577,17 @@ def can_force(cols, gap=2):
     return cols - gap * 2 - 1 - LIST_MIN >= SIDE_FORCED_MIN
 
 
+def layout_rows(rows):
+    """(высота рамок, есть ли строка заголовка, есть ли подсказка). Всего строк на одну меньше rows, чтобы экран
+    не прокрутился; в низком окне сначала уходит заголовок, потом подсказка."""
+    h, with_title, with_hint = rows - 3, True, True
+    if h < 5:
+        h, with_title = h + 1, False
+    if h < 5:
+        h, with_hint = h + 1, False
+    return max(3, h), with_title, with_hint
+
+
 class Panel(Menu):
     """Меню на весь экран: слева список в рамке, справа описание выбранного пункта. Tab прячет описание
     или показывает его, сузив список. Без describe список один на всю ширину. title: строка или функция
@@ -565,7 +600,6 @@ class Panel(Menu):
         self.hint = hint
         self.numbers = numbers
         self.mode = "auto" if describe is not None else "off"
-        self.shape = None
 
     def clear(self):
         pass
@@ -597,10 +631,8 @@ class Panel(Menu):
                 out.append(f"   {text}")
         if not self.choices(view):
             out.append(f"\x1b[2m   {tr('ничего не найдено', 'nothing found')}\x1b[0m")
-        if self.top and out:
-            out[0] = fit(out[0], w - 3) + "\x1b[2m ↑\x1b[0m"
-        if len(view) > self.top + h and out:
-            out[-1] = fit(out[-1], w - 3) + "\x1b[2m ↓\x1b[0m"
+        # сколько строк спрятано выше и ниже: метки рисует рамка на своих линиях
+        self.more = (self.top, max(0, len(view) - self.top - h))
         return out
 
     def columns(self, cols, gap=2):
@@ -614,10 +646,12 @@ class Panel(Menu):
         self.shape = (rows, cols)
         view = self.view()
         gap = 2
-        h = max(5, rows - 3)
+        h, with_title, with_hint = layout_rows(rows)
         lw, rw = self.columns(cols, gap)
         side = rw > 0
-        left = box(f" › {self.heads[0]} ", self.body(view, lw - 2, h - 2), lw, h, True)
+        body = self.body(view, lw - 2, h - 2)
+        above, below = self.more
+        left = box(f" › {self.heads[0]} ", body, lw, h, True, f"↑ {above}" if above else "", f"↓ {below}" if below else "")
         screen = left
         if side:
             text = self.describe(self.sel, rw - 4) if self.sel in self.choices(view) else []
@@ -639,9 +673,12 @@ class Panel(Menu):
                 hint = hint.replace(tab_hint(), "")
         title = self.title(side) if callable(self.title) else self.title
         pad = " " * gap
-        lines = ([pad + cut(title, cols - gap)] + [pad + line for line in screen]
-                 + [pad + f"\x1b[2m{cut(hint, cols - gap * 2)}\x1b[0m"])
+        lines = (([pad + cut(title, cols - gap)] if with_title else []) + [pad + line for line in screen]
+                 + ([pad + f"\x1b[2m{cut(hint, cols - gap * 2)}\x1b[0m"] if with_hint else []))
         self.write(with_icons("\x1b[H" + "\x1b[K\r\n".join(lines) + "\x1b[K\x1b[J"))
+
+    def stale(self):
+        return super().stale() or getattr(self.describe, "dirty", lambda: False)()
 
     def handle(self, key):
         if key == "\t":
@@ -649,23 +686,6 @@ class Panel(Menu):
                 self.mode = "off" if self.columns(self.size()[1])[1] else "force"
             return False
         return super().handle(key)
-
-    def run(self):
-        self.write(HIDE)
-        self.draw()
-        while True:
-            if PENDING:
-                keys = PENDING[:]
-                del PENDING[:]
-            elif select.select([self.fd], [], [], 0.3)[0]:
-                keys = split_keys(self.read_key())
-            else:
-                if self.size() != self.shape or getattr(self.describe, "dirty", lambda: False)():
-                    self.draw()
-                continue
-            if self.handle_batch(keys):
-                return self.sel if self.marks is None else set(self.marks)
-            self.draw()
 
 
 def roomy(fd):
