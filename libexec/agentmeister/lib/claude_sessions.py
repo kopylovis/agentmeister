@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """agentmeister sessions: список, меню, продолжить, перенести, удалить, уборка; slim — в session_slim."""
-import collections
 from contextlib import ExitStack
 import os
 import shutil
@@ -183,17 +182,31 @@ def tree_snapshot(path):
     return entries
 
 
+def orphan_home(name, sessions):
+    """Папка проекта, которого больше нет: имя не находится на диске, но сессия в ней записала свой cwd,
+    этот cwd дает то же имя и его нет. Без такой записи папку не трогаем: проект может быть жив."""
+    named = {s["started_in"] for s in sessions if s["started_in"] and encode(s["started_in"]) == name}
+    if not named or decode(name) or any(offline(h, name) or os.path.isdir(h) for h in named):
+        return None
+    return sorted(named)[0]
+
+
 def remove_orphan(pdir, home, sessions, snapshot):
+    """Удаляет сессии брошенной папки. memory/ сам не удаляет никогда: заметки проекта не вернуть.
+    False: ничего не тронуто; True: папка удалена; "memory": сессии удалены, папка осталась с memory/."""
     name = os.path.basename(pdir)
-    if offline(home, name) or (home and os.path.isdir(home)) or decode(name):
+    if offline(home, name) or (home and os.path.isdir(home)) or orphan_home(name, sessions) != home:
         return False
     if any(s["running"] for s in sessions) or running_ids().keys() & {s["id"] for s in sessions}:
         return False
     if tree_snapshot(pdir) != snapshot:
         return False
+
     # Only unlink listed entries. A new file keeps its parent directory alive.
-    def prune(fd, path):
+    def prune(fd, path, keep=()):
         for child in os.listdir(fd):
+            if child in keep:
+                continue
             full = os.path.join(path, child)
             info = os.stat(child, dir_fd=fd, follow_symlinks=False)
             if file_version(info) != snapshot.get(full):
@@ -210,38 +223,48 @@ def remove_orphan(pdir, home, sessions, snapshot):
                 os.unlink(child, dir_fd=fd)
         return True
 
+    memory = os.path.lexists(os.path.join(pdir, "memory"))
     fd = os.open(pdir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
-        if file_version(os.fstat(fd)) != snapshot[pdir] or not prune(fd, pdir):
+        if file_version(os.fstat(fd)) != snapshot[pdir] or not prune(fd, pdir, keep=("memory",)):
             return False
-        os.rmdir(pdir)
+        if not memory:
+            os.rmdir(pdir)
     finally:
         os.close(fd)
     for session in sessions:
         forget_deleted_session(session)
-    return True
+    return "memory" if memory else True
 
 
 def clean(assume_yes):
     everything = load()
-    broken, empty, orphans, away = [], [], [], []
+    broken, empty, orphans, away, unknown = [], [], [], [], []
     for d in sorted(os.listdir(PROJECTS)):
         pdir = os.path.join(PROJECTS, d)
         if not os.path.isdir(pdir) or os.path.islink(pdir):
             continue
         sessions = [s for s in everything if s["pdir"] == pdir]
-        cwds = collections.Counter(s["cwd"] for s in sessions if s["cwd"])
-        home = cwds.most_common(1)[0][0] if cwds else decode(d)
-        if home is None or not os.path.isdir(home):
-            if offline(home, d):
-                away.append(home or d)
-            elif os.listdir(pdir):
-                try:
-                    snapshot = tree_snapshot(pdir)
-                except OSError:
-                    continue
-                orphans.append((pdir, home, sessions, snapshot))
-            continue
+        home = decode(d)
+        if home is None:
+            named = sorted({s["started_in"] for s in sessions if s["started_in"] and encode(s["started_in"]) == d})
+            gone = orphan_home(d, sessions)
+            if any(offline(h, d) for h in named) or (not named and offline(None, d)):
+                away.append(named[0] if named else d)
+                continue
+            if gone:
+                if os.listdir(pdir):
+                    try:
+                        snapshot = tree_snapshot(pdir)
+                    except OSError:
+                        continue
+                    orphans.append((pdir, gone, sessions, snapshot))
+                continue
+            live = [h for h in named if os.path.isdir(h)]
+            if not live:
+                unknown.append(d)
+                continue
+            home = live[0]
         for f in os.listdir(pdir):
             path = os.path.join(pdir, f)
             try:
@@ -258,6 +281,10 @@ def clean(assume_yes):
     if away:
         print(f"Проекты на отключенных дисках ({len(away)}) не трогаю: " + ", ".join(tilde(h) for h in away[:5])
               + (" и другие" if len(away) > 5 else ""))
+        print()
+    if unknown:
+        print(f"Папки без проекта на диске и без записи о его пути ({len(unknown)}) не трогаю: "
+              + ", ".join(tilde(os.path.join(PROJECTS, d)) for d in unknown[:3]) + (" и другие" if len(unknown) > 3 else ""))
         print()
     if broken:
         print(f"Битые ссылки ({len(broken)}):")
@@ -295,7 +322,9 @@ def clean(assume_yes):
                   f"{fmt_size(tree_size(pdir))}")
         if any(s["running"] for _, _, ss, _ in orphans for s in ss):
             print("  среди них есть открытые сессии, эти папки пропущу")
-        if confirm("Удалить вместе с сессиями и памятью?", assume_yes):
+        if any(os.path.lexists(os.path.join(pdir, "memory")) for pdir, _, _, _ in orphans):
+            print("  папки memory/ останутся на месте, их можно удалить вручную")
+        if confirm("Удалить сессии этих папок?", assume_yes):
             for pdir, home, sessions, snapshot in orphans:
                 try:
                     removed = remove_orphan(pdir, home, sessions, snapshot)
@@ -303,6 +332,8 @@ def clean(assume_yes):
                     removed = False
                 if removed:
                     did = True
+                    if removed == "memory":
+                        print(f"  {tilde(os.path.join(pdir, 'memory'))}: оставил")
                 else:
                     print(f"  {tilde(pdir)}: пропускаю, папка изменилась, занята или недоступна")
         print()
