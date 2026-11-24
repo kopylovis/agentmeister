@@ -205,10 +205,20 @@ final class Workspace: ObservableObject {
         selected = select ?? tabs.first?.id
     }
 
+    /// Сессии Claude Code, открытые не во вкладках этого окна: в iTerm2, Terminal или втором Agentmeister.
+    @Published private(set) var liveElsewhere: Set<String> = []
+    /// Почему последнее открытие не удалось. Окно показывает это предупреждением.
+    @Published var notice: String?
+
     func open(_ spec: LaunchSpec) {
         // Сессия уже открыта во вкладке: переходим к ней, а не запускаем второй Claude на той же переписке
         if let sid = spec.resumeId, let tab = tabs.first(where: { $0.sessionId == sid && $0.running }) {
             selected = tab.id
+            return
+        }
+        // Открыта в другом окне: второй Claude на той же переписке перемешал бы ответы обоих
+        if let sid = spec.resumeId, liveElsewhere.contains(sid) {
+            notice = sid
             return
         }
         let tab = TerminalTab(spec: spec)
@@ -230,6 +240,11 @@ final class Workspace: ObservableObject {
 
     /// Сопоставить открытые сессии Claude Code с вкладками по дереву процессов и обновить статусы.
     func sync(with live: [AppState.Live]) {
+        defer {
+            let mine = Set(tabs.filter(\.running).compactMap(\.sessionId))
+            let elsewhere = Set(live.compactMap(\.sessionId)).subtracting(mine)
+            if elsewhere != liveElsewhere { liveElsewhere = elsewhere }
+        }
         for tab in tabs where tab.running {
             let root = tab.shellPid
             let match = live.first { record in
