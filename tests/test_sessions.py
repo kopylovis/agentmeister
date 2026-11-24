@@ -431,6 +431,18 @@ class Lookup(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.splitlines()[-2:], ["New name", "New name"])
 
+    def test_rename_after_a_line_without_newline(self):
+        r, _ = with_sessions("""
+            import session_store as s, claude_sessions as cs
+            path = os.path.join(pdir, ids["real"] + ".jsonl")
+            with open(path, "a") as f:
+                f.write('{"type":"user","cwd":"x"')
+            cs.rename(s.by_id(ids["real"])[0], "Fresh")
+            print(s.by_id(ids["real"])[0]["title"])
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.splitlines()[-1], "Fresh")
+
     def test_forget_and_drop_junk_touch_only_their_session(self):
         r, _ = with_sessions("""
             import claude_restart as cr
