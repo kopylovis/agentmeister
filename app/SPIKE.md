@@ -16,6 +16,7 @@ swift run AgentmeisterSpike                  # agentmeister через proxy
 swift run AgentmeisterSpike kcalm            # другой проект
 swift run AgentmeisterSpike --direct         # напрямую
 swift run AgentmeisterSpike --codex          # Codex
+swift run AgentmeisterSpike --menu           # главное меню agentmeister, в нем иконки OSC 1337
 swift run AgentmeisterSpike -- --resume      # аргументы после -- уходят агенту
 ```
 
