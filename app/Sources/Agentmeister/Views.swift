@@ -180,6 +180,7 @@ struct SearchCapsule: View {
 /// Значок proxy в тулбаре: бирюзовая стеклянная капсула со страной и протоколом выхода, "KZ · vless".
 struct ProxyBadge: View {
     @EnvironmentObject var backend: Backend
+    @State private var showDetails = false
     var l: L { L(backend.state.lang) }
 
     var body: some View {
@@ -199,15 +200,72 @@ struct ProxyBadge: View {
             text = l.proxyIdle
             live = false
         }
-        return HStack(spacing: 7) {
-            Image(systemName: "shield").font(.system(size: 12, weight: .medium))
-            Text(text.isEmpty ? "proxy" : text).fontWeight(.medium)
+        return Button {
+            showDetails.toggle()
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "shield").font(.system(size: 12, weight: .medium))
+                Text(text.isEmpty ? "proxy" : text).fontWeight(.medium)
+            }
+            .foregroundStyle(live ? Ink.teal : Ink.muted)
+            .padding(.horizontal, 14)
+            .frame(height: 34)
+            .contentShape(Capsule())
         }
-        .foregroundStyle(live ? Ink.teal : Ink.muted)
-        .padding(.horizontal, 14)
-        .frame(height: 34)
-        .glassEffect(live ? .regular.tint(Ink.tealDot.opacity(0.22)) : .regular, in: .capsule)
+        .buttonStyle(.plain)
+        .glassEffect(live ? .regular.tint(Ink.tealDot.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
         .help(backend.lastError ?? [proxy?.node, proxy?.ip].compactMap { $0 }.joined(separator: " · "))
+        .popover(isPresented: $showDetails, arrowEdge: .bottom) {
+            ProxyPopover()
+        }
+    }
+}
+
+/// Всплывающее окно у значка proxy: выход, сервер, сколько сессий идет через proxy, действия и ссылка на настройки.
+struct ProxyPopover: View {
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var workspace: Workspace
+
+    var l: L { L(backend.state.lang) }
+
+    var body: some View {
+        let p = backend.state.proxy
+        let agents = workspace.tabs.filter { $0.spec.utility == nil }
+        let proxied = agents.filter(\.spec.proxied).count
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(p?.exit ?? "—").font(.system(size: 26, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(p?.running == true ? l.t("mihomo работает", "mihomo running")
+                         : p?.configured == true ? l.t("mihomo ждет сессию", "mihomo waits for a session") : l.proxyOff)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(p?.running == true ? Ink.teal : Ink.muted)
+                    Text([p?.protocol, p?.ip].compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 11, design: .monospaced)).foregroundStyle(Ink.muted)
+                }
+                Spacer()
+            }
+            if let node = p?.node, !node.isEmpty {
+                Text(node).font(.system(size: 12)).foregroundStyle(Ink.text2).lineLimit(1).truncationMode(.middle)
+            }
+            Text(l.t("Через proxy \(proxied) из \(agents.count) вкладок, новые сессии ",
+                     "\(proxied) of \(agents.count) tabs via proxy, new sessions ")
+                 + ((p?.defaultRoute ?? "proxy") == "direct" ? l.t("напрямую", "go direct") : l.t("через proxy", "via proxy")))
+                .font(.system(size: 12)).foregroundStyle(Ink.muted)
+            if p?.configured == true {
+                ProxyActions(columns: 1) { backend.refresh() }
+            }
+            HStack {
+                Spacer()
+                SettingsLink {
+                    Text(l.t("Настройки proxy", "Proxy settings"))
+                }
+                .buttonStyle(.link)
+                .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
     }
 }
 
