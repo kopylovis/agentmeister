@@ -50,6 +50,7 @@ help() {
 
 Прокси для сессий
   agentmeister proxy               состояние; setup, test, update, restart, remove (proxy -h)
+  agentmeister host-run <имя>      команда из белого списка вне песочницы proxy (host-run -h)
 
 Инструменты проекта (Claude зовет их и сам)
   agentmeister codex-context       читать сессии, инструкции и память Codex (codex-context -h)
@@ -80,6 +81,7 @@ EOF
 case "${1:-}" in
   open) shift ;;
   proxy) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_proxy.py" "$@" ;;
+  host-run) shift; exec /usr/bin/python3 "$LIB/host_run.py" "$@" ;;
   sessions) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_sessions.py" "$@" ;;
   usage) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_usage.py" "$@" ;;
   codex-context) shift; exec /usr/bin/python3 "$LIB/codex_context.py" "$@" ;;
