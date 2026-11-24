@@ -341,7 +341,7 @@ final class Backend: ObservableObject {
     nonisolated static func run(_ args: [String]) -> Result<Data, Error> {
         guard LoginEnvironment.found else {
             return .failure(NSError(domain: "agentmeister", code: 127, userInfo: [NSLocalizedDescriptionKey:
-                "agentmeister не найден в PATH. Установи его (./install.sh) или проверь PATH в ~/.zshrc."]))
+                "agentmeister isn't in PATH. Install it (./install.sh) or check PATH in ~/.zshrc."]))
         }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: LoginEnvironment.agentmeister)
@@ -357,7 +357,7 @@ final class Backend: ObservableObject {
             task.waitUntilExit()
             if task.terminationStatus != 0 {
                 return .failure(NSError(domain: "agentmeister", code: Int(task.terminationStatus),
-                                        userInfo: [NSLocalizedDescriptionKey: "agentmeister \(args.joined(separator: " ")) завершился с кодом \(task.terminationStatus)"]))
+                                        userInfo: [NSLocalizedDescriptionKey: "agentmeister \(args.joined(separator: " ")) exited with code \(task.terminationStatus)"]))
             }
             return .success(data)
         } catch {

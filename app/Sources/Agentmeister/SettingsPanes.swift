@@ -512,6 +512,7 @@ enum AgentPrefs {
 }
 
 struct AgentCard: View {
+    @EnvironmentObject var backend: Backend
     let agent: LaunchSpec.Agent
     let info: SettingsData.Agent?
     let l: L
@@ -521,6 +522,7 @@ struct AgentCard: View {
     @State private var checking = false
 
     private var name: String { agent == .claude ? "Claude Code" : "Codex" }
+    private var proxyReady: Bool { backend.state.proxy?.configured == true }
 
     var body: some View {
         GlassSection {
@@ -598,7 +600,12 @@ struct AgentCard: View {
     /// outdated, ничего не ставя.
     private func checkUpdate() {
         checking = true
-        let command = agent == .claude ? TerminalTab.updateCommand(direct: false) : "brew outdated --cask --greedy codex 2>&1 | tail -1"
+        if agent == .codex && info?.installedVia != "homebrew" {
+            update = l.t("Codex стоит не из Homebrew, обновляй тем же способом", "Codex isn't from Homebrew, update it the way you installed it")
+            checking = false
+            return
+        }
+        let command = agent == .claude ? TerminalTab.updateCommand(direct: !proxyReady) : "brew outdated --cask --greedy --quiet codex 2>/dev/null"
         Task.detached {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/zsh")
