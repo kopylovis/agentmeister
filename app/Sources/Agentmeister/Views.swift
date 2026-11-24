@@ -499,9 +499,12 @@ struct ProjectRow: View {
         .frame(minHeight: 28)
         .padding(.leading, 4)
         .contentShape(Rectangle())
-        .simultaneousGesture(TapGesture().onEnded { ui.projectScreen = project.path })
+        // клик открывает экран проекта, повторный клик закрывает его
+        .simultaneousGesture(TapGesture().onEnded { ui.projectScreen = ui.projectScreen == project.path ? nil : project.path })
         .onHover { hover = $0 }
-        .listRowBackground(open ? RoundedRectangle(cornerRadius: 10).fill(Ink.openBg).padding(.horizontal, 10) : nil)
+        .listRowBackground(ui.projectScreen == project.path
+                           ? RoundedRectangle(cornerRadius: 10).fill(Ink.thumb).padding(.horizontal, 10)
+                           : open ? RoundedRectangle(cornerRadius: 10).fill(Ink.openBg).padding(.horizontal, 10) : nil)
         .contextMenu {
             Button(l.newSession) {
                 workspace.open(LaunchSpec.quick(project))
@@ -527,6 +530,7 @@ struct ProjectRow: View {
 struct SessionRow: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var ui: UIState
     let session: AppState.Session
     let project: AppState.Project
 
@@ -536,8 +540,10 @@ struct SessionRow: View {
         let tab = workspace.tabs.first { $0.sessionId == session.id && $0.running }
         let live = backend.state.live.first { $0.sessionId == session.id }
         let status = tab?.status ?? live?.status
-        let current = tab != nil && tab?.id == workspace.selected
+        // пока открыт экран проекта, выделен он, а не вкладка
+        let current = tab != nil && tab?.id == workspace.selected && ui.projectScreen == nil
         Button {
+            ui.projectScreen = nil
             workspace.open(LaunchSpec.resume(session, project: project))
         } label: {
             HStack(spacing: 8) {
