@@ -243,13 +243,13 @@ def pin_config():
         os.replace(CONFIG + ".tmp", CONFIG)
 
 
-def subscription_servers():
-    """Имена серверов из скачанной подписки: YAML mihomo (server: ...) или base64 со ссылками vless://, hysteria2://."""
-    try:
-        with open(SUB_FILE, "rb") as f:
-            raw = f.read()
-    except OSError:
-        return []
+# схемы ссылок на серверы в подписке; http(s):// сюда не входит, такие ссылки есть в любой странице
+PROXY_SCHEMES = ("vless", "vmess", "trojan", "ss", "ssr", "hysteria", "hysteria2", "hy2", "tuic", "wireguard", "wg",
+                 "anytls", "socks", "socks5")
+
+
+def subscription_text(raw):
+    """Текст подписки: как есть или раскодированный base64, если в нем нет ни YAML, ни ссылок."""
     text = raw.decode("utf-8", "replace")
     if "proxies:" not in text and "://" not in text:
         packed = re.sub(rb"\s", b"", raw)
@@ -259,6 +259,40 @@ def subscription_servers():
                 break
             except ValueError:
                 pass
+    return text
+
+
+def proxy_links(text):
+    links = []
+    for word in text.split():
+        scheme = word.partition("://")[0].lower()
+        if scheme in PROXY_SCHEMES:
+            try:
+                if urllib.parse.urlsplit(word).hostname:
+                    links.append(word)
+            except ValueError:
+                pass
+    return links
+
+
+def subscription_ok(raw):
+    """В ответе есть хоть один сервер: ссылка vless://, hysteria2:// и т. п. (можно в base64) или YAML mihomo
+    с proxies: и server:. Страница входа в Wi-Fi или ошибка с кодом 200 подпиской не считаются."""
+    text = subscription_text(raw)
+    if proxy_links(text):
+        return True
+    block = re.search(r"(?m)^proxies:", text)
+    return bool(block and re.search(r"\bserver:\s*['\"]?[\w.:-]+", text[block.end():]))
+
+
+def subscription_servers():
+    """Имена серверов из скачанной подписки: YAML mihomo (server: ...) или base64 со ссылками vless://, hysteria2://."""
+    try:
+        with open(SUB_FILE, "rb") as f:
+            raw = f.read()
+    except OSError:
+        return []
+    text = subscription_text(raw)
     names = re.findall(r"\bserver:\s*['\"]?([\w.-]+)", text)
     for word in text.split():
         if "://" in word:
@@ -378,12 +412,18 @@ def refresh_subscription():
         iface = physical_interface()
         cmd = ["curl", "-sf", "--max-time", "15", "-A", "mihomo"] + (["--interface", iface] if iface else []) + [url]
         r = subprocess.run(cmd, capture_output=True)
-        if r.returncode == 0 and r.stdout.strip():
+        if r.returncode == 0 and subscription_ok(r.stdout):
             write_private(SUB_FILE, r.stdout)
             return True
+        if r.returncode == 0:
+            why = "по ссылке пришел ответ без серверов (страница входа в Wi-Fi или ошибка?)"
+        else:
+            why = "подписка не скачалась"
+    else:
+        why = "нет ссылки на подписку"
     if not os.path.exists(SUB_FILE):
-        raise ProxyError("не скачал подписку и прошлой копии нет. Проверь ссылку: agentmeister proxy setup")
-    print("agentmeister proxy: подписка не скачалась, беру прошлую копию", file=sys.stderr)
+        raise ProxyError(f"{why}, а прошлой копии нет. Проверь ссылку: agentmeister proxy setup")
+    print(f"agentmeister proxy: {why}, беру прошлую копию", file=sys.stderr)
     return False
 
 
