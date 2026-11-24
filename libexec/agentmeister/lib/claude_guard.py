@@ -425,10 +425,12 @@ def project_of(cwd):
     return cwd if within(HOME, d) else d
 
 
-# rm -r здесь не спрашиваем: временные папки и кеши
-SCRATCH = ["/tmp", "/private/tmp", "/var/folders", "/private/var/folders", os.environ.get("TMPDIR") or "/tmp",
-           os.path.join(HOME, "Library", "Caches"), os.path.join(HOME, ".cache"),
-           os.path.join(HOME, "Library", "Developer", "Xcode", "DerivedData")]
+# rm -r здесь не спрашиваем: временные папки и кеши.
+# Системные временные папки — только их содержимое (/tmp/x, /tmp/*): саму /tmp или $TMPDIR удалять нельзя.
+TEMP_DIRS = ["/tmp", "/private/tmp", "/var/folders", "/private/var/folders", os.environ.get("TMPDIR") or "/tmp"]
+# Кеши пользователя можно и целиком: программы создают их заново
+CACHE_DIRS = [os.path.join(HOME, "Library", "Caches"), os.path.join(HOME, ".cache"),
+              os.path.join(HOME, "Library", "Developer", "Xcode", "DerivedData")]
 SYSTEM_DIRS = {"/", "/System", "/Library", "/Applications", "/Users", "/usr", "/usr/local", "/bin", "/sbin", "/etc",
                "/var", "/private", "/opt", "/opt/homebrew", HOME, os.path.join(HOME, "Library")}
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
@@ -538,8 +540,9 @@ def check_rm(ws, cwd, env, root):
             p, unknown = resolve(t, cwd, env, empty=True), True
             if p is None:
                 continue
+        glob = False  # rm -rf /tmp/* удаляет содержимое папки, а не её саму
         while os.path.basename(p) in ("*", ".*"):
-            p = os.path.dirname(p)
+            p, glob = os.path.dirname(p), True
         if p == "/":
             what = "это корень диска"
         elif within(HOME, p):
@@ -548,7 +551,8 @@ def check_rm(ws, cwd, env, root):
             what = "это сам проект"
         elif within(p, root) and not within(HOME, root):
             continue
-        elif any(within(p, d, strict=True) for d in SCRATCH):
+        elif any(within(p, d) for d in CACHE_DIRS) or any(within(p, d, strict=not glob) for d in TEMP_DIRS) and (
+                glob or not any(within(p, d) and within(d, p) for d in TEMP_DIRS)):
             continue
         else:
             what = f"проекта нет, Claude запущен в {tilde(root)}" if within(HOME, root) else \

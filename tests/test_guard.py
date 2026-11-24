@@ -124,6 +124,12 @@ class Destructive(unittest.TestCase):
         "rm -rf ${X}/usr",
         "rm -rf $1/",
         "rm -rf ./$X",
+        # сами системные временные папки и Library целиком
+        "rm -rf /tmp",
+        "rm -rf /private/tmp",
+        "rm -rf $TMPDIR",
+        "rm -rf /var/folders",
+        "rm -rf ~/Library/*",
         'bash -c "echo a && bash -c \'git push -f\'"',
     ]
     PASS = [
@@ -179,6 +185,13 @@ class Destructive(unittest.TestCase):
         'while read f; do rm -rf "$f"; done',
         "for d in a b; do rm -rf build/$d; done",
         "echo $(ls) `date`",
+        # содержимое временных папок и кешей
+        "rm -rf /tmp/*",
+        "rm -rf /private/tmp/*",
+        "rm -rf $TMPDIR/*",
+        "rm -rf ~/Library/Developer/Xcode/DerivedData/*",
+        "rm -rf ~/Library/Caches/*",
+        "rm -rf ~/.cache/*",
     ]
 
     def setUp(self):
@@ -219,6 +232,11 @@ class Destructive(unittest.TestCase):
         for cmd in ("x=`cat .env`", 'echo "$(cat .env)"', "echo $(cat ~/.ssh/id_ed25519)", "diff <(cat .env) a"):
             self.assertEqual(self.rule(cmd, skip=()), "secrets-read", cmd)
         self.assertIsNone(self.rule("echo '$(cat .env)'", skip=()))
+
+    def test_whole_cache_folders(self):
+        # кеши пользователя целиком: программы создают их заново; secrets-delete смотрел бы настоящие файлы в них
+        for cmd in ("rm -rf ~/.cache", "rm -rf ~/Library/Caches", "rm -rf ~/Library/Developer/Xcode/DerivedData"):
+            self.assertIsNone(self.rule(cmd), cmd)
 
     def test_unknown_variable_reason(self):
         found = g.check("Bash", {"command": "rm -rf $DIR/*"}, self.root, {"secrets-delete"})
