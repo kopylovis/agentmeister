@@ -69,7 +69,8 @@ class CountryOnRestart(unittest.TestCase):
                 patch.object(p.subprocess, "Popen", return_value=proc), \
                 patch.object(p.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "204", "")), \
                 patch.object(p, "trace", return_value=None), patch.object(p, "active_node", return_value=(None, None)), \
-                patch.object(p, "setting", return_value="KZ"), patch.object(p, "stop", stop):
+                patch.object(p, "setting", return_value="KZ"), patch.object(p, "stop", stop), \
+                patch.object(p, "in_session", return_value=False):
             try:
                 return p.start(strict=strict), stop
             except p.ProxyError as e:
