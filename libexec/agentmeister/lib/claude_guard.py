@@ -23,6 +23,15 @@ RULES = {
                    "branch -D, rm -r вне проекта, самого проекта или ~, curl | sh, dd на диск, diskutil erase, mkfs, "
                    "chmod -R системных папок; и внутри bash -c, eval, xargs, sudo",
 }
+# Те же правила по-английски, для окна настроек приложения
+RULES_EN = {
+    "secrets-read": "Reading or editing .env, .p8, .p12, .jks keys, private SSH keys, credentials and service-account JSON, "
+                    ".netrc, .npmrc and keychain passwords",
+    "secrets-delete": "Deleting keys or folders that hold them (~/.ssh, ~/.gnupg, ~/.aws, fastlane/ with keys), "
+                      "security delete-*",
+    "destructive": "git reset --hard, push --force, clean -fd, checkout or restore of everything, branch -D, rm -r outside "
+                   "the project, curl | sh, dd to a disk. Finds them inside bash -c, eval, sudo too",
+}
 GUARD_STATE = os.path.join(CACHE, "guard")
 YES = re.compile(r"^\W*(да|ага|угу|ок|окей|ok|okay|yes|y|давай|выполняй|можно|разрешаю|разреши|делай|go|sure)\b", re.I)
 SENSITIVE_DIRS = ["~/.ssh", "~/.gnupg", "~/.aws", "~/Library/Keychains", "~/.config/gh"]
