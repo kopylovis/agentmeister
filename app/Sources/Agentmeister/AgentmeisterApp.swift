@@ -33,16 +33,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
-    /// Выход останавливает всех агентов. Если кто-то из них сейчас работает, сначала спрашиваем.
+    /// Выход останавливает всех агентов. Если кто-то из них может сейчас работать, сначала спрашиваем.
+    /// У Claude Code это статус busy из реестра. Codex статуса не пишет, поэтому занятой считается любая
+    /// вкладка Codex, пока ее процесс жив.
     @MainActor
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let busy = Workspace.main?.tabs.filter { $0.running && $0.status == "busy" }.count ?? 0
+        let busy = Workspace.main?.tabs.filter { tab in
+            tab.running && (tab.status == "busy" || (tab.spec.agent == .codex && tab.spec.utility == nil))
+        }.count ?? 0
         guard busy > 0 else { return .terminateNow }
         let l = L(UserDefaults.standard.string(forKey: "lastLang") ?? "en")
         let alert = NSAlert()
         alert.messageText = l.t("Закрыть Agentmeister?", "Quit Agentmeister?")
-        alert.informativeText = l.t("Агенты работают во вкладках (\(busy)) и остановятся посреди хода. Переписки сохранятся, вкладки вернутся при следующем запуске.",
-                                    "Agents are working in \(busy) tab(s) and will stop mid-turn. Transcripts are kept and tabs come back next launch.")
+        alert.informativeText = l.t("Агенты во вкладках (\(busy)) могут быть посреди ответа и остановятся. Переписки сохранятся, вкладки вернутся при следующем запуске.",
+                                    "Agents in \(busy) tab(s) may be mid-answer and will stop. Transcripts are kept and tabs come back next launch.")
         alert.addButton(withTitle: l.t("Отмена", "Cancel"))
         alert.addButton(withTitle: l.t("Закрыть", "Quit"))
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
