@@ -111,12 +111,12 @@ struct OnboardingView: View {
                     // Esc нужен терминалу, пока он открыт: иначе он закрыл бы мастер и оборвал команду
                     Button("") { finish() }.keyboardShortcut(console == nil ? .cancelAction : nil).hidden().frame(width: 0)
                     if step > 0 {
-                        Button(l.t("Назад", "Back")) { step -= 1 }
+                        PillButton(title: l.t("Назад", "Back")) { step -= 1 }
                     }
-                    Button(current == .permissions ? l.t("Открыть Agentmeister", "Open Agentmeister") : l.t("Далее", "Continue")) {
+                    PillButton(title: current == .permissions ? l.t("Открыть Agentmeister", "Open Agentmeister") : l.t("Далее", "Continue"),
+                               prominent: true) {
                         if current == .permissions { finish() } else { step += 1 }
                     }
-                    .buttonStyle(.glassProminent)
                     // пока виден терминал, Return нужен ему, а не кнопке
                     .keyboardShortcut(console == nil ? .defaultAction : nil)
                 }
