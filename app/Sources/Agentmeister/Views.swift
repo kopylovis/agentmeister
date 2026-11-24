@@ -233,7 +233,7 @@ struct ProxyPopover: View {
         let agents = workspace.tabs.filter { $0.spec.utility == nil }
         let proxied = agents.filter(\.spec.proxied).count
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center, spacing: 12) {
                 Text(p?.exit ?? "—").font(.system(size: 26, weight: .semibold))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(p?.running == true ? l.t("mihomo работает", "mihomo running")
@@ -287,11 +287,15 @@ struct Sidebar: View {
             if projectsOpen {
                 projectList
                     .scrollContentBackground(.hidden)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             } else {
                 Color.clear
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        // флаг хранится в UserDefaults, и withAnimation у заголовка до него не доходит: анимация по значению
+        .animation(.snappy(duration: 0.28), value: projectsOpen)
         .safeAreaBar(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
                 // место под светофор, кнопка свертывания теперь в шапке средней карточки
@@ -385,6 +389,7 @@ struct SidebarFooter: View {
                               summary: Self.order.filter { backend.state.modes[$0] == true }.joined(separator: " · "))
             if modesOpen {
             VStack(spacing: 4) {
+
                 ForEach(Self.order.filter { backend.state.modes[$0] != nil }, id: \.self) { key in
                     let on = backend.state.modes[key] ?? false
                     Button {
@@ -415,6 +420,7 @@ struct SidebarFooter: View {
                     .accessibilityAddTraits(on ? .isSelected : [])
                 }
             }
+            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
             if let h = backend.state.hostRun {
                 HStack(spacing: 8) {
@@ -429,6 +435,7 @@ struct SidebarFooter: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(.snappy(duration: 0.28), value: modesOpen)
         .padding(12)
         // жидкое стекло: проекты, уехавшие под режимы, просвечивают размытыми
         .glassEffect(.regular, in: .windowCard)
