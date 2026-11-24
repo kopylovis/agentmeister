@@ -1,7 +1,7 @@
 """agentmeister app-state: состояние для десктопного Agentmeister одним JSON.
 
 Приложение не разбирает вывод для людей и не дублирует логику CLI. Оно раз в несколько секунд спрашивает
-эту команду: проекты из папки проектов, сохраненные сессии Claude Code, открытые сейчас сессии с их статусом
+эту команду: проекты из папки проектов, сохраненные сессии Claude Code и Codex, открытые сейчас сессии с их статусом
 (ждет, работает, свободна), состояние proxy и режимов. Каждая часть собирается отдельно: если одна упала,
 остальные приходят как обычно, а в errors остается причина.
 """
@@ -77,7 +77,7 @@ def sessions():
         out.append({
             "id": s["id"], "cwd": cwd, "title": m["title"], "branch": m["branch"],
             "mtime": s["mtime"], "size": s["size"], "running": bool(s.get("running")),
-            "cwdExists": bool(cwd) and os.path.isdir(cwd),
+            "cwdExists": bool(cwd) and os.path.isdir(cwd), "agent": "claude",
         })
     if fresh != cache:
         try:
@@ -86,6 +86,180 @@ def sessions():
         except OSError:
             pass
     return out
+
+
+CODEX_CACHE = os.path.join(mnrhlib.CACHE, "app-state", "codex.json")
+# служебные сообщения, которые Codex сам кладет в начало разговора от имени пользователя: это не запрос
+CODEX_INJECTED = ("# AGENTS.md instructions", "<environment_context>", "<user_instructions>", "<image", "</image>",
+                  "<turn_aborted>", "<user_shell_command>", "<permissions instructions>", "<collaboration_mode>")
+
+
+def codex_home():
+    return os.environ.get("CODEX_HOME") or os.path.join(os.path.expanduser("~"), ".codex")
+
+
+def codex_names(home):
+    """Названия тредов из session_index.jsonl. Codex дописывает файл, поэтому последняя запись для id главная."""
+    names = {}
+    try:
+        with open(os.path.join(home, "session_index.jsonl"), encoding="utf-8") as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict) and isinstance(row.get("id"), str) and isinstance(row.get("thread_name"), str):
+                    names[row["id"]] = row["thread_name"]
+    except OSError:
+        pass
+    return names
+
+
+def codex_text(content):
+    if not isinstance(content, list):
+        return ""
+    return "\n".join(c["text"] for c in content if isinstance(c, dict) and isinstance(c.get("text"), str)).strip()
+
+
+def codex_item(line):
+    """Строка rollout: что это (user, codex, tool или None), текст и время. Разбираем только завершенные элементы
+    (event_msg item_completed) и сообщения response_item, остальное пропускаем, не читая JSON."""
+    if '"item_completed"' not in line and ('"response_item"' not in line or '"message"' not in line):
+        return None, "", None
+    try:
+        row = json.loads(line)
+        p = row.get("payload") or {}
+    except (ValueError, AttributeError):
+        return None, "", None
+    ts = row.get("timestamp")
+    if row.get("type") == "event_msg" and p.get("type") == "item_completed":
+        item = p.get("item") or {}
+        kind = item.get("type")
+        if kind == "UserMessage":
+            return "user", codex_text(item.get("content")), ts
+        if kind == "AgentMessage":
+            return "codex", codex_text(item.get("content")), ts
+        if kind == "CommandExecution":
+            parsed = [c.get("cmd") for c in item.get("parsed_cmd") or [] if isinstance(c, dict) and isinstance(c.get("cmd"), str)]
+            command = item.get("command")
+            text = " && ".join(parsed) or (" ".join(command) if isinstance(command, list) else str(command or ""))
+            return "tool", "$ " + text, ts
+        return None, "", None
+    if row.get("type") == "response_item" and p.get("type") == "message":
+        text = codex_text(p.get("content"))
+        if p.get("role") == "assistant":
+            return "codex-raw", text, ts
+        if p.get("role") == "user" and text and not text.startswith(CODEX_INJECTED):
+            return "user-raw", text, ts
+    return None, "", None
+
+
+def codex_meta(path):
+    """id, папка, ветка из первой строки rollout (session_meta), первый запрос и был ли ответ. Читаем до первого
+    ответа Codex, а не весь файл: переписка бывает в десятки мегабайт, а нужное лежит в начале."""
+    item = {"id": None, "cwd": "", "branch": "", "created": None, "title": "", "answered": False, "sub": False}
+    with open(path, encoding="utf-8", errors="replace") as f:
+        try:
+            first = json.loads(f.readline())
+        except ValueError:
+            return item
+        meta = first.get("payload") if isinstance(first, dict) and first.get("type") == "session_meta" else None
+        if not isinstance(meta, dict):
+            return item
+        git = meta.get("git") if isinstance(meta.get("git"), dict) else {}
+        source = meta.get("source")
+        item.update(id=meta.get("id") if isinstance(meta.get("id"), str) else None,
+                    cwd=meta.get("cwd") if isinstance(meta.get("cwd"), str) else "",
+                    branch=git.get("branch") if isinstance(git.get("branch"), str) else "",
+                    created=epoch(meta.get("timestamp")),
+                    # треды субагентов Codex заводит сам, продолжать их отдельно незачем
+                    sub=isinstance(source, dict) or meta.get("thread_source") == "subagent")
+        for line in f:
+            role, text, _ = codex_item(line)
+            if role in ("codex", "codex-raw"):
+                item["answered"] = True
+            elif role in ("user", "user-raw") and text and not item["title"]:
+                item["title"] = " ".join(text.split())[:200]
+            if item["answered"] and item["title"]:
+                break
+    return item
+
+
+def codex_rollouts(home):
+    """Переписки Codex: sessions/ГГГГ/ММ/ДД/rollout-*.jsonl. archived_sessions не берем: их Codex прячет сам."""
+    for directory, children, files in os.walk(os.path.join(home, "sessions")):
+        children[:] = [d for d in children if not d.startswith(".")]
+        for name in files:
+            if name.startswith("rollout-") and name.endswith(".jsonl"):
+                yield os.path.join(directory, name)
+
+
+def codex_sessions(cache_path=None):
+    """Сохраненные треды Codex в том же виде, что сессии Claude Code, плюс agent: codex и путь к файлу.
+    Файл разбираем заново, только если он изменился и в прошлый раз в нем не нашлось запроса и ответа:
+    дальше rollout только растет, а заголовок и папка лежат в начале."""
+    home = codex_home()
+    cache_path = cache_path or CODEX_CACHE
+    try:
+        with open(cache_path) as f:
+            cache = json.load(f)
+        if not isinstance(cache, dict):
+            cache = {}
+    except (OSError, ValueError):
+        cache = {}
+    names = codex_names(home)
+    fresh, out = {}, []
+    for path in codex_rollouts(home):
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        version = [st.st_mtime_ns, st.st_size]
+        item = cache.get(path)
+        if not isinstance(item, dict) or (item.get("v") != version and not (item.get("answered") and item.get("title"))):
+            try:
+                item = codex_meta(path)
+            except OSError:
+                continue
+        item = dict(item, v=version)
+        fresh[path] = item
+        sid = item.get("id")
+        if not sid or item.get("sub") or not item.get("answered"):
+            continue
+        cwd = item.get("cwd") or ""
+        out.append({"id": sid, "agent": "codex", "cwd": cwd, "title": names.get(sid) or item.get("title") or "",
+                    "branch": item.get("branch") or "", "mtime": st.st_mtime, "size": st.st_size, "running": False,
+                    "cwdExists": bool(cwd) and os.path.isdir(cwd), "created": item.get("created"), "path": path})
+    if fresh != cache:
+        try:
+            os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            mnrhlib.write_json(cache_path, fresh, mode=0o600, ensure_ascii=False, separators=(",", ":"))
+        except OSError:
+            pass
+    out.sort(key=lambda s: -s["mtime"])
+    return out[:SESSION_LIMIT]
+
+
+def codex_read(sid, tail=12, chars=700):
+    """Последние сообщения треда Codex для превью, как read для Claude Code. None, если такого треда нет."""
+    found = next((s for s in codex_sessions() if s["id"] == sid), None)
+    if not found:
+        return None
+    msgs, raw = [], []
+    with open(found["path"], encoding="utf-8", errors="replace") as f:
+        for line in f:
+            role, text, ts = codex_item(line)
+            if not role or not text:
+                continue
+            # в старых rollout нет item_completed, там берем сами сообщения модели
+            (raw if role.endswith("-raw") else msgs).append((role.replace("-raw", ""), ts, text))
+    msgs = msgs or raw
+    start = max(0, len(msgs) - tail)
+    return {"id": sid, "agent": "codex", "title": found["title"], "home": found["cwd"], "total": len(msgs),
+            "first": epoch(msgs[0][1]) if msgs else None, "last": epoch(msgs[-1][1]) if msgs else None,
+            "messages": [{"at": i, "role": role, "time": epoch(ts),
+                          "text": text if len(text) <= chars else text[:chars] + "…"}
+                         for i, (role, ts, text) in enumerate(msgs[start:], start)]}
 
 
 def live():
@@ -164,6 +338,13 @@ def collect():
         except Exception as e:  # одна сломанная часть не должна оставить окно пустым
             state[name] = empty
             state["errors"][name] = f"{type(e).__name__}: {e}"
+    # треды Codex отдельным ключом: приложение старой сборки считало бы любую сессию из sessions сессией
+    # Claude Code и продолжало бы ее через claude --resume. Новое приложение само сливает два списка.
+    try:
+        state["codexSessions"] = [{k: v for k, v in c.items() if k != "path"} for c in codex_sessions()]
+    except Exception as e:  # сломанный разбор Codex не трогает сессии Claude Code
+        state["codexSessions"] = []
+        state["errors"]["codexSessions"] = f"{type(e).__name__}: {e}"
     return state
 
 
@@ -203,7 +384,11 @@ def search(query, limit=30):
 
 
 def read(ref, tail=12, chars=700):
-    """Последние сообщения сессии для превью в библиотеке."""
+    """Последние сообщения сессии для превью в библиотеке. Полный id треда Codex читается из его rollout."""
+    if mnrhlib.UUID_RE.match(ref or ""):
+        codex = codex_read(ref, tail, chars)
+        if codex:
+            return codex
     import claude_search
     idx = claude_search.refresh()
     sid, err = claude_search.resolve(ref, idx)
