@@ -98,7 +98,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         if spec.proxied && BrowserSettings.forAgent, let helper = ProxyBrowser.helper {
             env["BROWSER"] = helper
         }
-        if env["LANG"] == nil { env["LANG"] = "ru_RU.UTF-8" }
+        if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
         return env.map { "\($0.key)=\($0.value)" }.sorted()
     }
 

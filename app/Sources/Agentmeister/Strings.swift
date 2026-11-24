@@ -5,7 +5,7 @@ import Foundation
 struct L {
     let en: Bool
 
-    init(_ lang: String) { en = lang == "en" }
+    init(_ lang: String) { en = lang != "ru" }
 
     func t(_ ru: String, _ en: String) -> String { self.en ? en : ru }
 

@@ -13,7 +13,7 @@ final class ProxyBrowser {
 
     /// Порт mihomo и язык из app-state. Обновляет Backend при каждом ответе.
     var port = 17890
-    var lang = "ru"
+    var lang = "en"
 
     private var window: NSWindow?
     private var model: BrowserModel?
