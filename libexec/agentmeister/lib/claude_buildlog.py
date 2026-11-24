@@ -6,6 +6,7 @@ Claude видит вместо него выжимку: упавшие зада�
 PostToolUse приходит только после вызова с кодом 0. При ненулевом коде Claude Code шлет PostToolUseFailure, а там
 заменить вывод нельзя. Поэтому хук PreToolUse дописывает к сборке || echo с меткой FAIL_MARK: упавшая сборка
 завершается с кодом 0, а PostToolUse по метке пишет Claude, что команда упала. Код возврата при этом теряется.
+Метка стоит в самом конце вывода: если конец до хука не дошел, он пишет, что результат неизвестен, а не успех.
 """
 import json
 import os
@@ -24,6 +25,8 @@ MAX_LINES = 200
 MAX_BYTES = 20 * 1024
 KEEP_DAYS = 7
 READ_LIMIT = 64 << 20
+TAIL_READ = 8 << 20  # из вывода больше READ_LIMIT берем начало и столько с конца: метка FAIL_MARK в самом конце
+STDOUT_CAP = 30000  # столько символов длинного вывода Claude Code оставляет в stdout
 # сколько строк брать: вокруг ошибки, в конце вывода; сколько ошибок и предупреждений; длина строки и выжимки
 BEFORE, AFTER, TAIL = 2, 3, 12
 MAX_ERRORS, MAX_WARNINGS, MAX_SUMMARY = 40, 25, 30
@@ -93,19 +96,42 @@ def is_long(text):
     return text.count("\n") + 1 > MAX_LINES or len(text.encode("utf-8", "replace")) > MAX_BYTES
 
 
+def read_big(path, size):
+    """Начало и конец вывода больше READ_LIMIT, середина пропущена."""
+    with open(path, "rb") as f:
+        head = f.read(READ_LIMIT - TAIL_READ)
+        f.seek(size - TAIL_READ)
+        tail = f.read()
+    head = head[:head.rfind(b"\n") + 1] or head
+    tail = tail[tail.find(b"\n") + 1:] or tail
+    skipped = size - len(head) - len(tail)
+    return (head.decode("utf-8", "replace") + f"… пропущено из середины вывода: {max(1, skipped >> 20)} МБ, "
+            f"они в полном логе\n" + tail.decode("utf-8", "replace"))
+
+
 def full_output(resp):
-    """Весь вывод вызова. Длинный Claude Code отдает в stdout первые 30 000 символов, а целиком кладет в файл
-    persistedOutputPath (поле не описано в документации, поэтому без него берем stdout и stderr)."""
-    path = resp.get("persistedOutputPath")
-    if isinstance(path, str) and os.path.realpath(path).startswith(os.path.realpath(CLAUDE_HOME) + os.sep):
-        try:
-            if os.path.getsize(path) <= READ_LIMIT:
-                with open(path, encoding="utf-8", errors="replace") as f:
-                    return f.read()
-        except OSError:
-            pass
+    """(вывод вызова, дошел ли до нас его конец, файл с полным выводом или None).
+
+    Длинный Claude Code отдает в stdout первые 30 000 символов, а целиком кладет в файл persistedOutputPath
+    (поле не описано в документации, поэтому без него берем stdout и stderr). Конец нужен, чтобы найти FAIL_MARK:
+    echo дописывает ее последней строкой, и в начале обрезанного вывода ее не будет даже у упавшей сборки."""
     out, err = str(resp.get("stdout") or ""), str(resp.get("stderr") or "")
-    return out + ("\n" + err if out and err else err)
+    joined = out + ("\n" + err if out and err else err)
+    path = resp.get("persistedOutputPath")
+    if isinstance(path, str) and path:
+        if os.path.realpath(path).startswith(os.path.realpath(CLAUDE_HOME) + os.sep):
+            try:
+                size = os.path.getsize(path)
+                if size <= READ_LIMIT:
+                    with open(path, encoding="utf-8", errors="replace") as f:
+                        return f.read(), True, path
+                return read_big(path, size), True, path
+            except OSError:
+                pass
+        return joined, False, path
+    size = resp.get("persistedOutputSize")
+    cut = len(out) >= STDOUT_CAP or (isinstance(size, int) and size > len(joined.encode("utf-8", "replace")))
+    return joined, not cut, None
 
 
 def clip(line):
@@ -167,13 +193,18 @@ def render(lines, idx, header, footer, repeats=None):
     return "\n".join(out)
 
 
-def shrink(text, log_path, failed=False):
-    """Выжимка из длинного вывода или None, если она не короче вдвое. failed: команда завершилась с ошибкой."""
+def shrink(text, log_path, failed=False, unknown=None):
+    """Выжимка из длинного вывода или None, если она не короче вдвое. failed: команда завершилась с ошибкой.
+    unknown: пояснение, если код возврата узнать не удалось (вывод дошел не целиком)."""
     lines = ANSI.sub("", text).rstrip("\n").split("\n")
     idx, repeats, footer = pick(lines)
+    if unknown:
+        footer = footer + [unknown]
     size = len(text.encode("utf-8", "replace"))
-    header = (f"[agentmeister buildlog: {FAILED_HEAD if failed else ''}вывод длинный ({len(lines)} строк, {max(1, size // 1024)} КБ), здесь выжимка: "
-              f"ошибки, предупреждения, итог и конец. Полный лог: {tilde(log_path)}, ищи в нём grep или читай Read "
+    state = FAILED_HEAD if failed else UNKNOWN_HEAD if unknown else ""
+    where = "Что дошло до хука" if unknown else "Полный лог"
+    header = (f"[agentmeister buildlog: {state}вывод длинный ({len(lines)} строк, {max(1, size // 1024)} КБ), здесь выжимка: "
+              f"ошибки, предупреждения, итог и конец. {where}: {tilde(log_path)}, ищи в нём grep или читай Read "
               f"с offset, если выжимки мало]")
     compact = render(lines, idx, header, footer, repeats)
     if len(compact) > BUDGET:
@@ -231,6 +262,16 @@ WRAP = f' || echo "{FAIL_MARK}"'
 FAILED_HEAD = "команда завершилась с ошибкой (код не 0), "
 FAILED_NOTE = ("[agentmeister buildlog: команда завершилась с ошибкой (код не 0). Хук дописал к ней || echo, чтобы "
                "сжать длинный вывод, поэтому Claude Code показывает вызов как успешный]")
+UNKNOWN_HEAD = "результат неизвестен, "
+
+
+def unknown_note(cmd, full):
+    """Пояснение, когда метки FAIL_MARK не видно, потому что вывод дошел до хука не целиком."""
+    where = (f"полный вывод должен быть в {tilde(full)}, проверь его конец" if full else
+             f"запусти ее снова с выводом в файл и проверь код возврата: {cmd} > /tmp/build.log 2>&1; echo $?")
+    return ("[agentmeister buildlog: результат неизвестен. Хук дописал к команде || echo, чтобы сжать вывод, поэтому "
+            "Claude Code показывает вызов как успешный, но вывод дошел до хука не целиком и не видно, упала ли "
+            f"команда. Не считай ее успешной: {where}]")
 
 
 def wrap(cmd):
@@ -269,22 +310,25 @@ def decide(payload):
     if inp.get("run_in_background") or not isinstance(resp, dict) or resp.get("interrupted") or \
             resp.get("isImage") or resp.get("backgroundTaskId") or not build_kind(cmd):
         return None
-    text = full_output(resp)
+    text, seen_end, full = full_output(resp)
     at = text.rfind(FAIL_MARK) if wrapped != cmd else -1
     failed = at >= 0
+    # без метки обернутая команда прошла, но только если конец вывода до нас дошел
+    unknown = unknown_note(cmd, full) if wrapped != cmd and not failed and not seen_end else None
     if failed:
         text = (text[:at].rstrip("\n") + "\n" + text[at + len(FAIL_MARK):].lstrip("\n")).rstrip("\n")
     out = {k: v for k, v in resp.items() if k not in ("persistedOutputPath", "persistedOutputSize")}
     compact = None
     if is_long(text):
         path = log_path(payload.get("session_id"))
-        compact = shrink(text, path, failed)
+        compact = shrink(text, path, failed, unknown)
         if compact is not None:
             save(path, cmd, text)
             prune()
-    if compact is None and not failed:
+    if compact is None and not failed and not unknown:
         return None
-    out.update(stdout=compact if compact is not None else text + "\n" + FAILED_NOTE, stderr="")
+    out.update(stdout=compact if compact is not None else text + "\n" + (FAILED_NOTE if failed else unknown),
+               stderr="")
     return out
 
 
