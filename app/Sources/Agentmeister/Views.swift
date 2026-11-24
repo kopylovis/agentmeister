@@ -10,6 +10,7 @@ typealias Color = SwiftUI.Color
 final class UIState: ObservableObject {
     @Published var showNewSession = false
     @Published var showPalette = false
+    @Published var showOnboarding = false
     @Published var showInspector = true
     @Published var newSessionProject: String?
 }
@@ -57,6 +58,9 @@ struct MainView: View {
         .sheet(isPresented: $ui.showPalette) {
             PaletteView()
         }
+        .sheet(isPresented: $ui.showOnboarding) {
+            OnboardingView()
+        }
         .alert(l.t("Сессия уже открыта в другом окне", "The session is already open in another window"),
                isPresented: Binding(get: { workspace.notice != nil }, set: { if !$0 { workspace.notice = nil } })) {
             Button("OK", role: .cancel) {}
@@ -66,7 +70,10 @@ struct MainView: View {
         }
         .onReceive(backend.$state) { state in workspace.sync(with: state.live) }
         .onChange(of: backend.ready) {
-            if backend.ready { workspace.restore(live: backend.state.live, projects: backend.state.projects, sessions: backend.state.sessions) }
+            guard backend.ready else { return }
+            workspace.restore(live: backend.state.live, projects: backend.state.projects, sessions: backend.state.sessions)
+            // мастер один раз, при первом запуске
+            if !UserDefaults.standard.bool(forKey: "onboardingDone") { ui.showOnboarding = true }
         }
         .frame(minWidth: 900, minHeight: 560)
         .modifier(ReopenWindows())

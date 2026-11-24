@@ -90,6 +90,9 @@ struct AgentmeisterApp: App {
                 Button(l.inspector) { ui.showInspector.toggle() }
                     .keyboardShortcut("i", modifiers: [.command, .option])
             }
+            CommandGroup(replacing: .help) {
+                Button(l.t("Мастер первого запуска", "First-run setup")) { ui.showOnboarding = true }
+            }
             CommandMenu(l.t("Вкладки", "Tabs")) {
                 ForEach(1..<10) { n in
                     Button(l.t("Вкладка \(n)", "Tab \(n)")) { workspace.select(number: n) }
