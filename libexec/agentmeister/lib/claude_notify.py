@@ -248,7 +248,7 @@ def post(title, subtitle, body, sid, click=None, wait=False):
 def osascript(script, *args, timeout=5):
     try:
         r = subprocess.run(["osascript", "-e", script, *args], capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired):
         return ""
     return r.stdout.strip() if r.returncode == 0 else ""
 
@@ -271,7 +271,10 @@ def app_tab():
 
 
 def iterm_session():
-    """"iterm:<GUID>" из ITERM_SESSION_ID, если сессия идет в iTerm2, иначе пусто."""
+    """"iterm:<GUID>" из ITERM_SESSION_ID, если сессия идет в iTerm2, иначе пусто. Одной переменной мало:
+    ITERM_SESSION_ID наследуют и программы, запущенные из iTerm2 в другом терминале или IDE."""
+    if os.environ.get("TERM_PROGRAM") != "iTerm.app" and os.environ.get("LC_TERMINAL") != "iTerm2":
+        return ""
     guid = os.environ.get("ITERM_SESSION_ID", "").rpartition(":")[2]
     return "iterm:" + guid if GUID_RE.match(guid) else ""
 
@@ -497,13 +500,14 @@ def hook(codex=False):
         return 0
     tab = app_tab()
     tty = "app:" + tab if tab else codex_terminal(sid) if codex else own_terminal()
-    # в песочнице proxy ps не работает и tty пустой: сессию iTerm2 узнаем по ее id из окружения
-    tty = tty or iterm_session()
     transcript = payload.get("transcript_path")
     if not tty:
+        # без tty это может быть codex exec или claude -p: уведомляем только об интерактивной сессии
         from claude_proc import interactive_session
         if not (codex_cli_session(transcript) if codex else interactive_session(sid)):
             return 0
+        # в песочнице proxy ps не работает и tty пустой: сессию iTerm2 узнаем по ее id из окружения
+        tty = iterm_session()
     bundle = os.environ.get("__CFBundleIdentifier", "")
     if tab:
         bundle = APP_BUNDLE
