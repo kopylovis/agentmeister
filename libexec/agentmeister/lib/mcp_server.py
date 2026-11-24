@@ -104,12 +104,19 @@ def call_slim(a):
         return f"Не получилось: {e}", True
 
 
+def schema_args(tool, a):
+    """Только аргументы из inputSchema инструмента. open_claude внутри agentmeister принимает и path, и flags
+    (claude_live, claude_parallel), но модель не должна открыть Claude в любой папке с любыми ключами."""
+    allowed = (tool.get("inputSchema") or {}).get("properties") or {}
+    return {k: v for k, v in a.items() if k in allowed}
+
+
 HANDLERS = {
     "restart": lambda a: call_restart("restart", a),
     "forget": lambda a: call_restart("forget", a),
     "fresh": lambda a: call_restart("fresh", a),
     "slim": call_slim,
-    "open_claude": lambda a: claude_open.open_claude(a, CM),
+    "open_claude": lambda a: claude_open.open_claude(schema_args(claude_open.TOOL, a), CM),
     "session_search": lambda a: claude_search.handle("session_search", a, current_sid()),
     "session_read": lambda a: claude_search.handle("session_read", a),
     "usage_report": claude_usage.handle,
