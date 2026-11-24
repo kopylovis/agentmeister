@@ -205,5 +205,26 @@ class SignedIn(unittest.TestCase):
                 self.assertEqual(app_state.signed_in("codex"), {"signedIn": True, "plan": "chatgpt"})
 
 
+class Lang(unittest.TestCase):
+    def test_set_and_auto(self):
+        with tempfile.TemporaryDirectory() as d:
+            conf = os.path.join(d, "config")
+            with open(conf, "w") as f:
+                f.write("projects=~/dev\n")
+            with patch.object(app_state.mnrhlib, "CONFIG", conf), \
+                    patch.object(app_state.mnrhlib, "system_english", return_value=True), \
+                    patch("sys.stdout"):
+                self.assertEqual(app_state.lang_setting(), "auto")
+                self.assertEqual(app_state.set_lang("ru"), 0)
+                self.assertEqual(app_state.lang_setting(), "ru")
+                self.assertEqual(app_state.mnrhlib.lang(), "ru")
+                self.assertEqual(app_state.set_lang("auto"), 0)
+                self.assertEqual(app_state.lang_setting(), "auto")
+                self.assertEqual(app_state.mnrhlib.lang(), "en")
+                self.assertEqual(app_state.set_lang("de"), 2)
+            with open(conf) as f:
+                self.assertEqual(f.read(), "projects=~/dev\n")
+
+
 if __name__ == "__main__":
     unittest.main()
