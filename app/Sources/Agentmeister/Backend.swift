@@ -219,10 +219,13 @@ final class Backend: ObservableObject {
     @Published private(set) var lastError: String?
     /// Выход proxy сменился сам, пока шли сессии. Баннер вкладки показывает это, пока его не скроют.
     @Published var exitChange: (from: String, to: String)?
-    /// mihomo не отвечает два опроса подряд. Одна неудача бывает и у живого mihomo, когда Mac занят
-    /// (например, сразу после запуска приложения), и не стоит красного баннера.
+    /// mihomo не отвечает два опроса подряд, пока идет вкладка через proxy. Одна неудача бывает и у живого mihomo,
+    /// когда Mac занят (например, сразу после запуска приложения), и не стоит красного баннера. Без вкладок
+    /// через proxy mihomo остановлен нарочно, и промахи не считаются.
     @Published var proxyDown = false
     private var proxyMisses = 0
+    /// Backend приложения. Вкладка через proxy при старте просит по нему свежий app-state.
+    static weak var main: Backend?
     /// Первый ответ app-state пришел (или не пришел, но попытка была). После него можно восстанавливать вкладки.
     @Published private(set) var ready = false
     private var liveTimer: Timer?
@@ -236,6 +239,7 @@ final class Backend: ObservableObject {
     /// (Python, проекты, сессии, proxy, режимы) идет при запуске, когда окно становится активным, раз в минуту
     /// и после смены статуса какой-то сессии: тогда ее переписка и заголовок могли измениться.
     init() {
+        Self.main = self
         refresh()
         liveTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.pollLive() }
@@ -256,6 +260,21 @@ final class Backend: ObservableObject {
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled else { return }
             self.refresh()
+        }
+    }
+
+    /// Вкладка через proxy запустилась: mihomo мог быть остановлен и сейчас поднимается. Свежий app-state сразу
+    /// и еще раз, когда кончаются 20 секунд, которые баннер mihomo дает вкладке на старт.
+    func proxiedTabStarted() {
+        refreshSoon()
+        refreshLater(20)
+    }
+
+    /// refreshSoon через столько секунд. Не отменяет уже назначенный refreshSoon.
+    private func refreshLater(_ seconds: Double) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            self?.refreshSoon()
         }
     }
 
@@ -311,8 +330,11 @@ final class Backend: ObservableObject {
                             state.sessions = (state.sessions + codex).sorted { $0.mtime > $1.mtime }
                         }
                         self.state = state
-                        self.proxyMisses = state.proxy?.running == false ? self.proxyMisses + 1 : 0
+                        let watching = Workspace.main?.tabs.contains { $0.running && $0.spec.proxied } ?? false
+                        self.proxyMisses = watching && state.proxy?.running == false ? self.proxyMisses + 1 : 0
                         if self.proxyDown != (self.proxyMisses >= 2) { self.proxyDown = self.proxyMisses >= 2 }
+                        // первый промах проверяем через 10 секунд, а не через минуту: настоящий сбой виден сразу
+                        if self.proxyMisses == 1 { self.refreshLater(10) }
                         if let from = previous?.exit, let to = self.state.proxy?.exit, from != to,
                            previous?.running == true, self.state.proxy?.running == true {
                             self.exitChange = (from, to)

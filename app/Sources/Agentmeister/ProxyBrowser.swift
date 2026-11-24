@@ -22,7 +22,22 @@ final class ProxyBrowser {
 
     /// Перехват страниц для диалога входа: пока он ждет страницу входа, он забирает ее себе и открывает там,
     /// где выбрано (в своем окне, в Chrome или в браузере системы). true значит, что ссылка взята.
-    var intercept: (@MainActor (URL) -> Bool)?
+    private var intercept: (@MainActor (URL) -> Bool)?
+    /// Чей перехват стоит сейчас. Диалогов входа может быть два, и закрытый не снимает перехват открытого.
+    private var interceptOwner: UUID?
+
+    /// Поставить перехват диалога owner. Перехват другого диалога он заменяет: страницу ждет последний начатый вход.
+    func setIntercept(owner: UUID, _ handler: @escaping @MainActor (URL) -> Bool) {
+        intercept = handler
+        interceptOwner = owner
+    }
+
+    /// Снять перехват, если он все еще этого диалога.
+    func clearIntercept(owner: UUID) {
+        guard interceptOwner == owner else { return }
+        intercept = nil
+        interceptOwner = nil
+    }
 
     /// Отдать ссылку диалогу входа, если он ее ждет.
     func offer(_ url: URL) -> Bool { intercept?(url) ?? false }

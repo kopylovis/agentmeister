@@ -205,6 +205,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(tab: id, spec: spec), execName: "-zsh",
                           currentDirectory: FileManager.default.fileExists(atPath: spec.projectPath) ? spec.projectPath : NSHomeDirectory())
         updateAwake()
+        if spec.proxied { Backend.main?.proxiedTabStarted() }
     }
 
     /// Включить или выключить "не спать" прямо в идущей сессии, без перезапуска.
