@@ -25,15 +25,23 @@ struct CardsLayout<Main: View>: View {
             let showInspector = wantInspector && (fitsAll || (!wantSidebar && full >= Self.railWidth + Self.mainMin + inspectorWidth + Self.gap * 2))
             let showSidebar = wantSidebar && (showInspector ? fitsAll : fitsSidebar)
             HStack(spacing: 0) {
-                Group {
-                    if showSidebar {
-                        Sidebar()
-                            .frame(width: sidebarWidth)
-                    } else {
-                        SidebarRail()
-                            .frame(width: Self.railWidth)
-                    }
+                // обе панели живут все время, переключается только видимость: при пересоздании панели размытие
+                // под ее барами пропадало. Прозрачность меняется сразу, анимируется только ширина карточки.
+                ZStack(alignment: .topLeading) {
+                    Sidebar()
+                        .frame(width: sidebarWidth)
+                        .opacity(showSidebar ? 1 : 0)
+                        .animation(nil, value: showSidebar)
+                        .allowsHitTesting(showSidebar)
+                        .accessibilityHidden(!showSidebar)
+                    SidebarRail()
+                        .frame(width: Self.railWidth)
+                        .opacity(showSidebar ? 0 : 1)
+                        .animation(nil, value: showSidebar)
+                        .allowsHitTesting(!showSidebar)
+                        .accessibilityHidden(showSidebar)
                 }
+                .frame(width: showSidebar ? sidebarWidth : Self.railWidth, alignment: .topLeading)
                 // список прокручивается под шапкой и режимами, но за рамку карточки не выходит
                 .clipShape(.windowCard)
                 .glassEffect(.regular, in: .windowCard)
