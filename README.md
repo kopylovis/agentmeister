@@ -301,7 +301,10 @@ agentmeister proxy test                                    # exit IP and country
 ```
 
 `--country` protects the account: if the server exits in another country, the proxied session refuses to
-start instead of showing up from an unexpected place. `--only <pattern>` keeps only the servers whose names
+start instead of showing up from an unexpected place. When the network watcher or `agentmeister proxy restart`
+restarts mihomo under running sessions, a wrong exit is only reported (the watcher writes it to
+`~/.local/state/mnrh/proxy/watch.log`) and mihomo keeps running, so those sessions don't lose the network.
+`--only <pattern>` keeps only the servers whose names
 match. Encrypted `happ://crypt…` links can only be read by Happ, so use the plain `https://` one.
 
 `agentmeister proxy` shows the mihomo version and suggests `agentmeister proxy update` when Homebrew has a
@@ -325,7 +328,8 @@ that `open_claude` and `/parallel` open from such a session also go through the 
 mihomo reaches the server over Wi-Fi or Ethernet, bypassing the TUN tunnel of Happ and other VPNs, so you can
 turn Happ on and off during a session without the session noticing. This matters when Happ is connected to the
 same server, since the server can't reach itself through its own tunnel. agentmeister downloads the
-subscription the same way each time mihomo starts and falls back to the previous copy if that fails. If no
+subscription the same way each time mihomo starts and falls back to the previous copy if that fails. An answer
+without a single server (a Wi-Fi login page, an error with code 200) doesn't replace the previous copy. If no
 server in the subscription is alive, connections are refused instead of going direct. agentmeister resolves the
 subscription's server names through the system DNS and writes them into the `hosts` section of the mihomo
 config, so mihomo never does DNS itself. Without this, a corporate VPN whose DNS server is only reachable
