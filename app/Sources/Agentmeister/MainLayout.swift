@@ -158,7 +158,20 @@ struct MainHeader: View {
 struct WindowDragArea: NSViewRepresentable {
     final class DragView: NSView {
         override var mouseDownCanMoveWindow: Bool { true }
-        override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+        override func mouseDown(with event: NSEvent) {
+            // двойной щелчок как по заголовку обычного окна: развернуть или вернуть (zoom), либо свернуть в Dock,
+            // если так выбрано в Системных настройках
+            if event.clickCount == 2 {
+                let action = UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") ?? "Maximize"
+                switch action {
+                case "Minimize": window?.miniaturize(nil)
+                case "None": break
+                default: window?.zoom(nil)
+                }
+                return
+            }
+            window?.performDrag(with: event)
+        }
     }
     func makeNSView(context: Context) -> NSView { DragView() }
     func updateNSView(_ nsView: NSView, context: Context) {}
@@ -188,6 +201,7 @@ struct SidebarToggle: View {
 /// Проекты, свернутые в рельсу: только проекты с открытыми сессиями, цветной кружок с буквами и точка статуса,
 /// янтарная, если сессия ждет. Остальные проекты в меню под папкой. Клик открывает экран проекта.
 struct SidebarRail: View {
+    @ObservedObject private var icons = ProjectIcons.shared
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var ui: UIState
@@ -228,12 +242,22 @@ struct SidebarRail: View {
                                 ui.projectScreen = project.path
                             }
                         } label: {
-                            Text(initials(project.name))
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 34, height: 34)
-                                .background(Circle().fill(Color(hue: hue(project.name), saturation: 0.45, brightness: 0.62)))
-                                .overlay(Circle().strokeBorder(current ? Color.accentColor : .clear, lineWidth: 2).padding(-3))
+                            Group {
+                                if let image = icons.icon(for: project.path) {
+                                    Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
+                                        .frame(width: 34, height: 34)
+                                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                } else {
+                                    Text(initials(project.name))
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 34, height: 34)
+                                        .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                            .fill(Color(hue: hue(project.name), saturation: 0.45, brightness: 0.62)))
+                                }
+                            }
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(current ? Color.accentColor : .clear, lineWidth: 2).padding(-3))
                                 .overlay(alignment: .bottomTrailing) {
                                     Circle()
                                         .fill(s.waiting ? Ink.amberDot : Ink.tealDot)

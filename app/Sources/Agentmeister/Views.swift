@@ -23,6 +23,8 @@ final class UIState: ObservableObject {
     @Published var newSessionParallel = false
     /// Путь проекта, чей экран открыт вместо терминала. Nil, когда видны вкладки.
     @Published var projectScreen: String?
+    /// Вкладка, сессию которой просят забыть. Пока не nil, окно спрашивает подтверждение.
+    @Published var forgetting: TerminalTab?
     /// Вкладка, сессию которой переименовывают.
     @Published var renaming: TerminalTab?
 }
@@ -73,6 +75,16 @@ struct MainView: View {
         }
         .sheet(item: $ui.renaming) { tab in
             RenameSheet(tab: tab)
+        }
+        .confirmationDialog(l.t("Забыть сессию?", "Forget this session?"),
+                            isPresented: Binding(get: { ui.forgetting != nil }, set: { if !$0 { ui.forgetting = nil } })) {
+            Button(l.forget, role: .destructive) {
+                ui.forgetting?.forget(note: l.forgetting)
+                ui.forgetting = nil
+            }
+        } message: {
+            Text(l.t("Агент остановится, переписка, история правок и строки в history.jsonl удалятся. Вернуть нельзя. Во вкладке откроется чистая сессия.",
+                     "The agent stops, and the transcript, its file history and its lines in history.jsonl are deleted. This can't be undone. A clean session opens in the tab."))
         }
         .sheet(isPresented: Binding(get: { workspace.pendingRestore != nil },
                                     set: { if !$0, workspace.pendingRestore != nil { workspace.finishRestore([]) } })) {
@@ -463,9 +475,7 @@ struct ProjectRow: View {
         let count = max(tabs.count, liveHere.count)
         let waiting = tabs.contains { $0.status == "waiting" } || liveHere.contains { $0.status == "waiting" }
         HStack(spacing: 8) {
-            Image(systemName: "folder")
-                .font(.system(size: 13))
-                .foregroundStyle(Ink.muted)
+            ProjectIconView(path: project.path, size: 18)
             Text(project.name)
                 .fontWeight(.medium)
                 .lineLimit(1)
@@ -492,6 +502,7 @@ struct ProjectRow: View {
             }
         }
         .frame(minHeight: 28)
+        .padding(.leading, 4)
         .contentShape(Rectangle())
         .simultaneousGesture(TapGesture().onEnded { ui.projectScreen = project.path })
         .onHover { hover = $0 }
@@ -720,7 +731,7 @@ struct TabMenu: View {
         if claude {
             Divider()
             Button(role: .destructive) {
-                tab.forget(note: l.forgetting)
+                ui.forgetting = tab
             } label: {
                 Text(l.forget)
                 Text(l.t("удалить без следа", "delete without a trace"))
@@ -920,6 +931,7 @@ struct InspectorView: View {
 struct TabInspector: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var ui: UIState
     @ObservedObject var tab: TerminalTab
     @AppStorage("restartWithUpdate") private var withUpdate = true
     /// Git и бэклог проекта вкладки из app-state project. Обновляются при смене вкладки и раз в минуту.
@@ -984,7 +996,7 @@ struct TabInspector: View {
                         CapsuleButton(title: l.t("С чистого листа", "Fresh start")) { tab.fresh() }
                     }
                     if claude {
-                        CapsuleButton(title: l.forget, destructive: true) { tab.forget(note: l.forgetting) }
+                        CapsuleButton(title: l.forget, destructive: true) { ui.forgetting = tab }
                     }
                 }
                 .padding(.horizontal, 2)
