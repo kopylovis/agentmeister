@@ -1,5 +1,6 @@
 import glob
 import gzip
+import hashlib
 import json
 import os
 import re
@@ -244,7 +245,22 @@ def prune_backups():
             pass
 
 
-def backup(path, sid, slim_size):
+def prefix_digest(f, size):
+    """sha256 первых size байт открытого файла; None, если файл короче."""
+    h = hashlib.sha256()
+    left = size
+    while left:
+        chunk = f.read(min(left, 4 << 20))
+        if not chunk:
+            return None
+        h.update(chunk)
+        left -= len(chunk)
+    return h.hexdigest()
+
+
+def backup(path, sid, slim_size, slim_file=None):
+    """slim_file: сжатый файл, который сейчас встанет на место path. Его inode и sha256 нужны undo: только
+    так видно, что после сжатия файл не переписали (sessions mv меняет cwd и длину строк)."""
     os.makedirs(BACKUPS, mode=0o700, exist_ok=True)
     prune_backups()
     stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -252,9 +268,14 @@ def backup(path, sid, slim_size):
     with open(path, "rb") as fi, gzip.open(gz, "wb", compresslevel=1) as fo:
         shutil.copyfileobj(fi, fo, 4 << 20)
     os.chmod(gz, 0o600)
+    meta = {"sid": sid, "path": path, "orig_size": os.path.getsize(path), "slim_size": slim_size,
+            "at": time.time()}
+    if slim_file:
+        with open(slim_file, "rb") as f:
+            info = os.fstat(f.fileno())
+            meta.update(slim_dev=info.st_dev, slim_ino=info.st_ino, slim_sha256=prefix_digest(f, slim_size))
     with open(gz[:-9] + ".json", "w") as f:
-        json.dump({"sid": sid, "path": path, "orig_size": os.path.getsize(path), "slim_size": slim_size,
-                   "at": time.time()}, f)
+        json.dump(meta, f)
     return gz
 
 
@@ -275,7 +296,7 @@ def apply(path, sid, keep=2):
         # строки, дописанные после scan, в tmp не попали; заменить файл можно, только пока он того же размера
         stats["before"] = size
         stats["after"] = os.path.getsize(tmp)
-        stats["backup"] = backup(path, sid, stats["after"])
+        stats["backup"] = backup(path, sid, stats["after"], tmp)
         if os.path.getsize(path) != size:
             raise SlimError("сессия изменилась во время сжатия, повтори")
         os.replace(tmp, path)
@@ -321,18 +342,34 @@ def undo(path, sid):
     gz = found[-1]
     with open(gz[:-9] + ".json") as f:
         meta = json.load(f)
-    size = os.path.getsize(path)
-    if size < meta["slim_size"]:
-        raise SlimError("сессию после сжатия переписали (перенос или другая правка), вернуть автоматически нельзя; "
-                        f"оригинал лежит в {tilde(gz)}")
+    rewritten = SlimError("сессию после сжатия переписали (перенос или другая правка), вернуть автоматически нельзя; "
+                          f"оригинал лежит в {tilde(gz)}")
+    if not meta.get("slim_sha256"):
+        raise SlimError("копию сделала старая версия agentmeister: не видно, переписывали ли сессию после сжатия, "
+                        f"поэтому вернуть автоматически нельзя; оригинал лежит в {tilde(gz)}")
     tmp = path + ".mnrh-undo"
-    with gzip.open(gz, "rb") as fi, open(tmp, "wb") as fo:
-        shutil.copyfileobj(fi, fo, 4 << 20)
+    try:
         with open(path, "rb") as cur:
-            cur.seek(meta["slim_size"])
-            shutil.copyfileobj(cur, fo, 4 << 20)
-    shutil.copystat(path, tmp)
-    os.replace(tmp, path)
+            info = os.fstat(cur.fileno())
+            # Claude Code только дописывает строки в конец; первые slim_size байт должны остаться теми, что записал slim
+            if (info.st_dev, info.st_ino) != (meta.get("slim_dev"), meta.get("slim_ino")) \
+                    or info.st_size < meta["slim_size"] or prefix_digest(cur, meta["slim_size"]) != meta["slim_sha256"]:
+                raise rewritten
+            with gzip.open(gz, "rb") as fi, open(tmp, "wb") as fo:
+                shutil.copyfileobj(fi, fo, 4 << 20)
+                while True:
+                    shutil.copyfileobj(cur, fo, 4 << 20)
+                    if os.fstat(cur.fileno()).st_size <= cur.tell():
+                        break
+            added = cur.tell() - meta["slim_size"]
+        shutil.copystat(path, tmp)
+        info = os.stat(path)
+        if (info.st_dev, info.st_ino) != (meta["slim_dev"], meta["slim_ino"]) or info.st_size != meta["slim_size"] + added:
+            raise SlimError("сессия изменилась во время возврата, повтори")
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
     os.remove(gz)
     os.remove(gz[:-9] + ".json")
-    return size - meta["slim_size"]
+    return added
