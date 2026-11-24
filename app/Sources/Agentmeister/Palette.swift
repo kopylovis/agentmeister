@@ -66,6 +66,8 @@ struct PaletteView: View {
                                    title: saved?.title.isEmpty == false ? saved!.title : tab.title,
                                    detail: tab.spec.projectName + " · " + l.t("открыта", "open"),
                                    shortcut: i < 9 ? "⌘\(i + 1)" : "") {
+                // onChange(of: selected) не сработает, если вкладка уже выбрана, а экран проекта должен закрыться
+                ui.projectScreen = nil
                 workspace.selected = tab.id
             })
         }

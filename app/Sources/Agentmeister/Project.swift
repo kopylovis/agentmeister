@@ -92,6 +92,14 @@ struct ProjectView: View {
             .padding(24)
         }
         .task(id: path) { await reload() }
+        // Esc закрывает экран проекта и возвращает вкладки. Листы и поповеры живут в своих окнах,
+        // так что там Esc закрывает их, а не этот экран.
+        .background {
+            Button("") { ui.projectScreen = nil }
+                .keyboardShortcut(.cancelAction)
+                .hidden()
+                .accessibilityHidden(true)
+        }
     }
 
     private func reload() async {
