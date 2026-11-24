@@ -213,7 +213,10 @@ class Profile(unittest.TestCase):
         command = claude_proxy.session_command(17890, ["true"], claude=True)
         self.assertIn(f"HOST_RUN_CONF={os.path.realpath(host_run.CONF_DIR)}", command)
         self.assertIn(f"HOST_RUN_STATE={os.path.realpath(host_run.STATE)}", command)
-        self.assertIn('(deny file-write* (subpath (param "HOST_RUN_CONF"))', command[command.index("-p") + 1])
+        self.assertIn(f"HOST_RUN_PID={os.path.realpath(host_run.PIDFILE)}", command)
+        profile = command[command.index("-p") + 1]
+        self.assertIn('(deny file-write* file-link (subpath (param "HOST_RUN_CONF"))', profile)
+        self.assertIn('(deny file-read* (literal (param "HOST_RUN_PID")))', profile)
 
     def test_claude_profile_protects_parents(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -240,6 +243,7 @@ class Profile(unittest.TestCase):
             listener = host_run.listen(sock)
             self.addCleanup(listener.close)
             write_commands(conf / "commands.json", {"t": {"cwd": tmp, "run": ["true"]}})
+            (state / "host-run.pid").write_text("1")
             threading.Thread(target=host_run.Server(sock, str(conf / "commands.json")).serve_forever,
                              args=(listener,), daemon=True).start()
             client = f"""\
@@ -254,16 +258,21 @@ for path in ({str(conf / 'commands.json')!r}, {str(state / 'x')!r}):
     else:
         sys.exit('wrote ' + path)
 import os
-try:
-    os.rename({str(Path(tmp) / 'up')!r}, {str(Path(tmp) / 'moved')!r})
-except PermissionError:
-    pass
-else:
-    sys.exit('renamed a parent of the list')
+attempts = {{
+    'rename a parent of the list': lambda: os.rename({str(Path(tmp) / 'up')!r}, {str(Path(tmp) / 'moved')!r}),
+    'link the list': lambda: os.link({str(conf / 'commands.json')!r}, {str(Path(tmp) / 'list-link')!r}),
+    'open the pid file': lambda: open({str(state / 'host-run.pid')!r}),
+}}
+for name, action in attempts.items():
+    try:
+        action()
+    except PermissionError:
+        continue
+    sys.exit('could ' + name)
 open({str(Path(tmp) / 'other')!r}, 'w').close()  # рядом писать можно
 sys.exit(host_run.call('t', [], {sock!r}))
 """
-            with patch.multiple(host_run, CONF_DIR=str(conf), STATE=str(state)):
+            with patch.multiple(host_run, CONF_DIR=str(conf), STATE=str(state), PIDFILE=str(state / "host-run.pid")):
                 command = claude_proxy.session_command(17890, [sys.executable, "-c", client], claude=True)
             subprocess.run(command, check=True, timeout=10)
 
