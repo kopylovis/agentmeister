@@ -206,6 +206,28 @@ class SignedIn(unittest.TestCase):
                 self.assertEqual(app_state.signed_in("codex"), {"signedIn": True, "email": None, "plan": "ChatGPT"})
 
 
+class Models(unittest.TestCase):
+    def test_collect_reports_the_model_of_each_agent(self):
+        with tempfile.TemporaryDirectory() as home:
+            codex = os.path.join(home, ".codex")
+            os.makedirs(codex)
+            with open(os.path.join(home, "settings.json"), "w") as f:
+                json.dump({"model": "opus", "effortLevel": "high"}, f)
+            with open(os.path.join(codex, "config.toml"), "w") as f:
+                f.write('model = "gpt-5.5"\nmodel_reasoning_effort = "high"\n\n[profiles.fast]\nmodel = "gpt-5-mini"\n')
+            with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": home, "CODEX_HOME": codex}), \
+                 patch.object(app_state, "projects", return_value=[]), \
+                 patch.object(app_state, "sessions", return_value=[]), \
+                 patch.object(app_state, "live", return_value=[]), \
+                 patch.object(app_state, "proxy", return_value=None), \
+                 patch.object(app_state, "modes", return_value={}), \
+                 patch.object(app_state, "host_run_summary", return_value=None):
+                state = app_state.collect()
+                self.assertEqual(state["models"], {"claude": "opus high", "codex": "gpt-5.5 high"})
+                os.remove(os.path.join(codex, "config.toml"))
+                self.assertEqual(app_state.collect()["models"]["codex"], None)
+
+
 class Lang(unittest.TestCase):
     def test_set_and_auto(self):
         with tempfile.TemporaryDirectory() as d:

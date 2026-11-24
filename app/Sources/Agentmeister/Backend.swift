@@ -143,6 +143,8 @@ struct AppState: Decodable {
     var signedIn: [String: Bool]?
     /// Сколько дней Claude Code хранит переписки.
     var retentionDays: Int?
+    /// Модель и усилие из настроек агентов, "opus high" и "gpt-5.5 high". Nil, если не выбраны.
+    var models: [String: String?]?
     var errors: [String: String] = [:]
 
     init() {}

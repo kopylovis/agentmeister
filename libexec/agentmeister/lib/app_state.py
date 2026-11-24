@@ -156,7 +156,9 @@ def collect():
     for name, part, empty in (("projects", projects, []), ("sessions", sessions, []), ("live", live, []),
                               ("proxy", proxy, None), ("modes", modes, {}), ("hostRun", host_run_summary, None),
                               ("signedIn", lambda: {b: signed_in(b)["signedIn"] for b in ("claude", "codex")}, None),
-                              ("retentionDays", retention_days, None)):
+                              ("retentionDays", retention_days, None),
+                              # модель из настроек агентов для панели сессии: два маленьких файла, без запуска бинарников
+                              ("models", lambda: {b: agent_model(b) for b in ("claude", "codex")}, None)):
         try:
             state[name] = part()
         except Exception as e:  # одна сломанная часть не должна оставить окно пустым
