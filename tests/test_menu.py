@@ -21,9 +21,11 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 class Menu(unittest.TestCase):
     def setUp(self):
         self.saved = mnrhlib.lang, m.mode_on
+        m.forget_facts()
 
     def tearDown(self):
         mnrhlib.lang, m.mode_on = self.saved
+        m.forget_facts()
 
     def plain(self, lang, on=()):
         mnrhlib.lang = lambda: lang
@@ -131,6 +133,49 @@ class Menu(unittest.TestCase):
         at = next(n for n, line in enumerate(lines) if line.startswith("Folder"))
         self.assertTrue(lines[at + 1].startswith(" " * 14 + "long-folder/"))
         self.assertTrue(all(menu.width(line) <= 40 for line in lines))
+
+    def test_broken_binary_gives_question_mark_not_endless_checking(self):
+        mnrhlib.lang = lambda: "en"
+        d = m.Describe.__new__(m.Describe)
+        d.fresh = threading.Event()
+        errors = [OSError(8, "Exec format error"), UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad"), "0.9.0\n"]
+        with patch.object(m.shutil, "which", return_value="/tools/claude"), \
+                patch.object(m.codex_harness, "executable", return_value="codex"), \
+                patch.object(m, "promptsill_path", return_value="promptsill"), \
+                patch.object(m, "capture", side_effect=errors), \
+                patch.object(m.codex_harness, "configured_humanize_hooks", side_effect=RuntimeError):
+            d.ask_versions()
+        self.assertEqual((d.claude, d.codex, d.promptsill, d.hooks), ("?", "?", "0.9.0", "?"))
+        self.assertTrue(d.fresh.is_set())
+
+    def test_versions_are_cached_until_a_command_runs(self):
+        m.FACTS.update(claude="2.1.325", codex="0.172.0", promptsill="0.9.0", hooks="3/3", proxy="running")
+        with patch.object(m.threading, "Thread") as thread:
+            d = m.Describe({})
+        thread.assert_not_called()
+        self.assertEqual((d.claude, d.proxy), ("2.1.325", "running"))
+        m.forget_facts()
+        with patch.object(m.threading, "Thread") as thread:
+            d = m.Describe({})
+        self.assertEqual(thread.call_count, 2)
+        self.assertNotEqual(d.claude, "2.1.325")
+
+    def test_answer_started_before_forget_is_not_cached(self):
+        d = m.Describe.__new__(m.Describe)
+        d.fresh = threading.Event()
+
+        def probe():
+            m.forget_facts()  # команда запустилась, пока шла проверка
+            return "old"
+        d.ask([("claude", probe)])
+        self.assertEqual(d.claude, "old")
+        self.assertNotIn("claude", m.FACTS)
+
+    def test_deleted_folder_falls_back_to_pwd(self):
+        with patch.object(m.os, "getcwd", side_effect=FileNotFoundError), patch.dict(os.environ, PWD="/gone"):
+            self.assertEqual(m.cwd(), "/gone")
+        with patch.object(m.os, "getcwd", side_effect=FileNotFoundError), patch.dict(os.environ, PWD=""):
+            self.assertEqual(m.cwd(), "?")
 
     def test_codex_setup_shows_detected_versions_and_hooks(self):
         mnrhlib.lang = lambda: "en"
@@ -299,6 +344,30 @@ class Layout(unittest.TestCase):
         self.assertEqual(short[-3:], ["FACTS", "a 1", "b 2"])
         self.assertEqual(len(short), 6)
         self.assertTrue(ANSI.sub("", short[2]).endswith("…"))
+
+
+class Signals(unittest.TestCase):
+    def test_sigterm_exits_through_finally(self):
+        import signal
+        saved = signal.getsignal(signal.SIGTERM)
+        try:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            menu.catch_term()
+            with self.assertRaises(SystemExit) as caught:
+                os.kill(os.getpid(), signal.SIGTERM)
+            self.assertEqual(caught.exception.code, 143)
+        finally:
+            signal.signal(signal.SIGTERM, saved)
+
+    def test_sigterm_handler_set_elsewhere_is_kept(self):
+        import signal
+        saved = signal.getsignal(signal.SIGTERM)
+        try:
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            menu.catch_term()
+            self.assertEqual(signal.getsignal(signal.SIGTERM), signal.SIG_IGN)
+        finally:
+            signal.signal(signal.SIGTERM, saved)
 
 
 class Ask(unittest.TestCase):
