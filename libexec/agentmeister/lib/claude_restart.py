@@ -9,10 +9,11 @@ import time
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CM, HOME, LOCAL_CLI, NOTICES, RESTART_QUEUE, UUID_RE, settings_path, tilde, write_json  # noqa: E402
-from claude_proc import (CLAUDE_BIN, SHELLS, RestartError, argv_of, caffeinate_args, claude_version,  # noqa: E402
+from mnrhlib import HOME, NOTICES, RESTART_QUEUE, UUID_RE, settings_path, tilde, write_json  # noqa: E402
+from claude_proc import (SHELLS, RestartError, argv_of, caffeinate_args, claude_version,  # noqa: E402
                          drop_name, find_claude, launcher, ps, resume_flags, session_file, session_path)
 import claude_search  # noqa: E402
+import restart_job  # noqa: E402
 
 LOG = os.path.join(HOME, "Library", "Logs", "mnrh-claude-restart.log")
 SLIM_MIN = 5 << 20
@@ -102,10 +103,15 @@ def plan(update=True, forget=False, slim=False, fresh=False):
         raise RestartError("у Claude нет терминала, перезапускать некуда")
     tty = "/dev/" + tty if not tty.startswith("/dev/") else tty
     term = os.environ.get("TERM_PROGRAM", "")
-    if os.environ.get("MNRH_RESTART_HOOK") == "1":
+    hook = os.environ.get("MNRH_RESTART_HOOK")
+    if hook == restart_job.HOOK_VERSION:
         via = "zsh"
     elif term in FIND_TAB:
         via = term
+    elif hook:
+        # хук старой версии выполняет задание как команду shell, новое задание в JSON он не поймет
+        raise RestartError("в этой вкладке хук zsh от старой версии agentmeister. Открой новую вкладку терминала "
+                           "и запусти claude там")
     else:
         raise RestartError(no_hook_reason(pid, term or os.environ.get("TERMINAL_EMULATOR") or "неизвестный"))
 
@@ -114,21 +120,21 @@ def plan(update=True, forget=False, slim=False, fresh=False):
     new = forget or fresh
     if new:
         flags = drop_name(flags)
+    flags, dropped = restart_job.clean_flags(flags)
+    if dropped:
+        log(f"незнакомые флаги не переносятся: {shlex.join(dropped)}")
 
     new_sid = str(uuid.uuid4()) if new else sid
-    # сессия через proxy (agentmeister -x): её окружение досталось и нам, перезапускаем тоже через proxy
-    proxy = [LOCAL_CLI, "proxy", "run", "--claude", "--"] if os.environ.get("MNRH_PROXY") else []
-    run = (proxy + (["caffeinate"] + caffeinate if caffeinate is not None else []) + [CLAUDE_BIN]
-           + (["--session-id", new_sid] if new else ["--resume", sid]) + flags)
-    update = update and not new and not slim
-    # после agentmeister lid setup сторож держит Mac и с закрытой крышкой; без правила keep ничего не делает
-    keep = f"{shlex.quote(CM)} lid keep >/dev/null 2>&1; " if caffeinate is not None else ""
-    line = (f"cd {shlex.quote(cwd)} && " + keep
-            + (f"{{ {shlex.join(proxy + [CLAUDE_BIN, 'update'])}; " if update else "{ ")
-            + ("clear; printf '\\033[3J'; " if new else "")
-            + (f"{shlex.quote(CM)} sessions slim {sid} -y --notice; " if slim else "")
-            + shlex.join(run) + "; }")
-    return {"pid": pid, "sid": sid, "cwd": cwd, "tty": tty, "term": term, "via": via, "line": line, "forget": forget,
+    mode = "forget" if forget else "fresh" if fresh else "slim" if slim else "restart"
+    try:
+        # сессия через proxy (agentmeister -x): её окружение досталось и нам, перезапускаем тоже через proxy
+        job = restart_job.claude_job(cwd, mode, sid, new_sid, update=update and not new and not slim,
+                                     proxy=bool(os.environ.get("MNRH_PROXY")), caffeinate=caffeinate, flags=flags)
+    except restart_job.JobError as e:
+        raise RestartError(f"не собрал команду перезапуска: {e}")
+    line = restart_job.shell_line(job)
+    return {"pid": pid, "sid": sid, "cwd": cwd, "tty": tty, "term": term, "via": via, "line": line, "job": job,
+            "forget": forget,
             "slim": slim, "fresh": fresh,
             "title": session_title(sid) or info.get("name") or sid, "new_sid": new_sid,
             "version": claude_version()}
@@ -163,11 +169,9 @@ def log(msg):
 def watcher(p, delay):
     time.sleep(delay)
     log(f"restart {p['sid']} pid {p['pid']} tty {p['tty']} via {p['via']}")
-    job = os.path.join(QUEUE, os.path.basename(p["tty"]))
     write_notice(p, "pending" if p["forget"] or p.get("slim") else "done")
     if p["via"] == "zsh":
-        with open(job, "w") as f:
-            f.write(p["line"])
+        restart_job.write(os.path.join(QUEUE, os.path.basename(p["tty"])), p["job"])
     try:
         os.kill(p["pid"], signal.SIGTERM)
     except ProcessLookupError:

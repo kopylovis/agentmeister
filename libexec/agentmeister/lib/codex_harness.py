@@ -207,26 +207,29 @@ def restart(codex, argv):
         if not current or session != current:
             raise ValueError(tr("Для перезапуска нужен ID текущей сессии Codex.",
                                 "Restart after exit needs the current Codex session."))
-        program = LOCAL_CLI if proxy else shutil.which("agentmeister") or LOCAL_CLI
-        command = [program, "--harness", "codex", "restart", session]
-        if options.update:
-            command.append("--update")
-        if proxy:
-            command.append("--proxy")
-        line = f"cd {shlex.quote(cwd)} && {shlex.join(command)}"
-        tty = codex_terminal(session) if os.environ.get("MNRH_RESTART_HOOK") == "1" else None
+        import restart_job
+
+        job = restart_job.codex_job(cwd, session, update=options.update, proxy=proxy)
+        line = restart_job.shell_line(job)
+        hook = os.environ.get("MNRH_RESTART_HOOK")
+        tty = codex_terminal(session) if hook == restart_job.HOOK_VERSION else None
         if not tty:
+            if hook:
+                print(tr("В этой вкладке хук zsh от старой версии agentmeister, открой новую вкладку.",
+                         "This tab has a zsh hook from an older agentmeister, open a new tab."))
             print(tr("После /quit выполни в терминале", "After /quit, run in the terminal"))
             print(line)
             return 0
         queue = Path(RESTART_QUEUE)
         queue.mkdir(parents=True, mode=0o700, exist_ok=True)
         job_path = queue / Path(tty).name
+        data = json.dumps(job, ensure_ascii=False, sort_keys=True) + "\n"
         try:
-            with job_path.open("x") as job:
-                job.write(line + "\n")
+            with os.fdopen(os.open(job_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600),
+                           "w", encoding="utf-8") as f:
+                f.write(data)
         except FileExistsError:
-            if job_path.is_symlink() or job_path.read_text(encoding="utf-8") != line + "\n":
+            if job_path.is_symlink() or job_path.read_text(encoding="utf-8") != data:
                 raise ValueError(tr("Для этой вкладки уже запланирован другой запуск.",
                                     "Another launch is already queued for this tab."))
             os.utime(job_path, follow_symlinks=False)
