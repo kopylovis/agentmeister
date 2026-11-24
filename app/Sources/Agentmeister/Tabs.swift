@@ -13,9 +13,13 @@ struct LaunchSpec: Hashable {
     /// id сессии Claude Code, которую продолжить. nil значит новая сессия.
     var resumeId: String?
     var firstPrompt = ""
+    /// Служебная вкладка: agentmeister с этими аргументами вместо агента (proxy setup, lid setup и т. п.).
+    /// Такие вкладки не восстанавливаются после перезапуска.
+    var utility: [String]?
 
     /// Аргументы agentmeister, как их собирает open_flow.command: -n обычный режим без caffeinate, -x или -d маршрут.
     var arguments: [String] {
+        if let utility { return utility }
         var args = agent == .codex ? ["--harness", "codex"] : []
         args += [projectPath, "-n", direct ? "-d" : "-x"]
         if let id = resumeId, agent == .claude {
@@ -44,7 +48,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
 
     init(spec: LaunchSpec) {
         self.spec = spec
-        self.title = spec.projectName
+        self.title = spec.utility.map { "agentmeister " + $0.joined(separator: " ") } ?? spec.projectName
         self.sessionId = spec.resumeId
         view = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 960, height: 640))
         super.init()
@@ -192,7 +196,7 @@ final class Workspace: ObservableObject {
     /// Записывается при каждом изменении вкладок, поэтому падение приложения тоже не теряет их.
     func save() {
         guard restored else { return }
-        let saved = tabs.map {
+        let saved = tabs.filter { $0.spec.utility == nil }.map {
             SavedTab(projectName: $0.spec.projectName, projectPath: $0.spec.projectPath, agent: $0.spec.agent.rawValue,
                      direct: $0.spec.direct, sessionId: $0.sessionId, selected: $0.id == selected)
         }
