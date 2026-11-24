@@ -10,6 +10,7 @@ struct LibraryRow: Identifiable, Hashable {
     let size: Int?
     let hits: [SearchResults.Hit]
     let count: Int
+    var agent: LaunchSpec.Agent = .claude
 
     var project: String { (home as NSString).lastPathComponent }
 }
@@ -32,6 +33,8 @@ struct LibraryView: View {
     @State private var preview: SessionPreview?
     @State private var confirmDelete = false
     @State private var renaming = false
+    /// all, claude или codex: переключатель над списком.
+    @AppStorage("libraryAgent") private var agentFilter = "all"
 
     var l: L { L(backend.state.lang) }
 
@@ -39,16 +42,22 @@ struct LibraryView: View {
     private var goneIds: Set<String> { Set(backend.state.sessions.filter { $0.cwdExists == false }.map(\.id)) }
 
     private var rows: [LibraryRow] {
-        let all: [LibraryRow]
-        if query.trimmingCharacters(in: .whitespaces).isEmpty {
+        var all: [LibraryRow]
+        let q = query.trimmingCharacters(in: .whitespaces)
+        if q.isEmpty {
             all = backend.state.sessions.map {
-                LibraryRow(id: $0.id, title: $0.title, home: $0.cwd, time: $0.mtime, size: $0.size, hits: [], count: 0)
+                LibraryRow(id: $0.id, title: $0.title, home: $0.cwd, time: $0.mtime, size: $0.size, hits: [], count: 0, agent: $0.kind)
             }
         } else {
             all = (found?.results ?? []).map {
                 LibraryRow(id: $0.id, title: $0.title, home: $0.home, time: $0.last, size: $0.size, hits: $0.hits, count: $0.count)
             }
+            // поиск по переписке знает только Claude Code, треды Codex ищем по названию
+            all += backend.state.sessions.filter { $0.kind == .codex && $0.title.localizedCaseInsensitiveContains(q) }.map {
+                LibraryRow(id: $0.id, title: $0.title, home: $0.cwd, time: $0.mtime, size: $0.size, hits: [], count: 0, agent: .codex)
+            }
         }
+        if agentFilter != "all" { all = all.filter { $0.agent.rawValue == agentFilter } }
         switch filter {
         case nil: return all
         case "!open": return all.filter { liveIds.contains($0.id) }
@@ -113,8 +122,13 @@ struct LibraryView: View {
                 .frame(height: 40)
                 .glassEffect(.regular, in: .capsule)
                 HStack {
-                    Text(filterTitle).font(.system(size: 13, weight: .semibold))
+                    Text(filterTitle).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                     Spacer()
+                    SegmentedCapsule(selection: $agentFilter, options: [("all", l.t("Все", "All"), nil),
+                                                                        ("claude", "Claude Code", nil), ("codex", "Codex", nil)])
+                        .font(.system(size: 12))
+                        .frame(width: 250)
+                        .accessibilityLabel(l.agent)
                     UtilityButton(title: l.t("Очистить лишние", "Clean up"), args: ["sessions", "clean"])
                         .controlSize(.small)
                         .help(l.t("Битые ссылки, сессии без ответа, папки удаленных проектов. Сначала покажет список.",
@@ -142,6 +156,7 @@ struct LibraryView: View {
         } detail: {
             if let preview, let id = preview.id {
                 PreviewView(preview: preview, sessionId: id, size: backend.state.sessions.first { $0.id == id }?.size,
+                            onMoveToClaude: { moveToClaude(id) },
                             onResume: { resume(awake: $0) }, onDelete: { confirmDelete = true },
                             onRename: { renaming = true }, onMove: move, onSlim: slim,
                             onReadAll: { readAll(id) })
@@ -190,8 +205,9 @@ struct LibraryView: View {
 
     /// "14 сессий, 245 MB в ~/.claude/projects. Переписки хранятся 365 дней."
     private var footer: String {
-        let n = backend.state.sessions.count
-        let bytes = backend.state.sessions.reduce(0) { $0 + $1.size }
+        let claude = backend.state.sessions.filter { $0.kind == .claude }
+        let n = claude.count
+        let bytes = claude.reduce(0) { $0 + $1.size }
         let size = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
         let days = backend.state.retentionDays ?? 30
         return l.t("\(l.count(n, "сессия", "сессии", "сессий", "session", "sessions")), \(size) в ~/.claude/projects. Переписки хранятся \(days) дней.",
@@ -202,7 +218,14 @@ struct LibraryView: View {
         preview = nil
         storedSelection = selection ?? ""
         guard let id = selection else { return }
-        preview = await backend.read(id)
+        let result = await backend.read(id)
+        if result?.id == nil, let codex = backend.state.sessions.first(where: { $0.id == id && $0.kind == .codex }) {
+            // тред не прочитался: превью без сообщений, продолжить его все равно можно
+            preview = SessionPreview(id: id, title: codex.title, home: codex.cwd, total: nil, first: nil, last: nil,
+                                     messages: [], error: result?.error, agent: "codex")
+        } else {
+            preview = result
+        }
     }
 
     private func resume(awake: Bool) {
@@ -211,8 +234,21 @@ struct LibraryView: View {
         let project = backend.state.projects.first { home == $0.path || home.hasPrefix($0.path + "/") }
         let path = project?.path ?? home
         let name = project?.name ?? (home as NSString).lastPathComponent
-        var spec = project.map { LaunchSpec.resume(id, cwd: home, project: $0) } ?? LaunchSpec(projectName: name, projectPath: path, resumeId: id)
+        let agent: LaunchSpec.Agent = preview?.agent == "codex" ? .codex : .claude
+        var spec = project.map { LaunchSpec.resume(id, cwd: home, project: $0, agent: agent) }
+            ?? LaunchSpec(projectName: name, projectPath: path, agent: agent, resumeId: id)
         spec.awake = awake
+        workspace.open(spec)
+        openWindow(id: "main")
+    }
+
+    /// Новая вкладка Claude Code в проекте треда Codex с его контекстом: /import-codex <id>.
+    private func moveToClaude(_ id: String) {
+        let home = preview?.home ?? ""
+        let project = backend.state.projects.first { home == $0.path || home.hasPrefix($0.path + "/") }
+        var spec = LaunchSpec(projectName: project?.name ?? (home as NSString).lastPathComponent, projectPath: project?.path ?? home,
+                              direct: backend.state.proxy?.defaultRoute == "direct")
+        spec.firstPrompt = "/import-codex " + id
         workspace.open(spec)
         openWindow(id: "main")
     }
@@ -271,7 +307,7 @@ struct LibraryRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                AgentBadge(agent: .claude, size: 18)
+                AgentBadge(agent: row.agent, size: 18)
                 Text(row.title.isEmpty ? l.untitled : row.title)
                     .fontWeight(.medium)
                     .lineLimit(1)
@@ -328,6 +364,7 @@ struct PreviewView: View {
     let preview: SessionPreview
     let sessionId: String
     let size: Int?
+    let onMoveToClaude: () -> Void
     let onResume: (Bool) -> Void
     let onDelete: () -> Void
     let onRename: () -> Void
@@ -338,33 +375,83 @@ struct PreviewView: View {
     var l: L { L(backend.state.lang) }
 
     var body: some View {
-        let live = backend.state.live.contains { $0.sessionId == sessionId }
+        if preview.agent == "codex" { codexBody } else { claudeBody }
+    }
+
+    /// Тред Codex: переименовать, перенести, сжать и удалить умеют только команды для Claude Code, поэтому здесь
+    /// продолжить, скопировать id и перенести контекст в Claude Code.
+    private var codexBody: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                SectionCaption(text: l.t("Сессия", "Session"))
-                Text(preview.title ?? l.untitled)
-                    .font(.system(size: 17, weight: .semibold))
-                    .textSelection(.enabled)
-                Text([String(sessionId.prefix(8)), tilde(preview.home ?? ""),
-                      size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) }]
-                        .compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Ink.muted)
-                    .textSelection(.enabled)
-            }
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(preview.messages ?? []) { message in
-                            MessageView(message: message)
-                                .id(message.at)
-                        }
-                    }
+            header
+            if (preview.messages ?? []).isEmpty {
+                Text(l.t("Переписку этого треда Codex прочитать не получилось. Продолжить его можно.",
+                         "Couldn't read this Codex thread. You can still resume it."))
+                    .font(.system(size: 12)).foregroundStyle(Ink.muted)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(12)
-                }
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Ink.card))
-                .onAppear { if let last = preview.messages?.last { proxy.scrollTo(last.at, anchor: .bottom) } }
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Ink.card))
+            } else {
+                messages
             }
+            HStack(spacing: 8) {
+                Button(l.resume) { onResume(false) }
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
+                Button(l.t("Продолжить, не давая Mac уснуть", "Resume and keep the Mac awake")) { onResume(true) }
+                    .buttonStyle(.glass)
+            }
+            FlowLayout(spacing: 6) {
+                CapsuleButton(title: l.moveToClaude, action: onMoveToClaude)
+                CapsuleButton(title: l.t("Скопировать id", "Copy id")) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(sessionId, forType: .string)
+                }
+            }
+            Text(l.t("Перенос открывает новую вкладку Claude Code с /import-codex: Claude прочитает этот тред и продолжит задачу.",
+                     "Moving opens a new Claude Code tab with /import-codex: Claude reads this thread and picks up the task."))
+                .font(.system(size: 12))
+                .foregroundStyle(Ink.muted)
+                .lineLimit(3)
+        }
+        .padding(16)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            SectionCaption(text: preview.agent == "codex" ? l.t("Сессия Codex", "Codex session") : l.t("Сессия", "Session"))
+            Text(preview.title ?? l.untitled)
+                .font(.system(size: 17, weight: .semibold))
+                .textSelection(.enabled)
+            Text([String(sessionId.prefix(8)), tilde(preview.home ?? ""),
+                  size.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) }]
+                    .compactMap { $0 }.joined(separator: " · "))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Ink.muted)
+                .textSelection(.enabled)
+        }
+    }
+
+    private var messages: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    ForEach(preview.messages ?? []) { message in
+                        MessageView(message: message)
+                            .id(message.at)
+                    }
+                }
+                .padding(12)
+            }
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Ink.card))
+            .onAppear { if let last = preview.messages?.last { proxy.scrollTo(last.at, anchor: .bottom) } }
+        }
+    }
+
+    private var claudeBody: some View {
+        let live = backend.state.live.contains { $0.sessionId == sessionId }
+        return VStack(alignment: .leading, spacing: 12) {
+            header
+            messages
             HStack(spacing: 8) {
                 Button(l.resume) { onResume(false) }
                     .buttonStyle(.glassProminent)
@@ -455,6 +542,7 @@ struct MessageView: View {
             switch message.role {
             case "user": return (l.t("ты", "you"), .accentColor)
             case "claude": return ("Claude", .orange)
+            case "codex": return ("Codex", Ink.codexBadge)
             case "tool": return (l.t("команда", "command"), .secondary)
             case "error": return (l.t("ошибка", "error"), .red)
             default: return (message.role, .secondary)
