@@ -106,7 +106,8 @@ struct OnboardingView: View {
                             .buttonStyle(.borderless)
                     }
                     Spacer()
-                    Button("") { finish() }.keyboardShortcut(.cancelAction).hidden().frame(width: 0)
+                    // Esc нужен терминалу, пока он открыт: иначе он закрыл бы мастер и оборвал команду
+                    Button("") { finish() }.keyboardShortcut(console == nil ? .cancelAction : nil).hidden().frame(width: 0)
                     if step > 0 {
                         Button(l.t("Назад", "Back")) { step -= 1 }
                     }

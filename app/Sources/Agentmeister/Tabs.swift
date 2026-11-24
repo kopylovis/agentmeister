@@ -55,6 +55,14 @@ struct LaunchSpec: Hashable {
 }
 
 extension LaunchSpec {
+    /// Продолжить сессию в ее собственной папке: claude --resume ищет сессию по cwd, а сессия могла начаться
+    /// в подпапке проекта.
+    static func resume(_ id: String, cwd: String?, project: AppState.Project) -> LaunchSpec {
+        var isDir: ObjCBool = false
+        let path = cwd.flatMap { FileManager.default.fileExists(atPath: $0, isDirectory: &isDir) && isDir.boolValue ? $0 : nil } ?? project.path
+        return LaunchSpec(projectName: project.name, projectPath: path, resumeId: id)
+    }
+
     /// Новая сессия в один клик: агент и маршрут по умолчанию из настроек.
     @MainActor
     static func quick(_ project: AppState.Project, route: String? = nil) -> LaunchSpec {
@@ -196,7 +204,10 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Перезапуск с claude update перед ним, как /restart. У вкладки через proxy обновление тоже идет через proxy.
     func restartWithUpdate(note: String) {
         guard spec.agent == .claude, spec.utility == nil else { restart(); return }
-        if running { view.terminate() }
+        afterStop { self.updateThenRestart(note: note) }
+    }
+
+    private func updateThenRestart(note: String) {
         view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
         let command = TerminalTab.updateCommand(direct: spec.direct)
         Task.detached(priority: .userInitiated) {
@@ -231,13 +242,27 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Команда agentmeister над сессией этой вкладки, когда агент уже остановлен, потом продолжение.
     /// Пока команда идет, во вкладке видно, что происходит.
     private func whileStopped(_ note: String, _ args: [String], then: @escaping @MainActor (Bool) -> Void) {
-        if running { view.terminate() }
-        view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
-        Task.detached(priority: .userInitiated) {
-            try? await Task.sleep(for: .milliseconds(600))  // Claude Code успевает дописать переписку
-            let ok: Bool
-            if case .success = Backend.run(args) { ok = true } else { ok = false }
-            await MainActor.run { then(ok) }
+        // команда идет только после выхода агента: иначе Claude Code еще дописывает переписку
+        afterStop {
+            self.view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
+            Task.detached(priority: .userInitiated) {
+                let ok: Bool
+                if case .success = Backend.run(args) { ok = true } else { ok = false }
+                await MainActor.run { then(ok) }
+            }
+        }
+    }
+
+    /// Что сделать, когда процесс вкладки завершится. SwiftTerm молча не запускает новый процесс, пока старый
+    /// не завершился до конца, поэтому перезапуск ждет его выхода, а не стартует сразу после terminate().
+    private var pendingAfterExit: (@MainActor () -> Void)?
+
+    private func afterStop(_ action: @escaping @MainActor () -> Void) {
+        if running {
+            pendingAfterExit = action
+            view.terminate()
+        } else {
+            action()
         }
     }
 
@@ -261,24 +286,27 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
 
     /// Новая сессия в той же вкладке. Нынешняя остается в списке сессий.
     func fresh() {
-        if running { view.terminate() }
-        spec.resumeId = nil
-        spec.firstPrompt = ""
-        sessionId = nil
-        start()
+        afterStop {
+            self.spec.resumeId = nil
+            self.spec.firstPrompt = ""
+            self.sessionId = nil
+            self.start()
+        }
     }
 
     /// Перезапуск продолжает ту же сессию, если ее id уже известен.
     func restart() {
-        if running { view.terminate() }
-        if let sid = sessionId, spec.agent == .claude {
-            spec.resumeId = sid
-            spec.firstPrompt = ""
+        afterStop {
+            if let sid = self.sessionId, self.spec.agent == .claude {
+                self.spec.resumeId = sid
+                self.spec.firstPrompt = ""
+            }
+            self.start()
         }
-        start()
     }
 
     func terminate() {
+        pendingAfterExit = nil
         caffeinate?.terminate()
         caffeinate = nil
         if running { view.terminate() }
@@ -303,6 +331,12 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         caffeinate = nil
         self.exitCode = exitCode
         status = nil
+        if let action = pendingAfterExit {
+            // перезапуск, о котором попросили: даем SwiftTerm вернуть сессию в покой и продолжаем
+            pendingAfterExit = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { action() }
+            return
+        }
         let code = exitCode.map(String.init) ?? "?"
         view.feed(text: "\r\n\u{1b}[2m[exit \(code)" + (exitHint ? ". ⌘R" : "") + "]\u{1b}[0m\r\n")
         onExit?()
@@ -332,6 +366,11 @@ func isDescendant(_ pid: pid_t, of root: pid_t) -> Bool {
 /// Вкладки окна. Терминалы живут здесь, а не во view, чтобы переключение вкладок не убивало процессы.
 @MainActor
 final class Workspace: ObservableObject {
+    /// Единственное окно с вкладками: делегат приложения спрашивает у него, есть ли работающие агенты.
+    static weak var main: Workspace?
+
+    init() { Workspace.main = self }
+
     @Published var tabs: [TerminalTab] = [] { didSet { save() } }
     @Published var selected: UUID? { didSet { save() } }
     private var restored = false
@@ -425,8 +464,9 @@ final class Workspace: ObservableObject {
         }
         let modified = (try? FileManager.default.attributesOfItem(atPath: Self.savedTabsURL.path)[.modificationDate]) as? Date
         let reason: RestoreReason? = {
+            if clean { return nil }
             if let boot = Self.bootTime, let modified, modified < boot { return .reboot }
-            return clean ? nil : .crash
+            return .crash
         }()
         if let reason, !specs.isEmpty, !defaults.bool(forKey: Self.reopenSilentlyKey) {
             // вкладки пока не трогаем: tabs.json остается, пока не ответили на вопрос

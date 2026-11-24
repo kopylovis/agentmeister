@@ -43,8 +43,8 @@ final class ProjectIcons: ObservableObject {
         guard side < Int(Double(w) * 0.97) else { return image }
         let cx = Double(minX + maxX + 1) / 2, cy = Double(minY + maxY + 1) / 2
         let scaleX = Double(cg.width) / Double(w), scaleY = Double(cg.height) / Double(h)
-        // в CGContext y растет снизу, в CGImage.cropping сверху
-        let rect = CGRect(x: (cx - Double(side) / 2) * scaleX, y: (Double(h) - cy - Double(side) / 2) * scaleY,
+        // в буфере CGBitmapContext строка 0 сверху, как и у CGImage.cropping
+        let rect = CGRect(x: (cx - Double(side) / 2) * scaleX, y: (cy - Double(side) / 2) * scaleY,
                           width: Double(side) * scaleX, height: Double(side) * scaleY).integral
         guard let crop = cg.cropping(to: rect) else { return image }
         return NSImage(cgImage: crop, size: NSSize(width: crop.width, height: crop.height))

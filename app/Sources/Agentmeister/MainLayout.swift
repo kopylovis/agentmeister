@@ -65,14 +65,18 @@ struct ResizeHandle: View {
     /// 1 для карточки слева от полосы, -1 для карточки справа.
     let sign: Double
     @State private var start: Double?
+    @State private var hovering = false
 
     var body: some View {
         Color.clear
             .frame(width: CardsLayout<EmptyView>.gap)
             .contentShape(Rectangle())
             .onHover { inside in
+                hovering = inside
                 if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
             }
+            // полоса пропала под курсором (карточка спряталась): без этого курсор остался бы стрелками
+            .onDisappear { if hovering { NSCursor.pop(); hovering = false } }
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in
