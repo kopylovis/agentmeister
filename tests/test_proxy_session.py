@@ -1,3 +1,5 @@
+from contextlib import redirect_stdout
+import io
 import os
 from pathlib import Path
 import signal
@@ -11,6 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "libexec/agentmeister/lib"))
 import claude_proxy
+import host_run
 
 
 class ProxySetup(unittest.TestCase):
@@ -29,6 +32,110 @@ class ProxySetup(unittest.TestCase):
                 old = {p: p.read_bytes() for p in Path(tmp).iterdir()}
                 self.assertEqual(claude_proxy.setup(["https://new.example.test"]), 1)
                 self.assertEqual({p: p.read_bytes() for p in old}, old)
+
+
+class ControllerGuard(unittest.TestCase):
+    """Сокет управления mihomo и его настройка закрыты для сессии: через сокет mihomo загрузил бы любой конфиг."""
+
+    def test_both_profiles_close_the_controller_and_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real = os.path.realpath(tmp)
+            with patch.multiple(claude_proxy, SOCK=f"{real}/state/mihomo.sock", CONF_DIR=f"{real}/conf"):
+                for claude in (True, False):
+                    with self.subTest(claude=claude):
+                        command = claude_proxy.session_command(17890, ["true"], claude=claude)
+                        self.assertIn(f"MIHOMO_SOCK0={real}/state/mihomo.sock", command)
+                        self.assertIn(f"MIHOMO_CONF0={real}/conf", command)
+                        profile = command[command.index("-p") + 1]
+                        self.assertIn('(deny network-outbound (literal (param "MIHOMO_SOCK0")))', profile)
+                        self.assertIn('(deny file-write* (literal (param "MIHOMO_SOCK0")) '
+                                      '(subpath (param "MIHOMO_CONF0")))', profile)
+
+    def test_symlinked_paths_are_closed_in_both_forms(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real = os.path.realpath(tmp)
+            os.mkdir(f"{real}/state")
+            os.symlink(f"{real}/state", f"{real}/link")
+            with patch.multiple(claude_proxy, SOCK=f"{real}/link/mihomo.sock", CONF_DIR=f"{real}/conf"):
+                socks, _ = claude_proxy.guarded_paths()
+        self.assertEqual(socks, [f"{real}/link/mihomo.sock", f"{real}/state/mihomo.sock"])
+
+    @unittest.skipUnless(sys.platform == "darwin" and host_run.nested_sandbox_ok(), "requires the macOS sandbox")
+    def test_session_cannot_use_or_replace_the_controller(self):
+        client = """\
+import errno, os, socket, sys
+
+sock, other, conf = sys.argv[1:]
+for path, expected in ((sock, errno.EPERM), (other, 0)):
+    with socket.socket(socket.AF_UNIX) as conn:
+        result = conn.connect_ex(path)
+        assert result == expected, (path, result)
+for action in (lambda: os.remove(sock), lambda: open(os.path.join(conf, "config.yaml"), "w")):
+    try:
+        action()
+    except PermissionError:
+        pass
+    else:
+        sys.exit("changed mihomo's control files")
+"""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp, \
+                socket.socket(socket.AF_UNIX) as controller, socket.socket(socket.AF_UNIX) as other:
+            sock, near, conf = str(Path(tmp) / "mihomo.sock"), str(Path(tmp) / "other.sock"), str(Path(tmp) / "conf")
+            os.mkdir(conf)
+            controller.bind(sock)
+            controller.listen()
+            other.bind(near)
+            other.listen()
+            with patch.multiple(claude_proxy, SOCK=sock, CONF_DIR=conf):
+                command = claude_proxy.session_command(17890, [sys.executable, "-c", client, sock, near, conf],
+                                                       claude=True)
+            subprocess.run(command, check=True, timeout=10)
+            self.assertTrue(os.path.exists(sock))
+
+
+class InsideSession(unittest.TestCase):
+    """Изнутри песочницы mihomo не перезапустить и не поднять: нужен обычный терминал."""
+
+    def setUp(self):
+        guard = patch.object(claude_proxy, "in_session", return_value=True)
+        guard.start()
+        self.addCleanup(guard.stop)
+
+    def test_restart_and_start_refuse(self):
+        with patch.object(claude_proxy, "restart_mihomo") as restart, redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(claude_proxy.restart_cmd(), 1)
+        restart.assert_not_called()
+        self.assertIn("обычном терминале", out.getvalue())
+        with patch.object(claude_proxy, "read_pid", return_value=None), patch.object(claude_proxy, "pin_config") as pin:
+            with self.assertRaises(claude_proxy.ProxyError):
+                claude_proxy.start()
+        pin.assert_not_called()
+
+    def test_no_watcher_from_inside(self):
+        with patch.object(claude_proxy.subprocess, "Popen") as popen, \
+                patch.object(claude_proxy, "watcher_alive", return_value=False):
+            claude_proxy.ensure_watch()
+        popen.assert_not_called()
+
+    def test_status_shows_the_server_from_launch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exit_file = Path(tmp) / "exit.json"
+            exit_file.write_text('{"node": "kz-1", "proto": "vless"}')
+            with patch.object(claude_proxy, "EXIT", str(exit_file)):
+                self.assertIn("kz-1, протокол vless", claude_proxy.started_node())
+
+
+class InSessionCheck(unittest.TestCase):
+    def test_leaked_variable_outside_a_sandbox_is_not_a_session(self):
+        with patch.object(claude_proxy, "_sandboxed", None), patch.dict(os.environ, MNRH_PROXY="17890"), \
+                patch.object(host_run, "nested_sandbox_ok", return_value=True):
+            self.assertFalse(claude_proxy.in_session())
+        with patch.object(claude_proxy, "_sandboxed", None), patch.dict(os.environ, MNRH_PROXY="17890"), \
+                patch.object(host_run, "nested_sandbox_ok", return_value=False):
+            self.assertTrue(claude_proxy.in_session())
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MNRH_PROXY", None)
+            self.assertFalse(claude_proxy.in_session())
 
 
 @unittest.skipUnless(sys.platform == "darwin", "requires the macOS sandbox")
@@ -57,7 +164,8 @@ for path, expected in zip(sys.argv[1:], (0, errno.EPERM)):
                 subprocess.run(command, check=True, timeout=5)
             for missing in ("", str(Path(tmp) / "missing"), tmp):
                 with self.subTest(missing=missing), patch.dict(os.environ, SSH_AUTH_SOCK=missing):
-                    self.assertNotIn("-D", claude_proxy.session_command(17890, ["true"]))
+                    command = claude_proxy.session_command(17890, ["true"])
+                    self.assertFalse(any(a.startswith("SSH_AUTH_SOCK=") for a in command))
 
     def test_claude_allows_local_tools_and_blocks_direct_web(self):
         client = """\
