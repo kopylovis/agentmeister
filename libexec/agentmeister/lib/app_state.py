@@ -135,14 +135,15 @@ def host_run_summary():
         count = len(hr.load())
     except Exception:
         count = 0
-    return {"running": running, "commands": count}
+    return {"running": running, "commands": count, "log": hr.LOG}
 
 
 def collect():
     state = {"version": version(), "lang": mnrhlib.lang(), "langSetting": lang_setting(), "projectsDir": mnrhlib.projects_dir(),
              "generatedAt": time.time(), "errors": {}}
     for name, part, empty in (("projects", projects, []), ("sessions", sessions, []), ("live", live, []),
-                              ("proxy", proxy, None), ("modes", modes, {}), ("hostRun", host_run_summary, None)):
+                              ("proxy", proxy, None), ("modes", modes, {}), ("hostRun", host_run_summary, None),
+                              ("signedIn", lambda: {b: signed_in(b)["signedIn"] for b in ("claude", "codex")}, None)):
         try:
             state[name] = part()
         except Exception as e:  # одна сломанная часть не должна оставить окно пустым
