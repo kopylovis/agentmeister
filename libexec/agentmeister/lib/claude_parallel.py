@@ -214,12 +214,17 @@ def forget_task(root, e, delete="-D"):
         git(root, "config", "--unset", f"branch.{e['branch']}.{key}")
 
 
-def finish(branch, action, project=None, cwd=None):
+def finish(branch, action, project=None, cwd=None, force=False):
     root, e, err = pick(branch, project, cwd)
     if err:
         return err, True
     if e["running"]:
         return f"В {tilde(e['path'])} ещё работает Claude — сначала закрой его.", True
+    if action == "drop" and not force and (e["dirty"] or e["ahead"] != "0"):
+        ahead = "не посчитать" if e["ahead"] == "?" else e["ahead"]
+        return (f"В {e['branch']} есть работа: незакоммичено файлов {e['dirty']}, коммитов не влито в {e['base']}: "
+                f"{ahead}. Выбрасывать не стал. Если не нужна, повтори с --force "
+                f"(agentmeister parallel drop {e['branch']} --force; в parallel_finish force: true)."), True
     if action == "merge":
         if e["dirty"]:
             return f"В worktree незакоммичено файлов: {e['dirty']}. Сначала закоммить их там.", True
@@ -395,7 +400,7 @@ def pr(branch, project=None, cwd=None, merge=True, log=None):
         keep.append(f"в ветке {name} есть коммиты, которых нет в PR")
     if keep:
         lines = [f"Слил PR #{num} в {base} ({how[2:]}), ветку на GitHub удалил. Worktree {tilde(path)} и ветку {name} "
-                 f"оставил: {'; '.join(keep)}. Когда разберёшься: agentmeister parallel drop {name}."]
+                 f"оставил: {'; '.join(keep)}. Когда разберёшься: agentmeister parallel drop {name} --force."]
     else:
         forget_task(root, e)
         lines = [f"Слил PR #{num} в {base} ({how[2:]}), ветку на GitHub удалил, worktree и локальную ветку убрал."]
@@ -450,6 +455,8 @@ FINISH_TOOL = {
     "inputSchema": {"type": "object", "properties": {
         "branch": {"type": "string"}, "action": {"type": "string", "enum": ["merge", "drop", "pr"]},
         "no_merge": {"type": "boolean", "description": "для pr: только запушить и открыть PR, не сливать"},
+        "force": {"type": "boolean", "description": "для drop: выбросить, даже если есть незакоммиченные файлы или "
+                                                    "невлитые коммиты. Только если пользователь так сказал"},
         "project": {"type": "string"}}, "required": ["branch", "action"]},
 }
 TOOLS = [START_TOOL, LIST_TOOL, FINISH_TOOL]
@@ -465,7 +472,7 @@ def handle(name, a, cwd=None, cm=None):
         done = []
         text, bad = pr(a.get("branch", ""), a.get("project"), cwd, merge=not a.get("no_merge"), log=done.append)
         return "\n".join(done + [text]), bad
-    return finish(a.get("branch", ""), a.get("action"), a.get("project"), cwd)
+    return finish(a.get("branch", ""), a.get("action"), a.get("project"), cwd, force=a.get("force") is True)
 
 
 def main():
@@ -476,7 +483,8 @@ def main():
         print("                         --fork изнутри Claude: второй Claude продолжает эту переписку (форк сессии)")
         print("agentmeister parallel list           параллельные задачи этого проекта")
         print("agentmeister parallel merge <ветка>  влить в исходную ветку (без пуша) и убрать worktree")
-        print("agentmeister parallel drop <ветка>   выбросить ветку и worktree")
+        print("agentmeister parallel drop <ветка> [--force]")
+        print("                         выбросить ветку и worktree; с незакоммиченным или невлитым — только с --force")
         print("agentmeister parallel pr <ветка> [--no-merge]")
         print("                         запушить, открыть PR в исходную ветку, дождаться CI, слить, убрать worktree")
         print()
@@ -490,7 +498,7 @@ def main():
             opts[args[i]] = args[i + 1]
             i += 2
             continue
-        if args[i] in ("-n", "--no-rc", "--no-merge", "--fork"):
+        if args[i] in ("-n", "--no-rc", "--no-merge", "--fork", "--force"):
             opts[args[i]] = True
         else:
             rest.append(args[i])
@@ -498,7 +506,7 @@ def main():
     if rest[:1] == ["list"]:
         text, bad = listing(opts.get("-p"))
     elif rest[:1] in (["merge"], ["drop"]) and len(rest) == 2:
-        text, bad = finish(rest[1], rest[0], opts.get("-p"))
+        text, bad = finish(rest[1], rest[0], opts.get("-p"), force=bool(opts.get("--force")))
     elif rest[:1] == ["pr"] and len(rest) == 2:
         text, bad = pr(rest[1], opts.get("-p"), merge=not opts.get("--no-merge"), log=lambda t: print(t, flush=True))
     else:
