@@ -345,13 +345,62 @@ def listen(path):
     return listener
 
 
+def lock(f, wait=2.0):
+    """flock на pid-файл. Старый исполнитель может еще выходить, поэтому ждем его немного."""
+    deadline = time.monotonic() + wait
+    while True:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.1)
+
+
+def remove_own_socket(path, inode):
+    """Убрать сокет при выходе, только если он все еще наш: новый исполнитель мог уже открыть свой."""
+    try:
+        if os.lstat(path).st_ino == inode:
+            os.remove(path)
+    except OSError:
+        pass
+
+
+def wait_gone(pid, timeout):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            return False
+        time.sleep(0.05)
+    return False
+
+
+def stop_old(pid):
+    """Остановить исполнитель старой версии и дождаться выхода, чтобы новый не столкнулся с ним."""
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return
+    if wait_gone(pid, 3):
+        return
+    log(f"old runner pid {pid} ignores SIGTERM, SIGKILL")
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        return
+    wait_gone(pid, 1)
+
+
 def serve():
     os.makedirs(STATE, mode=0o700, exist_ok=True)
     os.chmod(STATE, 0o700)
     pid = open(PIDFILE, "a+")
-    try:
-        fcntl.flock(pid, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    if not lock(pid):
         return 0  # уже работает другой
     if not nested_sandbox_ok():
         log("refuse: running inside a sandbox")
@@ -365,13 +414,12 @@ def serve():
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
     log(f"serve {version()} pid {os.getpid()}")
+    listener = listen(SOCK)
+    mine = os.stat(SOCK).st_ino
     try:
-        Server().serve_forever(listen(SOCK))
+        Server().serve_forever(listener)
     finally:
-        try:
-            os.remove(SOCK)
-        except OSError:
-            pass
+        remove_own_socket(SOCK, mine)
     return 0
 
 
@@ -396,12 +444,8 @@ def ensure():
         return
     if info and info.get("jobs"):
         return  # старая версия занята командой, обновится в следующий раз
-    if info and isinstance(info.get("pid"), int):
-        try:
-            os.kill(info["pid"], signal.SIGTERM)
-            time.sleep(0.3)
-        except OSError:
-            pass
+    if info and isinstance(info.get("pid"), int) and info["pid"] > 1:
+        stop_old(info["pid"])
     subprocess.Popen([sys.executable, os.path.abspath(__file__), "serve"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, cwd="/",
                      env=command_env())
