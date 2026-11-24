@@ -12,9 +12,16 @@ Code или Codex с proxy и sandbox-exec, как во вкладке терм�
 Из обычного терминала, не из proxy-сессии: у SwiftPM своя песочница macOS, и внутри sandbox-exec она падает.
 
 ```sh
-cd ~/Developer/agentmeister/app
-swift run Agentmeister
+cd ~/Developer/agentmeister
+make app                                  # app/build/Agentmeister.app
+open app/build/Agentmeister.app
 ```
+
+`app/bundle.sh` собирает `.app` из готового бинарника: Info.plist с bundle id `com.agentmeister.app` и схемой
+ссылок `agentmeister://`, иконка из `share/agentmeister/icon.png`, подпись первым сертификатом Developer ID
+Application или Apple Development из связки (или `AGENTMEISTER_SIGN=<имя>`, без сертификата ad-hoc).
+Разрешения macOS привязаны к подписи, поэтому одна подпись между сборками бережет их. Для отладки хватает
+`cd app && swift run Agentmeister`.
 
 Из proxy-сессии агент собирает приложение через `agentmeister host-run agentmeister-app-build`.
 
@@ -49,6 +56,10 @@ swift run Agentmeister
   `app-state doctor`, изменения теми же командами, что в CLI (`notify`, `guard skip`, `proxy restart`).
   Шаги, которым нужен терминал (`proxy setup`, `lid setup` с sudo, подключение бота), открываются
   служебной вкладкой в главном окне.
+- Уведомления "Claude ждет" знают вкладки приложения. Вкладка передает свой id в `AGENTMEISTER_TAB`, окно
+  пишет в `~/.cache/mnrh/app/front.json`, какая вкладка выбрана и активно ли оно, и хук не шлет уведомление о
+  вкладке, на которую ты смотришь. Клик кладет запрос в `~/.cache/mnrh/app/focus.json` и открывает
+  `agentmeister://focus?tab=<id>`, приложение выбирает вкладку и выходит вперед.
 - `Views.swift` рисует окно, `Strings.swift` хранит тексты на русском и английском.
 
 ## Горячие клавиши
@@ -58,7 +69,6 @@ swift run Agentmeister
 
 ## Чего пока нет
 
-Первого запуска и входа в агентов из макета. Клик по уведомлению пока не открывает вкладку приложения: для этого
-приложению нужен собранный `.app` с bundle id, а сейчас оно запускается как исполняемый файл.
+Первого запуска и входа в агентов из макета.
 
 `SPIKE.md` хранит результаты проверки SwiftTerm.

@@ -131,6 +131,52 @@ class ClaudeNotify(unittest.TestCase):
             self.assertIsNone(post.call_args.args[-1])
 
 
+class AppTab(unittest.TestCase):
+    TAB = "5f0c7a52-3b1e-4c4e-9b5a-2d9f1c0e7a11"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        for name, value in (("APP_DIR", self.tmp.name), ("APP_FRONT", os.path.join(self.tmp.name, "front.json")),
+                            ("APP_FOCUS", os.path.join(self.tmp.name, "focus.json"))):
+            patcher = mock.patch.object(claude_notify, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def front(self, tab, active):
+        with open(claude_notify.APP_FRONT, "w") as f:
+            json.dump({"tab": tab, "active": active}, f)
+
+    def test_tab_id_comes_from_env_and_must_be_a_uuid(self):
+        with mock.patch.dict(os.environ, {claude_notify.APP_TAB_ENV: self.TAB.upper()}):
+            self.assertEqual(claude_notify.app_tab(), self.TAB)
+        with mock.patch.dict(os.environ, {claude_notify.APP_TAB_ENV: "../etc"}):
+            self.assertEqual(claude_notify.app_tab(), "")
+
+    def test_watching_only_when_this_tab_is_front_in_an_active_window(self):
+        tty = "app:" + self.TAB
+        self.assertFalse(claude_notify.watching(claude_notify.APP_BUNDLE, tty))
+        self.front(self.TAB, True)
+        self.assertTrue(claude_notify.watching(claude_notify.APP_BUNDLE, tty))
+        self.front(self.TAB, False)
+        self.assertFalse(claude_notify.watching(claude_notify.APP_BUNDLE, tty))
+        self.front("00000000-0000-0000-0000-000000000000", True)
+        self.assertFalse(claude_notify.watching(claude_notify.APP_BUNDLE, tty))
+
+    def test_click_leaves_a_focus_request_and_opens_the_url(self):
+        with mock.patch.object(claude_notify.subprocess, "run") as run:
+            self.assertEqual(claude_notify.focus("app:" + self.TAB, claude_notify.APP_BUNDLE), 0)
+        with open(claude_notify.APP_FOCUS) as f:
+            self.assertEqual(json.load(f)["tab"], self.TAB)
+        self.assertEqual(run.call_args.args[0], ["open", f"agentmeister://focus?tab={self.TAB}"])
+
+    def test_bad_tab_in_click_is_ignored(self):
+        with mock.patch.object(claude_notify.subprocess, "run") as run:
+            self.assertEqual(claude_notify.focus("app:nope", claude_notify.APP_BUNDLE), 1)
+        run.assert_not_called()
+        self.assertFalse(os.path.exists(claude_notify.APP_FOCUS))
+
+
 class NotifyBuild(unittest.TestCase):
     """Сборка приложения: замок, фон из хука, уборка .build-*. swiftc и настоящий ~/Library не трогаются."""
 
