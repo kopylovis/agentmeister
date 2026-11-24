@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """agentmeister sessions: список, меню, продолжить, перенести, удалить, уборка; slim — в session_slim."""
 from contextlib import ExitStack
+import itertools
 import os
 import shutil
 import stat
@@ -12,7 +13,7 @@ from mac_files import RENAME_EXCL, rename_with_flags
 from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde, tr  # noqa: E402
 from menu import Quit, Screen, facts as fact_lines, pick  # noqa: E402
 from session_store import (PROJECTS, UUID, ago, clip, decode, delete, encode, find, forget_deleted_session, fmt_size, folder,  # noqa: E402
-                           is_junk, load, offline, remove_if_empty, require_idle, rewrite, running_ids, SessionInUse, tree_size)
+                           is_junk, load, misnamed_home, offline, remove_if_empty, require_idle, rewrite, running_ids, SessionInUse, tree_size)
 import claude_search  # noqa: E402
 
 CLAUDE_BIN = os.environ.get("MNRH_CLAUDE_BIN", "claude")
@@ -24,7 +25,8 @@ def usage():
     print("agentmeister sessions resume <id> [-n] продолжить в её папке (по умолчанию через caffeinate, -n обычная)")
     print("agentmeister sessions mv <id> <папка>  перенести в другую папку: путь, имя проекта из папки проектов или root")
     print("agentmeister sessions rm <id>... [-y]  удалить вместе с историей запросов этой сессии")
-    print("agentmeister sessions clean [-y]       битые ссылки, сессии без единого ответа, папки удалённых проектов")
+    print("agentmeister sessions clean [-y]       битые ссылки, сессии без единого ответа, папки удалённых проектов,")
+    print("                                      папки с неверным именем от старого mv")
     print("agentmeister sessions search <слова>   поиск по всем сессиям; -p <проект>, -d <дней>, -r error — по ошибкам")
     print("agentmeister sessions show <id> [N]    прочитать сессию с сообщения N (из search), -N — с конца")
     print("agentmeister sessions slim             что даст сжатие старых частей сессий (скриншоты, длинные выводы)")
@@ -239,8 +241,130 @@ def remove_orphan(pdir, home, sessions, snapshot):
     return "memory" if memory else True
 
 
+class TreeChanged(Exception):
+    pass
+
+
+def spare_name(directory, name):
+    """Свободное имя для входящего файла, когда name занято: a.jsonl → a.migrated.jsonl, a.migrated-2.jsonl..."""
+    stem, ext = os.path.splitext(name)
+    for n in itertools.count(1):
+        candidate = f"{stem}.migrated{'' if n == 1 else f'-{n}'}{ext}"
+        if not os.path.lexists(os.path.join(directory, candidate)):
+            return candidate
+
+
+def migrate_misnamed(pdir, home, sessions, snapshot):
+    """Переносит все из папки, названной старым mv, в папку с именем Claude Code, сливая с ней, если она есть.
+    Ничего не перезаписывает: при совпадении имен входящий файл получает имя .migrated. Старая папка удаляется,
+    только если опустела. Ответ (итог, [(имя, новое имя)] при совпадениях); итог: "moved"; "busy", "changed",
+    "blocked" (на месте нужной папки файл или ссылка) — ничего не тронуто. При ошибке все возвращается на место."""
+    if any(s["running"] for s in sessions) or running_ids().keys() & {s["id"] for s in sessions}:
+        return "busy", []
+    if tree_snapshot(pdir) != snapshot:
+        return "changed", []
+    tdir = os.path.join(PROJECTS, encode(home))
+    if os.path.lexists(tdir) and (os.path.islink(tdir) or not os.path.isdir(tdir)):
+        return "blocked", []
+    if not os.path.lexists(tdir):
+        try:
+            rename_with_flags(pdir, tdir, RENAME_EXCL)
+            return "moved", []
+        except FileExistsError:
+            pass  # Claude Code только что создал нужную папку: сливаем по файлам
+    clashes, emptied = [], []
+
+    def merge(src, dst):
+        names = os.listdir(src)
+        if {os.path.join(src, n) for n in names} != {p for p in snapshot if os.path.dirname(p) == src}:
+            raise TreeChanged
+        for name in sorted(names):
+            source, target = os.path.join(src, name), os.path.join(dst, name)
+            info = os.lstat(source)
+            if file_version(info) != snapshot[source]:
+                raise TreeChanged
+            if stat.S_ISDIR(info.st_mode) and os.path.isdir(target) and not os.path.islink(target):
+                merge(source, target)
+                emptied.append(source)
+                continue
+            if os.path.lexists(target):
+                target = os.path.join(dst, spare_name(dst, name))
+                clashes.append((os.path.relpath(source, pdir), os.path.relpath(target, tdir)))
+            rename_with_flags(source, target, RENAME_EXCL)
+            rollback.callback(rename_with_flags, target, source, RENAME_EXCL)
+
+    with ExitStack() as rollback:
+        try:
+            merge(pdir, tdir)
+        except TreeChanged:
+            return "changed", []
+        rollback.pop_all()
+    for d in emptied:
+        try:
+            os.rmdir(d)
+        except OSError:
+            pass
+    remove_if_empty(pdir)
+    return "moved", clashes
+
+
+def clean_misnamed(everything, assume_yes):
+    """Шаг уборки: папки, которые назвал старый mv. Ответ (нашлось ли что-то, перенесено ли что-то)."""
+    found = []
+    for d in sorted(os.listdir(PROJECTS)):
+        pdir = os.path.join(PROJECTS, d)
+        if not os.path.isdir(pdir) or os.path.islink(pdir):
+            continue
+        sessions = [s for s in everything if s["pdir"] == pdir]
+        home = misnamed_home(d, sessions)
+        if home:
+            try:
+                found.append((pdir, home, sessions, tree_snapshot(pdir)))
+            except OSError:
+                continue
+    if not found:
+        return False, False
+    print(tr(f"Папки с неверным именем от старого agentmeister sessions mv, Claude Code их не видит ({len(found)}):",
+             f"Folders misnamed by the old agentmeister sessions mv, Claude Code cannot see them ({len(found)}):"))
+    for pdir, home, sessions, _ in found:
+        tdir = os.path.join(PROJECTS, encode(home))
+        mem = " + memory" if os.path.isdir(os.path.join(pdir, "memory")) else ""
+        into = tr(", сольется с уже существующей", ", merges into the existing one") if os.path.lexists(tdir) else ""
+        print(f"  {tilde(home)}: {len(sessions)} {tr('сесс.', 'sessions')}{mem}, {fmt_size(tree_size(pdir))}")
+        print(f"    {clip(os.path.basename(pdir), 60)} → {clip(os.path.basename(tdir), 60)}{into}")
+    if any(s["running"] for _, _, ss, _ in found for s in ss):
+        print(tr("  среди них есть открытые сессии, эти папки пропущу", "  some sessions are open, those folders are skipped"))
+    did = False
+    if confirm(tr("Перенести в папки с правильными именами?", "Move them to correctly named folders?"), assume_yes):
+        for pdir, home, sessions, snapshot in found:
+            try:
+                status, clashes = migrate_misnamed(pdir, home, sessions, snapshot)
+            except OSError as error:
+                print(tr(f"  {tilde(home)}: не вышло ({error}), все вернул на место",
+                         f"  {tilde(home)}: failed ({error}), everything is put back"))
+                continue
+            if status != "moved":
+                why = {"busy": tr("сессия открыта", "a session is open"),
+                       "changed": tr("папка изменилась", "the folder changed"),
+                       "blocked": tr("на месте нужной папки файл или ссылка", "a file or link has the target name")}
+                print(tr(f"  {tilde(home)}: пропускаю, {why[status]}", f"  {tilde(home)}: skipped, {why[status]}"))
+                continue
+            did = True
+            print(tr(f"  {tilde(home)}: перенес", f"  {tilde(home)}: moved"))
+            for old, new in clashes:
+                print(tr(f"    {old} уже был, входящий сохранил как {new}", f"    {old} already existed, kept the incoming one as {new}"))
+            if os.path.lexists(pdir):
+                print(tr(f"    в старой папке появились новые файлы, она осталась: {tilde(pdir)}",
+                         f"    new files appeared in the old folder, it stays: {tilde(pdir)}"))
+    print()
+    return True, did
+
+
 def clean(assume_yes):
     everything = load()
+    misnamed, did = clean_misnamed(everything, assume_yes)
+    if did:
+        everything = load()
     broken, empty, orphans, away, unknown = [], [], [], [], []
     for d in sorted(os.listdir(PROJECTS)):
         pdir = os.path.join(PROJECTS, d)
@@ -279,7 +403,6 @@ def clean(assume_yes):
             if s["answered"] is False and not s["running"] and not s["link"]:
                 empty.append(s)
 
-    did = False
     if away:
         print(f"Проекты на отключенных дисках ({len(away)}) не трогаю: " + ", ".join(tilde(h) for h in away[:5])
               + (" и другие" if len(away) > 5 else ""))
@@ -343,7 +466,7 @@ def clean(assume_yes):
         p = os.path.join(PROJECTS, d)
         if os.path.isdir(p) and not os.path.islink(p):
             remove_if_empty(p)
-    if not (broken or empty or orphans):
+    if not (misnamed or broken or empty or orphans):
         print("Чистить нечего.")
     elif did:
         print("Готово.")
