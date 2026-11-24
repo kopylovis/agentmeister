@@ -88,9 +88,9 @@ struct PaletteView: View {
         })
         if let tab {
             out.append(PaletteItem(id: "a-restart", group: .thisSession,
-                                   title: claude ? l.t("Перезапустить с обновлением", "Restart with update") : l.restart,
-                                   detail: claude ? "claude update" : "", shortcut: "⌘R") {
-                if claude { tab.restartWithUpdate(note: l.t("Обновляю Claude Code…", "Updating Claude Code…")) } else { tab.restart() }
+                                   title: claude && TerminalTab.restartUpdates ? l.t("Перезапустить с обновлением", "Restart with update") : l.restart,
+                                   detail: claude && TerminalTab.restartUpdates ? "claude update" : "", shortcut: "⌘R") {
+                tab.restartPreferred(note: l.updating)
             })
             if claude && tab.sessionId != nil {
                 out.append(PaletteItem(id: "a-slim", group: .thisSession, title: l.slim,
@@ -112,15 +112,15 @@ struct PaletteView: View {
             }
         }
         out.append(PaletteItem(id: "a-parallel", group: .thisSession, title: l.t("Параллельная задача", "Parallel task"),
-                               detail: l.t("своя ветка и worktree", "own branch and worktree"), shortcut: "⌘⇧P") {
+                               detail: l.t("своя ветка и worktree", "own branch and worktree"), shortcut: "⇧⌘P") {
             ui.newSessionProject = workspace.current?.spec.projectPath
             ui.newSessionParallel = true
             ui.showNewSession = true
         })
 
         out.append(slash("t-ask", l.t("Спросить другой проект", "Ask another project"),
-                         l.t("отдельный Claude только на чтение", "a separate read-only Claude"), "/ask ", key: "⌘⇧A"))
-        out.append(slash("t-shot", l.t("Снимок окна", "Window screenshot"), "Simulator, Chrome, …", "/shot ", key: "⌘⇧S"))
+                         l.t("отдельный Claude только на чтение", "a separate read-only Claude"), "/ask ", key: "⇧⌘A"))
+        out.append(slash("t-shot", l.t("Снимок окна", "Window screenshot"), "Simulator, Chrome, …", "/shot ", key: "⇧⌘S"))
         out.append(slash("t-release", l.t("Заметки к релизу", "Release notes"),
                          l.t("\"Что нового\" для fastlane", "\"What's new\" for fastlane"), "/release-notes"))
         out.append(PaletteItem(id: "t-deps", group: .tools, title: l.t("Устаревшие зависимости", "Outdated dependencies"), detail: "Gradle") {
@@ -134,15 +134,15 @@ struct PaletteView: View {
                          l.t("закрыть лишнее, сжать открытые сессии", "close extras, slim open sessions"),
                          l.t("Освободи память (free_memory)", "Free up memory (free_memory)")))
         out.append(PaletteItem(id: "t-usage", group: .tools, title: l.t("Статистика", "Usage"),
-                               detail: l.t("токены и время", "tokens and time"), shortcut: "⌘⇧U") {
+                               detail: l.t("токены и время", "tokens and time"), shortcut: "⇧⌘U") {
             openWindow(id: "usage")
         })
 
         for project in backend.state.projects {
             out.append(PaletteItem(id: "p-\(project.path)", group: .projects,
                                    title: l.t("Новая сессия в ", "New session in ") + project.name,
-                                   detail: l.t("через proxy", "via proxy")) {
-                workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path))
+                                   detail: backend.state.proxy?.defaultRoute == "direct" ? l.t("напрямую", "direct") : l.t("через proxy", "via proxy")) {
+                workspace.open(LaunchSpec.quick(project, route: backend.state.proxy?.defaultRoute))
             })
         }
         return out

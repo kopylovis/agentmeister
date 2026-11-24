@@ -93,7 +93,7 @@ struct AgentmeisterApp: App {
                 Button(l.closeTab) { workspace.close(workspace.selected) }
                     .keyboardShortcut("w")
                     .disabled(workspace.current == nil)
-                Button(l.restart) { workspace.current?.restart() }
+                Button(l.restart) { workspace.current?.restartPreferred(note: l.updating) }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(workspace.current == nil)
                 Divider()

@@ -305,20 +305,6 @@ struct UsageView: View {
     }
 }
 
-struct UsageToolbarButton: View {
-    @Environment(\.openWindow) private var openWindow
-    let title: String
-
-    var body: some View {
-        Button {
-            openWindow(id: "usage")
-        } label: {
-            Label(title, systemImage: "chart.bar.xaxis")
-        }
-        .help(title + ", ⇧⌘U")
-    }
-}
-
 struct OpenUsageButton: View {
     @Environment(\.openWindow) private var openWindow
     let title: String
