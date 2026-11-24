@@ -104,13 +104,14 @@ struct AgentmeisterApp: App {
                 }
                 .shortcut(.newTab)
                 // только когда впереди главное окно: в Настройках, Сессиях и других окнах ⌘W закрывает само окно,
-                // а не вкладку с агентом
+                // а не вкладку с агентом. Пока открыт экран проекта, выбранная вкладка скрыта под ним,
+                // и ⌘W или ⌘R убили бы агента, которого не видно.
                 Button(l.closeTab) { workspace.close(workspace.selected) }
                     .shortcut(.closeTab)
-                    .disabled(workspace.current == nil || !ui.mainKey)
+                    .disabled(workspace.current == nil || !ui.mainKey || ui.projectScreen != nil)
                 Button(l.restart) { workspace.current?.restartPreferred(note: l.updating) }
                     .shortcut(.restart)
-                    .disabled(workspace.current == nil || !ui.mainKey)
+                    .disabled(workspace.current == nil || !ui.mainKey || ui.projectScreen != nil)
                 Divider()
                 Button(l.t("Параллельная задача…", "Parallel task…")) {
                     ui.newSessionProject = workspace.current?.spec.projectPath
@@ -145,16 +146,22 @@ struct AgentmeisterApp: App {
             }
             CommandMenu(l.t("Вкладки", "Tabs")) {
                 ForEach(1..<10) { n in
-                    Button(l.t("Вкладка \(n)", "Tab \(n)")) { workspace.select(number: n) }
+                    Button(l.t("Вкладка \(n)", "Tab \(n)")) {
+                        ui.projectScreen = nil
+                        workspace.select(number: n)
+                    }
                         .keyboardShortcut(KeyEquivalent(Character(String(n))))
                 }
                 Divider()
-                Button(l.t("Следующая вкладка", "Next tab")) { workspace.selectNeighbor(1) }
+                Button(l.t("Следующая вкладка", "Next tab")) { ui.projectScreen = nil; workspace.selectNeighbor(1) }
                     .shortcut(.nextTab)
-                Button(l.t("Предыдущая вкладка", "Previous tab")) { workspace.selectNeighbor(-1) }
+                Button(l.t("Предыдущая вкладка", "Previous tab")) { ui.projectScreen = nil; workspace.selectNeighbor(-1) }
                     .shortcut(.previousTab)
                 Button(l.t("К вкладке, которая ждет", "Jump to the waiting tab")) {
-                    if let tab = workspace.tabs.first(where: { $0.status == "waiting" }) { workspace.selected = tab.id }
+                    if let tab = workspace.tabs.first(where: { $0.status == "waiting" }) {
+                        ui.projectScreen = nil
+                        workspace.selected = tab.id
+                    }
                 }
                 .shortcut(.waitingTab)
             }
