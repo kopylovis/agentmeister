@@ -625,6 +625,7 @@ struct AgentCard: View {
 
 struct ShortcutsPane: View {
     @EnvironmentObject var backend: Backend
+    @AppStorage("hotkey.showApp") private var showHotKey = true
 
     var l: L { L(backend.state.lang) }
 
@@ -641,11 +642,16 @@ struct ShortcutsPane: View {
                 (l.t("Палитра команд", "Command palette"), "⌘K"), (l.t("Сессии", "Session library"), "⇧⌘O"),
                 (l.t("Статистика", "Usage"), "⇧⌘U"), (l.t("Спросить другой проект", "Ask another project"), "⇧⌘A"),
                 (l.t("Снимок окна", "Window screenshot"), "⇧⌘S"), (l.inspector, "⌥⌘I"),
-                (l.t("Показать Agentmeister из любого приложения", "Show Agentmeister from any app"), "⌥Space"),
+                (l.t("Показать Agentmeister из любого приложения", "Show Agentmeister from any app"), "⌃⌥Space"),
             ])
         }
-        Note(text: l.t("⌥Space работает, даже когда Agentmeister в фоне. Менять сочетания пока нельзя.",
-                       "⌥Space works even when Agentmeister is in the background. Shortcuts can't be changed yet."))
+        Toggle(l.t("⌃⌥Space показывает Agentmeister из любого приложения", "⌃⌥Space shows Agentmeister from any app"), isOn: $showHotKey)
+        if UserDefaults.standard.bool(forKey: "hotkey.taken") {
+            Text(l.t("⌃⌥Space уже занято другим приложением, Agentmeister его не получил.", "Another app already holds ⌃⌥Space, Agentmeister didn't get it."))
+                .font(.system(size: 12)).foregroundStyle(Ink.amber)
+        }
+        Note(text: l.t("⌥Space не используется: его занимает ChatGPT. Изменение действует после перезапуска приложения.",
+                       "⌥Space isn't used because ChatGPT takes it. Changes apply after restarting the app."))
     }
 
     private func group(_ title: String, _ items: [(String, String)]) -> some View {
