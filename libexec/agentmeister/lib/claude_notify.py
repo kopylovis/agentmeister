@@ -101,22 +101,35 @@ SELECTED = {
 
 
 def usage():
-    print("agentmeister notify              уведомления, когда Claude ждёт тебя: состояние")
-    print("agentmeister notify on | off     включить или выключить")
-    print(f"agentmeister notify after <сек>  о готовом ответе — только если ход шёл дольше (сейчас "
-          f"{after()} с, по умолчанию {DEFAULT_AFTER})")
-    print("agentmeister notify sound on|off звук")
-    print("agentmeister notify test        показать пробное уведомление")
-    print("agentmeister notify telegram    ещё и в Telegram, когда ты не за Mac: подключить бота")
-    print(f"agentmeister notify phone away  ещё и в Tossling на телефон (канал {ntfy_alert.CLAUDE_TOPIC}), когда ты не за Mac")
+    topic = ntfy_alert.CLAUDE_TOPIC
+    print(tr("agentmeister notify              уведомления, когда Claude ждёт тебя: состояние",
+             "agentmeister notify              notifications when Claude is waiting for you: status"))
+    print(tr("agentmeister notify on | off     включить или выключить",
+             "agentmeister notify on | off     turn on or off"))
+    print(tr(f"agentmeister notify after <сек>  о готовом ответе — только если ход шёл дольше (сейчас "
+             f"{after()} с, по умолчанию {DEFAULT_AFTER})",
+             f"agentmeister notify after <sec>  notify about a finished reply only if the turn took longer (now "
+             f"{after()}s, default {DEFAULT_AFTER})"))
+    print(tr("agentmeister notify sound on|off звук", "agentmeister notify sound on|off sound"))
+    print(tr("agentmeister notify test        показать пробное уведомление",
+             "agentmeister notify test        show a test notification"))
+    print(tr("agentmeister notify telegram    ещё и в Telegram, когда ты не за Mac: подключить бота",
+             "agentmeister notify telegram    also send to Telegram when you are away from the Mac: connect the bot"))
+    print(tr(f"agentmeister notify phone away  ещё и в Tossling на телефон (канал {topic}), когда ты не за Mac",
+             f"agentmeister notify phone away  also send to Tossling on the phone (channel {topic}) when you are away from the Mac"))
     print("  … phone always | off | test")
-    print("  … telegram test | off | always | away <сек>")
-    print("  … telegram approve on | off  разрешать и отклонять запросы Claude кнопками в Telegram, когда ты не за Mac")
+    print(tr("  … telegram test | off | always | away <сек>", "  … telegram test | off | always | away <sec>"))
+    print(tr("  … telegram approve on | off  разрешать и отклонять запросы Claude кнопками в Telegram, когда ты не за Mac",
+             "  … telegram approve on | off  allow or deny Claude's requests with Telegram buttons when you are away from the Mac"))
     print()
-    print("Уведомление приходит, если Claude просит разрешение или задаёт вопрос, долго ждёт ответа")
-    print("или закончил долгий ход, а ты смотришь не на его вкладку. Нажатие переключает на неё")
-    print("(Terminal и iTerm2 — на саму вкладку, в IDE — на окно приложения).")
-    print("Ставит agentmeister setup: хуки UserPromptSubmit, Stop и Notification, для кнопок в Telegram — PermissionRequest.")
+    print(tr("Уведомление приходит, если Claude просит разрешение или задаёт вопрос, долго ждёт ответа\n"
+             "или закончил долгий ход, а ты смотришь не на его вкладку. Нажатие переключает на неё\n"
+             "(Terminal и iTerm2 — на саму вкладку, в IDE — на окно приложения).\n"
+             "Ставит agentmeister setup: хуки UserPromptSubmit, Stop и Notification, для кнопок в Telegram — PermissionRequest.",
+             "A notification comes when Claude asks for permission or asks a question, waits a long time for a reply\n"
+             "or finishes a long turn while you are not looking at its tab. Clicking it switches to that tab\n"
+             "(Terminal and iTerm2 switch to the tab itself, an IDE to the app window).\n"
+             "Installed by agentmeister setup: UserPromptSubmit, Stop and Notification hooks, PermissionRequest for Telegram buttons."))
 
 
 def enabled():

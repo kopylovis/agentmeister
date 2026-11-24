@@ -55,6 +55,30 @@ class BannerText(unittest.TestCase):
             ("Нужен ответ", "Claude задаёт вопрос"), ("Ждёт тебя", "Claude ждёт ответа")])
 
 
+class HelpText(unittest.TestCase):
+    """agentmeister notify -h по-английски, если язык не ru, и прежний русский для ru."""
+
+    def usage(self, lang):
+        pin_lang(self, lang)
+        out = io.StringIO()
+        with mock.patch.object(claude_notify, "after", return_value=30), contextlib.redirect_stdout(out):
+            claude_notify.usage()
+        return out.getvalue()
+
+    def test_english(self):
+        text = self.usage("en")
+        self.assertIn("agentmeister notify on | off     turn on or off\n", text)
+        self.assertIn("(now 30s, default 20)", text)
+        self.assertIn("Installed by agentmeister setup:", text)
+        self.assertNotRegex(text, "[а-яё]")
+
+    def test_russian(self):
+        text = self.usage("ru")
+        self.assertIn("agentmeister notify on | off     включить или выключить\n", text)
+        self.assertIn("(сейчас 30 с, по умолчанию 20)", text)
+        self.assertIn("Ставит agentmeister setup:", text)
+
+
 class Setting(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
