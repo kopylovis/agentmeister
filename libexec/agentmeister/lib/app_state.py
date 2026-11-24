@@ -93,11 +93,67 @@ def collect():
     return state
 
 
+def epoch(ts):
+    """ISO-время из переписки в секунды Unix, как mtime у сессий."""
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except (AttributeError, ValueError):
+        return None
+
+
+def search(query, limit=30):
+    """Поиск по всем сессиям всех проектов тем же индексом, что agentmeister sessions search и session_search."""
+    import claude_search
+    q = claude_search.Query(query)
+    if not query.strip() or not q.terms:
+        return {"query": query, "exact": False, "scanned": 0, "results": []}
+    r = claude_search.find_sessions(q)
+    results = []
+    for _, sid, data, found in r.chosen[:limit]:
+        results.append({
+            "id": sid, "title": claude_search.title(sid, data), "home": claude_search.home_of(data),
+            "last": epoch(data.get("last")), "count": len(found),
+            "hits": [{"at": i, "role": data["msgs"][i][0], "time": epoch(data["msgs"][i][1]),
+                      "snippet": claude_search.snippet(data["msgs"][i][2], q, r.idf, width=240)}
+                     for i in found[:3]],
+        })
+    return {"query": query, "exact": r.exact, "scanned": len(r.scope), "results": results}
+
+
+def read(ref, tail=12, chars=700):
+    """Последние сообщения сессии для превью в библиотеке."""
+    import claude_search
+    idx = claude_search.refresh()
+    sid, err = claude_search.resolve(ref, idx)
+    if err:
+        return {"error": err}
+    data = idx[sid]
+    msgs = data["msgs"]
+    start = max(0, len(msgs) - tail)
+    return {"id": sid, "title": claude_search.title(sid, data), "home": claude_search.home_of(data),
+            "total": len(msgs), "first": epoch(data.get("first")), "last": epoch(data.get("last")),
+            "messages": [{"at": i, "role": role, "time": epoch(ts),
+                          "text": text if len(text) <= chars else text[:chars] + "…"}
+                         for i, (role, ts, text) in enumerate(msgs[start:], start)]}
+
+
 def main(argv):
     if argv and argv[0] in ("-h", "--help", "help"):
-        print("agentmeister app-state    состояние для десктопного Agentmeister в JSON")
+        print("agentmeister app-state                состояние для десктопного Agentmeister в JSON\n"
+              "agentmeister app-state search <слова>  поиск по всем сессиям\n"
+              "agentmeister app-state read <id>       последние сообщения сессии")
         return 0
-    json.dump(collect(), sys.stdout, ensure_ascii=False)
+    if argv and argv[0] == "search":
+        out = search(" ".join(argv[1:]))
+    elif argv and argv[0] == "read" and len(argv) > 1:
+        out = read(argv[1])
+    elif argv:
+        print(f"agentmeister app-state: не знаю {argv[0]}", file=sys.stderr)
+        return 2
+    else:
+        out = collect()
+    json.dump(out, sys.stdout, ensure_ascii=False)
     sys.stdout.write("\n")
     return 0
 
