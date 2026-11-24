@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -11,6 +12,9 @@ import claude_proxy as p  # noqa: E402
 class Version(unittest.TestCase):
     def setUp(self):
         self.saved = p.mihomo_bin, p.installed_version, p.brew_latest, p.running_version
+        lang = patch("mnrhlib.lang", return_value="ru")  # тесты сверяют русский вывод
+        lang.start()
+        self.addCleanup(lang.stop)
 
     def tearDown(self):
         p.mihomo_bin, p.installed_version, p.brew_latest, p.running_version = self.saved
