@@ -13,11 +13,41 @@ final class ProjectIcons: ObservableObject {
         if !looked.contains(path) {
             looked.insert(path)
             Task.detached(priority: .utility) {
-                guard let file = Self.find(in: path), let image = NSImage(contentsOfFile: file) else { return }
+                guard let file = Self.find(in: path), let loaded = NSImage(contentsOfFile: file) else { return }
+                let image = Self.trimmed(loaded)
                 await MainActor.run { self.icons[path] = image }
             }
         }
         return icons[path]
+    }
+
+    /// Обрезать прозрачные поля вокруг рисунка. У иконок macOS рисунок занимает около 80% холста, у iOS и Android
+    /// весь холст, без обрезки они выглядели бы разного размера.
+    nonisolated static func trimmed(_ image: NSImage) -> NSImage {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return image }
+        let w = 128, h = 128
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+              let data = ctx.data else { return image }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        let px = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+        var minX = w, minY = h, maxX = -1, maxY = -1
+        for y in 0..<h {
+            for x in 0..<w where px[(y * w + x) * 4 + 3] > 24 {
+                minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= minX, maxY >= minY else { return image }
+        // поля меньше 3% не трогаем, а обрезаем по квадрату, чтобы не исказить пропорции
+        let side = max(maxX - minX + 1, maxY - minY + 1)
+        guard side < Int(Double(w) * 0.97) else { return image }
+        let cx = Double(minX + maxX + 1) / 2, cy = Double(minY + maxY + 1) / 2
+        let scaleX = Double(cg.width) / Double(w), scaleY = Double(cg.height) / Double(h)
+        // в CGContext y растет снизу, в CGImage.cropping сверху
+        let rect = CGRect(x: (cx - Double(side) / 2) * scaleX, y: (Double(h) - cy - Double(side) / 2) * scaleY,
+                          width: Double(side) * scaleX, height: Double(side) * scaleY).integral
+        guard let crop = cg.cropping(to: rect) else { return image }
+        return NSImage(cgImage: crop, size: NSSize(width: crop.width, height: crop.height))
     }
 
     private nonisolated static let skip: Set<String> = ["node_modules", ".git", "build", ".build", "Pods", "DerivedData", ".gradle",
