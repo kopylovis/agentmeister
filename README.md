@@ -268,7 +268,21 @@ Claude runs commands that break in the sandbox, such as xcodebuild with Swift pa
 through `agentmeister host-run <name> [args]`. A runner starts with the proxied session before the sandbox
 applies and runs only the commands listed in `~/.config/mnrh/host-run/commands.json`. A listed command runs
 as it would in a normal terminal, with a direct network. Its output and exit code come back to the session,
-and Ctrl+C stops it. Create the list yourself in a normal terminal; a proxied session cannot change it:
+and Ctrl+C stops it. A proxied session can't write the list, but it can ask for a change:
+
+```sh
+agentmeister host-run add tossling-ios --cwd ~/Developer/tossling-mobile --run bundle exec fastlane ios_beta
+agentmeister host-run remove tossling-ios
+```
+
+The runner shows a window on the Mac with the name, the folder and the full command. The entry is written
+only after you click "Разрешить" (Allow) with a mouse or trackpad. The keyboard, a synthetic click from the
+session and Accessibility can't press that button, and the window is built from Swift in the runner's own
+folder, which the session can't write to (the first request needs `swiftc`). Deny, closing the window or two
+minutes without an answer end with exit code 1 and leave the file as it was. An existing name is kept unless
+you pass `--replace`, and then the window shows the old and the new command. `--args` lets the session append
+arguments. The runner rewrites the whole file through a temporary file and keeps the other entries. You can
+also edit the list by hand in a normal terminal:
 
 ```json
 {
