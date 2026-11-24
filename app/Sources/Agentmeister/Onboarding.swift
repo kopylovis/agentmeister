@@ -533,6 +533,7 @@ struct ConsolePanel: View {
                 Button(action: close) { Image(systemName: "xmark") }
                     .buttonStyle(.borderless)
                     .help(tab.running ? l.t("Остановить и закрыть", "Stop and close") : l.t("Закрыть", "Close"))
+                    .accessibilityLabel(tab.running ? l.t("Остановить и закрыть", "Stop and close") : l.t("Закрыть", "Close"))
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

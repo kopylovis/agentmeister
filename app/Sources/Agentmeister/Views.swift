@@ -34,14 +34,6 @@ func tilde(_ path: String) -> String {
     return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
 }
 
-func statusColor(_ status: String?) -> Color {
-    switch status {
-    case "waiting": return .orange
-    case "busy": return .teal
-    case "idle": return .secondary
-    default: return .clear
-    }
-}
 
 // MARK: - Окно
 
@@ -137,40 +129,6 @@ struct MainView: View {
         }
     }
 
-    /// "4 вкладки, 1 ждет ответа" / "4 tabs, 1 waiting for you", как в макете.
-    private var subtitle: String {
-        let waiting = workspace.tabs.filter { $0.status == "waiting" }.count
-        let count = l.tabs(workspace.tabs.count)
-        return waiting > 0 ? count + ", " + l.t("\(waiting) ждет ответа", "\(waiting) waiting for you") : count
-    }
-
-    @ToolbarContentBuilder
-    private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            HStack(spacing: 10) {
-                SearchCapsule()
-                ProxyBadge()
-            }
-        }
-        .sharedBackgroundVisibility(.hidden)
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                ui.newSessionProject = workspace.current?.spec.projectPath
-                ui.showNewSession = true
-            } label: {
-                Label(l.newSession, systemImage: "plus")
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(.glassProminent)
-            .help(l.newSession + ", ⌘N")
-            Button {
-                ui.showInspector.toggle()
-            } label: {
-                Label(l.inspector, systemImage: "sidebar.right")
-            }
-            .help(l.t("Показать или скрыть панель сессии", "Show or hide the session panel") + ", ⌥⌘I")
-        }
-    }
 }
 
 /// Поле "Поиск ⌘K" в тулбаре. Открывает палитру команд, где ищутся вкладки, сессии и действия.
@@ -494,7 +452,8 @@ struct ProjectRow: View {
                     Image(systemName: "plus")
                 }
                 .buttonStyle(.borderless)
-                .help(l.t("Новая сессия Claude Code через proxy", "New Claude Code session via proxy"))
+                .help(l.newSession)
+                .accessibilityLabel(l.newSession)
             } else if count > 0 {
                 Text("\(count)")
                     .font(.system(size: 11))
@@ -508,8 +467,8 @@ struct ProjectRow: View {
         .onHover { hover = $0 }
         .listRowBackground(open ? RoundedRectangle(cornerRadius: 10).fill(Ink.openBg).padding(.horizontal, 10) : nil)
         .contextMenu {
-            Button(l.t("Новая сессия через proxy", "New session via proxy")) {
-                workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path))
+            Button(l.newSession) {
+                workspace.open(LaunchSpec.quick(project))
             }
             Button(l.t("Новая сессия…", "New session…")) {
                 ui.newSessionProject = project.path
@@ -674,6 +633,7 @@ struct TabChip: View {
                     }
                     .buttonStyle(.plain)
                     .help(l.closeTab + ", ⌘W")
+                    .accessibilityLabel(l.closeTab)
                 } else if tab.running && (tab.status == "waiting" || tab.status == "busy") {
                     SessionDot(status: tab.status)
                 } else if tab.rang && !selected {
@@ -706,8 +666,7 @@ struct TabMenu: View {
 
     var body: some View {
         let claude = tab.spec.utility == nil && tab.spec.agent == .claude
-        Button(l.restart) { tab.restart() }
-            .keyboardShortcut("r", modifiers: .command)
+        Button(l.restart) { tab.restartPreferred(note: l.updating) }
         if claude && tab.sessionId != nil {
             Button(l.slim) { tab.slim(note: l.slimming) }
             Button(l.rename + "…") { ui.renaming = tab }
@@ -985,7 +944,7 @@ struct TabInspector: View {
 
                 FlowLayout(spacing: 6) {
                     CapsuleButton(title: l.restart) {
-                        if withUpdate && claude { tab.restartWithUpdate(note: l.t("Обновляю Claude Code…", "Updating Claude Code…")) } else { tab.restart() }
+                        tab.restartPreferred(note: l.updating)
                     }
                     if claude && tab.sessionId != nil {
                         CapsuleButton(title: l.slim) { tab.slim(note: l.slimming) }
@@ -1019,6 +978,7 @@ struct TabInspector: View {
                             Text(l.t("Весь белый список", "Full allowlist")).foregroundStyle(Ink.link)
                         }
                         .buttonStyle(.plain)
+                        .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
                     }
                     .font(.system(size: 12))
                     .padding(12)

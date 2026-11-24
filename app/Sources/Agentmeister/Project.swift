@@ -109,14 +109,16 @@ struct ProjectView: View {
                     .foregroundStyle(Ink.muted)
             }
             Spacer()
-            Button {
-                ui.projectScreen = nil
-            } label: {
-                Image(systemName: "xmark")
+            if !workspace.tabs.isEmpty {
+                Button {
+                    ui.projectScreen = nil
+                } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.glass)
+                .help(l.t("Вернуться к вкладкам", "Back to tabs"))
+                .accessibilityLabel(l.t("Вернуться к вкладкам", "Back to tabs"))
             }
-            .buttonStyle(.glass)
-            .help(l.t("Закрыть", "Close"))
-            .opacity(workspace.tabs.isEmpty ? 0 : 1)
             if let last = data?.last {
                 Button(l.resumeLast) { open(resume: last.id) }
                     .buttonStyle(.glassProminent)
@@ -188,6 +190,7 @@ struct ProjectView: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(addTask)
                 Button(l.t("Добавить", "Add"), action: addTask)
+                    .buttonStyle(.glass)
                     .disabled(newTask.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             ForEach(todos, id: \.self) { item in
@@ -224,6 +227,7 @@ struct ProjectView: View {
                 ui.showNewSession = true
             }
             .controlSize(.small)
+            .buttonStyle(.glass)
         }) {
             if items.isEmpty {
                 Text(l.t("Сейчас ни одной", "None right now")).font(.system(size: 12)).foregroundStyle(Ink.muted)
