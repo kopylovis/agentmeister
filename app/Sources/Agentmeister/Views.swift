@@ -534,11 +534,24 @@ struct ProjectRow: View {
         let count = tabs.count + others.count
         let waiting = tabs.contains { $0.status == "waiting" } || others.contains { $0.status == "waiting" }
         HStack(spacing: 8) {
-            ProjectIconView(path: project.path, size: 18)
-            Text(project.name)
-                .fontWeight(.medium)
-                .lineLimit(1)
-            Spacer()
+            // клик открывает экран проекта, повторный клик закрывает его. Жест висит на всем, кроме "+":
+            // simultaneousGesture на всей строке срабатывал и вместе с кнопкой новой сессии
+            HStack(spacing: 8) {
+                ProjectIconView(path: project.path, size: 18)
+                Text(project.name)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                Spacer()
+                if !hover && count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(waiting ? Ink.amber : Ink.faint)
+                }
+            }
+            .frame(minHeight: 28)
+            .padding(.leading, 4)
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded { ui.projectScreen = ui.projectScreen == project.path ? nil : project.path })
             if hover {
                 Button {
                     if AgentPrefs.defaultAgent == "ask" {
@@ -555,17 +568,10 @@ struct ProjectRow: View {
                 .buttonStyle(.borderless)
                 .help(l.newSession)
                 .accessibilityLabel(l.newSession)
-            } else if count > 0 {
-                Text("\(count)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(waiting ? Ink.amber : Ink.faint)
             }
         }
         .frame(minHeight: 28)
-        .padding(.leading, 4)
         .contentShape(Rectangle())
-        // клик открывает экран проекта, повторный клик закрывает его
-        .simultaneousGesture(TapGesture().onEnded { ui.projectScreen = ui.projectScreen == project.path ? nil : project.path })
         .onHover { hover = $0 }
         .listRowBackground(ui.projectScreen == project.path
                            ? RoundedRectangle(cornerRadius: 10).fill(Ink.thumb).padding(.horizontal, 10)
@@ -866,13 +872,15 @@ struct InfoBar: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
     @ObservedObject var tab: TerminalTab
+    /// Ветка папки сейчас, из .git/HEAD. Читается вне главного потока раз в 5 секунд, пока строка видна,
+    /// а не в body при каждой перерисовке.
+    @State private var head: String?
 
     var l: L { L(backend.state.lang) }
 
     var body: some View {
-        // ветка папки сейчас, из .git/HEAD; ветка из истории сессии осталась бы той, на которой она началась
-        let branch = GitHead.branch(at: tab.spec.projectPath)
-            ?? backend.state.sessions.first { $0.id == tab.sessionId }?.branch ?? ""
+        // ветка из истории сессии осталась бы той, на которой она началась, поэтому сначала .git/HEAD
+        let branch = head ?? backend.state.sessions.first { $0.id == tab.sessionId }?.branch ?? ""
         let port = backend.state.proxy?.port ?? 17890
         HStack(spacing: 8) {
             Chip(mono: true) { Text(tilde(tab.spec.projectPath)).lineLimit(1).truncationMode(.head) }
@@ -950,6 +958,15 @@ struct InfoBar: View {
             }
         }
         .padding(.horizontal, 4)
+        .task(id: tab.spec.projectPath) {
+            let path = tab.spec.projectPath
+            head = nil
+            while !Task.isCancelled {
+                let now = await Task.detached(priority: .utility) { GitHead.branch(at: path) }.value
+                if head != now { head = now }
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
     }
 }
 
