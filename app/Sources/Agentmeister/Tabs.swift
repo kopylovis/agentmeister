@@ -72,15 +72,38 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         env["TERM_PROGRAM"] = "Agentmeister"
         env["MNRH_ICONS"] = "emoji"
         env["FORCE_HYPERLINK"] = "1"
+        if let job = LoginEnvironment.restartJob {
+            // тот же признак, что ставит restart.zsh: claude_restart пишет задание для хука, а не ищет вкладку iTerm2
+            env["MNRH_RESTART_HOOK"] = "2"
+            env["MNRH_RESTART_JOB"] = job
+        }
         if env["LANG"] == nil { env["LANG"] = "ru_RU.UTF-8" }
         return env.map { "\($0.key)=\($0.value)" }.sorted()
     }
+
+    /// После agentmeister вкладка выполняет задания перезапуска, как хук share/agentmeister/restart.zsh в iTerm2.
+    /// /restart, /forget, /fresh и /slim кладут задание в ~/.cache/mnrh/restart/<tty>, restart_job.py take
+    /// проверяет его поля, run строит argv сам. Без этого цикла вкладке после выхода Claude некуда вернуться.
+    static let shellScript = """
+    "$0" "$@"
+    j=${MNRH_RESTART_JOB:-}
+    [[ -n $j && -f $j ]] || exit
+    t=${TTY:-$(tty)}
+    f=$HOME/.cache/mnrh/restart/${t:t}
+    while [[ -e $f || -L $f ]]; do
+      out=$(/usr/bin/python3 -I $j take $f) || break
+      job=( "${(@0)out}" )
+      (( $#job == 3 )) || break
+      cd -- $job[1] || break
+      /usr/bin/python3 -I $j run $job[3]
+    done
+    """
 
     func start() {
         exitCode = nil
         running = true
         status = nil
-        let args = ["-l", "-c", "exec \"$0\" \"$@\"", LoginEnvironment.agentmeister] + spec.arguments
+        let args = ["-l", "-c", Self.shellScript, LoginEnvironment.agentmeister] + spec.arguments
         view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(), execName: "-zsh")
     }
 
