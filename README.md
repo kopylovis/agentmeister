@@ -601,6 +601,11 @@ How the command gets back into the tab:
   `agentmeister setup` adds a line with `share/agentmeister/restart.zsh` to `~/.zshrc`. Before Claude quits,
   a job is written to `~/.cache/mnrh/restart/<tty>`, and zsh runs it before the next prompt. Jobs older than two
   minutes are ignored. It works in tabs opened after setup.
+  The job is JSON data (session id, folder, mode, flags), not a shell command: a session through proxy writes it
+  from its sandbox. The hook passes it to `libexec/agentmeister/lib/restart_job.py`, which accepts only known
+  `claude` flags and an existing folder and builds the command itself. A tab opened before the update
+  has the old hook that ran the job with `eval`; agentmeister no longer queues jobs for such a tab, open a new
+  one.
 - AppleScript is the fallback for Terminal and iTerm2 when the hook isn't loaded in that tab. The first time,
   macOS may ask for permission to control the terminal. This is checked before quitting, so without permission
   Claude simply doesn't quit.

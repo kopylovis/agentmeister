@@ -1,6 +1,5 @@
 import json
 import os
-import shlex
 import subprocess
 import sys
 import tempfile
@@ -143,13 +142,17 @@ class CodexHarness(unittest.TestCase):
     def test_restart_queues_exact_session_and_preserves_proxy(self):
         sid = "11111111-2222-4333-8444-555555555555"
         with tempfile.TemporaryDirectory() as queue, \
-                patch.dict(os.environ, {"CODEX_THREAD_ID": sid, "MNRH_RESTART_HOOK": "1", "MNRH_PROXY": "1"}), \
+                patch.dict(os.environ, {"CODEX_THREAD_ID": sid, "MNRH_RESTART_HOOK": "2", "MNRH_PROXY": "1"}), \
                 patch.object(codex_harness, "RESTART_QUEUE", queue), \
                 patch("claude_notify.codex_terminal", return_value="/dev/ttys123"):
             self.assertEqual(codex_harness.restart("codex", ["--after-exit", "--update"]), 0)
             self.assertEqual(codex_harness.restart("codex", ["--after-exit", "--update"]), 0)
-            job = shlex.split((Path(queue) / "ttys123").read_text())
-        self.assertEqual(job[-6:], ["--harness", "codex", "restart", sid, "--update", "--proxy"])
+            job = json.loads((Path(queue) / "ttys123").read_text())
+        self.assertEqual({k: job[k] for k in ("kind", "session", "update", "proxy", "cwd")},
+                         {"kind": "codex", "session": sid, "update": True, "proxy": True, "cwd": os.getcwd()})
+        import restart_job
+        argv = restart_job.steps(restart_job.validate(job))[-1][0]
+        self.assertEqual(argv[-5:], ["codex", "restart", sid, "--update", "--proxy"])
 
     def test_restart_passes_the_saved_id_to_codex(self):
         sid = "11111111-2222-4333-8444-555555555555"
