@@ -109,16 +109,6 @@ struct ProjectView: View {
                     .foregroundStyle(Ink.muted)
             }
             Spacer()
-            if !workspace.tabs.isEmpty {
-                Button {
-                    ui.projectScreen = nil
-                } label: {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.glass)
-                .help(l.t("Вернуться к вкладкам", "Back to tabs"))
-                .accessibilityLabel(l.t("Вернуться к вкладкам", "Back to tabs"))
-            }
             if let last = data?.last {
                 Button(l.resumeLast) { open(resume: last.id) }
                     .buttonStyle(.glassProminent)
