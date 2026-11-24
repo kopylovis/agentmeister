@@ -191,5 +191,19 @@ class SettingsAndDoctor(unittest.TestCase):
         self.assertFalse(out["claude"]["installed"])
 
 
+class SignedIn(unittest.TestCase):
+    def test_sign_in_comes_from_the_agents_own_files(self):
+        with tempfile.TemporaryDirectory() as home:
+            with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": home, "CODEX_HOME": os.path.join(home, ".codex")}):
+                self.assertEqual(app_state.signed_in("claude"), {"signedIn": False, "plan": None})
+                with open(os.path.join(home, ".claude.json"), "w") as f:
+                    json.dump({"oauthAccount": {"billingType": "stripe_subscription"}}, f)
+                self.assertEqual(app_state.signed_in("claude"), {"signedIn": True, "plan": "stripe_subscription"})
+                os.makedirs(os.path.join(home, ".codex"))
+                with open(os.path.join(home, ".codex", "auth.json"), "w") as f:
+                    json.dump({"auth_mode": "chatgpt", "tokens": {"id_token": "x"}}, f)
+                self.assertEqual(app_state.signed_in("codex"), {"signedIn": True, "plan": "chatgpt"})
+
+
 if __name__ == "__main__":
     unittest.main()
