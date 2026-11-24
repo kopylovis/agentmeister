@@ -25,32 +25,104 @@ SESSION_CACHES = [os.path.join(CACHE, sub, "{sid}" + tail) for sub, tail in
                    ("notice", ".json"), ("logs", "/*.log"))]
 
 
+# Claude Code (2.1.x) называет папку проекта так: все, кроме [a-zA-Z0-9], в "-" по кодовым единицам UTF-16
+# (эмодзи дает "--"); имя длиннее 200 обрезается до 200 и получает "-" + хеш полного пути в base36.
+MAX_DIR = 200
+LONG_DIR = re.compile(r"^(.{%d})-([0-9a-z]+)$" % MAX_DIR, re.S)
+LONG_SEARCH_DEPTH, LONG_SEARCH_DIRS = 4, 5000
+
+
+def flat(path):
+    return re.sub(r"[^A-Za-z0-9]", lambda m: "--" if ord(m.group()) > 0xFFFF else "-", path)
+
+
+def cc_hash(path):
+    """Хеш Claude Code для длинных имен: h = (h << 5) - h + код | 0 по UTF-16, затем Math.abs и base36."""
+    data = path.encode("utf-16-le", "surrogatepass")
+    h = 0
+    for i in range(0, len(data), 2):
+        h = (h * 31 + (data[i] | data[i + 1] << 8)) & 0xFFFFFFFF
+    n = abs(h - (1 << 32) if h >= 1 << 31 else h)
+    digits = ""
+    while True:
+        n, r = divmod(n, 36)
+        digits = "0123456789abcdefghijklmnopqrstuvwxyz"[r] + digits
+        if not n:
+            return digits
+
+
 def encode(path):
-    return re.sub(r"[^A-Za-z0-9]", "-", path)
+    e = flat(path)
+    if len(e) <= MAX_DIR:
+        return e
+    return f"{e[:MAX_DIR]}-{cc_hash(path)}"
+
+
+def _subdirs(base):
+    try:
+        entries = sorted(os.listdir(base), key=len, reverse=True)
+    except OSError:
+        return
+    for e in entries:
+        full = os.path.join(base, e)
+        if os.path.isdir(full):
+            yield e, full
 
 
 def decode(name, base="/"):
+    """Путь проекта по имени папки в ~/.claude/projects, если такая папка есть на диске, иначе None."""
+    if base == "/":
+        long = LONG_DIR.match(name)
+        if long:
+            return _decode_long(long.group(1), long.group(2))
     if not name.startswith("-"):
         return None
     rest = name[1:]
     if not rest:
         return base
-    try:
-        entries = os.listdir(base)
-    except OSError:
-        return None
-    for e in sorted(entries, key=len, reverse=True):
-        enc = encode(e)
-        if rest == enc or rest.startswith(enc + "-"):
-            full = os.path.join(base, e)
-            if not os.path.isdir(full):
-                continue
-            if rest == enc:
-                return full
+    for e, full in _subdirs(base):
+        enc = flat(e)
+        if rest == enc:
+            return full
+        if rest.startswith(enc + "-"):
             found = decode(rest[len(enc):], full)
             if found:
                 return found
     return None
+
+
+def _decode_long(prefix, digest):
+    """Длинное имя: первые 200 знаков ведут по папкам, дальше путь можно узнать только по хешу."""
+    budget = [LONG_SEARCH_DIRS]
+
+    def below(full, depth):
+        if encode(full) == prefix + "-" + digest:
+            return full
+        if depth >= LONG_SEARCH_DEPTH:
+            return None
+        for _, child in _subdirs(full):
+            budget[0] -= 1
+            if budget[0] < 0:
+                return None
+            found = below(child, depth + 1)
+            if found:
+                return found
+        return None
+
+    def walk(rest, base):
+        for e, full in _subdirs(base):
+            enc = flat(e)
+            if rest.startswith(enc + "-"):
+                found = walk(rest[len(enc) + 1:], full)
+            elif enc.startswith(rest):
+                found = below(full, 0)
+            else:
+                continue
+            if found:
+                return found
+        return None
+
+    return walk(prefix[1:], "/") if prefix.startswith("-") else None
 
 
 def tree_size(path):
