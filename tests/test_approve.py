@@ -41,7 +41,7 @@ class FakeTelegram:
             self.sent = params
             return {"message_id": 77}
         if method == "getUpdates":
-            if "offset" in params:
+            if "offset" in params or "allowed_updates" in params:
                 return []
             if self.batches:
                 return self.batches.pop(0)(self)
@@ -67,6 +67,7 @@ class Base(unittest.TestCase):
                    mock.patch.object(telegram, "chat", lambda: CHAT),
                    mock.patch.object(telegram, "token", lambda: "t"),
                    mock.patch.object(telegram, "away", lambda: True),
+                   mock.patch.object(telegram, "plugin_token", lambda: ""),
                    mock.patch.object(ta.time, "sleep", lambda s: None)]
         for p in patches:
             p.start()
@@ -90,12 +91,36 @@ class Hook(Base):
         self.assertIn("app: нужно разрешение", fake.sent["text"])
         self.assertIn("answerCallbackQuery", fake.methods())
         # прочитанное подтверждено, кнопки убраны, файлы ожидания стерты
-        self.assertIn(("getUpdates", {"offset": 501, "timeout": 0, "allowed_updates": '["callback_query"]'}),
-                      fake.calls)
+        self.assertIn(("getUpdates", {"offset": 501, "timeout": 0}), fake.calls)
         edit = [p for m, p in fake.calls if m == "editMessageText"][0]
         self.assertIn("Разрешено", edit["text"])
         self.assertNotIn("reply_markup", edit)
-        self.assertEqual(os.listdir(self.dir), ["poll.lock"])
+        self.assertEqual(sorted(os.listdir(self.dir)), ["poll.lock", "updates.reset"])
+
+    def test_polling_does_not_narrow_allowed_updates(self):
+        for _ in range(2):
+            fake = FakeTelegram([lambda f: f.press()])
+            self.run_hook(payload(), fake)
+            polls = [p for m, p in fake.calls if m == "getUpdates"]
+            narrowing = [p for p in polls if p.get("allowed_updates") not in (None, "[]")]
+            self.assertEqual(narrowing, [])
+            resets = [p for p in polls if p.get("allowed_updates") == "[]"]
+            self.assertEqual(len(resets), 1 if _ == 0 else 0)  # вернуть умолчание один раз
+
+    def test_non_callback_updates_are_skipped(self):
+        fake = FakeTelegram([lambda f: [{"update_id": 400, "message": {"text": "привет"}}] + f.press()])
+        out = json.loads(self.run_hook(payload(), fake))
+        self.assertEqual(out["hookSpecificOutput"]["decision"]["behavior"], "allow")
+
+    def test_conflict_stops_polling(self):
+        def conflict(f):
+            raise telegram.TelegramConflict(telegram.CONFLICT)
+        fake = FakeTelegram([conflict, lambda f: f.press()])
+        with mock.patch.object(ta, "log_error") as log:
+            self.assertEqual(self.run_hook(payload(), fake), "")
+        self.assertIn("плагин Telegram", log.call_args.args[0])
+        self.assertIn("другая программа", [p for m, p in fake.calls if m == "editMessageText"][0]["text"])
+        self.assertEqual(len(fake.batches), 1)  # больше не опрашивал
 
     def test_deny(self):
         fake = FakeTelegram([lambda f: f.press()], answer="n")
@@ -157,6 +182,10 @@ class Skips(Base):
         with mock.patch.object(telegram, "chat", lambda: ""):
             self.assert_silent(payload())
 
+    def test_same_bot_as_telegram_plugin(self):
+        with mock.patch.object(telegram, "plugin_token", lambda: "t"), mock.patch.object(ta, "log_error"):
+            self.assert_silent(payload())
+
     def test_questions_and_plans(self):
         for tool in ("AskUserQuestion", "ExitPlanMode"):
             self.assert_silent(payload(tool_name=tool))
@@ -169,6 +198,65 @@ class Skips(Base):
         out = io.StringIO()
         self.assertEqual(ta.hook(io.StringIO("junk"), out), 0)
         self.assertEqual(out.getvalue(), "")
+
+
+class Api(unittest.TestCase):
+    def http_error(self, code, body):
+        import urllib.error
+        return urllib.error.HTTPError("https://api.telegram.org/botX/getUpdates", code, "x", {}, io.BytesIO(body))
+
+    def test_409_is_reported_as_conflict(self):
+        body = json.dumps({"ok": False, "error_code": 409,
+                           "description": "Conflict: terminated by other getUpdates request"}).encode()
+        for err in (self.http_error(409, body), self.http_error(409, b"<html>")):
+            with mock.patch.object(telegram.urllib.request, "urlopen", side_effect=err), \
+                    self.assertRaises(telegram.TelegramConflict) as ctx:
+                telegram.call("getUpdates", "1:x", timeout=0)
+            self.assertIn("плагин Telegram", str(ctx.exception))
+        other = json.dumps({"ok": False, "error_code": 401, "description": "Unauthorized"}).encode()
+        with mock.patch.object(telegram.urllib.request, "urlopen", side_effect=self.http_error(401, other)), \
+                self.assertRaises(telegram.TelegramError) as ctx:
+            telegram.call("getMe", "1:x")
+        self.assertNotIsInstance(ctx.exception, telegram.TelegramConflict)
+
+    def test_plugin_token_read_from_channel_env(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        with mock.patch.dict(os.environ, {"TELEGRAM_STATE_DIR": d}):
+            self.assertEqual(telegram.plugin_token(), "")
+            with open(os.path.join(d, ".env"), "w") as f:
+                f.write("OTHER=1\nTELEGRAM_BOT_TOKEN=123456:abc\n")
+            self.assertEqual(telegram.plugin_token(), "123456:abc")
+            self.assertTrue(telegram.shares_plugin_bot("123456:abc"))
+            self.assertFalse(telegram.shares_plugin_bot("999:zzz"))
+
+    def test_wait_for_start_filters_client_side(self):
+        calls = []
+        batches = [[{"update_id": 1, "callback_query": {"id": "c"}},
+                    {"update_id": 2, "message": {"text": "/start", "chat": {"id": 5, "type": "private"}}}]]
+
+        def fake(method, tok=None, wait=15, **params):
+            calls.append(params)
+            if "allowed_updates" in params or "offset" in params and params.get("timeout") == 0:
+                return []
+            return batches.pop(0) if batches else []
+        with mock.patch.object(telegram, "call", fake):
+            self.assertEqual(telegram.wait_for_start("1:x", seconds=5)["id"], 5)
+        self.assertEqual(calls[0].get("allowed_updates"), "[]")
+        self.assertTrue(all("allowed_updates" not in p for p in calls[1:]))
+
+    def test_setup_warns_about_plugin_bot(self):
+        tok = "123456:" + "a" * 35
+        out = io.StringIO()
+        with mock.patch.object(telegram, "read_token", lambda: tok), \
+                mock.patch.object(telegram, "call", lambda *a, **k: {"username": "bot"}), \
+                mock.patch.object(telegram, "plugin_token", lambda: tok), \
+                mock.patch.object(telegram, "save_token") as save, \
+                mock.patch.object(telegram.sys, "stdin", io.StringIO("")), \
+                mock.patch("sys.stdout", out):
+            self.assertEqual(telegram.setup(), 1)
+        save.assert_not_called()
+        self.assertIn("плагине Telegram", out.getvalue())
 
 
 class Render(unittest.TestCase):
