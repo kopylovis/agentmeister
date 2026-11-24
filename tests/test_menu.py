@@ -421,6 +421,58 @@ class Layout(unittest.TestCase):
         self.assertTrue(ANSI.sub("", short[2]).endswith("…"))
 
 
+class English(unittest.TestCase):
+    def setUp(self):
+        self.saved = mnrhlib.lang
+        mnrhlib.lang = lambda: "en"
+
+    def tearDown(self):
+        mnrhlib.lang = self.saved
+
+    @staticmethod
+    def session(**extra):
+        s = {"id": "f5fde58d-80df-4a68-8ab4-12f15fbbd06e", "cwd": "/tmp", "started_in": "/tmp", "branch": "",
+             "title": "", "prompt": "", "size": 1024, "mtime": 0, "running": None, "link": False, "target": None}
+        s.update(extra)
+        return s
+
+    def test_session_details_in_english(self):
+        import claude_sessions
+        text = "\n".join(ANSI.sub("", line) for line in claude_sessions.details(self.session(running=42), 40))
+        self.assertIn("untitled", text)
+        self.assertIn("folder", text)
+        self.assertIn("open now (pid 42)", text)
+        self.assertIsNone(re.search("[а-яА-Я]", text), text)
+        self.assertTrue(all(menu.width(line) <= 40 for line in text.splitlines()))
+
+    def test_session_actions_in_english(self):
+        import claude_sessions
+        from unittest.mock import Mock
+        screen = Mock()
+        screen.pick.side_effect = [0, None, None]
+        with patch.object(claude_sessions, "load", return_value=[self.session()]):
+            self.assertIsNone(claude_sessions.browse(screen))
+        list_call, actions_call = screen.pick.call_args_list[:2]
+        shown = [ANSI.sub("", text) for _, text in actions_call.args[0]] + [actions_call.kwargs["title"],
+                                                                             list_call.kwargs["title"]]
+        self.assertIsNone(re.search("[а-яА-Я]", " ".join(shown)), shown)
+        self.assertIn("☕ resume, the Mac stays awake", shown)
+
+    def test_running_session_details_in_english(self):
+        import claude_live
+        s = {"status": "waiting", "cwd": "/tmp", "pid": 7, "statusUpdatedAt": None}
+        with patch.object(claude_live, "title", return_value="t"), patch.object(claude_live, "ago", return_value="now"):
+            text = " ".join(ANSI.sub("", line) for line in m.live_details(s, 40))
+        self.assertIsNone(re.search("[а-яА-Я]", text), text)
+        self.assertIn("waiting for you", text)
+
+    def test_hint_drops_middle_parts_to_keep_esc(self):
+        hint = "↑↓ выбрать · Enter · цифра или буквы, быстрый переход · Tab описание · Esc назад"
+        self.assertEqual(menu.fit_hint(hint, 76), "↑↓ выбрать · Enter · Tab описание · Esc назад")
+        self.assertEqual(menu.fit_hint(hint, 200), hint)
+        self.assertLessEqual(menu.width(menu.fit_hint(hint, 20)), 20)
+
+
 class Signals(unittest.TestCase):
     def test_sigterm_exits_through_finally(self):
         import signal

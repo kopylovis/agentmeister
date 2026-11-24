@@ -396,12 +396,14 @@ def framed(screen, args):
     return False
 
 
-def live_details(s):
+def live_details(s, w=60):
     import claude_live
     label, _ = claude_live.STATUS.get(s.get("status"), (s.get("status") or "?", ""))
-    facts = [("папка", tilde(str(s.get("cwd") or "?"))), ("состояние", label.strip()),
-             ("с тех пор", claude_live.ago(s.get("statusUpdatedAt"))), ("pid", str(s.get("pid") or "?"))]
-    return ([f"\x1b[1m{claude_live.title(s)}\x1b[0m", ""] + [dim(f"{k:<11}") + v for k, v in facts if v]
+    label = {"waiting": tr("ждет тебя", "waiting for you"), "busy": tr("работает", "working"),
+             "idle": tr("свободна", "idle")}.get(s.get("status"), label)
+    facts = [(tr("папка", "folder"), tilde(str(s.get("cwd") or "?"))), (tr("состояние", "state"), label.strip()),
+             (tr("с тех пор", "since"), claude_live.ago(s.get("statusUpdatedAt"))), ("pid", str(s.get("pid") or "?"))]
+    return ([f"\x1b[1m{claude_live.title(s)}\x1b[0m", ""] + fact_lines([(k, v) for k, v in facts if v], w, pad=12)
             + ["", tr("Enter переключит на вкладку этой сессии.", "Enter switches to this session's tab.")])
 
 
@@ -413,7 +415,7 @@ def live_sessions(screen):
         return tr("открытых сессий нет", "no open sessions")
     at = screen.pick([(f"{claude_live.title(s)} {s.get('cwd')}", claude_live.row(s)) for s in ss],
                      title=tr(f"Открытые сессии ({len(ss)})", f"Open sessions ({len(ss)})"),
-                     describe=lambda i, w: live_details(ss[i]))
+                     describe=lambda i, w: live_details(ss[i], w))
     if at is None:
         return ""
     if claude_live.jump(ss[at]):
