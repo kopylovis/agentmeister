@@ -4,6 +4,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 TESTS = os.path.dirname(os.path.abspath(__file__))
@@ -239,6 +240,63 @@ class FailedBuild(HookBase):
 
     def test_marker_from_unwrapped_command_is_ignored(self):
         self.assertIsNone(b.decide(self.payload("x\n" + b.FAIL_MARK, cmd="./gradlew build")))
+
+
+class UnknownResult(HookBase):
+    """Метка FAIL_MARK в самом конце вывода: если конец не дошел, успехом это считать нельзя."""
+
+    def persisted(self, text):
+        path = os.path.join(b.CLAUDE_HOME, "projects", "p", "s", "tool-results", "x.txt")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(text)
+        return path
+
+    def test_missing_persisted_file_is_unknown(self):
+        text = fixture("gradle-failure.log") * 3
+        path = os.path.join(b.CLAUDE_HOME, "projects", "p", "s", "tool-results", "gone.txt")
+        out = b.decide(self.payload(text[:30000], cmd="./gradlew build" + b.WRAP, persistedOutputPath=path,
+                                    persistedOutputSize=len(text) + 100))
+        self.assertIsNotNone(out)
+        self.assertIn("результат неизвестен", out["stdout"].split("\n")[0])
+        self.assertIn("Не считай ее успешной", out["stdout"])
+        self.assertIn("gone.txt", out["stdout"])
+        self.assertNotIn("завершилась с ошибкой", out["stdout"])
+
+    def test_cut_stdout_without_path_is_unknown(self):
+        text = ("> Task :app:compile\n" * 3000)[:b.STDOUT_CAP]
+        out = b.decide(self.payload(text, cmd="./gradlew build" + b.WRAP))
+        self.assertIn("результат неизвестен", out["stdout"])
+        self.assertIn("echo $?", out["stdout"])
+
+    def test_short_output_with_unreadable_path_is_unknown(self):
+        outside = os.path.join(self.tmp, "x.txt")
+        out = b.decide(self.payload("Compiling", cmd="./gradlew build" + b.WRAP, persistedOutputPath=outside))
+        self.assertTrue(out["stdout"].startswith("Compiling\n[agentmeister buildlog: результат неизвестен"))
+
+    def test_unwrapped_command_is_not_unknown(self):
+        # без обертки PostToolUse приходит только при коде 0
+        text = ("> Task :app:compile\n" * 3000)[:b.STDOUT_CAP]
+        out = b.decide(self.payload(text, cmd="./gradlew build"))
+        self.assertTrue(out is None or "неизвестен" not in out["stdout"])
+
+    def test_large_output_tail_is_read_for_mark(self):
+        failure = fixture("gradle-failure.log")
+        filler = "".join(f"> Task :lib{i}:compile UP-TO-DATE\n" for i in range(20000))
+        path = self.persisted("e: Early.kt:1:1 Unresolved reference\n" + filler + failure + "\n" + b.FAIL_MARK + "\n")
+        with mock.patch.object(b, "READ_LIMIT", 200 * 1024), mock.patch.object(b, "TAIL_READ", 64 * 1024):
+            out = b.decide(self.payload("x" * 30000, cmd="./gradlew build" + b.WRAP, persistedOutputPath=path))
+        self.assertIn("команда завершилась с ошибкой", out["stdout"].split("\n")[0])
+        self.assertIn("Early.kt", out["stdout"])
+        self.assertIn("BUILD FAILED in 1m 12s", out["stdout"])
+        self.assertNotIn(b.FAIL_MARK, out["stdout"])
+
+    def test_large_successful_output_is_not_unknown(self):
+        filler = "".join(f"> Task :lib{i}:compile UP-TO-DATE\n" for i in range(20000)) + "BUILD SUCCESSFUL in 9s\n"
+        path = self.persisted(filler)
+        with mock.patch.object(b, "READ_LIMIT", 200 * 1024), mock.patch.object(b, "TAIL_READ", 64 * 1024):
+            out = b.decide(self.payload("x" * 30000, cmd="./gradlew build" + b.WRAP, persistedOutputPath=path))
+        self.assertTrue(out is None or "неизвестен" not in out["stdout"] and "с ошибкой" not in out["stdout"])
 
 
 class TabLabel(unittest.TestCase):
