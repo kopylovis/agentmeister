@@ -846,6 +846,9 @@ struct TabInspector: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
     @ObservedObject var tab: TerminalTab
+    @AppStorage("restartWithUpdate") private var withUpdate = true
+    /// Git и бэклог проекта вкладки из app-state project. Обновляются при смене вкладки и раз в минуту.
+    @State private var project: ProjectData?
 
     var l: L { L(backend.state.lang) }
 
@@ -876,8 +879,8 @@ struct TabInspector: View {
                         }
                     }
                     row(l.t("Песочница", "Sandbox"), tab.spec.proxied ? "sandbox-exec" : l.t("нет", "none"))
-                    if let branch = saved?.branch, !branch.isEmpty {
-                        row(l.t("Ветка", "Branch"), branch, mono: true)
+                    if let branch = project?.git?.branch ?? saved?.branch, !branch.isEmpty {
+                        row(l.t("Ветка", "Branch"), branch + ((project?.git?.dirty ?? 0) > 0 ? " ±\(project!.git!.dirty)" : ""), mono: true)
                     }
                     GridRow {
                         Text(l.t("Активна", "Active")).foregroundStyle(Ink.faint).frame(width: 76, alignment: .leading)
@@ -896,7 +899,9 @@ struct TabInspector: View {
                 .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
 
                 FlowLayout(spacing: 6) {
-                    CapsuleButton(title: l.restart) { tab.restart() }
+                    CapsuleButton(title: l.restart) {
+                        if withUpdate && claude { tab.restartWithUpdate(note: l.t("Обновляю Claude Code…", "Updating Claude Code…")) } else { tab.restart() }
+                    }
                     if claude && tab.sessionId != nil {
                         CapsuleButton(title: l.slim) { tab.slim(note: l.slimming) }
                     }
@@ -908,6 +913,12 @@ struct TabInspector: View {
                     }
                 }
                 .padding(.horizontal, 2)
+                if claude {
+                    Toggle(l.t("Перезапускать с обновлением агента", "Update the agent when restarting"), isOn: $withUpdate)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Ink.text2)
+                        .padding(.horizontal, 4)
+                }
 
                 if let h = backend.state.hostRun {
                     VStack(alignment: .leading, spacing: 8) {
@@ -929,9 +940,48 @@ struct TabInspector: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
                 }
+
+                let todos = (project?.todos ?? []).filter { !$0.done }
+                if tab.spec.utility == nil, !todos.isEmpty {
+                    VStack(alignment: .leading, spacing: 9) {
+                        SectionCaption(text: l.t("Бэклог проекта", "Project backlog"))
+                        ForEach(todos.prefix(6), id: \.self) { item in
+                            Button {
+                                if let n = item.n { markDone(n) }
+                            } label: {
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: "square").foregroundStyle(Ink.muted)
+                                    Text(item.text).foregroundStyle(Ink.text).multilineTextAlignment(.leading)
+                                    Spacer(minLength: 0)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .help(l.t("Отметить сделанной", "Mark done"))
+                        }
+                    }
+                    .font(.system(size: 12))
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 16)
+        }
+        .task(id: tab.spec.projectPath) {
+            while !Task.isCancelled {
+                if tab.spec.utility == nil { project = await Backend.json(["app-state", "project", tab.spec.projectPath]) }
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
+    }
+
+    private func markDone(_ n: Int) {
+        let path = tab.spec.projectPath
+        Task {
+            _ = await backend.perform(["todo", "-p", path, "done", String(n)])
+            project = await Backend.json(["app-state", "project", path])
         }
     }
 
