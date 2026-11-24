@@ -460,27 +460,49 @@ def forget_caches(sid):
                 pass
 
 
-def forget_history(sid):
+def forget_history(sid, on_written=None):
+    """Убрать строки сессии из history.jsonl. Другие сессии в это время дописывают туда свои строки: все, что
+    появилось после чтения, переносится во временный файл перед заменой. on_written — крючок для тестов."""
     path = os.path.join(CLAUDE, "history.jsonl")
-    for _ in range(3):
+    marker = f'"sessionId":"{sid}"'.encode()
+    tmp = path + ".mnrh-tmp"
+    for _ in range(5):
         try:
-            size = os.stat(path).st_size
+            src = open(path, "rb")
         except OSError:
             return
-        with open(path, encoding="utf-8", errors="surrogateescape", newline="") as f:
-            lines = f.readlines()
-        kept = [l for l in lines if f'"sessionId":"{sid}"' not in l]
-        if len(kept) == len(lines):
-            return
-        tmp = path + ".mnrh-tmp"
-        with open(tmp, "w", encoding="utf-8", errors="surrogateescape", newline="") as f:
-            f.writelines(kept)
-        shutil.copymode(path, tmp)
-        if os.stat(path).st_size != size:
-            os.remove(tmp)
-            continue
-        os.replace(tmp, path)
-        return
+        try:
+            with src:
+                start = os.fstat(src.fileno())
+                data = src.read()
+                lines = data.splitlines(keepends=True)
+                kept = [line for line in lines if marker not in line]
+                if len(kept) == len(lines):
+                    return
+                pos = len(data)
+                with open(tmp, "wb") as out:
+                    out.writelines(kept)
+                    if on_written:
+                        on_written()
+                    for _ in range(100):
+                        src.seek(pos)
+                        extra = src.read()
+                        out.write(extra)
+                        out.flush()
+                        pos += len(extra)
+                        try:
+                            now = os.stat(path)
+                        except OSError:
+                            break
+                        if not os.path.samestat(now, start) or now.st_size < pos:
+                            break  # файл заменили или обрезали: прочитать заново
+                        if now.st_size == pos:
+                            shutil.copymode(path, tmp)
+                            os.replace(tmp, path)
+                            return
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
 
 
 def offline(home, encoded):
