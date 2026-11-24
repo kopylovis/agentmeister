@@ -419,7 +419,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
             return
         }
         let code = exitCode.map(String.init) ?? "?"
-        view.feed(text: "\r\n\u{1b}[2m[exit \(code)" + (exitHint ? ". ⌘R" : "") + "]\u{1b}[0m\r\n")
+        let key = ShortcutStore.shared.label(.restart)
+        view.feed(text: "\r\n\u{1b}[2m[exit \(code)" + (exitHint && !key.isEmpty ? ". " + key : "") + "]\u{1b}[0m\r\n")
         onExit?()
     }
 }

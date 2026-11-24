@@ -28,6 +28,7 @@ struct PaletteView: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var ui: UIState
+    @ObservedObject private var keys = ShortcutStore.shared
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
@@ -83,14 +84,14 @@ struct PaletteView: View {
 
         let tab = workspace.current
         let claude = tab != nil && tab?.spec.utility == nil && tab?.spec.agent == .claude
-        out.append(PaletteItem(id: "a-new", group: .thisSession, title: l.newSession, detail: "", shortcut: "⌘N") {
+        out.append(PaletteItem(id: "a-new", group: .thisSession, title: l.newSession, detail: "", shortcut: keys.label(.newSession)) {
             ui.newSessionProject = workspace.current?.spec.projectPath
             ui.showNewSession = true
         })
         if let tab {
             out.append(PaletteItem(id: "a-restart", group: .thisSession,
                                    title: claude && TerminalTab.restartUpdates ? l.t("Перезапустить с обновлением", "Restart with update") : l.restart,
-                                   detail: claude && TerminalTab.restartUpdates ? "claude update" : "", shortcut: "⌘R") {
+                                   detail: claude && TerminalTab.restartUpdates ? "claude update" : "", shortcut: keys.label(.restart)) {
                 tab.restartPreferred(note: l.updating)
             })
             if claude && tab.sessionId != nil {
@@ -113,15 +114,15 @@ struct PaletteView: View {
             }
         }
         out.append(PaletteItem(id: "a-parallel", group: .thisSession, title: l.t("Параллельная задача", "Parallel task"),
-                               detail: l.t("своя ветка и worktree", "own branch and worktree"), shortcut: "⇧⌘P") {
+                               detail: l.t("своя ветка и worktree", "own branch and worktree"), shortcut: keys.label(.parallel)) {
             ui.newSessionProject = workspace.current?.spec.projectPath
             ui.newSessionParallel = true
             ui.showNewSession = true
         })
 
         out.append(slash("t-ask", l.t("Спросить другой проект", "Ask another project"),
-                         l.t("отдельный Claude только на чтение", "a separate read-only Claude"), "/ask ", key: "⇧⌘A"))
-        out.append(slash("t-shot", l.t("Снимок окна", "Window screenshot"), "Simulator, Chrome, …", "/shot ", key: "⇧⌘S"))
+                         l.t("отдельный Claude только на чтение", "a separate read-only Claude"), "/ask ", key: keys.label(.ask)))
+        out.append(slash("t-shot", l.t("Снимок окна", "Window screenshot"), "Simulator, Chrome, …", "/shot ", key: keys.label(.shot)))
         out.append(slash("t-release", l.t("Заметки к релизу", "Release notes"),
                          l.t("\"Что нового\" для fastlane", "\"What's new\" for fastlane"), "/release-notes"))
         out.append(PaletteItem(id: "t-deps", group: .tools, title: l.t("Устаревшие зависимости", "Outdated dependencies"), detail: "Gradle") {
@@ -135,7 +136,7 @@ struct PaletteView: View {
                          l.t("закрыть лишнее, сжать открытые сессии", "close extras, slim open sessions"),
                          l.t("Освободи память (free_memory)", "Free up memory (free_memory)")))
         out.append(PaletteItem(id: "t-usage", group: .tools, title: l.t("Статистика", "Usage"),
-                               detail: l.t("токены и время", "tokens and time"), shortcut: "⇧⌘U") {
+                               detail: l.t("токены и время", "tokens and time"), shortcut: keys.label(.usage)) {
             openWindow(id: "usage")
         })
 
