@@ -25,9 +25,14 @@ class Doctor(unittest.TestCase):
                  dict(base, eventName="userPromptSubmit", trustStatus="untrusted"),
                  dict(base, eventName="stop", enabled=False)]
 
-        level, text = claude_doctor.check_codex_hooks(hooks)
+        with patch("mnrhlib.lang", return_value="ru"):
+            level, text = claude_doctor.check_codex_hooks(hooks)
         self.assertEqual(level, "bad")
         self.assertIn("1 из 3", text)
+        with patch("mnrhlib.lang", return_value="en"):
+            level, text = claude_doctor.check_codex_hooks(hooks)
+        self.assertEqual(level, "bad")
+        self.assertIn("1 of 3 hooks trusted", text)
 
     def test_codex_mcp_does_not_start_an_unrelated_command(self):
         config = {"mcp_servers": {"agentmeister": {"command": "/usr/bin/true", "enabled": True}}}
@@ -35,18 +40,35 @@ class Doctor(unittest.TestCase):
             self.assertEqual(claude_doctor.check_codex_mcp(config)[0], "warn")
         run.assert_not_called()
 
-    def test_fresh_home_is_reported_broken(self):
+    def doctor_in_fresh_home(self, lang):
         home = tempfile.mkdtemp(prefix="cm-doctor-")
+        # без lang в config язык берется из macOS, тест закрепляет его
+        config = os.path.join(home, ".config", "mnrh", "config")
+        os.makedirs(os.path.dirname(config))
+        with open(config, "w") as f:
+            f.write(f"lang={lang}\n")
         env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=os.path.join(home, ".config"), ZDOTDIR=home,
                    PYTHONDONTWRITEBYTECODE="1", MNRH_CLAUDE_BIN="/nonexistent/claude")
         env.pop("MNRH_CLAUDE_HOME", None)
         r = subprocess.run([os.path.join(ROOT, "bin", "agentmeister"), "doctor"], env=env, capture_output=True,
                            text=True, timeout=60)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("нет /nonexistent/claude в PATH", r.stdout)
-        self.assertIn("нет команд", r.stdout)
         self.assertIn("agentmeister setup", r.stdout)
         self.assertNotIn("Traceback", r.stdout + r.stderr)
+        return r.stdout
+
+    def test_fresh_home_is_reported_broken(self):
+        out = self.doctor_in_fresh_home("ru")
+        self.assertIn("нет /nonexistent/claude в PATH", out)
+        self.assertIn("нет команд", out)
+        self.assertIn("Есть ошибки установки", out)
+
+    def test_fresh_home_report_in_english(self):
+        out = self.doctor_in_fresh_home("en")
+        self.assertIn("/nonexistent/claude isn't in PATH: install Claude Code", out)
+        self.assertIn("missing commands", out)
+        self.assertIn("The install has errors", out)
+        self.assertNotRegex(out, "[а-яА-ЯёЁ]")
 
 
 class ItermHooks(unittest.TestCase):
