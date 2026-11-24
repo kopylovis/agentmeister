@@ -132,16 +132,34 @@ struct SettingsView: View {
     }
 }
 
+/// Куда UtilityButton отправляет команду. По умолчанию во вкладку главного окна, мастер показывает ее у себя:
+/// он открыт листом поверх главного окна и закрыл бы вкладку.
+struct UtilityRunnerKey: EnvironmentKey {
+    static let defaultValue: (@MainActor ([String]) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var utilityRunner: (@MainActor ([String]) -> Void)? {
+        get { self[UtilityRunnerKey.self] }
+        set { self[UtilityRunnerKey.self] = newValue }
+    }
+}
+
 /// Открыть служебную вкладку с командой agentmeister в главном окне.
 struct UtilityButton: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var backend: Backend
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.utilityRunner) private var runner
     let title: String
     let args: [String]
 
     var body: some View {
         Button(title) {
+            if let runner {
+                runner(args)
+                return
+            }
             let home = NSHomeDirectory()
             var spec = LaunchSpec(projectName: "agentmeister", projectPath: home)
             spec.utility = args
