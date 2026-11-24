@@ -40,6 +40,27 @@ class AppState(unittest.TestCase):
         self.assertEqual([s["id"] for s in out], ["a"])
         self.assertEqual(out[0]["running"], False)
 
+    def test_sessions_read_only_changed_transcripts(self):
+        import session_store
+        rows = [{"id": "a", "path": "/p/a.jsonl", "extra": "/p/a", "link": False, "cwd": "/w/a", "mtime": 2,
+                 "size": 10, "running": None, "transcript_version": (1, 2, 10, 5, 5)},
+                {"id": "b", "path": "/p/b.jsonl", "extra": "/p/b", "link": False, "cwd": "/w/b", "mtime": 1,
+                 "size": 5, "running": None, "transcript_version": (1, 3, 5, 5, 5)}]
+        meta = {"cwd": "/w/a", "branch": "main", "custom": None, "ai": "Тема", "prompt": None, "answered": True}
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(app_state, "META_CACHE", os.path.join(tmp, "sessions.json")), \
+             patch.object(session_store, "load", return_value=rows), \
+             patch.object(session_store, "read_meta", return_value=meta) as read:
+            first = app_state.sessions()
+            self.assertEqual(read.call_count, 2)
+            app_state.sessions()
+            self.assertEqual(read.call_count, 2)
+            rows[1]["transcript_version"] = (1, 3, 9, 6, 6)
+            app_state.sessions()
+            self.assertEqual(read.call_count, 3)
+        self.assertEqual([s["title"] for s in first], ["Тема", "Тема"])
+        self.assertEqual(first[0]["branch"], "main")
+
     def test_command_prints_json(self):
         with tempfile.TemporaryDirectory() as home:
             env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=os.path.join(home, ".config"),
