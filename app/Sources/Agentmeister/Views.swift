@@ -15,6 +15,8 @@ final class UIState: ObservableObject {
     @Published var newSessionProject: String?
     /// Лист новой сессии открыть сразу на "параллельно, своя ветка и worktree".
     @Published var newSessionParallel = false
+    /// Путь проекта, чей экран открыт вместо терминала. Nil, когда видны вкладки.
+    @Published var projectScreen: String?
     /// Вкладка, сессию которой переименовывают.
     @Published var renaming: TerminalTab?
 }
@@ -104,7 +106,10 @@ struct MainView: View {
             try? FileManager.default.removeItem(atPath: Workspace.focusFile)
             workspace.focus(tab: tab)
         }
-        .onChange(of: workspace.selected) { workspace.writeFront(active: NSApp.isActive) }
+        .onChange(of: workspace.selected) {
+            workspace.writeFront(active: NSApp.isActive)
+            ui.projectScreen = nil
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             workspace.writeFront(active: true)
         }
@@ -410,6 +415,8 @@ struct ProjectRow: View {
             }
         }
         .frame(minHeight: 28)
+        .contentShape(Rectangle())
+        .simultaneousGesture(TapGesture().onEnded { ui.projectScreen = project.path })
         .onHover { hover = $0 }
         .listRowBackground(open ? RoundedRectangle(cornerRadius: 10).fill(Ink.openBg).padding(.horizontal, 10) : nil)
         .contextMenu {
@@ -425,6 +432,7 @@ struct ProjectRow: View {
                     workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path, resumeId: last.id))
                 }
             }
+            Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
             Divider()
             Button(l.t("Показать в Finder", "Show in Finder")) {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: project.path)])
@@ -485,8 +493,12 @@ struct DetailView: View {
 
     var l: L { L(backend.state.lang) }
 
+    @EnvironmentObject var ui: UIState
+
     var body: some View {
-        if workspace.tabs.isEmpty {
+        if let path = ui.projectScreen {
+            ProjectView(path: path)
+        } else if workspace.tabs.isEmpty {
             ContentUnavailableView(l.noTabs, systemImage: "terminal", description: Text(l.noTabsHint))
         } else {
             VStack(spacing: 10) {
