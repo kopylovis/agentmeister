@@ -492,18 +492,17 @@ struct ProxyHostRunPane: View {
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
+                if p.configured {
+                    // действия плитками с пояснением: по одному названию кнопки было непонятно, что она сделает
+                    ProxyActions(reload: reload)
+                }
                 HStack(spacing: 8) {
                     if p.configured {
-                        UtilityButton(title: l.t("Проверить выход", "Check exit"), args: ["proxy", "test"])
-                        UtilityButton(title: l.t("Обновить подписку", "Update subscription"), args: ["proxy", "setup"])
-                        CommandButton(title: l.t("Перезапустить mihomo", "Restart mihomo"), args: ["proxy", "restart"], reload: reload)
-                        UtilityButton(title: l.t("Сервер и протокол подробно", "Server and protocol details"), args: ["proxy"])
-                            .buttonStyle(.link)
-                            .lineLimit(1)
-                            .fixedSize()
                         Spacer()
                         Button(l.t("Удалить proxy", "Remove proxy"), role: .destructive) { confirmRemove = true }
+                            .buttonStyle(.link)
                             .foregroundStyle(Ink.red)
+                            .font(.system(size: 12))
                     } else {
                         UtilityButton(title: l.t("Настроить proxy", "Set up proxy"), args: ["proxy", "setup"])
                             .buttonStyle(.glassProminent)
@@ -700,3 +699,78 @@ func shellWords(_ text: String) -> [String] {
     return words
 }
 
+
+/// Действия с proxy плитками: значок, название и что произойдет. Общие для настроек и всплывающего окна
+/// у значка proxy в шапке.
+struct ProxyActions: View {
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var workspace: Workspace
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.utilityRunner) private var runner
+    var columns = 2
+    let reload: () async -> Void
+    @State private var restarting = false
+
+    var l: L { L(backend.state.lang) }
+
+    var body: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
+            tile("checkmark.shield", l.t("Проверить выход", "Check exit"),
+                 l.t("Страна и IP, с которых сессии выходят в сеть", "Country and IP your sessions go out from")) { utility(["proxy", "test"]) }
+            tile("arrow.triangle.2.circlepath", l.t("Обновить подписку", "Update subscription"),
+                 l.t("Заново скачать список серверов по ссылке", "Download the server list again from the link")) { utility(["proxy", "setup"]) }
+            tile("power", l.t("Перезапустить mihomo", "Restart mihomo"),
+                 l.t("Локальный proxy перезапустится, сессии дождутся сети", "The local proxy restarts, sessions wait for the network"),
+                 busy: restarting) {
+                restarting = true
+                Task {
+                    _ = await backend.perform(["proxy", "restart"])
+                    await reload()
+                    restarting = false
+                }
+            }
+            tile("list.bullet.rectangle", l.t("Сервер и протокол", "Server and protocol"),
+                 l.t("Подробный отчет во вкладке терминала", "A detailed report in a terminal tab")) { utility(["proxy"]) }
+        }
+    }
+
+    private func tile(_ icon: String, _ title: String, _ desc: String, busy: Bool = false,
+                      action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Image(systemName: icon).opacity(busy ? 0 : 1)
+                    if busy { ProgressView().controlSize(.small) }
+                }
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Ink.teal)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Ink.tealDot.opacity(0.16)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(Ink.text)
+                    Text(desc).font(.system(size: 11)).foregroundStyle(Ink.muted).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
+    }
+
+    /// Команда agentmeister во вкладке-утилите главного окна, как у UtilityButton.
+    private func utility(_ args: [String]) {
+        if let runner {
+            runner(args)
+            return
+        }
+        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
+        spec.utility = args
+        workspace.open(spec)
+        openWindow(id: "main")
+    }
+}
