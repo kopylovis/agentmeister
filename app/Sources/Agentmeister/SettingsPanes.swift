@@ -807,18 +807,21 @@ private struct Keycap: View {
 
 // MARK: - Диагностика
 
-/// Диагностика по макету Doctor.dc.html: заголовок с числом ошибок, проверки группами в две колонки, "Исправить".
+/// Диагностика: сводка сверху (чип состояния, счет проверок, время, "Проверить снова"), под ней группы во всю ширину.
+/// В группе сначала проблемы, каждая подсвечена и с "Исправить", потом плотные строки в порядке в две колонки.
+/// Группа, где все в порядке, свернута в одну строку "Claude Code · 9 проверок в порядке" и раскрывается по клику.
 struct DoctorPane: View {
     @EnvironmentObject var backend: Backend
     @State private var data: DoctorData?
     @State private var loading = false
     @State private var checkedAt: Date?
+    @State private var expanded: Set<CheckGroup> = []
 
     var l: L { L(backend.state.lang) }
 
-    private enum Group: Int, CaseIterable { case claude, codex, network, mac }
+    fileprivate enum CheckGroup: Int, CaseIterable { case claude, codex, network, mac }
 
-    private func group(of check: String) -> Group {
+    private func group(of check: String) -> CheckGroup {
         switch check {
         case "codex": return .codex
         case "proxy", "hostrun": return .network
@@ -827,7 +830,7 @@ struct DoctorPane: View {
         }
     }
 
-    private func title(_ g: Group) -> String {
+    private func title(_ g: CheckGroup) -> String {
         switch g {
         case .claude: return "Claude Code"
         case .codex: return "Codex"
@@ -858,20 +861,84 @@ struct DoctorPane: View {
         return rows
     }
 
+    /// Порядок важности: ошибки, замечания, выключенное, в порядке.
+    private static func rank(_ level: String) -> Int {
+        switch level {
+        case "bad": return 0
+        case "warn": return 1
+        case "off": return 2
+        default: return 3
+        }
+    }
+
+    private static func isProblem(_ level: String) -> Bool { level == "bad" || level == "warn" }
+
+    /// Текст doctor одной фразой делится на короткий заголовок и пояснение: по первому ": ", ". " или скобке.
+    /// "крышка: выключено, ..." дает "Крышка" и "выключено, ...", "прокси настроен (проверить ...)" дает
+    /// "Прокси настроен" и "проверить ...". Без разделителя пояснения нет.
+    static func split(_ text: String) -> (title: String, detail: String?) {
+        let marks = [": ", ". ", " ("].compactMap { mark in text.range(of: mark).map { (mark, $0) } }
+        guard let (mark, range) = marks.min(by: { $0.1.lowerBound < $1.1.lowerBound }), range.lowerBound > text.startIndex else {
+            return (capitalized(text), nil)
+        }
+        var detail = String(text[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        if mark == " (" {
+            guard detail.hasSuffix(")") else { return (capitalized(text), nil) }
+            detail.removeLast()
+        }
+        let head = String(text[..<range.lowerBound])
+        return (capitalized(head), detail.isEmpty ? nil : detail)
+    }
+
+    /// Заголовок с заглавной буквы и без точки в конце.
+    private static func capitalized(_ text: String) -> String {
+        let s = text.hasSuffix(".") ? String(text.dropLast()) : text
+        guard let first = s.first, first.isLowercase else { return s }
+        return first.uppercased() + s.dropFirst()
+    }
+
+    private func checks(_ n: Int) -> String { l.count(n, "проверка", "проверки", "проверок", "check", "checks") }
+
+    /// "1 ошибка, 2 замечания" или пусто, если проблем нет.
+    private func problems(bad: Int, warn: Int) -> String {
+        var parts: [String] = []
+        if bad > 0 { parts.append(l.count(bad, "ошибка", "ошибки", "ошибок", "error", "errors")) }
+        if warn > 0 { parts.append(l.count(warn, "замечание", "замечания", "замечаний", "warning", "warnings")) }
+        return parts.joined(separator: ", ")
+    }
+
     var body: some View {
         let rows = allRows
         let bad = rows.filter { $0.level == "bad" }.count
         let warn = rows.filter { $0.level == "warn" }.count
+        header(total: rows.count, bad: bad, warn: warn)
+        if data == nil {
+            ProgressView().controlSize(.small)
+        }
+        let groups = CheckGroup.allCases
+            .map { g in (g, rows.filter { group(of: $0.check) == g }.sorted { Self.rank($0.level) < Self.rank($1.level) }) }
+            .filter { !$0.1.isEmpty }
+            .sorted { (Self.rank($0.1.first?.level ?? "ok"), $0.0.rawValue) < (Self.rank($1.1.first?.level ?? "ok"), $1.0.rawValue) }
+        VStack(spacing: 10) {
+            ForEach(groups, id: \.0) { g, items in
+                groupCard(g, items)
+            }
+        }
+        .task { await load() }
+    }
+
+    private func header(total: Int, bad: Int, warn: Int) -> some View {
         HStack(spacing: 12) {
             Text(l.t("Диагностика", "Diagnostics")).font(.system(size: 20, weight: .semibold))
             if data != nil {
                 if bad > 0 {
-                    chip(l.count(bad, "ошибка", "ошибки", "ошибок", "error", "errors"), Ink.red, Ink.redChip, "exclamationmark.triangle")
+                    chip(problems(bad: bad, warn: warn), Ink.red, Ink.redChip, "exclamationmark.triangle.fill")
                 } else if warn > 0 {
-                    chip(l.count(warn, "замечание", "замечания", "замечаний", "warning", "warnings"), Ink.amber, Ink.amberDot.opacity(0.14), "exclamationmark.circle")
+                    chip(problems(bad: bad, warn: warn), Ink.amber, Ink.warnChip, "exclamationmark.circle.fill")
                 } else {
                     chip(l.t("все в порядке", "all good"), Ink.teal, Ink.tealChip, "checkmark")
                 }
+                Text(checks(total)).font(.system(size: 12)).foregroundStyle(Ink.muted)
             }
             Spacer()
             if let checkedAt {
@@ -881,39 +948,130 @@ struct DoctorPane: View {
                         .font(.system(size: 12)).foregroundStyle(Ink.muted)
                 }
             }
-            Button(l.t("Проверить снова", "Check again")) { Task { await load() } }
-                .disabled(loading)
-        }
-        if data == nil {
-            ProgressView()
-        }
-        let groups = Group.allCases.filter { g in rows.contains { group(of: $0.check) == g } }
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 16, alignment: .top), GridItem(.flexible(), spacing: 16, alignment: .top)], spacing: 16) {
-            ForEach(groups, id: \.self) { g in
-                GlassSection(spacing: 0) {
-                    Text(title(g)).font(.system(size: 15, weight: .semibold)).padding(.bottom, 8)
-                    let items = rows.filter { group(of: $0.check) == g }
-                    ForEach(Array(items.enumerated()), id: \.offset) { index, row in
-                        if index > 0 { Divider() }
-                        HStack(alignment: .top, spacing: 10) {
-                            mark(row.level)
-                            Text(row.text)
-                                .font(.system(size: 12))
-                                .foregroundStyle(row.level == "bad" ? Ink.red : Ink.text)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Spacer(minLength: 0)
-                            if row.level != "ok", let args = fix(row.check) {
-                                UtilityButton(title: l.t("Исправить", "Fix"), args: args)
-                                    .buttonStyle(.glassProminent)
-                                    .controlSize(.small)
-                            }
-                        }
-                        .padding(.vertical, 8)
-                    }
+            Button {
+                Task { await load() }
+            } label: {
+                HStack(spacing: 6) {
+                    if loading && data != nil { ProgressView().controlSize(.mini) }
+                    Text(l.t("Проверить снова", "Check again"))
                 }
             }
+            .buttonStyle(.glass)
+            .disabled(loading)
         }
-        .task { await load() }
+    }
+
+    private func groupCard(_ g: CheckGroup, _ items: [DoctorData.Row]) -> some View {
+        let issues = items.filter { Self.isProblem($0.level) }
+        let rest = items.filter { !Self.isProblem($0.level) }
+        let collapsible = issues.isEmpty
+        let open = !collapsible || expanded.contains(g)
+        let bad = issues.filter { $0.level == "bad" }.count
+        let summary = collapsible ? l.t("\(checks(items.count)) в порядке", "\(checks(items.count)) OK")
+                                  : problems(bad: bad, warn: issues.count - bad) + (rest.isEmpty ? "" : l.t(", в порядке \(rest.count)", ", \(rest.count) OK"))
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                guard collapsible else { return }
+                if expanded.contains(g) { expanded.remove(g) } else { expanded.insert(g) }
+            } label: {
+                HStack(spacing: 8) {
+                    if collapsible {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Ink.tealDot)
+                    }
+                    Text(title(g)).font(.system(size: 13, weight: .semibold)).foregroundStyle(Ink.text)
+                    Text("·").foregroundStyle(Ink.faint)
+                    Text(summary).font(.system(size: 12))
+                        .foregroundStyle(bad > 0 ? Ink.red : issues.isEmpty ? Ink.muted : Ink.amber)
+                    Spacer(minLength: 0)
+                    if collapsible {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Ink.faint)
+                            .rotationEffect(.degrees(open ? 90 : 0))
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .allowsHitTesting(collapsible)
+            .accessibilityAddTraits(collapsible ? .isButton : [])
+            .accessibilityValue(collapsible ? (open ? l.t("развернуто", "expanded") : l.t("свернуто", "collapsed")) : "")
+
+            if open {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(issues.enumerated()), id: \.offset) { _, row in
+                        issueRow(row)
+                    }
+                    if !rest.isEmpty {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 18, alignment: .topLeading)],
+                                  alignment: .leading, spacing: 7) {
+                            ForEach(Array(rest.enumerated()), id: \.offset) { _, row in
+                                okRow(row)
+                            }
+                        }
+                        .padding(.horizontal, issues.isEmpty ? 0 : 2)
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        .animation(.snappy(duration: 0.28), value: open)
+    }
+
+    /// Плотная строка проверки в порядке: значок, заголовок и приглушенное пояснение той же строкой.
+    private func okRow(_ row: DoctorData.Row) -> some View {
+        let (title, detail) = Self.split(row.text)
+        return HStack(alignment: .firstTextBaseline, spacing: 7) {
+            mark(row.level).font(.system(size: 11))
+            Group {
+                if let detail {
+                    Text("\(Text(title).foregroundStyle(Ink.text))  \(Text(detail).foregroundStyle(Ink.muted))")
+                } else {
+                    Text(title).foregroundStyle(Ink.text)
+                }
+            }
+            .font(.system(size: 12))
+            .lineLimit(2)
+            .truncationMode(.middle)
+            Spacer(minLength: 0)
+        }
+        .help(row.text)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Ошибка или замечание: подсвеченная плашка, заголовок, пояснение целиком и "Исправить", если есть команда.
+    private func issueRow(_ row: DoctorData.Row) -> some View {
+        let (title, detail) = Self.split(row.text)
+        let isBad = row.level == "bad"
+        return HStack(alignment: .top, spacing: 10) {
+            mark(row.level).font(.system(size: 13)).padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(isBad ? Ink.red : Ink.warn)
+                if let detail {
+                    Text(detail).font(.system(size: 12)).foregroundStyle(Ink.text2)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+            Spacer(minLength: 0)
+            if let args = fix(row.check) {
+                UtilityButton(title: l.t("Исправить", "Fix"), args: args)
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(isBad ? Ink.redChip : Ink.warnChip))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(isBad ? Ink.redBorder : Ink.amberDot.opacity(0.35)))
     }
 
     private func chip(_ text: String, _ fg: Color, _ bg: Color, _ icon: String) -> some View {
@@ -940,8 +1098,11 @@ struct DoctorPane: View {
 
     private func load() async {
         loading = true
-        data = await backend.doctor()
-        checkedAt = Date()
+        let fresh = await backend.doctor()
+        withAnimation(.snappy(duration: 0.28)) {
+            data = fresh
+            checkedAt = Date()
+        }
         loading = false
     }
 }
