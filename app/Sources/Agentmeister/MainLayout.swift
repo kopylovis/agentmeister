@@ -29,12 +29,14 @@ struct CardsLayout<Main: View>: View {
                 // под ее барами пропадало. Прозрачность меняется сразу, анимируется только ширина карточки.
                 ZStack(alignment: .topLeading) {
                     Sidebar()
+                        .environment(\.sidebarHidden, !showSidebar)
                         .frame(width: sidebarWidth)
                         .opacity(showSidebar ? 1 : 0)
                         .animation(nil, value: showSidebar)
                         .allowsHitTesting(showSidebar)
                         .accessibilityHidden(!showSidebar)
                     SidebarRail()
+                        .environment(\.sidebarHidden, showSidebar)
                         .frame(width: Self.railWidth)
                         .opacity(showSidebar ? 0 : 1)
                         .animation(nil, value: showSidebar)

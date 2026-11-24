@@ -209,11 +209,18 @@ struct SectionCaption: View {
 
 /// Точка состояния сессии, одна схема на все окно. Зеленая: сессия открыта и ничего не делает. Желтая и мигает:
 /// агент работает. Синяя: агент ждет ответа или разрешения. Серая: сессия сохранена, но не открыта.
+extension EnvironmentValues {
+    /// Эта сторона боковой карточки (список проектов или рельса) сейчас скрыта. Обе живут все время ради размытия
+    /// под барами, и скрытая не должна гонять анимации.
+    @Entry var sidebarHidden = false
+}
+
 struct SessionDot: View {
     let status: String?
     var open = true
     var size: CGFloat = 8
     @State private var dim = false
+    @Environment(\.sidebarHidden) private var hidden
 
     static let idle = Color(hex: 0x3FB66A)
     static let busy = Color(hex: 0xF2C230)
@@ -230,13 +237,15 @@ struct SessionDot: View {
 
     var body: some View {
         let busy = open && status == "busy"
+        // в скрытой панели точка не пульсирует: repeatForever иначе перерисовывает ее без конца
+        let pulse = busy && !hidden
         Circle()
             .fill(color)
             .frame(width: size, height: size)
             .shadow(color: open ? color.opacity(0.8) : .clear, radius: 4)
             .opacity(busy && dim ? 0.35 : 1)
-            .onAppear { startPulse(busy) }
-            .onChange(of: busy) { startPulse(busy) }
+            .onAppear { startPulse(pulse) }
+            .onChange(of: pulse) { startPulse(pulse) }
             .accessibilityLabel(!open ? "saved" : status == "waiting" ? "waiting for you" : status == "busy" ? "working" : "open")
     }
 
