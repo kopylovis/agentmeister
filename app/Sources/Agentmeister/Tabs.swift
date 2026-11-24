@@ -143,10 +143,67 @@ func isDescendant(_ pid: pid_t, of root: pid_t) -> Bool {
 /// Вкладки окна. Терминалы живут здесь, а не во view, чтобы переключение вкладок не убивало процессы.
 @MainActor
 final class Workspace: ObservableObject {
-    @Published var tabs: [TerminalTab] = []
-    @Published var selected: UUID?
+    @Published var tabs: [TerminalTab] = [] { didSet { save() } }
+    @Published var selected: UUID? { didSet { save() } }
+    private var restored = false
 
     var current: TerminalTab? { tabs.first { $0.id == selected } }
+
+    // MARK: Вкладки между запусками
+
+    /// Что нужно, чтобы открыть вкладку снова: проект, агент, маршрут и сессия Claude Code.
+    struct SavedTab: Codable {
+        var projectName: String
+        var projectPath: String
+        var agent: String
+        var direct: Bool
+        var sessionId: String?
+        var selected: Bool
+    }
+
+    static var savedTabsURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent("Agentmeister/tabs.json")
+    }
+
+    /// Записывается при каждом изменении вкладок, поэтому падение приложения тоже не теряет их.
+    func save() {
+        guard restored else { return }
+        let saved = tabs.map {
+            SavedTab(projectName: $0.spec.projectName, projectPath: $0.spec.projectPath, agent: $0.spec.agent.rawValue,
+                     direct: $0.spec.direct, sessionId: $0.sessionId, selected: $0.id == selected)
+        }
+        let url = Self.savedTabsURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let data = try? JSONEncoder().encode(saved) {
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Открыть вкладки прошлого запуска. Сессию, которая сейчас открыта в другом окне (iTerm2 или второй
+    /// Agentmeister), не трогаем: второй Claude на той же переписке испортил бы ее. Сессию, в которой Claude
+    /// так и не ответил, Claude Code не сохраняет, и --resume ее не найдет, поэтому такая вкладка начнется заново.
+    func restore(live: [AppState.Live], projects: [AppState.Project], sessions: [AppState.Session]) {
+        guard !restored else { return }
+        defer { restored = true; save() }
+        guard let data = try? Data(contentsOf: Self.savedTabsURL),
+              let saved = try? JSONDecoder().decode([SavedTab].self, from: data) else { return }
+        let busy = Set(live.compactMap(\.sessionId))
+        let known = Set(projects.map(\.path))
+        let resumable = Set(sessions.map(\.id))
+        var select: UUID?
+        for item in saved {
+            guard known.contains(item.projectPath) || FileManager.default.fileExists(atPath: item.projectPath) else { continue }
+            if let sid = item.sessionId, busy.contains(sid) { continue }
+            let agent = LaunchSpec.Agent(rawValue: item.agent) ?? .claude
+            var spec = LaunchSpec(projectName: item.projectName, projectPath: item.projectPath, agent: agent, direct: item.direct)
+            if agent == .claude, let sid = item.sessionId, resumable.contains(sid) { spec.resumeId = sid }
+            let tab = TerminalTab(spec: spec)
+            tabs.append(tab)
+            if item.selected { select = tab.id }
+        }
+        selected = select ?? tabs.first?.id
+    }
 
     func open(_ spec: LaunchSpec) {
         // Сессия уже открыта во вкладке: переходим к ней, а не запускаем второй Claude на той же переписке
@@ -181,7 +238,10 @@ final class Workspace: ObservableObject {
                 return isDescendant(pid, of: root)
             }
             if let match {
-                if tab.sessionId != match.sessionId { tab.sessionId = match.sessionId }
+                if tab.sessionId != match.sessionId {
+                    tab.sessionId = match.sessionId
+                    save()
+                }
                 if tab.status != match.status { tab.status = match.status }
             } else if tab.status != nil {
                 tab.status = nil

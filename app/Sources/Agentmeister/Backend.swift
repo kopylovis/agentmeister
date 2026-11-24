@@ -93,6 +93,8 @@ struct AppState: Decodable {
 final class Backend: ObservableObject {
     @Published private(set) var state = AppState()
     @Published private(set) var lastError: String?
+    /// Первый ответ app-state пришел (или не пришел, но попытка была). После него можно восстанавливать вкладки.
+    @Published private(set) var ready = false
     private var timer: Timer?
     private var loading = false
 
@@ -121,6 +123,7 @@ final class Backend: ObservableObject {
                 case .failure(let error):
                     self.lastError = error.localizedDescription
                 }
+                if !self.ready { self.ready = true }
             }
         }
     }
