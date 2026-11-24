@@ -28,7 +28,7 @@ test:
 	@bash -n bin/agentmeister
 	@./bin/agentmeister --version | grep -qx "$$(cat VERSION)"
 	@./bin/agentmeister --harness codex --help | grep -q 'agentmeister'
-	@/usr/bin/python3 -m unittest discover -s tests -q </dev/null 2>&1 | tail -1 | grep -qx OK || /usr/bin/python3 -m unittest discover -s tests </dev/null
+	@/usr/bin/python3 -m unittest discover -s tests -q </dev/null 2>&1 | grep -qx 'OK\( (skipped=[0-9]*)\)\{0,1\}' || /usr/bin/python3 -m unittest discover -s tests </dev/null
 	@bash -n libexec/agentmeister/claude.sh
 	@for f in libexec/agentmeister/*.py libexec/agentmeister/lib/*.py; do /usr/bin/python3 -m py_compile "$$f" || exit 1; done
 	@./bin/agentmeister --version | grep -qx "$$(cat VERSION)"
