@@ -1,3 +1,4 @@
+import contextlib
 import fcntl
 import io
 import json
@@ -297,24 +298,80 @@ class ItermSession(unittest.TestCase):
     """Сессия iTerm2 в песочнице proxy: ps не работает, tty пустой, клик ведет в сессию по ее id."""
     GUID = "1C7B5E0A-9F3D-4D7E-8A21-3E5F6B7C8D90"
 
+    def env(self, **extra):
+        env = {k: v for k, v in os.environ.items() if k not in ("TERM_PROGRAM", "LC_TERMINAL", "ITERM_SESSION_ID")}
+        return mock.patch.dict(os.environ, dict(env, **extra), clear=True)
+
     def test_session_id_comes_from_env_and_must_be_a_guid(self):
-        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w0t3p0:" + self.GUID}):
+        with self.env(ITERM_SESSION_ID="w0t3p0:" + self.GUID, TERM_PROGRAM="iTerm.app"):
             self.assertEqual(claude_notify.iterm_session(), "iterm:" + self.GUID)
-        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w0t3p0:../etc"}):
+        with self.env(ITERM_SESSION_ID="w0t3p0:" + self.GUID, LC_TERMINAL="iTerm2"):
+            self.assertEqual(claude_notify.iterm_session(), "iterm:" + self.GUID)
+        with self.env(ITERM_SESSION_ID="w0t3p0:../etc", TERM_PROGRAM="iTerm.app"):
             self.assertEqual(claude_notify.iterm_session(), "")
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual(claude_notify.iterm_session(), "")
+
+    def test_session_id_is_ignored_outside_iterm(self):
+        # ITERM_SESSION_ID унаследован программой, которую запустили из iTerm2 в другом терминале
+        with self.env(ITERM_SESSION_ID="w0t3p0:" + self.GUID, TERM_PROGRAM="Apple_Terminal"):
+            self.assertEqual(claude_notify.iterm_session(), "")
+        with self.env(ITERM_SESSION_ID="w0t3p0:" + self.GUID):
+            self.assertEqual(claude_notify.iterm_session(), "")
+
+    def hook_patches(self, tmp, interactive):
+        return [mock.patch.object(claude_notify, "STATE", tmp),
+                mock.patch.object(claude_notify, "app_tab", return_value=""),
+                mock.patch.object(claude_notify, "enabled", return_value=True),
+                mock.patch.object(claude_notify, "own_terminal", return_value=None),
+                mock.patch.object(claude_proc, "interactive_session", return_value=interactive),
+                mock.patch.object(claude_notify, "session_title", return_value=""),
+                mock.patch.object(claude_notify, "ensure_app", return_value=True),
+                mock.patch.object(claude_notify, "cm_path", return_value="/bin/agentmeister"),
+                mock.patch.object(claude_notify.telegram, "wanted", return_value=False),
+                mock.patch.object(claude_notify.ntfy_alert, "configured", return_value=False)]
+
+    def test_headless_run_in_an_iterm_tab_does_not_notify(self):
+        # claude -p из вкладки iTerm2 в песочнице: tty нет, ITERM_SESSION_ID есть, но сессия не интерактивная
+        data = {"session_id": "a812d4fa-e535-463a-8369-f1433fa25652", "hook_event_name": "Notification",
+                "notification_type": "agent_needs_input", "message": "Какой вариант?", "cwd": "/work/project"}
+        with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as stack, \
+                self.env(ITERM_SESSION_ID="w0t3p0:" + self.GUID, TERM_PROGRAM="iTerm.app"):
+            for p in self.hook_patches(tmp, interactive=False):
+                stack.enter_context(p)
+            post = stack.enter_context(mock.patch.object(claude_notify, "post", return_value="ok"))
+            stack.enter_context(mock.patch.object(sys, "stdin", io.StringIO(json.dumps(data))))
+            self.assertEqual(claude_notify.hook(), 0)
+        post.assert_not_called()
+
+    def test_codex_exec_in_an_iterm_tab_does_not_notify(self):
+        with tempfile.TemporaryDirectory() as tmp, contextlib.ExitStack() as stack, \
+                self.env(ITERM_SESSION_ID="w0t3p0:" + self.GUID, TERM_PROGRAM="iTerm.app"):
+            for p in self.hook_patches(tmp, interactive=True):
+                stack.enter_context(p)
+            stack.enter_context(mock.patch.object(claude_notify, "codex_terminal", return_value=None))
+            post = stack.enter_context(mock.patch.object(claude_notify, "post", return_value="ok"))
+            path = os.path.join(tmp, "rollout.jsonl")
+            with open(path, "w") as f:
+                json.dump({"type": "session_meta", "payload": {"originator": "codex_exec", "source": "exec"}}, f)
+            data = {"session_id": "a812d4fa-e535-463a-8369-f1433fa25652", "cwd": "/project",
+                    "transcript_path": path, "hook_event_name": "PermissionRequest", "tool_name": "Bash"}
+            stack.enter_context(mock.patch.object(sys, "stdin", io.StringIO(json.dumps(data))))
+            self.assertEqual(claude_notify.hook(codex=True), 0)
+        post.assert_not_called()
 
     def test_hook_without_tty_clicks_into_the_iterm_session(self):
         sid = "a812d4fa-e535-463a-8369-f1433fa25652"
         data = {"session_id": sid, "hook_event_name": "Notification", "notification_type": "agent_needs_input",
                 "message": "Какой вариант?", "cwd": "/work/project"}
-        env = {"ITERM_SESSION_ID": "w0t3p0:" + self.GUID, "__CFBundleIdentifier": "com.googlecode.iterm2"}
+        env = {"ITERM_SESSION_ID": "w0t3p0:" + self.GUID, "__CFBundleIdentifier": "com.googlecode.iterm2",
+               "TERM_PROGRAM": "iTerm.app"}
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(claude_notify, "STATE", tmp), \
-                mock.patch.dict(os.environ, env), \
+                self.env(**env), \
                 mock.patch.object(claude_notify, "app_tab", return_value=""), \
                 mock.patch.object(claude_notify, "enabled", return_value=True), \
                 mock.patch.object(claude_notify, "own_terminal", return_value=None), \
+                mock.patch.object(claude_proc, "interactive_session", return_value=True), \
                 mock.patch.object(claude_notify, "watching", return_value=False) as watching, \
                 mock.patch.object(claude_notify, "session_title", return_value=""), \
                 mock.patch.object(claude_notify, "ensure_app", return_value=True), \
@@ -341,6 +398,14 @@ class ItermSession(unittest.TestCase):
         with mock.patch.object(claude_notify, "osascript") as osa, mock.patch.object(claude_notify.subprocess, "run"):
             claude_notify.focus("iterm:nope\" & do shell script", "com.googlecode.iterm2")
         osa.assert_not_called()
+
+    def test_osascript_that_cannot_start_counts_as_not_watching(self):
+        # в песочнице exec osascript может быть запрещен: тогда показываем уведомление, а не падаем
+        with mock.patch.object(claude_notify.subprocess, "run", side_effect=PermissionError("denied")):
+            self.assertEqual(claude_notify.osascript(claude_notify.SELECTED_ITERM_ID), "")
+        with mock.patch.object(claude_notify, "front_bundle", return_value="com.googlecode.iterm2"), \
+                mock.patch.object(claude_notify.subprocess, "run", side_effect=PermissionError("denied")):
+            self.assertFalse(claude_notify.watching("com.googlecode.iterm2", "iterm:" + self.GUID))
 
     def test_watching_compares_the_current_session_id(self):
         with mock.patch.object(claude_notify, "front_bundle", return_value="com.googlecode.iterm2"), \
