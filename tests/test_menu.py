@@ -101,6 +101,37 @@ class Menu(unittest.TestCase):
         self.assertIn("$ agentmeister guard off", text)
         self.assertTrue(all(len(line) <= 40 for line in text[:6]))
 
+    def test_facts_stay_when_description_is_too_tall(self):
+        mnrhlib.lang = lambda: "ru"
+        d = m.Describe.__new__(m.Describe)
+        d.state, d.proxy, d.claude, d.codex = {"notify": True}, "работает", "2.1.325", "0.172.0"
+        i = next(n for n, item in enumerate(m.ITEMS) if item[0] == "mode notify")
+        out = []
+
+        class P(menu.Panel):
+            def size(self):
+                return 18, 100
+
+            def write(self, s):
+                out.append(s)
+
+        P(0, m.rows({}), "t", i, d, ("L", "R"), "").draw()
+        text = ANSI.sub("", out[-1])
+        self.assertIn("СЕЙЧАС", text)
+        self.assertIn("Прокси", text)
+        self.assertIn("…", text)
+
+    def test_long_fact_value_wraps_under_itself(self):
+        mnrhlib.lang = lambda: "en"
+        d = m.Describe.__new__(m.Describe)
+        d.state, d.proxy, d.claude, d.codex = {}, "?", "2.1.325", "0.172.0"
+        i = next(n for n, item in enumerate(m.ITEMS) if item[0] == "doctor")
+        with patch.object(m.os, "getcwd", return_value="/x/" + "long-folder/" * 6):
+            lines = [ANSI.sub("", line) for line in d(i, 40)]
+        at = next(n for n, line in enumerate(lines) if line.startswith("Folder"))
+        self.assertTrue(lines[at + 1].startswith(" " * 14 + "long-folder/"))
+        self.assertTrue(all(menu.width(line) <= 40 for line in lines))
+
     def test_codex_setup_shows_detected_versions_and_hooks(self):
         mnrhlib.lang = lambda: "en"
         d = m.Describe.__new__(m.Describe)
@@ -239,6 +270,35 @@ class Layout(unittest.TestCase):
 
     def test_wrap_keeps_indent(self):
         self.assertEqual(menu.wrap(["  one two three"], 9), ["  one two", "  three"])
+
+    def test_wrap_colored_line_carries_color(self):
+        self.assertEqual(menu.wrap(["\x1b[2m$ agentmeister --harness codex\x1b[0m"], 16),
+                         ["\x1b[2m$ agentmeister\x1b[0m", "\x1b[2m--harness codex\x1b[0m"])
+
+    def test_wrap_counts_cells_not_characters(self):
+        lines = menu.wrap(["📂 📂 📂 📂 📂 📂"], 8)
+        self.assertEqual(lines, ["📂 📂 📂", "📂 📂 📂"])
+        self.assertTrue(all(menu.width(line) <= 8 for line in lines))
+
+    def test_wrap_cuts_long_words_after_slash(self):
+        self.assertEqual(menu.wrap(["~/Developer/agentmeister/.claude"], 20), ["~/Developer/", "agentmeister/.claude"])
+        self.assertEqual(menu.wrap(["x" * 25], 10), ["x" * 10, "x" * 10, "x" * 5])
+
+    def test_vs16_emoji_takes_two_cells(self):
+        self.assertEqual(menu.width("♻️ x"), 4)
+        self.assertEqual(menu.cut("♻️♻️", 3), "♻️")
+        self.assertEqual(menu.width("♻ x"), 3)
+
+    def test_squeeze_drops_blank_lines_then_text_and_keeps_facts(self):
+        head = ["Title", "", "one", "two", "three", "", "$ cmd"]
+        tail = ["", "", "FACTS", "a 1", "b 2"]
+        self.assertEqual(menu.squeeze(head, tail, 20, 30), head + tail)
+        self.assertEqual(menu.squeeze(head, tail, 9, 30),
+                         ["Title", "one", "two", "three", "$ cmd", "", "FACTS", "a 1", "b 2"])
+        short = menu.squeeze(head, tail, 6, 30)
+        self.assertEqual(short[-3:], ["FACTS", "a 1", "b 2"])
+        self.assertEqual(len(short), 6)
+        self.assertTrue(ANSI.sub("", short[2]).endswith("…"))
 
 
 class Ask(unittest.TestCase):
