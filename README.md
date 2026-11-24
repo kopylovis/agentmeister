@@ -264,6 +264,26 @@ second macOS sandbox can fail with `sandbox_apply: Operation not permitted`.
 The restriction takes effect at launch. To apply it to an open session, exit and resume through
 the proxy. Other Mac applications keep their own network settings. Use `-d` for a direct session.
 
+Claude runs commands that break in the sandbox, such as xcodebuild with Swift packages or firebase-tools,
+through `agentmeister host-run <name> [args]`. A runner starts with the proxied session before the sandbox
+applies and runs only the commands listed in `~/.config/mnrh/host-run/commands.json`. A listed command runs
+as it would in a normal terminal, with a direct network. Its output and exit code come back to the session,
+and Ctrl+C stops it. Create the list yourself in a normal terminal; a proxied session cannot change it:
+
+```json
+{
+  "commands": {
+    "tossling-ios": {"cwd": "~/Developer/tossling-mobile", "run": ["bundle", "exec", "fastlane", "ios_beta"]},
+    "tossling-firebase": {"cwd": "~/Developer/tossling-mobile", "run": ["bundle", "exec", "fastlane", "upload"],
+                          "args": true}
+  }
+}
+```
+
+`"args": true` lets the session append arguments. `agentmeister host-run list` shows the list and `status`
+checks the runner. The list guards against accidental direct traffic, not against edits to the project
+itself: the command runs whatever Fastfile or script is in the folder.
+
 It runs on [mihomo](https://wiki.metacubex.one) (`brew install mihomo`), which speaks VLESS (including XHTTP)
 and Hysteria2 and uses the first live server from the subscription. One-time setup:
 
