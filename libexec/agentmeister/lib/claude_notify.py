@@ -115,14 +115,23 @@ def install_sound():
         os.replace(staged, target)
 
 
-def ensure_app():
+def ensure_app(background=False):
+    """Приложение уведомлений собрано и свежее. setup и notify test собирают сразу. Хук (background=True)
+    живет 10 с, swiftc в нем не успеет: сборку он запускает в фоне и сейчас отвечает False."""
     if not os.path.exists(AGENT.src):
         return False
     try:
-        with contextlib.redirect_stdout(sys.stderr):
-            AGENT.build()
+        if background:
+            if AGENT.needs_build():
+                start_build()
+                return False
+        else:
+            with contextlib.redirect_stdout(sys.stderr):
+                AGENT.build()
     except (SystemExit, OSError) as exc:
         log_error(f"{AGENT.display}: {exc}")
+        if background:
+            return False
     ok = os.access(AGENT.bin, os.X_OK)
     if ok:
         try:
@@ -135,6 +144,44 @@ def ensure_app():
         with contextlib.suppress(OSError):
             os.rmdir(os.path.dirname(OLD_CLAUDE_APP))
     return ok
+
+
+def start_build():
+    """Собрать приложение отдельным процессом, который переживет хук."""
+    if AGENT.building():
+        log_error(f"{AGENT.display} уже собирается, уведомление показал через osascript")
+        return False
+    if not shutil.which("swiftc"):
+        log_error(f"{AGENT.display}: нет swiftc, нужен xcode-select --install; уведомление показал через osascript")
+        return False
+    subprocess.Popen([sys.executable, os.path.abspath(__file__), "build-app"], stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, cwd="/")
+    log_error(f"{AGENT.display} собирается в фоне, уведомление показал через osascript")
+    return True
+
+
+FALLBACK = '''
+on run argv
+  set {t, s, b, snd} to argv
+  if snd is "" then
+    display notification b with title t subtitle s
+  else
+    display notification b with title t subtitle s sound name snd
+  end if
+end run'''
+
+
+def fallback_post(title, subtitle, body):
+    """Уведомление без нашего приложения, пока оно собирается: нажатие не переключит на вкладку."""
+    snd = ""
+    if sound() and os.path.exists(os.path.join(HOME, "Library", "Sounds", "Agentmeister-Prompt.wav")):
+        snd = "Agentmeister-Prompt"
+    try:
+        r = subprocess.run(["osascript", "-e", FALLBACK, title, subtitle, body, snd],
+                           capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return f"osascript: {exc}"
+    return "ok" if r.returncode == 0 else f"osascript: {r.stderr.strip()}"
 
 
 def launch(args):
@@ -383,10 +430,13 @@ def hook(codex=False):
     project = "~" if cwd.rstrip("/") == HOME else os.path.basename(cwd.rstrip("/")) or ("Codex" if codex else "Claude")
     title = "" if codex else session_title(sid, transcript)
     sent = False
-    if on_mac and ensure_app():
-        cm = cm_path()
-        click = f"{shlex.quote(cm)} focus {shlex.quote(tty)} {shlex.quote(bundle)}" if cm and tty and bundle else None
-        result = post(f"{project}: {head}", title, body, sid, click)
+    if on_mac:
+        if ensure_app(background=True):
+            cm = cm_path()
+            click = f"{shlex.quote(cm)} focus {shlex.quote(tty)} {shlex.quote(bundle)}" if cm and tty and bundle else None
+            result = post(f"{project}: {head}", title, body, sid, click)
+        else:
+            result = fallback_post(f"{project}: {head}", title, body)
         sent = result == "ok"
         if not sent:
             log_error(result)
@@ -503,6 +553,8 @@ def main():
     cmd = args[0] if args else ""
     if cmd == "notify-hook":
         return hook(codex=args[1:] == ["--codex"])
+    if cmd == "build-app":  # фоновая сборка из хука
+        return 0 if ensure_app() else 1
     if cmd == "focus":
         return focus(args[1] if len(args) > 1 else "", args[2] if len(args) > 2 else "")
     rest = args[1:]
