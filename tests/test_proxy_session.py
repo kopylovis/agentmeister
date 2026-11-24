@@ -206,6 +206,9 @@ class InsideSession(unittest.TestCase):
         guard = patch.object(claude_proxy, "in_session", return_value=True)
         guard.start()
         self.addCleanup(guard.stop)
+        lang = patch("mnrhlib.lang", return_value="ru")  # тесты сверяют русский вывод
+        lang.start()
+        self.addCleanup(lang.stop)
 
     def test_restart_and_start_refuse(self):
         with patch.object(claude_proxy, "restart_mihomo") as restart, redirect_stdout(io.StringIO()) as out:

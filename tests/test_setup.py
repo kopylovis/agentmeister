@@ -33,6 +33,12 @@ def sandbox(files, code, promptsill=False):
             with open(fake, "w") as f:
                 f.write("#!/bin/sh\n")
             os.chmod(fake, 0o755)
+        # тесты сверяют русский вывод, а без lang в config язык берется из macOS
+        config = os.path.join(home, ".config", "mnrh", "config")
+        if not os.path.exists(config):
+            os.makedirs(os.path.dirname(config), exist_ok=True)
+            with open(config, "w") as f:
+                f.write("lang=ru\n")
         env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=os.path.join(home, ".config"), PYTHONDONTWRITEBYTECODE="1",
                    XDG_STATE_HOME=os.path.join(home, ".state"), MNRH_PROMPTSILL=fake, ZDOTDIR=home)
         env.pop("MNRH_CLAUDE_HOME", None)

@@ -34,7 +34,7 @@ import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import secret  # noqa: E402
-from mnrhlib import BAD, HOME, OK, WARN, paint, tilde  # noqa: E402
+from mnrhlib import BAD, HOME, OK, WARN, paint, tilde, tr  # noqa: E402
 import host_run  # noqa: E402
 
 CONF_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "mnrh", "proxy")
@@ -1044,13 +1044,14 @@ def version_line():
     have = installed_version(exe)
     if not have:
         return None
-    line = f"mihomo {have}" + (" из Homebrew" if from_brew(exe) else f", {tilde(exe)}")
+    line = f"mihomo {have}" + (tr(" из Homebrew", " from Homebrew") if from_brew(exe) else f", {tilde(exe)}")
     latest = brew_latest() if from_brew(exe) else None
     if newer(latest, have):
-        line += f", есть {latest}: agentmeister proxy update"
+        line += tr(f", есть {latest}: agentmeister proxy update", f", {latest} is out: agentmeister proxy update")
     running = running_version()
     if running and running != have:
-        line += f". Запущен еще {running}, новая версия заработает после перезапуска mihomo"
+        line += tr(f". Запущен еще {running}, новая версия заработает после перезапуска mihomo",
+                   f". {running} is still running, the new version starts after a mihomo restart")
     return line
 
 
@@ -1131,48 +1132,58 @@ def started_node():
         info = {}
     node, proto = info.get("node"), info.get("proto")
     if not isinstance(node, str) or not node:
-        return "При запуске mihomo сервер не определился"
-    return f"При запуске mihomo был сервер {node}" + (f", протокол {proto}" if isinstance(proto, str) else "")
+        return tr("При запуске mihomo сервер не определился", "mihomo didn't report a server at start")
+    return tr(f"При запуске mihomo был сервер {node}", f"At start mihomo used server {node}") + \
+        (tr(f", протокол {proto}", f", protocol {proto}") if isinstance(proto, str) else "")
 
 
 def fmt(t):
-    return f"{t[0]} ({t[1]})" if t else "не открылось"
+    return f"{t[0]} ({t[1]})" if t else tr("не открылось", "didn't open")
 
 
 def status(test=False):
     if not configured():
-        print(f"{WARN} прокси не настроен: agentmeister proxy setup")
+        print(f"{WARN} " + tr("прокси не настроен: agentmeister proxy setup", "proxy isn't set up: agentmeister proxy setup"))
         return 1
     p, pid, live = port(), read_pid(), holders()
     want = setting("country")
-    print(f"{OK} настроен: {tilde(CONFIG)}, порт {p}" + (f", выход должен быть в {want}" if want else ""))
+    print(f"{OK} " + tr(f"настроен: {tilde(CONFIG)}, порт {p}", f"set up: {tilde(CONFIG)}, port {p}")
+          + (tr(f", выход должен быть в {want}", f", the exit must be in {want}") if want else ""))
     if not mihomo_bin():
-        print(f"{BAD} нет mihomo: brew install mihomo")
+        print(f"{BAD} " + tr("нет mihomo: brew install mihomo", "mihomo is missing: brew install mihomo"))
     else:
         line = version_line()
         if line:
-            print(f"{WARN if 'proxy update' in line or 'Запущен еще' in line else OK} {line}")
+            stale = "proxy update" in line or tr("Запущен еще", "still running") in line
+            print(f"{WARN if stale else OK} {line}")
     if pid and listening(p):
-        print(f"{OK} mihomo работает (pid {pid}), сессий через proxy {len(live)}")
-        print(f"{OK} сторож сети работает" if watcher_alive() else
-              f"{WARN} сторожа сети нет, он запустится с новой сессией через proxy или agentmeister proxy restart")
+        print(f"{OK} " + tr(f"mihomo работает (pid {pid}), сессий через proxy {len(live)}",
+                            f"mihomo is running (pid {pid}), proxied sessions {len(live)}"))
+        print(f"{OK} " + tr("сторож сети работает", "the network watcher is running") if watcher_alive() else
+              f"{WARN} " + tr("сторожа сети нет, он запустится с новой сессией через proxy или agentmeister proxy restart",
+                              "the network watcher isn't running, it starts with a new proxied session or agentmeister proxy restart"))
         node, proto = active_node()
         if node:
-            print(f"{OK} сейчас сервер {node}" + (f", протокол {proto}" if proto else ""))
+            print(f"{OK} " + tr(f"сейчас сервер {node}", f"current server {node}")
+                  + (tr(f", протокол {proto}", f", protocol {proto}") if proto else ""))
         elif in_session():
-            print(paint("  " + started_node() + ". Текущий сервер из сессии не виден: песочница закрывает "
-                        "сокет управления mihomo, смотри agentmeister proxy в обычном терминале", "2"))
+            print(paint("  " + started_node() + tr(". Текущий сервер из сессии не виден: песочница закрывает "
+                                                   "сокет управления mihomo, смотри agentmeister proxy в обычном терминале",
+                                                   ". The current server isn't visible from a session: the sandbox closes "
+                                                   "the mihomo control socket, run agentmeister proxy in a regular terminal"), "2"))
     else:
-        print(paint("  mihomo не запущен: он поднимется вместе с первой сессией через proxy", "2"))
+        print(paint("  " + tr("mihomo не запущен: он поднимется вместе с первой сессией через proxy",
+                              "mihomo isn't running: it starts with the first proxied session"), "2"))
     if os.environ.get("MNRH_PROXY"):
-        print(f"{OK} эта сессия идёт через proxy")
+        print(f"{OK} " + tr("эта сессия идёт через proxy", "this session goes through the proxy"))
     if test:
         try:
             direct, via = check()
         except ProxyError as e:
             print(f"{BAD} {e}")
             return 1
-        print(f"{OK if via else BAD} напрямую {fmt(direct)}, через proxy {fmt(via)}")
+        print(f"{OK if via else BAD} " + tr(f"напрямую {fmt(direct)}, через proxy {fmt(via)}",
+                                            f"direct {fmt(direct)}, via proxy {fmt(via)}"))
         return 0 if via else 1
     return 0
 
