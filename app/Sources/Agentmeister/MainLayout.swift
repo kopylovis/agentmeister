@@ -277,8 +277,8 @@ struct SidebarRail: View {
                         .help(project.name + (s.count == 0 ? "" : " · " + (s.status == "waiting" ? l.t("ждет ответа", "waiting for you")
                               : s.status == "busy" ? l.t("работает", "working") : l.t("открыто \(s.count)", "\(s.count) open"))))
                         .contextMenu {
-                            Button(l.t("Новая сессия через proxy", "New session via proxy")) {
-                                workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path))
+                            Button(l.newSession) {
+                                workspace.open(LaunchSpec.quick(project))
                             }
                             Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
                         }

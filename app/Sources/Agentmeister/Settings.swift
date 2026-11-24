@@ -297,6 +297,7 @@ struct UtilityButton: View {
             openWindow(id: "main")
         }
         .help("agentmeister " + args.joined(separator: " "))
+        .buttonStyle(.glass)
     }
 }
 
@@ -319,6 +320,7 @@ struct CommandButton: View {
         } label: {
             if busy { ProgressView().controlSize(.small) } else { Text(title) }
         }
+        .buttonStyle(.glass)
         .disabled(busy)
     }
 }
@@ -337,13 +339,13 @@ struct GeneralPane: View {
             SegmentedCapsule(selection: Binding(
                 get: { backend.state.langSetting ?? "auto" },
                 set: { value in Task { _ = await backend.perform(["lang", value]) } }
-            ), options: [("auto", l.t("Системный", "System"), nil), ("ru", "Русский", nil), ("en", "English", nil)])
+            ), options: [("auto", l.t("Как в системе", "System"), nil), ("ru", "Русский", nil), ("en", "English", nil)])
             .frame(maxWidth: 440)
-            Note(text: l.t("Язык общий для приложения и agentmeister в терминале, это agentmeister lang. Системный значит русский, только если он стоит первым в macOS, иначе английский.",
+            Note(text: l.t("Язык общий для приложения и agentmeister в терминале, это agentmeister lang. Как в системе значит русский, только если он стоит первым в macOS, иначе английский.",
                            "The app and agentmeister in a terminal share it, same as agentmeister lang. System means Russian only when it comes first in macOS, English otherwise."))
         }
         GlassSection {
-            Text(l.t("Вид", "Appearance")).font(.system(size: 13, weight: .semibold))
+            Text(l.t("Оформление", "Appearance")).font(.system(size: 13, weight: .semibold))
             AppearancePicker(selection: $appearance, l: l)
         }
     }
@@ -381,7 +383,7 @@ struct AppearancePicker: View {
                         preview(item)
                             .frame(height: 84)
                             .clipShape(RoundedRectangle(cornerRadius: 10))
-                        Text(item == .system ? l.t("Системный", "System") : item == .light ? l.t("Светлый", "Light") : l.t("Темный", "Dark"))
+                        Text(item == .system ? l.t("Как в системе", "System") : item == .light ? l.t("Светлая", "Light") : l.t("Темная", "Dark"))
                             .fontWeight(.medium)
                             .foregroundStyle(Ink.text)
                     }

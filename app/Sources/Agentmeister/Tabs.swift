@@ -54,6 +54,15 @@ struct LaunchSpec: Hashable {
     }
 }
 
+extension LaunchSpec {
+    /// Новая сессия в один клик: агент и маршрут по умолчанию из настроек.
+    @MainActor
+    static func quick(_ project: AppState.Project, route: String? = nil) -> LaunchSpec {
+        LaunchSpec(projectName: project.name, projectPath: project.path,
+                   agent: AgentPrefs.defaultAgent == "codex" ? .codex : .claude, direct: route == "direct")
+    }
+}
+
 /// Одна вкладка: терминал SwiftTerm и процесс в нем.
 @MainActor
 final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessTerminalViewDelegate {
@@ -174,6 +183,14 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     nonisolated static func updateCommand(direct: Bool) -> String {
         let am = LoginEnvironment.agentmeister.replacingOccurrences(of: "'", with: "'\\''")
         return (direct ? "claude update" : "'\(am)' proxy run --claude -- claude update") + " 2>&1 | tail -3"
+    }
+
+    /// Перезапуск так, как выбрано галочкой "Перезапускать с обновлением агента": одна настройка для меню,
+    /// ⌘R, палитры и панели сессии.
+    static var restartUpdates: Bool { UserDefaults.standard.object(forKey: "restartWithUpdate") as? Bool ?? true }
+
+    func restartPreferred(note: String) {
+        if Self.restartUpdates && spec.agent == .claude && spec.utility == nil { restartWithUpdate(note: note) } else { restart() }
     }
 
     /// Перезапуск с claude update перед ним, как /restart. У вкладки через proxy обновление тоже идет через proxy.
