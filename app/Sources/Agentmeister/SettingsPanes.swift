@@ -539,7 +539,7 @@ struct AgentCard: View {
                     Button {
                         checkUpdate()
                     } label: {
-                        if checking { ProgressView().controlSize(.small) } else { Text(l.t("Проверить обновление", "Check for update")) }
+                        if checking { ProgressView().controlSize(.small) } else { Text(agent == .claude ? l.t("Обновить через proxy", "Update via proxy") : l.t("Проверить обновление", "Check for update")) }
                     }
                     .disabled(checking)
                     .fixedSize()
@@ -591,10 +591,11 @@ struct AgentCard: View {
         }
     }
 
-    /// Claude Code обновляется сам (claude update), у Codex смотрим brew outdated, ничего не ставя.
+    /// Claude Code обновляется через proxy (claude update ставит новую версию сразу), у Codex смотрим brew
+    /// outdated, ничего не ставя.
     private func checkUpdate() {
         checking = true
-        let command = agent == .claude ? "claude update 2>&1 | tail -1" : "brew outdated --cask --greedy codex 2>&1 | tail -1"
+        let command = agent == .claude ? TerminalTab.updateCommand(direct: false) : "brew outdated --cask --greedy codex 2>&1 | tail -1"
         Task.detached {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/zsh")
