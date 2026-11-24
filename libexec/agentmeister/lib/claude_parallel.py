@@ -77,23 +77,17 @@ def copy_local(root, path):
 PERMISSION_MODES = ["default", "acceptEdits", "auto", "plan"]
 
 
-def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None, permission=None, rc=True,
-          fork=False):
+def prepare(task, project=None, branch=None, cwd=None, sid=None):
+    """Ветка, worktree и первый запрос для второго Claude, без открытия окна. Возвращает (dict, None) или
+    (None, ошибка). dict: root, path, branch, base, task, prompt, flags (для claude после --), copied, native, dirty."""
     root, err = find_project(project, cwd)
     if err:
-        return err, True
+        return None, err
     if not git(root, "rev-parse", "--git-dir"):
-        return f"{tilde(root)} — не git-репозиторий, worktree не сделать", True
+        return None, f"{tilde(root)} — не git-репозиторий, worktree не сделать"
     task = " ".join((task or "").split())
     if not task:
-        return "Нужна задача: что сделать параллельно", True
-    sid = None
-    if fork:
-        import claude_proc
-        sid = claude_proc.current_sid()
-        if not sid:
-            return ("Форк возможен только изнутри сессии Claude Code (/parallel или MCP): "
-                    "не нашёл, какая сессия сейчас идёт."), True
+        return None, "Нужна задача: что сделать параллельно"
     base = git(root, "branch", "--show-current") or git(root, "rev-parse", "--short", "HEAD")
     name = branch or f"parallel/{slug(task)}"
     if git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}"):
@@ -103,7 +97,7 @@ def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None,
     try:
         git(root, "worktree", "add", "-b", name, path, "HEAD", check=True)
     except RuntimeError as e:
-        return f"Не создал worktree: {e}", True
+        return None, f"Не создал worktree: {e}"
     git(root, "config", f"branch.{name}.mnrhBase", base)
     git(root, "config", f"branch.{name}.mnrhTask", task)
     copied, native = copy_local(root, path)
@@ -118,11 +112,29 @@ def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None,
     else:
         prompt = (f"Это параллельная задача в отдельном git worktree {path}, ветка {name}, ответвлена от {base} "
                   f"проекта {root}. Задача: {task}\n\n{rules}")
+    # --resume по id ищет сессию и в git worktree проекта, а форк начинается в папке запуска
+    flags = ["--resume", sid, "--fork-session"] if sid else []
+    return {"root": root, "path": path, "branch": name, "base": base, "task": task, "prompt": prompt, "flags": flags,
+            "copied": copied, "native": native, "dirty": bool(dirty)}, None
+
+
+def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None, permission=None, rc=True,
+          fork=False):
+    sid = None
+    if fork:
+        import claude_proc
+        sid = claude_proc.current_sid()
+        if not sid:
+            return ("Форк возможен только изнутри сессии Claude Code (/parallel или MCP): "
+                    "не нашёл, какая сессия сейчас идёт."), True
+    job, err = prepare(task, project, branch, cwd, sid)
+    if err:
+        return err, True
+    root, path, name, base, prompt = job["root"], job["path"], job["branch"], job["base"], job["prompt"]
+    copied, native, dirty = job["copied"], job["native"], job["dirty"]
     import claude_open
-    flags = ["--permission-mode", permission] if permission in PERMISSION_MODES and permission != "default" else []
-    if sid:
-        # --resume по id ищет сессию и в git worktree проекта, а форк начинается в папке запуска
-        flags = ["--resume", sid, "--fork-session"] + flags
+    flags = job["flags"] + (["--permission-mode", permission]
+                            if permission in PERMISSION_MODES and permission != "default" else [])
     text, bad = claude_open.open_claude({"placement": "window", "path": path, "mode": mode, "prompt": prompt, "flags": flags,
                                          "trust": claude_open.trusted(root), "remote_control": rc}, cm or "agentmeister")
     lines = [f"Ветка {name} от {base}, worktree {tilde(path)}."]
@@ -481,6 +493,8 @@ def main():
         print('agentmeister parallel "<задача>" [-p проект] [-b ветка] [-n] [--permission-mode auto] [--no-rc] [--fork]')
         print("                         новая ветка и worktree от текущего коммита, в новой вкладке — Claude с задачей;")
         print("                         --fork изнутри Claude: второй Claude продолжает эту переписку (форк сессии)")
+        print('agentmeister parallel "<задача>" -p проект --prepare [--fork-sid <id>]')
+        print("                         только ветка и worktree, ответ JSON: так вкладку открывает приложение Agentmeister")
         print("agentmeister parallel list           параллельные задачи этого проекта")
         print("agentmeister parallel merge <ветка>  влить в исходную ветку (без пуша) и убрать worktree")
         print("agentmeister parallel drop <ветка> [--force]")
@@ -494,15 +508,23 @@ def main():
     rest = []
     i = 0
     while i < len(args):
-        if args[i] in ("-p", "-b", "--permission-mode") and i + 1 < len(args):
+        if args[i] in ("-p", "-b", "--permission-mode", "--fork-sid") and i + 1 < len(args):
             opts[args[i]] = args[i + 1]
             i += 2
             continue
-        if args[i] in ("-n", "--no-rc", "--no-merge", "--fork", "--force"):
+        if args[i] in ("-n", "--no-rc", "--no-merge", "--fork", "--force", "--prepare"):
             opts[args[i]] = True
         else:
             rest.append(args[i])
         i += 1
+    if opts.get("--prepare"):
+        job, err = prepare(" ".join(rest), opts.get("-p"), opts.get("-b"), sid=opts.get("--fork-sid"))
+        if job:
+            import claude_open
+            if claude_open.trusted(job["root"]):
+                claude_open.trust(job["path"])  # корень проекта доверенный, значит и его worktree
+        print(json.dumps(job or {"error": err}, ensure_ascii=False))
+        return 1 if err else 0
     if rest[:1] == ["list"]:
         text, bad = listing(opts.get("-p"))
     elif rest[:1] in (["merge"], ["drop"]) and len(rest) == 2:
