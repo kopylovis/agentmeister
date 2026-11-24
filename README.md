@@ -532,7 +532,7 @@ window with caffeinate and Remote Control. `--tmux` needs `--worktree`, so it is
 ```
 agentmeister parallel list            branches, commits, whether Claude is working there
 agentmeister parallel merge <branch>  merge into the original branch (no push), remove the worktree
-agentmeister parallel drop <branch>   throw it away
+agentmeister parallel drop <branch>   throw it away (--force if it has uncommitted files or unmerged commits)
 agentmeister parallel pr <branch>     push, open a PR, wait for CI, merge it, remove the worktree
 ```
 
