@@ -45,6 +45,31 @@ class Forget(unittest.TestCase):
         self.assertTrue(all("99999999" in p for p in left), left)
 
 
+class History(unittest.TestCase):
+    def test_lines_appended_while_forgetting_are_kept(self):
+        r, _ = in_sandbox("""
+            import os, session_store as s
+            os.makedirs(s.CLAUDE)
+            path = os.path.join(s.CLAUDE, "history.jsonl")
+            sid, other = "11111111-2222-3333-4444-555555555555", "99999999-2222-3333-4444-555555555555"
+            line = lambda x, n: '{"display":"%s","sessionId":"%s"}\\n' % (n, x)
+            with open(path, "w") as f:
+                f.write(line(other, "a") + line(sid, "b") + line(other, "c"))
+            os.chmod(path, 0o600)
+            def append():
+                with open(path, "a") as f:
+                    f.write(line(other, "late"))
+            s.forget_history(sid, on_written=append)
+            print(open(path).read().replace("\\n", "|"))
+            print(oct(os.stat(path).st_mode & 0o777), sorted(os.listdir(s.CLAUDE)))
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        text, mode = r.stdout.splitlines()
+        other = '{"display":"%s","sessionId":"99999999-2222-3333-4444-555555555555"}|'
+        self.assertEqual(text, other % "a" + other % "c" + other % "late")
+        self.assertEqual(mode, "0o600 ['history.jsonl']")
+
+
 class Offline(unittest.TestCase):
     def test_unplugged_drive_is_not_an_orphan(self):
         r, _ = in_sandbox("""
