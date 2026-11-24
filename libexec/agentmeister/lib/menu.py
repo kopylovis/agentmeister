@@ -98,7 +98,10 @@ def fit_hint(hint, w):
 
 def write_all(fd, text):
     """Записать все: кадр с картинками весит десятки килобайт, и os.write может взять только часть."""
-    data = text.encode()
+    write_bytes(fd, text.encode())
+
+
+def write_bytes(fd, data):
     while data:
         data = data[os.write(fd, data):]
 
@@ -366,6 +369,45 @@ ALT_ON, ALT_OFF = "\x1b[?1049h", "\x1b[?1049l"
 # программа запущена внутри рамки меню (run_framed): ее меню рисуются на том же экране, без переключения
 IN_FRAME = os.environ.get("MNRH_IN_FRAME") == "1"
 REDRAW = "\x1b]7777;mnrh-redraw\x07"
+# меню программы в рамке просит экран (MENU) и ждет ответа рамки (ACK): рамка перестает рисовать, отдает pty
+# размер всего окна и пропускает вывод меню в терминал как есть, пока не придет REDRAW
+MENU, ACK = "\x1b]7777;mnrh-menu\x07", "\x1b]7777;mnrh-ack\x07"
+CLAIM_WAIT = 2.0
+
+
+def frame_pty():
+    """Программа запущена в run_framed: /dev/tty у нее это pty рамки, а не окно терминала."""
+    name = os.environ.get("MNRH_FRAME_PTY")
+    if not IN_FRAME or not name:
+        return False
+    for fd in (0, 1, 2):
+        try:
+            if os.isatty(fd) and os.ttyname(fd) == name:
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def claim_screen(fd):
+    """Попросить рамку отдать экран. Нажатия, пришедшие до ответа, достанутся меню через PENDING."""
+    sys.stdout.flush()
+    write_all(fd, MENU)
+    ack, got = ACK.encode(), b""
+    end = time.monotonic() + CLAIM_WAIT
+    while ack not in got:
+        left = end - time.monotonic()
+        if left <= 0 or not select.select([fd], [], [], left)[0]:
+            break
+        chunk = os.read(fd, 1024)
+        if not chunk:
+            break
+        got += chunk
+    keys = got.replace(ack, b"", 1)
+    if keys:
+        PENDING.extend(split_keys(keys.decode("utf-8", "replace")))
+
+
 FRAME, FRAME_DIM, ACCENT, ROW_BG = "38;5;110", "38;5;240", "38;5;110", "48;5;238"
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 # Этот файл есть и в mnrh. Имя проекта и каталог его ресурсов могут отличаться.
@@ -761,6 +803,8 @@ class Screen:
         attrs = termios.tcgetattr(self.fd)
         attrs[3] &= ~termios.ISIG
         termios.tcsetattr(self.fd, termios.TCSANOW, attrs)
+        if frame_pty():
+            claim_screen(self.fd)
         # внутри рамки родительского меню экран уже полноэкранный: переключать его значит мигнуть
         os.write(self.fd, ((HIDE if IN_FRAME else ALT_ON + HIDE) + "\x1b[2J").encode())
         return self
@@ -926,9 +970,55 @@ class Output:
         return "\n".join(lines)
 
 
+class Marks:
+    """Делит вывод программы в рамке на текст и метки MENU и REDRAW. Хвост, похожий на начало метки, ждет
+    следующего чтения: метка может прийти в двух кусках."""
+    KINDS = {MENU.encode(): "menu", REDRAW.encode(): "redraw"}
+
+    def __init__(self):
+        self.rest = b""
+
+    def feed(self, data):
+        data, self.rest, out = self.rest + data, b"", []
+        while data:
+            hits = [(data.find(mark), mark) for mark in self.KINDS if mark in data]
+            if not hits:
+                break
+            at, mark = min(hits)
+            if at:
+                out.append(("text", data[:at]))
+            out.append((self.KINDS[mark], b""))
+            data = data[at + len(mark):]
+        keep = max((k for mark in self.KINDS for k in range(1, min(len(mark), len(data) + 1))
+                    if data.endswith(mark[:k])), default=0)
+        if keep:
+            data, self.rest = data[:-keep], data[-keep:]
+        if data:
+            out.append(("text", data))
+        return out
+
+    def flush(self):
+        data, self.rest = self.rest, b""
+        return [("text", data)] if data else []
+
+
+def pass_keys(fd):
+    """Терминал отдает нажатия как есть: эхо, правку строки и Ctrl+C делает pty программы."""
+    attrs = termios.tcgetattr(fd)
+    attrs[0] &= ~(termios.ICRNL | termios.INLCR | termios.IGNCR | termios.IXON | termios.ISTRIP | termios.BRKINT)
+    attrs[3] &= ~(termios.ECHO | termios.ICANON | termios.ISIG | termios.IEXTEN)
+    attrs[6][termios.VMIN], attrs[6][termios.VTIME] = 1, 0
+    termios.tcsetattr(fd, termios.TCSANOW, attrs)
+
+
 def run_framed(screen, argv, title, env=None, show_elapsed=False):
     """Запустить argv в рамке на экране screen: вывод с цветами в рамке, меню программы на том же экране
-    (MNRH_IN_FRAME=1). Ответ: (код выхода, Output). Экран не закрывается, поэтому ничего не мигает."""
+    (MNRH_IN_FRAME=1). Ответ: (код выхода, Output). Экран не закрывается, поэтому ничего не мигает.
+
+    pty рамки для программы это управляющий терминал: stdin, stdout, stderr и /dev/tty. Нажатия рамка
+    пересылает в pty, эхо ввода приходит обратно вместе с выводом и переносится внутри рамки, как и вывод.
+    Свое полноэкранное меню программа рисует прямо в окно: она шлет MENU, рамка отвечает ACK, дает pty
+    размер всего окна и до REDRAW пропускает вывод без разбора."""
     import fcntl
     import pty
     import struct
@@ -936,56 +1026,107 @@ def run_framed(screen, argv, title, env=None, show_elapsed=False):
 
     screen.open()
     out = Output()
-    rows, cols = screen_size(screen.fd)
     master, slave = pty.openpty()
+    # ввод строки как в обычном терминале: Ctrl+C, Ctrl+D, Backspace по буквам UTF-8 (IUTF8 есть в termios
+    # только с Python 3.10, на macOS он 0x4000)
+    attrs = [list(a) if isinstance(a, list) else a for a in screen.saved]
+    attrs[0] |= getattr(termios, "IUTF8", 0x4000 if sys.platform == "darwin" else 0)
+    termios.tcsetattr(slave, termios.TCSANOW, attrs)
+    menu_on = False
 
     def resize():
         r, c = screen_size(screen.fd)
-        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", max(3, r - 5), max(20, c - 8), 0, 0))
+        size = (r, c) if menu_on else (max(3, r - 5), max(20, c - 8))
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", size[0], size[1], 0, 0))
         return r, c
 
-    resize()
-    child_env = dict(os.environ if env is None else env, MNRH_IN_FRAME="1")
-    # программе нужен обычный терминал: ввод строки, вопросы да или нет; свои меню она включит сама
-    termios.tcsetattr(screen.fd, termios.TCSADRAIN, screen.saved)
-    # Ctrl+C прерывает программу, а меню остается: себе SIGINT игнорируем, программе возвращаем обычный
+    def child_setup():
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)  # после setsid: pty становится /dev/tty программы
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    shape = resize()
+    child_env = dict(os.environ if env is None else env, MNRH_IN_FRAME="1", MNRH_FRAME_PTY=os.ttyname(slave))
+    pass_keys(screen.fd)
+    # Ctrl+C приходит программе через pty; сигнал, посланный меню снаружи, его не закрывает
     old_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
-        proc = subprocess.Popen(argv, stdout=slave, stderr=slave, env=child_env,
-                                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_DFL))
+        proc = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave, env=child_env,
+                                start_new_session=True, preexec_fn=child_setup)
     except OSError as e:
         signal.signal(signal.SIGINT, old_int)
         os.close(master)
         os.close(slave)
+        restore_keys(screen)
         out.feed(f"\x1b[31m{e}\x1b[0m\n")
         return 127, out
+    os.set_blocking(master, False)
     decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-    shape = (rows, cols)
+    marks = Marks()
+    keys, typing = b"", True
     started = time.monotonic()
     elapsed = 0 if show_elapsed else None
     draw_output(screen, out, title, running=True, elapsed=elapsed)
+
+    def show(parts):
+        nonlocal menu_on, keys, shape
+        dirty = False
+        for kind, chunk in parts:
+            if kind == "text" and menu_on:
+                write_bytes(screen.fd, chunk)
+            elif kind == "text":
+                out.feed(decoder.decode(chunk))
+                dirty = True
+            elif kind == "menu":
+                menu_on = True
+                shape = resize()
+                keys += ACK.encode()  # после нажатий, прочитанных раньше: они дойдут до меню первыми
+            else:
+                if menu_on:
+                    menu_on = False
+                    shape = resize()
+                dirty = True
+        return dirty
+
     while True:
-        ready = select.select([master], [], [], 0.2)[0]
+        ready, writable, _ = select.select([master] + ([screen.fd] if typing else []), [master] if keys else [],
+                                           [], 0.2)
+        if screen.fd in ready:
+            try:
+                data = os.read(screen.fd, 1024)
+            except OSError:
+                data = b""
+            keys += data
+            typing = bool(data)
+        if master in writable and keys:
+            try:
+                keys = keys[os.write(master, keys):]
+            except BlockingIOError:
+                pass
+            except OSError:
+                keys = b""
         seconds = int(time.monotonic() - started) if show_elapsed else None
         resized = screen_size(screen.fd) != shape
         if resized:
             shape = resize()
-        if ready:
+        dirty = resized
+        if master in ready:
             try:
                 data = os.read(master, 65536)
+            except BlockingIOError:
+                continue
             except OSError:
                 data = b""
             if not data:
                 break
-            out.feed(decoder.decode(data))
-            out.redraw = False
+            dirty = show(marks.feed(data)) or dirty
         elif proc.poll() is not None:
             break
-        if ready or resized or seconds != elapsed:
+        if not menu_on and (dirty or seconds != elapsed):
             elapsed = seconds
             draw_output(screen, out, title, running=True, elapsed=elapsed)
     code = proc.wait()
     signal.signal(signal.SIGINT, old_int)
+    os.set_blocking(master, True)
     while select.select([master], [], [], 0.05)[0]:  # дочитать хвост вывода
         try:
             data = os.read(master, 65536)
@@ -993,16 +1134,22 @@ def run_framed(screen, argv, title, env=None, show_elapsed=False):
             break
         if not data:
             break
-        out.feed(decoder.decode(data))
+        show(marks.feed(data))
+    show(marks.flush())
     out.feed(decoder.decode(b"", final=True))
     os.close(master)
     os.close(slave)
+    restore_keys(screen)
+    return (128 - code if code < 0 else code), out
+
+
+def restore_keys(screen):
+    """Обратно режим меню: нажатия сразу, без эха и без сигнала на Ctrl+C."""
     tty.setcbreak(screen.fd)
     attrs = termios.tcgetattr(screen.fd)
     attrs[3] &= ~termios.ISIG
     termios.tcsetattr(screen.fd, termios.TCSANOW, attrs)
     write_all(screen.fd, HIDE)
-    return (128 - code if code < 0 else code), out
 
 
 def screen_size(fd):
@@ -1046,6 +1193,8 @@ def draw_output(screen, out, title, running, code=0, back=0, elapsed=None):
     raw = out.lines[:-1] if out.lines[-1] == "" and not running else out.lines
     # широкие строки переносятся, а не обрезаются: таблицы бывают шире окна
     lines = [part for line in raw for part in fold(line, w - 3)]
+    if running and lines and width(lines[-1]) >= w - 3:
+        lines.append("")  # строка ввода дошла до рамки: курсор и следующая буква уже на новой строке
     end = max(0, len(lines) - back)
     shown = lines[max(0, end - inner):end]
     body = [" " + line for line in shown]
@@ -1158,7 +1307,8 @@ def pick(items, title="", label="", start=1, default=0, marked=None, summary=Non
     if not items or all(key is None for key, _ in items):
         return None
     fd = os.open("/dev/tty", os.O_RDWR)
-    if roomy(fd):
+    # в рамке /dev/tty размером с рамку; Screen сам выберет рамки или список, когда получит все окно
+    if roomy(fd) or frame_pty():
         os.close(fd)
         with Screen() as screen:
             try:
