@@ -198,10 +198,22 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
 
     /// Команда оболочки для claude update. Через proxy (agentmeister proxy run), если не сказано идти напрямую:
     /// скачивание обновления не должно уходить в обычную сеть Mac мимо mihomo.
-    nonisolated static func updateCommand(direct: Bool) -> String {
+    /// tail: false отдает весь вывод, а код выхода остается кодом claude update, а не tail.
+    nonisolated static func updateCommand(direct: Bool, tail: Bool = true) -> String {
         let am = LoginEnvironment.agentmeister.replacingOccurrences(of: "'", with: "'\\''")
-        return (direct ? "claude update" : "'\(am)' proxy run --claude -- claude update") + " 2>&1 | tail -3"
+        return (direct ? "claude update" : "'\(am)' proxy run --claude -- claude update") + " 2>&1" + (tail ? " | tail -3" : "")
     }
+
+    /// Чем кончился последний claude update перед перезапуском, если он не прошел. Баннер вкладки
+    /// показывает его, сессия при этом открыта на прежней версии.
+    struct UpdateFailure {
+        let at: Date
+        let code: Int32
+        let version: String?
+        let log: String
+    }
+
+    @Published var updateFailed: UpdateFailure?
 
     /// Перезапуск так, как выбрано галочкой "Перезапускать с обновлением агента": одна настройка для меню,
     /// ⌘R, палитры и панели сессии.
@@ -219,23 +231,40 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
 
     private func updateThenRestart(note: String) {
         view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
-        let command = TerminalTab.updateCommand(direct: spec.direct)
+        updateFailed = nil
+        let command = TerminalTab.updateCommand(direct: spec.direct, tail: false)
         Task.detached(priority: .userInitiated) {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            task.arguments = ["-c", command]
-            task.environment = LoginEnvironment.shared
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardInput = FileHandle.nullDevice
-            try? task.run()
-            let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            task.waitUntilExit()
+            let (code, out) = Self.shell(command)
+            // версия, на которой откроется сессия, если обновление не встало
+            let version = code == 0 ? nil : Self.shell("claude --version").1.split(whereSeparator: \.isWhitespace)
+                .map(String.init).first { $0.first?.isNumber == true }
+            let lines = out.split(separator: "\n", omittingEmptySubsequences: true).suffix(3)
             await MainActor.run {
-                self.view.feed(text: out.replacingOccurrences(of: "\n", with: "\r\n"))
+                self.view.feed(text: lines.joined(separator: "\r\n") + (lines.isEmpty ? "" : "\r\n"))
+                if code != 0 {
+                    // сессия все равно открывается: старая версия Claude Code работает
+                    self.updateFailed = UpdateFailure(at: Date(), code: code, version: version,
+                                                      log: out.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
                 self.restart()
             }
         }
+    }
+
+    /// Команда zsh с окружением входа: код выхода и весь вывод вместе с ошибками.
+    nonisolated static func shell(_ command: String) -> (Int32, String) {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        task.arguments = ["-c", command]
+        task.environment = LoginEnvironment.shared
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        task.standardInput = FileHandle.nullDevice
+        guard (try? task.run()) != nil else { return (127, "") }
+        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        task.waitUntilExit()
+        return (task.terminationStatus, out)
     }
 
     /// Вписать текст в строку ввода агента, не отправляя. Палитра так подставляет /ask, /shot и другие команды.
