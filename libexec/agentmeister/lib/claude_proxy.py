@@ -7,10 +7,14 @@ mihomo запускается с первой такой сессией и ос�
 
 Песочница сессии ограничивает сеть и защищает файлы, через которые agentmeister выпускает команды из нее:
 список и сокет host-run и папки над ними, настройку и подписку mihomo и его сокет управления (через него
-mihomo загрузил бы любой конфиг). Поэтому изнутри сессии mihomo не перезапустить и текущий сервер не узнать:
-это делается в обычном терминале. Задание перезапуска сессия пишет сама, поэтому оно только данные
-(restart_job.py). Границей для кода песочница не служит: сессия может писать ~/.zshrc, хуки git,
-настройки Claude и другие файлы, которые потом выполнятся вне нее.
+mihomo загрузил бы любой конфиг), папку состояния proxy (записи о сессиях, замок, pid mihomo, журналы) и папки
+над ними. Замок сессия не может даже открыть: flock берется и на файле, открытом только для чтения. В папку
+состояния пишут лаунчер сессии до песочницы, сторож и команды из обычного терминала. Запись о сессии лаунчер
+делает под своим pid, а живой ли он, проверяют сторож и лаунчеры. Поэтому изнутри сессии mihomo не
+перезапустить и текущий сервер не узнать: это делается в обычном терминале. proxy test и вложенный proxy run
+в сессии обходятся без замка: mihomo для них держит лаунчер этой сессии. Задание перезапуска сессия пишет
+сама, поэтому оно только данные (restart_job.py). Границей для кода песочница не служит: сессия может
+писать ~/.zshrc, хуки git, настройки Claude и другие файлы, которые потом выполнятся вне нее.
 """
 import base64
 import fcntl
@@ -188,6 +192,8 @@ def holders():
 
 class locked:
     def __enter__(self):
+        if in_session():
+            raise ProxyError(IN_SESSION)  # папка состояния и замок для сессии закрыты
         os.makedirs(STATE, exist_ok=True)
         os.chmod(STATE, 0o700)  # тут сокет управления mihomo, другим пользователям Mac он ни к чему
         self.f = open(LOCK, "w")
@@ -660,29 +666,44 @@ def ensure_watch():
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, cwd="/")
 
 
+def both_forms(path):
+    out = []
+    for form in (os.path.abspath(path), os.path.realpath(path)):
+        if form not in out:
+            out.append(form)
+    return out
+
+
 def guarded_paths():
-    """(сокет управления mihomo, папка настройки): как есть и после раскрытия ссылок, без повторов."""
-    socks, confs = [], []
-    for path, out in ((SOCK, socks), (CONF_DIR, confs)):
-        for form in (os.path.abspath(path), os.path.realpath(path)):
-            if form not in out:
-                out.append(form)
-    return socks, confs
+    """Что закрыто для сессии, как есть и после раскрытия ссылок: сокет управления mihomo, папки настройки
+    и состояния, замок и папки над ними."""
+    return {"SOCK": both_forms(SOCK), "CONF": both_forms(CONF_DIR), "STATE": both_forms(STATE),
+            "LOCK": both_forms(LOCK), "UP": host_run.parents(CONF_DIR, STATE)}
 
 
 def sandbox_profile_lines():
     """Сокет управления mihomo: подключиться, удалить или подменить нельзя. Настройку и подписку менять нельзя:
-    mihomo прочитал бы их при следующем запуске вне песочницы."""
-    socks, confs = guarded_paths()
-    sock = " ".join(f'(literal (param "MIHOMO_SOCK{i}"))' for i in range(len(socks)))
-    conf = " ".join(f'(subpath (param "MIHOMO_CONF{i}"))' for i in range(len(confs)))
-    return [f"(deny network-outbound {sock})", f"(deny file-write* {sock} {conf})"]
+    mihomo прочитал бы их при следующем запуске вне песочницы. В папке состояния нельзя ничего менять (сессия
+    стерла бы чужие записи или подделала pid mihomo), а замок нельзя и открыть. Жесткая ссылка на эти файлы
+    писала бы в них же и открывала бы замок под другим именем, поэтому их тоже нельзя. Папки над настройкой
+    и состоянием нельзя переименовать или заменить ссылкой."""
+    paths = guarded_paths()
+
+    def refs(kind, kind_filter):
+        return " ".join(f'({kind_filter} (param "MIHOMO_{kind}{i}"))' for i in range(len(paths[kind])))
+
+    lines = [f"(deny network-outbound {refs('SOCK', 'literal')})",
+             f"(deny file-write* file-link {refs('SOCK', 'literal')} {refs('CONF', 'subpath')} "
+             f"{refs('STATE', 'subpath')})",
+             f"(deny file-read* {refs('LOCK', 'literal')})"]
+    if paths["UP"]:
+        lines.append(f"(deny file-write* {refs('UP', 'literal')})")
+    return lines
 
 
 def sandbox_params():
-    socks, confs = guarded_paths()
-    return ([a for i, path in enumerate(socks) for a in ("-D", f"MIHOMO_SOCK{i}={path}")]
-            + [a for i, path in enumerate(confs) for a in ("-D", f"MIHOMO_CONF{i}={path}")])
+    return [a for kind, paths in guarded_paths().items() for i, path in enumerate(paths)
+            for a in ("-D", f"MIHOMO_{kind}{i}={path}")]
 
 
 def session_command(p, cmd, *, claude=False):
@@ -745,6 +766,8 @@ def run(cmd, *, claude=False):
     if not configured():
         print(f"agentmeister proxy: прокси не настроен, сначала agentmeister proxy setup", file=sys.stderr)
         return 2
+    if in_session():
+        return run_inside(cmd, claude=claude)
     with locked():
         try:
             start()
@@ -794,6 +817,28 @@ def run(cmd, *, claude=False):
     return code if code >= 0 else 128 - code
 
 
+def run_inside(cmd, *, claude=False):
+    """proxy run изнутри сессии через proxy. mihomo держит лаунчер этой сессии, поэтому ни замок, ни своя
+    запись о сессии не нужны (папка состояния для сессии закрыта). Вложенную песочницу macOS не дает:
+    команда остается в песочнице этой сессии."""
+    try:
+        start()  # в сессии только проверяет, что mihomo работает
+    except ProxyError as e:
+        print(f"agentmeister proxy: {e}", file=sys.stderr)
+        return 1
+    if not claude:
+        print("agentmeister proxy: команда идет в песочнице этой сессии, вложенную macOS не дает", file=sys.stderr)
+    p = port()
+    if claude and sys.stdin.isatty() and sys.stdout.isatty():
+        from claude_proxy_restart import supervised_command
+        cmd = supervised_command(cmd)
+    try:
+        os.execvpe(cmd[0], cmd, proxy_env(p, claude=claude))
+    except OSError as e:
+        print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
+        return 127
+
+
 def trace(env=None):
     proxy = env.get("HTTPS_PROXY") if env else None
     cmd = ["curl", "-q", "-s", "--max-time", "12", "--noproxy", "" if proxy else "*"]
@@ -806,7 +851,11 @@ def trace(env=None):
 
 
 def check():
-    """Запустить mihomo, если надо, и сравнить выход напрямую и через proxy."""
+    """Запустить mihomo, если надо, и сравнить выход напрямую и через proxy. В сессии mihomo уже держит ее
+    лаунчер: замок не нужен, а запустить или остановить mihomo оттуда все равно нельзя."""
+    if in_session():
+        start()  # только проверяет, что mihomo работает
+        return check_exit()
     with locked():
         start()
         was_held = bool(holders())
@@ -866,6 +915,9 @@ def install_mihomo():
 
 
 def setup(args):
+    if in_session():
+        print(f"{WARN} {IN_SESSION}: agentmeister proxy setup")
+        return 1
     if not mihomo_bin() and not install_mihomo():
         print(f"{BAD} без mihomo прокси не заработает: brew install mihomo")
         return 1
@@ -1126,6 +1178,9 @@ def status(test=False):
 
 
 def remove():
+    if in_session():
+        print(f"{WARN} {IN_SESSION}: agentmeister proxy remove")
+        return 1
     with locked():
         if holders():
             print(f"{WARN} сейчас идут сессии через proxy. Закрой их и повтори.")
@@ -1140,9 +1195,12 @@ def remove():
 def remember(choice):
     if choice not in ("vps", "direct"):
         return 2
-    os.makedirs(STATE, exist_ok=True)
-    with open(LAST, "w") as f:
-        f.write(choice)
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        with open(LAST, "w") as f:
+            f.write(choice)
+    except OSError:
+        return 1  # из сессии через proxy папка состояния закрыта, выбор просто не запомнится
     return 0
 
 
