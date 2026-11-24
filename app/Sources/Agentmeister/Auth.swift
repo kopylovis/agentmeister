@@ -25,6 +25,8 @@ final class AuthFlow: ObservableObject {
     }
 
     let agent: LaunchSpec.Agent
+    /// Метка перехвата страниц этого входа в ProxyBrowser: снимается только свой перехват.
+    private let hookId = UUID()
     weak var backend: Backend?
 
     @Published var phase: Phase = .choose
@@ -78,7 +80,7 @@ final class AuthFlow: ObservableObject {
             browser = BrowserModel(store: .nonPersistent(), port: ProxyBrowser.shared.port, proxied: proxied)
         }
         // перехват ставится до запуска: страница может прийти сразу
-        ProxyBrowser.shared.intercept = { [weak self] url in self?.take(url) ?? false }
+        ProxyBrowser.shared.setIntercept(owner: hookId) { [weak self] url in self?.take(url) ?? false }
         var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
         spec.utility = proxied ? ["proxy", "run", "--claude", "--"] + command : command
         spec.bare = !proxied
@@ -171,7 +173,7 @@ final class AuthFlow: ObservableObject {
             problem = nil
             showOutput = false
             watchdog?.invalidate()
-            ProxyBrowser.shared.intercept = nil
+            ProxyBrowser.shared.clearIntercept(owner: hookId)
             phase = .done
             backend?.refresh()
         } else if case .exited = problem {
@@ -242,7 +244,7 @@ final class AuthFlow: ObservableObject {
     func stop() {
         watchdog?.invalidate()
         watchdog = nil
-        ProxyBrowser.shared.intercept = nil
+        ProxyBrowser.shared.clearIntercept(owner: hookId)
         if let login {
             login.onExit = nil
             // после входа команда сама дописывает и выходит, ее не обрываем
