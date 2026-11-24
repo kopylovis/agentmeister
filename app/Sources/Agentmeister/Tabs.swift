@@ -748,16 +748,18 @@ final class Workspace: ObservableObject {
     }
 
     /// Открыть вкладку из клика по уведомлению: по id вкладки, иначе вкладку с той же сессией, иначе продолжить
-    /// сохраненную сессию в новой вкладке, если она не открыта в другом окне. true, если что-то открыли.
+    /// сохраненную сессию в новой вкладке, если она не открыта в другом окне. Продолжение только с allowResume:
+    /// его дает запрос из focus.json, который пишет хук уведомлений. Ссылка agentmeister:// сама по себе может
+    /// прийти от любой программы и только выбирает уже открытую вкладку. true, если что-то открыли.
     @discardableResult
-    func focus(tab: String, session: String? = nil, state: AppState? = nil) -> Bool {
+    func focus(tab: String, session: String? = nil, state: AppState? = nil, allowResume: Bool = false) -> Bool {
         let tabId = UUID(uuidString: tab)
         let sid = session.flatMap { $0.range(of: Self.sessionPattern, options: .regularExpression) != nil ? $0.lowercased() : nil }
         if let tabId, let target = tabs.first(where: { $0.id == tabId }) {
             selected = target.id
         } else if let sid, let target = tabs.first(where: { $0.sessionId == sid }) {
             selected = target.id
-        } else if let sid, !liveElsewhere.contains(sid), let state,
+        } else if allowResume, let sid, !liveElsewhere.contains(sid), let state,
                   let saved = state.sessions.first(where: { $0.id == sid }),
                   let project = state.projects.first(where: { saved.cwd == $0.path || saved.cwd.hasPrefix($0.path + "/") }) {
             // агент из сохраненной сессии: id треда Codex иначе ушел бы в claude --resume
@@ -785,13 +787,28 @@ final class Workspace: ObservableObject {
     /// Забрать запрос фокуса, который оставил клик по уведомлению. До восстановления вкладок запрос не трогаем:
     /// после запуска приложения нужная вкладка появится только тогда. Старше двух минут запрос уже не нужен.
     func takeFocusRequest(state: AppState) {
-        guard restored, pendingRestore == nil,
-              let data = FileManager.default.contents(atPath: Self.focusFile) else { return }
-        try? FileManager.default.removeItem(atPath: Self.focusFile)
+        guard restored, pendingRestore == nil, let request = Self.takeFocusFile() else { return }
+        focus(tab: request.tab, session: request.session, state: state, allowResume: true)
+    }
+
+    /// Прочитать и сразу удалить focus.json, чтобы один запрос не сработал дважды. nil, если файла нет,
+    /// он испорчен или старше двух минут.
+    static func takeFocusFile() -> (tab: String, session: String?)? {
+        guard let data = FileManager.default.contents(atPath: focusFile) else { return nil }
+        try? FileManager.default.removeItem(atPath: focusFile)
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tab = obj["tab"] as? String else { return }
-        if let at = obj["at"] as? Double, Date().timeIntervalSince1970 - at > 120 { return }
-        focus(tab: tab, session: obj["session"] as? String, state: state)
+              let tab = obj["tab"] as? String else { return nil }
+        if let at = obj["at"] as? Double, Date().timeIntervalSince1970 - at > 120 { return nil }
+        return (tab, obj["session"] as? String)
+    }
+
+    /// Ссылка agentmeister://focus: выбрать открытую вкладку. Продолжить сохраненную сессию можно, только если
+    /// хук уведомлений оставил в focus.json запрос с той же вкладкой и сессией. Запрос забираем в любом случае.
+    func focusFromURL(tab: String, session: String?, state: AppState) {
+        let request = Self.takeFocusFile()
+        let same = { (a: String?, b: String?) in a.map { $0.lowercased() } == b.map { $0.lowercased() } }
+        let allow = session != nil && request.map { same($0.session, session) && same($0.tab, tab) } == true
+        focus(tab: tab, session: session, state: state, allowResume: allow)
     }
 
     func terminateAll() {

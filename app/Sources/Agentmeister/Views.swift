@@ -123,8 +123,7 @@ struct MainView: View {
                 Workspace.bringMainWindowForward()
                 return
             }
-            try? FileManager.default.removeItem(atPath: Workspace.focusFile)
-            workspace.focus(tab: tab, session: query?.first(where: { $0.name == "session" })?.value, state: backend.state)
+            workspace.focusFromURL(tab: tab, session: query?.first(where: { $0.name == "session" })?.value, state: backend.state)
         }
         .onChange(of: workspace.selected) {
             workspace.writeFront(active: NSApp.isActive)
