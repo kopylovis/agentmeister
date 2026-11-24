@@ -335,7 +335,14 @@ class Server:
 
     def serve_forever(self, listener):
         while True:
-            conn, _ = listener.accept()
+            try:
+                conn, _ = listener.accept()
+            except OSError:
+                if listener.fileno() < 0:
+                    return  # сокет закрыли: выходим без трейсбека
+                if sys.exc_info()[0] is ConnectionAbortedError:
+                    continue  # клиент оборвал соединение до accept
+                raise
             threading.Thread(target=self.handle, args=(conn,), daemon=True).start()
 
 
