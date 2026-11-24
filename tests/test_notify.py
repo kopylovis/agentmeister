@@ -11,16 +11,27 @@ import unittest
 from unittest import mock
 
 sys.dont_write_bytecode = True
-# Тесты не должны зависеть от терминала, в котором их запустили: во вкладке Agentmeister есть AGENTMEISTER_TAB,
-# в iTerm2 ITERM_SESSION_ID, и хук принял бы их за свою вкладку. Нужные значения тесты ставят сами.
-for _name in ("AGENTMEISTER_TAB", "ITERM_SESSION_ID", "TERM_PROGRAM", "LC_TERMINAL"):
-    os.environ.pop(_name, None)
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
 import claude_notify  # noqa: E402
 import claude_proc  # noqa: E402
 import claude_settings  # noqa: E402
 import swiftagent  # noqa: E402
+
+# Тесты не должны зависеть от терминала, в котором их запустили: во вкладке Agentmeister есть AGENTMEISTER_TAB,
+# в iTerm2 ITERM_SESSION_ID, и хук принял бы их за свою вкладку. Нужные значения тесты ставят сами. Переменные
+# убираются только на время этого модуля: остальные тесты discover видят окружение как есть.
+_TERMINAL_ENV = mock.patch.dict(os.environ)
+
+
+def setUpModule():
+    _TERMINAL_ENV.start()
+    for name in ("AGENTMEISTER_TAB", "ITERM_SESSION_ID", "TERM_PROGRAM", "LC_TERMINAL"):
+        os.environ.pop(name, None)
+
+
+def tearDownModule():
+    _TERMINAL_ENV.stop()
 
 
 def pin_lang(case, lang):
