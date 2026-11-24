@@ -114,6 +114,7 @@ class ClaudeNotify(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(claude_proc, "CLAUDE", tmp), \
                 mock.patch.object(claude_notify, "STATE", tmp), mock.patch.object(claude_notify, "enabled", return_value=True), \
                 mock.patch.object(claude_notify, "own_terminal", return_value=None), \
+                mock.patch.object(claude_notify, "iterm_session", return_value=""), \
                 mock.patch.object(claude_notify, "ensure_app", return_value=True), \
                 mock.patch.object(claude_notify.telegram, "wanted", return_value=False), \
                 mock.patch.object(claude_notify.ntfy_alert, "configured", return_value=False), \
@@ -268,12 +269,71 @@ class NotifyBuild(unittest.TestCase):
         self.assertEqual(calls[0][3:6], ["project: Нужен ответ", "", "Какой вариант?"])
 
 
+class ItermSession(unittest.TestCase):
+    """Сессия iTerm2 в песочнице proxy: ps не работает, tty пустой, клик ведет в сессию по ее id."""
+    GUID = "1C7B5E0A-9F3D-4D7E-8A21-3E5F6B7C8D90"
+
+    def test_session_id_comes_from_env_and_must_be_a_guid(self):
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w0t3p0:" + self.GUID}):
+            self.assertEqual(claude_notify.iterm_session(), "iterm:" + self.GUID)
+        with mock.patch.dict(os.environ, {"ITERM_SESSION_ID": "w0t3p0:../etc"}):
+            self.assertEqual(claude_notify.iterm_session(), "")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(claude_notify.iterm_session(), "")
+
+    def test_hook_without_tty_clicks_into_the_iterm_session(self):
+        sid = "a812d4fa-e535-463a-8369-f1433fa25652"
+        data = {"session_id": sid, "hook_event_name": "Notification", "notification_type": "agent_needs_input",
+                "message": "Какой вариант?", "cwd": "/work/project"}
+        env = {"ITERM_SESSION_ID": "w0t3p0:" + self.GUID, "__CFBundleIdentifier": "com.googlecode.iterm2"}
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(claude_notify, "STATE", tmp), \
+                mock.patch.dict(os.environ, env), \
+                mock.patch.object(claude_notify, "app_tab", return_value=""), \
+                mock.patch.object(claude_notify, "enabled", return_value=True), \
+                mock.patch.object(claude_notify, "own_terminal", return_value=None), \
+                mock.patch.object(claude_notify, "watching", return_value=False) as watching, \
+                mock.patch.object(claude_notify, "session_title", return_value=""), \
+                mock.patch.object(claude_notify, "ensure_app", return_value=True), \
+                mock.patch.object(claude_notify, "cm_path", return_value="/bin/agentmeister"), \
+                mock.patch.object(claude_notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(claude_notify.ntfy_alert, "configured", return_value=False), \
+                mock.patch.object(claude_notify, "post", return_value="ok") as post, \
+                mock.patch.object(sys, "stdin", io.StringIO(json.dumps(data))):
+            self.assertEqual(claude_notify.hook(), 0)
+        watching.assert_called_once_with("com.googlecode.iterm2", "iterm:" + self.GUID)
+        self.assertEqual(post.call_args.args[-1], f"/bin/agentmeister focus iterm:{self.GUID} com.googlecode.iterm2")
+
+    def test_focus_selects_the_session_by_id_and_falls_back_to_the_app(self):
+        with mock.patch.object(claude_notify, "osascript", return_value="ok") as osa, \
+                mock.patch.object(claude_notify.subprocess, "run") as run:
+            self.assertEqual(claude_notify.focus("iterm:" + self.GUID, "com.googlecode.iterm2"), 0)
+        self.assertEqual(osa.call_args.args[1:], (self.GUID,))
+        self.assertIn("id of s is", osa.call_args.args[0])
+        run.assert_not_called()
+        with mock.patch.object(claude_notify, "osascript", return_value="notfound"), \
+                mock.patch.object(claude_notify.subprocess, "run") as run:
+            claude_notify.focus("iterm:" + self.GUID, "com.googlecode.iterm2")
+        self.assertEqual(run.call_args.args[0], ["open", "-b", "com.googlecode.iterm2"])
+        with mock.patch.object(claude_notify, "osascript") as osa, mock.patch.object(claude_notify.subprocess, "run"):
+            claude_notify.focus("iterm:nope\" & do shell script", "com.googlecode.iterm2")
+        osa.assert_not_called()
+
+    def test_watching_compares_the_current_session_id(self):
+        with mock.patch.object(claude_notify, "front_bundle", return_value="com.googlecode.iterm2"), \
+                mock.patch.object(claude_notify, "osascript", return_value=self.GUID.lower()):
+            self.assertTrue(claude_notify.watching("com.googlecode.iterm2", "iterm:" + self.GUID))
+        with mock.patch.object(claude_notify, "front_bundle", return_value="com.googlecode.iterm2"), \
+                mock.patch.object(claude_notify, "osascript", return_value="0F0F0F0F-0000-0000-0000-000000000000"):
+            self.assertFalse(claude_notify.watching("com.googlecode.iterm2", "iterm:" + self.GUID))
+
+
 class CodexNotify(unittest.TestCase):
     def test_codex_cli_can_notify_when_daemon_has_no_terminal(self):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(claude_notify, "STATE", tmp), \
                 mock.patch.object(claude_notify, "enabled", return_value=True), \
                 mock.patch.object(claude_notify, "after", return_value=0), \
                 mock.patch.object(claude_notify, "codex_terminal", return_value=None), \
+                mock.patch.object(claude_notify, "iterm_session", return_value=""), \
                 mock.patch.object(claude_notify, "ensure_app", return_value=True), \
                 mock.patch.object(claude_notify.telegram, "wanted", return_value=False), \
                 mock.patch.object(claude_notify.ntfy_alert, "configured", return_value=False), \
