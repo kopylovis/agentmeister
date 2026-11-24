@@ -464,6 +464,62 @@ class Layout(unittest.TestCase):
         self.assertTrue(ANSI.sub("", short[2]).endswith("…"))
 
 
+class Reshape(unittest.TestCase):
+    def test_resize_past_the_limit_raises_reshape(self):
+        master, slave = os.openpty()
+        try:
+            m = menu.Menu(slave, [("a", "a"), ("b", "b")], "t", "", 1, 0)
+            m.keep = lambda: False
+            with patch.object(menu.Menu, "stale", return_value=True), patch.object(menu.select, "select",
+                                                                                  return_value=([], [], [])):
+                with self.assertRaises(menu.Reshape):
+                    m.run()
+        finally:
+            os.close(slave)
+            os.close(master)
+
+    def test_kind_follows_window_and_keeps_selection_search_and_marks(self):
+        # окно сжалось ниже roomy(): рамки сменяет список, выросло: обратно рамки, с тем же выбором
+        items = [(str(i), f"item {i}") for i in range(6)]
+        seen, big = [], [True, False, True, True]
+
+        class Fake(menu.Menu):
+            def run(self):
+                big.pop(0)  # окно меняется, пока меню открыто
+                seen.append((self.kind, self.sel, self.query, set(self.marks), self.keep()))
+                if len(seen) == 1:
+                    self.sel, self.query = 3, "item"
+                    self.marks.add(2)
+                    raise menu.Reshape
+                if len(seen) == 2:
+                    raise menu.Reshape
+                return set(self.marks)
+
+        def make(kind):
+            def build(at):
+                f = Fake(None, items, "t", "", 1, at)
+                f.kind = kind
+                return f
+            return build
+        screen = menu.Screen()
+        with patch.object(menu, "roomy", side_effect=lambda fd: big[0]):
+            got = screen.run_sized(make("panel"), make("list"), 1, marked={0})
+        self.assertEqual(got, {0, 2})
+        self.assertEqual([k for k, *_ in seen], ["panel", "list", "panel"])
+        self.assertEqual(seen[0][1:4], (1, "", {0}))
+        self.assertEqual(seen[1][1:4], (3, "item", {0, 2}))
+        self.assertEqual(seen[2][1:3], (3, "item"))
+        self.assertEqual([keep for *_, keep in seen], [False, False, True])
+
+    def test_small_window_main_menu_is_a_list(self):
+        screen = menu.Screen()
+        screen.fd = 99
+        with patch.object(menu, "roomy", return_value=False), patch.object(m, "modes", return_value={}), \
+                patch.object(menu.Menu, "run", lambda self: self.sel), patch.object(menu, "write_all"):
+            self.assertEqual(m.pick_action(screen, 2), 2)
+        screen.fd = None
+
+
 class English(unittest.TestCase):
     def setUp(self):
         self.saved = mnrhlib.lang
