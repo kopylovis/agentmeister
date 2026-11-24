@@ -11,7 +11,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mac_files import RENAME_EXCL, rename_with_flags
-from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde, tr  # noqa: E402
+from mnrhlib import HOME, confirm, has_flag, paint, projects, tilde, tr, write_json  # noqa: E402
 from menu import Quit, Screen, facts as fact_lines, pick  # noqa: E402
 from session_store import (PROJECTS, UUID, ago, clip, decode, delete, encode, find, forget_deleted_session, fmt_size, folder,  # noqa: E402
                            is_junk, load, misnamed_home, offline, remove_if_empty, require_idle, rewrite, running_ids, SessionInUse, tree_size)
@@ -650,8 +650,14 @@ def rename(s, title):
         sys.exit("agentmeister sessions: название пустое")
     if s.get("link"):
         sys.exit("agentmeister sessions: это ссылка на чужую переписку, переименуй оригинал")
-    with open(s["path"], "a", encoding="utf-8") as f:
-        f.write(json.dumps({"type": "custom-title", "customTitle": title, "sessionId": s["id"]}, ensure_ascii=False) + "\n")
+    line = json.dumps({"type": "custom-title", "customTitle": title, "sessionId": s["id"]}, ensure_ascii=False) + "\n"
+    with open(s["path"], "a+b") as f:
+        # последняя строка могла оборваться без перевода строки: не склеиваем с ней название
+        if f.seek(0, os.SEEK_END) > 0:
+            f.seek(-1, os.SEEK_END)
+            if f.read(1) != b"\n":
+                line = "\n" + line
+        f.write(line.encode("utf-8"))
     extra = os.path.join(s["extra"], "custom-title.json") if s.get("extra") else None
     if extra and os.path.exists(extra):
         try:
@@ -659,9 +665,10 @@ def rename(s, title):
                 data = json.load(f)
         except (OSError, ValueError):
             data = {}
+        if not isinstance(data, dict):
+            data = {}
         data["customTitle"] = title
-        with open(extra, "w") as f:
-            json.dump(data, f, ensure_ascii=False)
+        write_json(extra, data, ensure_ascii=False)
     print(tr(f"Переименовал: {title}", f"Renamed: {title}"))
 
 
@@ -704,7 +711,8 @@ def main():
     elif cmd == "mv" and len(args) == 3:
         move(find(load(), args[1]), resolve_dest(args[2]))
     elif cmd == "rename" and len(args) >= 3:
-        rename(find(load(), args[1]), " ".join(args[2:]))
+        # у сессии бывает ссылка-копия с тем же id: переименовываем оригинал
+        rename(find([s for s in load() if not s.get("link")], args[1]), " ".join(args[2:]))
     elif cmd == "rm" and len(args) >= 2:
         ss = load()
         targets = [find(ss, a) for a in args[1:]]

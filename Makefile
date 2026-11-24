@@ -81,8 +81,8 @@ test:
 	@$(CURDIR)/bin/agentmeister guard test 'cat fastlane/.env.default' | grep -q secrets-read
 	@$(CURDIR)/bin/agentmeister guard test 'rm -rf ~/.ssh' | grep -q secrets-delete
 	@$(CURDIR)/bin/agentmeister guard test 'security delete-generic-password -s x' | grep -q secrets-delete
-	@echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | ./bin/agentmeister guard-hook | wc -c | grep -q '^ *0$$'
-	@echo '{"tool_name":"Read","permission_mode":"auto","session_id":"x","tool_input":{"file_path":"/x/.env"}}' | XDG_CONFIG_HOME=/nonexistent-cm ./bin/agentmeister guard-hook | grep -q '"deny"'
+	@echo '{"tool_name":"Bash","tool_input":{"command":"ls"}}' | HOME=$$(mktemp -d) ./bin/agentmeister guard-hook | wc -c | grep -q '^ *0$$'
+	@echo '{"tool_name":"Read","permission_mode":"auto","session_id":"x","tool_input":{"file_path":"/x/.env"}}' | HOME=$$(mktemp -d) XDG_CONFIG_HOME=/nonexistent-cm ./bin/agentmeister guard-hook | grep -q '"deny"'
 	@echo '{}' | ./bin/agentmeister statusline >/dev/null
 	@echo '{}' | MNRH_PROMPTSILL=/nonexistent ./bin/agentmeister statusline | grep -q promptsill
 	@MNRH_PROMPTSILL=/nonexistent ./bin/agentmeister statusline -h | grep -q 'brew install kopylovis/tap/promptsill'

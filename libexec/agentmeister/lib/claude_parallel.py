@@ -524,7 +524,7 @@ def main():
             if claude_open.trusted(job["root"]):
                 claude_open.trust(job["path"])  # корень проекта доверенный, значит и его worktree
         print(json.dumps(job or {"error": err}, ensure_ascii=False))
-        return 1 if err else 0
+        return 0  # ошибка внутри JSON: приложение читает ее и показывает как есть
     if rest[:1] == ["list"]:
         text, bad = listing(opts.get("-p"))
     elif rest[:1] in (["merge"], ["drop"]) and len(rest) == 2:

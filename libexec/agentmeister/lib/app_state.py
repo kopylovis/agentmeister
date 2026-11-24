@@ -133,7 +133,7 @@ def retention_days():
         days = claude_settings.load().get("cleanupPeriodDays")
     except (OSError, ValueError):
         days = None
-    return days if isinstance(days, int) else 30
+    return days if type(days) is int else 30  # bool тоже int, а приложение ждет число
 
 
 def host_run_summary():
@@ -299,7 +299,8 @@ def agent_model(binary):
         if binary == "codex":
             with open(os.path.join(os.environ.get("CODEX_HOME") or os.path.join(home, ".codex"), "config.toml")) as f:
                 text = f.read()
-            found = dict(re.findall(r'^(model|model_reasoning_effort)\s*=\s*"([^"]*)"', text, re.M))
+            top = re.split(r"^\[", text, maxsplit=1, flags=re.M)[0]  # только ключи верхнего уровня, не профили
+            found = dict(re.findall(r"""^(model|model_reasoning_effort)\s*=\s*["']([^"']*)["']""", top, re.M))
             return " ".join(x for x in (found.get("model"), found.get("model_reasoning_effort")) if x) or None
     except (OSError, ValueError, AttributeError):
         pass
@@ -436,13 +437,13 @@ def guard_log(n=4):
     return out
 
 
-def guard_test(command):
+def guard_test(command, cwd=None):
     """Что guard сделает с командой: правило и причина или ничего. Как agentmeister guard test, но данными."""
     import claude_guard
     text = " ".join(command.split())
     tool, inp = (("Read", {"file_path": text}) if text and not re.search(r"\s", text) and claude_guard.is_secret(text)
                  else ("Bash", {"command": text}))
-    found = claude_guard.check(tool, inp, os.getcwd())
+    found = claude_guard.check(tool, inp, cwd or os.getcwd())
     if not found:
         return {"rule": None}
     return {"rule": found[0], "why": found[1], "off": found[0] in claude_guard.skipped()}
@@ -545,7 +546,11 @@ def main(argv):
     if argv and argv[0] == "project" and len(argv) > 1:
         out = project(argv[1])
     elif argv and argv[0] == "guard-test":
-        out = guard_test(" ".join(argv[1:]))
+        rest = argv[1:]
+        cwd = None
+        if rest[:1] == ["--cwd"] and len(rest) > 1:
+            cwd, rest = rest[1], rest[2:]
+        out = guard_test(" ".join(rest), cwd)
     elif argv and argv[0] == "search":
         out = search(" ".join(argv[1:]))
     elif argv and argv[0] == "read" and len(argv) > 1:
