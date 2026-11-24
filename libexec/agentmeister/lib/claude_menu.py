@@ -317,14 +317,19 @@ def menu_title(describe, note, side):
 def pick_action(screen, at=1, note=""):
     state = modes()
     items = rows(state)
-    if not screen.open().roomy():
-        return screen.pick(items, title=note or "agentmeister", default=at, back=tr("выход", "quit"))
+    screen.open()
     hint = tr(f"↑↓ выбрать · Enter запустить · буквы ищут · {tab_hint()}Esc выход",
               f"↑↓ move · Enter run · type to search · {tab_hint()}Esc quit")
     describe = Describe(state)
+
+    def panel(sel):
+        return Panel(screen.fd, items, lambda side: menu_title(describe, note, side), sel, describe,
+                     (tr("Действия", "Actions"), tr("Описание", "Description")), hint)
+
+    # в маленьком окне список в строку; окно сжалось или выросло, меню сменится на ходу
     try:
-        return Panel(screen.fd, items, lambda side: menu_title(describe, note, side), at, describe,
-                     (tr("Действия", "Actions"), tr("Описание", "Description")), hint).run()
+        return screen.run_sized(panel, lambda sel: screen.plain(items, note or "agentmeister", sel,
+                                                                 back=tr("выход", "quit")), at)
     except Cancel:
         return None
 
