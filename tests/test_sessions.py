@@ -121,6 +121,24 @@ class Parallel(unittest.TestCase):
         """)
         self.assertEqual(r.stdout.split(), ["False", "True", "False"], r.stderr)
 
+    def test_prepare_makes_worktree_without_a_window(self):
+        r, _ = in_sandbox("""
+            import os, subprocess, claude_parallel as p
+            repo = os.path.join(os.environ["HOME"], "Developer", "demo")
+            os.makedirs(repo)
+            run = lambda *a: subprocess.run(["git", "-C", repo, *a], check=True, capture_output=True)
+            run("init", "-q", "-b", "main")
+            run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+            job, err = p.prepare("Fix the login", repo, sid="abc")
+            assert err is None, err
+            print(job["branch"], os.path.isdir(job["path"]), job["flags"], "Fix the login" in job["prompt"])
+            print(p.prepare("", repo)[1])
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        lines = r.stdout.splitlines()
+        self.assertEqual(lines[0], "parallel/fix-the-login True ['--resume', 'abc', '--fork-session'] True")
+        self.assertIn("Нужна задача", lines[1])
+
 
 SESSIONS = """
     import json, os, re, time
