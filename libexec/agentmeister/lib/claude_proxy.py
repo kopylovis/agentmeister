@@ -169,7 +169,11 @@ def read_pid():
             pid = int(f.read().strip())
     except (OSError, ValueError):
         return None
-    cmd = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    try:
+        cmd = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+    except OSError:
+        # в песочнице proxy-сессии ps не запустить: имя не проверить, остается только узнать, жив ли процесс
+        return pid if alive(pid) else None
     return pid if os.path.basename(cmd) == "mihomo" else None
 
 
