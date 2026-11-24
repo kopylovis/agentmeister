@@ -11,7 +11,7 @@ struct CardsLayout<Main: View>: View {
     @ViewBuilder var main: () -> Main
 
     static var gap: CGFloat { 8 }
-    static var railWidth: CGFloat { 80 }
+    static var railWidth: CGFloat { 76 }
     static var mainMin: CGFloat { 560 }
 
     var body: some View {
@@ -182,8 +182,8 @@ struct SidebarToggle: View {
     }
 }
 
-/// Проекты, свернутые в рельсу: буквы проектов с точкой статуса. Сначала проекты с открытыми сессиями,
-/// ждущая сессия видна янтарной точкой. Клик открывает экран проекта, правый клик дает новую сессию.
+/// Проекты, свернутые в рельсу: только проекты с открытыми сессиями, цветной кружок с буквами и точка статуса,
+/// янтарная, если сессия ждет. Остальные проекты в меню под папкой. Клик открывает экран проекта.
 struct SidebarRail: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
@@ -191,60 +191,77 @@ struct SidebarRail: View {
 
     var l: L { L(backend.state.lang) }
 
-    /// Две буквы проекта: "Ag" для agentmeister, "TM" для tossling-mobile. Одна буква не различает проекты.
-    private func initials(_ name: String) -> String {
-        let parts = name.split(whereSeparator: { $0 == "-" || $0 == "_" || $0 == "." || $0 == " " })
-        if parts.count >= 2, let a = parts[0].first, let b = parts[1].first { return (String(a) + String(b)).uppercased() }
-        return String(name.prefix(2)).capitalized
-    }
-
     private func state(_ p: AppState.Project) -> (count: Int, waiting: Bool) {
         let tabs = workspace.tabs.filter { $0.spec.projectPath == p.path && $0.running }
         let live = backend.state.live.filter { ($0.cwd ?? "") == p.path || ($0.cwd ?? "").hasPrefix(p.path + "/") }
         return (max(tabs.count, live.count), tabs.contains { $0.status == "waiting" } || live.contains { $0.status == "waiting" })
     }
 
+    /// Две буквы проекта: "Ag" для agentmeister, "TM" для tossling-mobile.
+    private func initials(_ name: String) -> String {
+        let parts = name.split(whereSeparator: { $0 == "-" || $0 == "_" || $0 == "." || $0 == " " })
+        if parts.count >= 2, let a = parts[0].first, let b = parts[1].first { return (String(a) + String(b)).uppercased() }
+        return String(name.prefix(2)).capitalized
+    }
+
+    /// Свой постоянный оттенок у каждого проекта, по имени.
+    private func hue(_ name: String) -> Double {
+        Double(name.unicodeScalars.reduce(UInt32(7)) { ($0 &* 31) &+ $1.value } % 360) / 360
+    }
+
     var body: some View {
-        let projects = backend.state.projects
-        let active = projects.filter { state($0).count > 0 }
-        let rest = projects.filter { state($0).count == 0 }
-        VStack(spacing: 8) {
+        let active = backend.state.projects.filter { state($0).count > 0 }
+        VStack(spacing: 10) {
             Color.clear.frame(height: 22)
             SidebarToggle()
-            Divider().padding(.horizontal, 14)
             ScrollView {
-                VStack(spacing: 6) {
-                    ForEach(active + rest) { project in
+                VStack(spacing: 10) {
+                    ForEach(active) { project in
                         let s = state(project)
+                        let current = ui.projectScreen == project.path || workspace.current?.spec.projectPath == project.path
                         Button {
-                            ui.projectScreen = project.path
-                        } label: {
-                            ZStack(alignment: .topTrailing) {
-                                Text(initials(project.name))
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(ui.projectScreen == project.path || workspace.current?.spec.projectPath == project.path ? Ink.strong : Ink.text2)
-                                    .frame(width: 40, height: 36)
-                                    .background(RoundedRectangle(cornerRadius: 10).fill(
-                                        ui.projectScreen == project.path || workspace.current?.spec.projectPath == project.path ? Ink.thumb : Ink.chip))
-                                if s.count > 0 {
-                                    GlowDot(color: s.waiting ? Ink.amberDot : Ink.tealDot, size: 8)
-                                        .padding(3)
-                                }
+                            if let tab = workspace.tabs.first(where: { $0.spec.projectPath == project.path }) {
+                                workspace.selected = tab.id
+                            } else {
+                                ui.projectScreen = project.path
                             }
+                        } label: {
+                            Text(initials(project.name))
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 34, height: 34)
+                                .background(Circle().fill(Color(hue: hue(project.name), saturation: 0.45, brightness: 0.62)))
+                                .overlay(Circle().strokeBorder(current ? Color.accentColor : .clear, lineWidth: 2).padding(-3))
+                                .overlay(alignment: .bottomTrailing) {
+                                    Circle()
+                                        .fill(s.waiting ? Ink.amberDot : Ink.tealDot)
+                                        .frame(width: 10, height: 10)
+                                        .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
+                                        .offset(x: 2, y: 2)
+                                }
                         }
                         .buttonStyle(.plain)
-                        .help(project.name + (s.count > 0 ? " · " + l.t("открыто \(s.count)", "\(s.count) open") : ""))
-                        .contextMenu {
-                            Button(l.t("Новая сессия через proxy", "New session via proxy")) {
-                                workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path))
-                            }
-                            Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
-                        }
+                        .help(project.name + " · " + (s.waiting ? l.t("ждет ответа", "waiting for you") : l.t("открыто \(s.count)", "\(s.count) open")))
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 6)
             }
             .scrollIndicators(.never)
+            Menu {
+                ForEach(backend.state.projects) { project in
+                    Button(project.name) { ui.projectScreen = project.path }
+                }
+            } label: {
+                Image(systemName: "folder")
+                    .foregroundStyle(Ink.text2)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(Ink.chip))
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help(l.t("Все проекты", "All projects"))
             if let h = backend.state.hostRun {
                 GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
                     .help(h.running ? l.t("host-run работает", "host-run running") : l.t("host-run не запущен", "host-run isn't running"))
