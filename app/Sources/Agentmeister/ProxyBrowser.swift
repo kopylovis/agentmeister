@@ -20,10 +20,18 @@ final class ProxyBrowser {
     private var model: BrowserModel?
     private var titleWatch: AnyCancellable?
 
+    /// Перехват страниц для диалога входа: пока он ждет страницу входа, он забирает ее себе и открывает там,
+    /// где выбрано (в своем окне, в Chrome или в браузере системы). true значит, что ссылка взята.
+    var intercept: (@MainActor (URL) -> Bool)?
+
+    /// Отдать ссылку диалогу входа, если он ее ждет.
+    func offer(_ url: URL) -> Bool { intercept?(url) ?? false }
+
     /// Отдельное постоянное хранилище: куки входа живут между запусками и не смешиваются с другими WKWebView.
     private static let storeId = UUID(uuidString: "5E3C1B2A-7D4F-4C61-9B0E-A6E1D2F3C4B5")!
 
     func open(_ url: URL) {
+        if offer(url) { return }
         if let model, let window {
             model.port = port
             model.load(url)
@@ -111,9 +119,12 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     var port: Int {
         didSet { applyProxy() }
     }
+    /// false у окна диалога входа с маршрутом напрямую: страница идет мимо mihomo.
+    let proxied: Bool
 
-    init(store: WKWebsiteDataStore, port: Int) {
+    init(store: WKWebsiteDataStore, port: Int, proxied: Bool = true) {
         self.port = port
+        self.proxied = proxied
         let config = WKWebViewConfiguration()
         config.websiteDataStore = store
         webView = WKWebView(frame: .zero, configuration: config)
@@ -127,6 +138,10 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     /// Весь трафик страницы идет через mihomo CONNECT, кроме localhost: туда агент принимает ответ входа.
     /// allowFailover выключен, так что без mihomo страница не откроется напрямую.
     private func applyProxy() {
+        guard proxied else {
+            webView.configuration.websiteDataStore.proxyConfigurations = []
+            return
+        }
         guard let p = NWEndpoint.Port(rawValue: UInt16(clamping: port)) else { return }
         var proxy = ProxyConfiguration(httpCONNECTProxy: .hostPort(host: "127.0.0.1", port: p))
         proxy.allowFailover = false
@@ -137,7 +152,7 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     func load(_ url: URL) {
         address = url.absoluteString
         error = nil
-        proxyUp = ProxyBrowser.listening(port)
+        proxyUp = !proxied || ProxyBrowser.listening(port)
         guard proxyUp else { return }
         webView.load(URLRequest(url: url))
     }
@@ -151,7 +166,7 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     }
 
     func reload() {
-        proxyUp = ProxyBrowser.listening(port)
+        proxyUp = !proxied || ProxyBrowser.listening(port)
         guard proxyUp else { return }
         if webView.url == nil, let url = URL(string: address) { webView.load(URLRequest(url: url)) } else { webView.reload() }
     }
@@ -174,7 +189,7 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         sync()
         let ns = err as NSError
         if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return }
-        proxyUp = ProxyBrowser.listening(port)
+        proxyUp = !proxied || ProxyBrowser.listening(port)
         error = err.localizedDescription
     }
 
