@@ -204,6 +204,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     func setAwake(_ on: Bool) {
         spec.awake = on
         updateAwake()
+        // tabs.json пишется по изменению списка вкладок, а это изменение внутри вкладки
+        Workspace.main?.save()
     }
 
     private func updateAwake() {
@@ -297,6 +299,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     func switchRoute() {
         afterStop {
             self.spec.direct.toggle()
+            Workspace.main?.save()
             self.relaunch()
         }
     }
@@ -729,7 +732,8 @@ final class Workspace: ObservableObject {
         } else if let sid, !liveElsewhere.contains(sid), let state,
                   let saved = state.sessions.first(where: { $0.id == sid }),
                   let project = state.projects.first(where: { saved.cwd == $0.path || saved.cwd.hasPrefix($0.path + "/") }) {
-            open(LaunchSpec.resume(sid, cwd: saved.cwd, project: project))
+            // агент из сохраненной сессии: id треда Codex иначе ушел бы в claude --resume
+            open(LaunchSpec.resume(saved, project: project))
         } else {
             return false
         }
