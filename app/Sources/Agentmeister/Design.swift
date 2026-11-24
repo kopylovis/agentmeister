@@ -284,3 +284,18 @@ struct PillButton: View {
     }
 }
 
+
+extension View {
+    /// Размытая подложка бара над прокруткой: строки, ушедшие под него, видны только пятнами. Край со стороны
+    /// списка плавно гаснет, чтобы бар не выглядел отдельной полосой.
+    func blurBar(edge: VerticalEdge) -> some View {
+        background {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.75),
+                                             .init(color: .clear, location: 1)],
+                                     startPoint: edge == .top ? .top : .bottom, endPoint: edge == .top ? .bottom : .top))
+                .ignoresSafeArea()
+        }
+    }
+}
