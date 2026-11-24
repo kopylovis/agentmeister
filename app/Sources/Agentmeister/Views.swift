@@ -766,10 +766,9 @@ struct RenameSheet: View {
                 .onSubmit(save)
             HStack {
                 Spacer()
-                Button(l.cancel) { dismiss() }
+                PillButton(title: l.cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(l.rename, action: save)
-                    .buttonStyle(.glassProminent)
+                PillButton(title: l.rename, prominent: true, action: save)
                     .keyboardShortcut(.defaultAction)
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
             }
@@ -1235,15 +1234,12 @@ struct NewSessionSheet: View {
             }
             HStack(spacing: 8) {
                 Spacer()
-                Button(l.cancel) { dismiss() }
+                PillButton(title: l.cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button {
+                PillButton(title: l.t("Открыть вкладку  ⌘↩", "Open tab  ⌘↩"), prominent: true, busy: busy) {
                     open(project: project, last: last)
-                } label: {
-                    if busy { ProgressView().controlSize(.small) } else { Text(l.t("Открыть вкладку  ⌘↩", "Open tab  ⌘↩")) }
                 }
                 .keyboardShortcut(.return, modifiers: .command)
-                .buttonStyle(.glassProminent)
                 .disabled(project == nil || busy || (mode == .resume && last == nil)
                           || (mode == .parallel && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             }

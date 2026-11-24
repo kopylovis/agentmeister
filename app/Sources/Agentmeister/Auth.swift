@@ -786,35 +786,6 @@ private struct RouteSwitch: View {
     }
 }
 
-/// Кнопка диалога высотой 34: обычная стеклянная или залитая акцентом.
-private struct PillButton: View {
-    let title: String
-    var prominent = false
-    var small = false
-    var busy = false
-    let action: () -> Void
-    @Environment(\.isEnabled) private var enabled
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Text(title).opacity(busy ? 0 : 1)
-                if busy { ProgressView().controlSize(.small).tint(prominent ? .white : nil) }
-            }
-            .font(.system(size: small ? 12 : 13, weight: prominent ? .medium : .regular))
-            .foregroundStyle(prominent ? .white : Ink.text)
-            .padding(.horizontal, small ? 12 : 16)
-            .frame(height: small ? 28 : 34)
-            .background(Capsule().fill(prominent ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Ink.buttonBg))
-                .shadow(color: .black.opacity(prominent ? 0.25 : 0), radius: 4, y: 2))
-            .overlay(Capsule().strokeBorder(prominent ? .clear : Ink.buttonBorder))
-            .contentShape(Capsule())
-            .opacity(enabled ? 1 : 0.5)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 /// Текстовая кнопка цвета ссылки слева в подвале диалога.
 private struct LinkButton: View {
     let title: String
