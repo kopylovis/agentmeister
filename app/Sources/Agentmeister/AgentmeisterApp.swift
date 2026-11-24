@@ -1,34 +1,15 @@
 import AppKit
-import Carbon.HIToolbox
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var hotKey: EventHotKeyRef?
-
+    @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Пока приложение собирается как исполняемый файл без .app, macOS сама не дает ему Dock и меню
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         Appearance.apply(UserDefaults.standard.string(forKey: Appearance.key) ?? "system")
-        UserDefaults.standard.removeObject(forKey: "hotkey.taken")
-        if UserDefaults.standard.object(forKey: "hotkey.showApp") as? Bool ?? true { registerShowHotKey() }
-    }
-
-    /// ⌃⌥Space из любого приложения показывает Agentmeister. ⌥Space не берем: его занимает ChatGPT. Глобальная клавиша через Carbon, без Универсального доступа.
-    private func registerShowHotKey() {
-        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
-            DispatchQueue.main.async {
-                NSApp.activate()
-                NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true || $0.title == "Agentmeister" }?
-                    .makeKeyAndOrderFront(nil)
-            }
-            return noErr
-        }, 1, &spec, nil, nil)
-        let id = EventHotKeyID(signature: OSType(0x414D5354), id: 1)  // "AMST"
-        let status = RegisterEventHotKey(UInt32(kVK_Space), UInt32(optionKey | controlKey), id, GetApplicationEventTarget(), 0, &hotKey)
-        // клавишу уже заняло другое приложение: настройки покажут это вместо молчаливого отказа
-        if status != noErr { UserDefaults.standard.set(true, forKey: "hotkey.taken") }
+        // ⌃⌥Space (или свое сочетание из настроек) из любого приложения показывает Agentmeister
+        HotKey.shared.apply()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -67,6 +48,8 @@ struct AgentmeisterApp: App {
     @StateObject private var backend = Backend()
     @StateObject private var workspace = Workspace()
     @StateObject private var ui = UIState()
+    /// Меню перестраивается, когда в настройках поменяли сочетание
+    @ObservedObject private var shortcuts = ShortcutStore.shared
 
     var body: some Scene {
         Window("Agentmeister", id: "main") {
@@ -104,18 +87,18 @@ struct AgentmeisterApp: App {
                     ui.newSessionProject = workspace.current?.spec.projectPath
                     ui.showNewSession = true
                 }
-                .keyboardShortcut("n")
+                .shortcut(.newSession)
                 Button(l.newTab) {
                     if !workspace.newTab() { ui.showNewSession = true }
                 }
-                .keyboardShortcut("t")
+                .shortcut(.newTab)
                 // только когда впереди главное окно: в Настройках, Сессиях и других окнах ⌘W закрывает само окно,
                 // а не вкладку с агентом
                 Button(l.closeTab) { workspace.close(workspace.selected) }
-                    .keyboardShortcut("w")
+                    .shortcut(.closeTab)
                     .disabled(workspace.current == nil || !ui.mainKey)
                 Button(l.restart) { workspace.current?.restartPreferred(note: l.updating) }
-                    .keyboardShortcut("r", modifiers: .command)
+                    .shortcut(.restart)
                     .disabled(workspace.current == nil || !ui.mainKey)
                 Divider()
                 Button(l.t("Параллельная задача…", "Parallel task…")) {
@@ -123,12 +106,12 @@ struct AgentmeisterApp: App {
                     ui.newSessionParallel = true
                     ui.showNewSession = true
                 }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .shortcut(.parallel)
                 Button(l.t("Спросить другой проект", "Ask another project")) { workspace.typeInClaude("/ask ") }
-                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                    .shortcut(.ask)
                     .disabled(!workspace.hasClaudeTab)
                 Button(l.t("Снимок окна", "Window screenshot")) { workspace.typeInClaude("/shot ") }
-                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                    .shortcut(.shot)
                     .disabled(!workspace.hasClaudeTab)
             }
             CommandGroup(after: .windowList) {
@@ -137,14 +120,14 @@ struct AgentmeisterApp: App {
             }
             CommandGroup(before: .sidebar) {
                 Button(l.t("Палитра команд", "Command palette")) { ui.showPalette = true }
-                    .keyboardShortcut("k")
+                    .shortcut(.palette)
                 Divider()
             }
             CommandGroup(after: .sidebar) {
                 Button(l.t("Свернуть или развернуть проекты", "Collapse or expand projects")) { ui.sidebarCollapsed.toggle() }
-                    .keyboardShortcut("s", modifiers: [.command, .control])
+                    .shortcut(.sidebar)
                 Button(l.inspector) { ui.showInspector.toggle() }
-                    .keyboardShortcut("i", modifiers: [.command, .option])
+                    .shortcut(.inspector)
             }
             CommandGroup(replacing: .help) {
                 Button(l.t("Мастер первого запуска", "First-run setup")) { ui.showOnboarding = true }
@@ -156,13 +139,13 @@ struct AgentmeisterApp: App {
                 }
                 Divider()
                 Button(l.t("Следующая вкладка", "Next tab")) { workspace.selectNeighbor(1) }
-                    .keyboardShortcut(.tab, modifiers: .control)
+                    .shortcut(.nextTab)
                 Button(l.t("Предыдущая вкладка", "Previous tab")) { workspace.selectNeighbor(-1) }
-                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                    .shortcut(.previousTab)
                 Button(l.t("К вкладке, которая ждет", "Jump to the waiting tab")) {
                     if let tab = workspace.tabs.first(where: { $0.status == "waiting" }) { workspace.selected = tab.id }
                 }
-                .keyboardShortcut("j")
+                .shortcut(.waitingTab)
             }
         }
     }

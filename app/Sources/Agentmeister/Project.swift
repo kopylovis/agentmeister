@@ -281,10 +281,10 @@ struct ProjectView: View {
                     d.tools?.releaseSince.map { l.t("с тега ", "since ") + $0 } ?? "") { openWithPrompt("/release-notes") }
             toolRow(l.t("Устаревшие зависимости", "Outdated dependencies"), l.t("Gradle и libs.versions.toml", "Gradle and libs.versions.toml"),
                     d.tools?.gradle == true ? "" : l.t("нет Gradle", "no Gradle"), enabled: d.tools?.gradle == true) { utility(["deps", path]) }
-            toolRow(l.t("Спросить другой проект", "Ask another project"), l.t("Отдельный Claude только на чтение", "A separate read-only Claude"), "⇧⌘A") {
+            toolRow(l.t("Спросить другой проект", "Ask another project"), l.t("Отдельный Claude только на чтение", "A separate read-only Claude"), ShortcutStore.shared.label(.ask)) {
                 typeOrOpen("/ask ")
             }
-            toolRow(l.t("Снимок окна", "Window screenshot"), l.t("Simulator, Chrome, любое приложение", "Simulator, Chrome, any app"), "⇧⌘S") {
+            toolRow(l.t("Снимок окна", "Window screenshot"), l.t("Simulator, Chrome, любое приложение", "Simulator, Chrome, any app"), ShortcutStore.shared.label(.shot)) {
                 typeOrOpen("/shot ")
             }
         }

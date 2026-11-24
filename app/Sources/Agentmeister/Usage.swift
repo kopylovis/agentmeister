@@ -311,6 +311,6 @@ struct OpenUsageButton: View {
 
     var body: some View {
         Button(title) { openWindow(id: "usage") }
-            .keyboardShortcut("u", modifiers: [.command, .shift])
+            .shortcut(.usage)
     }
 }

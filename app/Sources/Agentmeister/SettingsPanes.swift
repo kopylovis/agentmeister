@@ -634,57 +634,134 @@ struct AgentCard: View {
 
 // MARK: - Горячие клавиши
 
+/// Горячие клавиши по макету SettingsShortcuts.dc.html: две стеклянные группы строк с клавишами-кнопками.
+/// Нажатие на клавишу записывает новое сочетание, Esc отменяет, Delete убирает. Системные сочетания и ⌘1…9
+/// показаны тусклыми, их не меняют.
 struct ShortcutsPane: View {
     @EnvironmentObject var backend: Backend
-    @AppStorage("hotkey.showApp") private var showHotKey = true
+    @AppStorage(HotKey.enabledKey) private var showHotKey = true
+    @AppStorage(HotKey.takenKey) private var hotKeyTaken = false
+    @ObservedObject private var store = ShortcutStore.shared
+    @StateObject private var recorder = ShortcutRecorder()
 
     var l: L { L(backend.state.lang) }
+
+    private enum Row {
+        case action(ShortcutAction)
+        case fixed(String, String)
+    }
 
     var body: some View {
         PaneTitle(l.t("Горячие клавиши", "Shortcuts"))
         HStack(alignment: .top, spacing: 16) {
             group(l.t("Сессии и вкладки", "Sessions and tabs"), [
-                (l.newSession, "⌘N"), (l.t("Новая вкладка в этом проекте", "New tab in this project"), "⌘T"),
-                (l.closeTab, "⌘W"), (l.t("Следующая вкладка", "Next tab"), "⌃⇥"), (l.t("Предыдущая вкладка", "Previous tab"), "⌃⇧⇥"), (l.t("Вкладка 1–9", "Tab 1–9"), "⌘1…9"),
-                (l.t("К вкладке, которая ждет", "Jump to the waiting tab"), "⌘J"), (l.restart, "⌘R"),
-                (l.t("Параллельная задача", "Parallel task"), "⇧⌘P"),
+                .action(.newSession), .action(.newTab), .action(.closeTab), .action(.nextTab), .action(.previousTab),
+                .fixed(l.t("Вкладка 1–9", "Tab 1–9"), "⌘1…9"), .action(.waitingTab), .action(.restart), .action(.parallel),
             ])
             group(l.t("Окна и инструменты", "Windows and tools"), [
-                (l.t("Палитра команд", "Command palette"), "⌘K"), (l.t("Сессии", "Session library"), "⇧⌘O"),
-                (l.t("Статистика", "Usage"), "⇧⌘U"), (l.t("Спросить другой проект", "Ask another project"), "⇧⌘A"),
-                (l.t("Снимок окна", "Window screenshot"), "⇧⌘S"), (l.inspector, "⌥⌘I"), (l.t("Свернуть или развернуть проекты", "Collapse or expand projects"), "⌃⌘S"),
-                (l.t("Показать Agentmeister из любого приложения", "Show Agentmeister from any app"), "⌃⌥Space"),
+                .action(.palette), .action(.library), .action(.usage), .action(.ask), .action(.shot), .action(.inspector),
+                .action(.sidebar), .action(.showApp),
+                .fixed(l.t("Настройки", "Settings"), "⌘,"), .fixed(l.t("Закрыть Agentmeister", "Quit Agentmeister"), "⌘Q"),
             ])
         }
-        Toggle(l.t("⌃⌥Space показывает Agentmeister из любого приложения", "⌃⌥Space shows Agentmeister from any app"), isOn: $showHotKey)
-        if UserDefaults.standard.bool(forKey: "hotkey.taken") {
-            Text(l.t("⌃⌥Space уже занято другим приложением, Agentmeister его не получил.", "Another app already holds ⌃⌥Space, Agentmeister didn't get it."))
-                .font(.system(size: 12)).foregroundStyle(Ink.amber)
+        Toggle(l.t("Показывать Agentmeister из любого приложения по ", "Show Agentmeister from any app with ") + showAppLabel, isOn: $showHotKey)
+            .onChange(of: showHotKey) { HotKey.shared.apply() }
+        HStack(alignment: .center, spacing: 10) {
+            Note(text: l.t("Нажми на сочетание, чтобы поменять его: Esc отменяет, Delete убирает. Системные и ⌘1…9 не меняются. ⌥Space по умолчанию не берем: его занимает ChatGPT.",
+                           "Click a shortcut to change it: Esc cancels, Delete clears it. System shortcuts and ⌘1…9 are fixed. ⌥Space isn't the default because ChatGPT takes it."))
+            Spacer(minLength: 0)
+            CapsuleButton(title: l.t("Сбросить", "Reset to defaults")) {
+                recorder.stop()
+                store.reset()
+            }
+            .disabled(store.allDefault)
+            .opacity(store.allDefault ? 0.5 : 1)
         }
-        Note(text: l.t("⌥Space не используется: его занимает ChatGPT. Изменение действует после перезапуска приложения.",
-                       "⌥Space isn't used because ChatGPT takes it. Changes apply after restarting the app."))
+        .onDisappear { recorder.stop() }
     }
 
-    private func group(_ title: String, _ items: [(String, String)]) -> some View {
+    private var showAppLabel: String {
+        let key = store.label(.showApp)
+        return key.isEmpty ? l.t("сочетанию (не задано)", "a shortcut (none set)") : key
+    }
+
+    private func group(_ title: String, _ rows: [Row]) -> some View {
         GlassSection(spacing: 0) {
             Text(title).font(.system(size: 15, weight: .semibold)).padding(.bottom, 8)
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                 if index > 0 { Divider() }
-                HStack {
-                    Text(item.0)
-                    Spacer()
-                    Text(item.1)
-                        .font(.system(size: 12, design: .monospaced))
-                        .padding(.horizontal, 10)
-                        .frame(minWidth: 44, minHeight: 26)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Ink.chip))
-                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Ink.buttonBorder))
-                        .accessibilityLabel(item.0 + ", " + item.1)
+                switch row {
+                case .action(let action): actionRow(action)
+                case .fixed(let name, let key): fixedRow(name, key)
                 }
-                .frame(minHeight: 40)
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func actionRow(_ action: ShortcutAction) -> some View {
+        let recording = recorder.recording == action
+        let key = store.label(action)
+        let text = recording ? l.t("Нажми сочетание", "Type shortcut") : key.isEmpty ? l.t("нет", "none") : key
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(action.title(l))
+                Spacer()
+                Button { recorder.toggle(action, l: l) } label: {
+                    Keycap(text: text, recording: recording, muted: key.isEmpty && !recording)
+                }
+                .buttonStyle(.plain)
+                .help(recording ? l.t("Esc отменяет, Delete убирает сочетание", "Esc cancels, Delete clears the shortcut")
+                                : l.t("Нажми, чтобы поменять", "Click to change"))
+                .accessibilityLabel(action.title(l) + ", " + (key.isEmpty ? l.t("нет сочетания", "no shortcut") : key))
+                .accessibilityHint(l.t("Записать новое сочетание", "Record a new shortcut"))
+            }
+            if let message = recorder.message, message.action == action {
+                Text(message.text).font(.system(size: 12)).foregroundStyle(Ink.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if action == .showApp, hotKeyTaken, !recording, showHotKey, !key.isEmpty {
+                Text(l.t("\(key) уже занято другим приложением, Agentmeister его не получил.",
+                         "Another app already holds \(key), Agentmeister didn't get it."))
+                    .font(.system(size: 12)).foregroundStyle(Ink.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.vertical, 6)
+        .frame(minHeight: 40)
+    }
+
+    private func fixedRow(_ name: String, _ key: String) -> some View {
+        HStack {
+            Text(name)
+            Spacer()
+            Keycap(text: key, recording: false, muted: true)
+                .help(l.t("Системное сочетание, не меняется", "System shortcut, can't be changed"))
+                .accessibilityLabel(name + ", " + key + ", " + l.t("не меняется", "fixed"))
+        }
+        .frame(minHeight: 40)
+    }
+}
+
+/// Клавиша из макета: моноширинный текст на светлой плашке с тонкой рамкой и тенью снизу.
+private struct Keycap: View {
+    let text: String
+    let recording: Bool
+    let muted: Bool
+
+    private static let fill = Color(light: .white(0.9), dark: .white(0.10))
+    private static let border = Color(light: .black(0.12), dark: .white(0.16))
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, design: .monospaced))
+            .foregroundStyle(muted ? Ink.muted : Ink.text)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 56, minHeight: 28)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Self.fill).shadow(color: .black.opacity(0.12), radius: 0, y: 1))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(recording ? Color.accentColor : Self.border, lineWidth: recording ? 2 : 1))
+            .opacity(muted && !recording ? 0.7 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 

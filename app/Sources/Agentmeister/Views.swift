@@ -147,6 +147,7 @@ struct MainView: View {
 struct SearchCapsule: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var ui: UIState
+    @ObservedObject private var shortcuts = ShortcutStore.shared
     var l: L { L(backend.state.lang) }
 
     var body: some View {
@@ -155,7 +156,7 @@ struct SearchCapsule: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").font(.system(size: 13))
-                Text(l.t("Поиск   ⌘K", "Search   ⌘K"))
+                Text(shortcuts.label(.palette).isEmpty ? l.t("Поиск", "Search") : l.t("Поиск", "Search") + "   " + shortcuts.label(.palette))
                 Spacer(minLength: 0)
             }
             .foregroundStyle(Ink.muted)
@@ -166,7 +167,7 @@ struct SearchCapsule: View {
         .buttonStyle(.plain)
         .glassEffect(.regular.interactive(), in: .capsule)
         .accessibilityLabel(l.t("Поиск по сессиям", "Search sessions"))
-        .help(l.t("Палитра команд, ⌘K", "Command palette, ⌘K"))
+        .shortcutHelp(l.t("Палитра команд", "Command palette"), .palette)
     }
 }
 
@@ -572,7 +573,7 @@ struct DetailView: View {
         if let path = ui.projectScreen {
             ProjectView(path: path)
         } else if workspace.tabs.isEmpty {
-            ContentUnavailableView(l.noTabs, systemImage: "terminal", description: Text(l.noTabsHint))
+            ContentUnavailableView(l.noTabs, systemImage: "terminal", description: Text(l.noTabsHint(ShortcutStore.shared.label(.newSession))))
         } else {
             VStack(spacing: 10) {
                 TabStrip()
@@ -615,7 +616,7 @@ struct TabStrip: View {
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .help(l.newTab + ", ⌘T")
+            .shortcutHelp(l.newTab, .newTab)
             .accessibilityLabel(l.newTab)
         }
         .padding(4)
@@ -659,7 +660,7 @@ struct TabChip: View {
                             .background(Circle().fill(Ink.chip))
                     }
                     .buttonStyle(.plain)
-                    .help(l.closeTab + ", ⌘W")
+                    .shortcutHelp(l.closeTab, .closeTab)
                     .accessibilityLabel(l.closeTab)
                 } else if tab.running && (tab.status == "waiting" || tab.status == "busy") {
                     SessionDot(status: tab.status)
@@ -733,7 +734,7 @@ struct TabMenu: View {
         }
         Divider()
         Button(l.closeTab) { workspace.close(tab.id) }
-            .keyboardShortcut("w", modifiers: .command)
+            .shortcut(.closeTab)
     }
 }
 

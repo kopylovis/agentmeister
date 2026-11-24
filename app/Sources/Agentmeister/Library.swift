@@ -611,7 +611,7 @@ struct OpenLibraryButton: View {
 
     var body: some View {
         Button(title) { openWindow(id: "library") }
-            .keyboardShortcut("o", modifiers: [.command, .shift])
+            .shortcut(.library)
     }
 }
 
