@@ -99,6 +99,17 @@ struct AgentBadge: View {
     var size: CGFloat = 18
 
     var body: some View {
+        if let agent, let icon = AgentIcons.icon(agent) {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: size, height: size)
+        } else {
+            letter
+        }
+    }
+
+    private var letter: some View {
         Group {
             if let agent {
                 Text(agent == .codex ? "X" : "C")
@@ -112,6 +123,27 @@ struct AgentBadge: View {
         }
         .frame(width: size, height: size)
         .background(Circle().fill(agent == nil ? Ink.chip : agent == .codex ? Ink.codexBadgeBg : Ink.claudeBadgeBg))
+    }
+}
+
+/// Иконки агентов из установленных приложений: Claude.app и Codex (у OpenAI это ChatGPT.app с id com.openai.codex).
+/// Нет приложения, остается буква на цветном круге.
+@MainActor
+enum AgentIcons {
+    private static var cache: [LaunchSpec.Agent: NSImage] = [:]
+    private static var missing: Set<LaunchSpec.Agent> = []
+
+    static func icon(_ agent: LaunchSpec.Agent) -> NSImage? {
+        if let image = cache[agent] { return image }
+        if missing.contains(agent) { return nil }
+        let id = agent == .claude ? "com.anthropic.claudefordesktop" : "com.openai.codex"
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else {
+            missing.insert(agent)
+            return nil
+        }
+        let image = NSWorkspace.shared.icon(forFile: url.path)
+        cache[agent] = image
+        return image
     }
 }
 
@@ -215,4 +247,9 @@ struct SessionDot: View {
             withAnimation(.default) { dim = false }
         }
     }
+}
+
+extension Shape where Self == ConcentricRectangle {
+    /// Карточка у края окна: углы концентричны углам самого окна, как у системных панелей macOS 26.
+    static var windowCard: ConcentricRectangle { ConcentricRectangle(corners: .concentric(minimum: 12), isUniform: true) }
 }
