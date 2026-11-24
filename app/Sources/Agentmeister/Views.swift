@@ -78,6 +78,14 @@ struct MainView: View {
         .frame(minWidth: 900, minHeight: 560)
         .modifier(ReopenWindows())
         .onOpenURL { url in
+            // agentmeister://browse?url=<ссылка> от помощника BROWSER во вкладке через proxy
+            if url.host() == "browse" {
+                if let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
+                   let target = URL(string: raw), ["http", "https"].contains(target.scheme?.lowercased() ?? "") {
+                    ProxyBrowser.shared.open(target)
+                }
+                return
+            }
             // agentmeister://focus?tab=<id> из клика по уведомлению
             guard url.host() == "focus",
                   let tab = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "tab" })?.value
