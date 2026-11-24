@@ -223,28 +223,31 @@ struct Sidebar: View {
     var l: L { L(backend.state.lang) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // место под светофор, кнопка свертывания теперь в шапке средней карточки
-            Color.clear
-                .frame(height: 40)
-                .frame(maxWidth: .infinity)
-                .background(WindowDragArea())
-            CollapsibleHeader(title: l.projects, open: $projectsOpen, summary: openSummary, alwaysShowSummary: true)
-                .padding(.horizontal, 18)
-                .padding(.bottom, 4)
+        // список проектов во всю высоту карточки, шапка и режимы лежат поверх него барами: строки уходят под них
+        // и размываются краевым эффектом, а у режимов свой стеклянный фон
+        Group {
             if projectsOpen {
-                // список в своей рамке: прокрутка обрезается по ней и не наезжает на режимы
                 projectList
                     .scrollContentBackground(.hidden)
-                    .background(Ink.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Ink.hairline))
-                    .padding(.horizontal, 10)
+                    .scrollEdgeEffectStyle(.soft, for: .vertical)
             } else {
-                Spacer(minLength: 0)
+                Color.clear
             }
-            SidebarFooter()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaBar(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                // место под светофор, кнопка свертывания теперь в шапке средней карточки
+                Color.clear
+                    .frame(height: 40)
+                    .frame(maxWidth: .infinity)
+                    .background(WindowDragArea())
+                CollapsibleHeader(title: l.projects, open: $projectsOpen, summary: openSummary, alwaysShowSummary: true)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 4)
+            }
+        }
+        .safeAreaBar(edge: .bottom, spacing: 0) { SidebarFooter() }
         .onAppear { expandOpenProjects() }
         .onChange(of: workspace.selected) { expandOpenProjects() }
     }
@@ -367,9 +370,11 @@ struct SidebarFooter: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 18)
-        .padding(.top, 12)
-        .padding(.bottom, 14)
+        .padding(12)
+        // жидкое стекло: проекты, уехавшие под режимы, просвечивают размытыми
+        .glassEffect(.regular, in: .windowCard)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 8)
     }
 }
 
