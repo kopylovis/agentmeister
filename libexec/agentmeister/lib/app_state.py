@@ -448,6 +448,67 @@ def guard_test(command):
     return {"rule": found[0], "why": found[1], "off": found[0] in claude_guard.skipped()}
 
 
+def project(path):
+    """Все для экрана проекта: git, прошлая сессия, бэклог, параллельные задачи, что из инструментов подходит."""
+    import subprocess
+    root = os.path.realpath(os.path.expanduser(path))
+
+    def git(*args):
+        try:
+            return subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+
+    out = {"path": root, "name": os.path.basename(root), "errors": {}}
+    is_git = bool(git("rev-parse", "--git-dir"))
+    out["git"] = None
+    if is_git:
+        commits = []
+        for line in git("log", "-3", "--format=%h%x09%ct%x09%s").splitlines():
+            sha, ts, subject = (line.split("\t", 2) + ["", ""])[:3]
+            commits.append({"sha": sha, "time": int(ts) if ts.isdigit() else None, "subject": subject})
+        out["git"] = {"branch": git("branch", "--show-current") or None,
+                      "dirty": len(git("status", "--porcelain").splitlines()), "commits": commits}
+
+    def last():
+        import claude_brief
+        import claude_search
+        sid, data = claude_brief.last_session(root, root)
+        if not data:
+            return None
+        replies = [m for m in data["msgs"] if m[0] == "claude"]
+        text = " ".join(replies[-1][2].split()) if replies else ""
+        return {"id": sid, "title": claude_search.title(sid, data), "last": epoch(data.get("last")),
+                "size": file_size(data.get("path")), "summary": text[:400]}
+
+    def todos():
+        import mnrh_todo
+        items = mnrh_todo.load(root)
+        opened = [it for it in items if not it["done"]]
+        done = [it for it in items if it["done"]][-3:]
+        return ([{"n": i + 1, "text": it["text"], "done": False} for i, it in enumerate(opened)]
+                + [{"n": None, "text": it["text"], "done": True} for it in done])
+
+    def parallel():
+        import claude_parallel
+        return [{"branch": e["branch"], "task": e.get("task") or "", "ahead": e.get("ahead"), "dirty": e.get("dirty", 0),
+                 "running": bool(e.get("running")), "path": e["path"]} for e in claude_parallel.entries(root)] if is_git else []
+
+    def tools():
+        import release_notes
+        since = release_notes.since_point(root)[0] if is_git else None
+        return {"releaseSince": since if since and not since.startswith("@") else None,
+                "gradle": os.path.exists(os.path.join(root, "gradle", "libs.versions.toml"))}
+
+    for name, fn, empty in (("last", last, None), ("todos", todos, []), ("parallel", parallel, []), ("tools", tools, {})):
+        try:
+            out[name] = fn()
+        except Exception as e:
+            out[name] = empty
+            out["errors"][name] = f"{type(e).__name__}: {e}"
+    return out
+
+
 def lang_setting():
     """Что выбрано в config: ru, en или auto, если язык берется из macOS."""
     value = mnrhlib.read_config().get("lang", "").lower()
@@ -481,7 +542,9 @@ def main(argv):
             print(f"{mnrhlib.lang()} ({lang_setting()})")
             return 0
         return set_lang(argv[1])
-    if argv and argv[0] == "guard-test":
+    if argv and argv[0] == "project" and len(argv) > 1:
+        out = project(argv[1])
+    elif argv and argv[0] == "guard-test":
         out = guard_test(" ".join(argv[1:]))
     elif argv and argv[0] == "search":
         out = search(" ".join(argv[1:]))

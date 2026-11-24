@@ -227,5 +227,28 @@ class Lang(unittest.TestCase):
                 self.assertEqual(f.read(), "projects=~/dev\n")
 
 
+
+class Project(unittest.TestCase):
+    def test_project_reads_git_and_backlog(self):
+        import subprocess
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "demo")
+            os.makedirs(repo)
+            run = lambda *a: subprocess.run(["git", "-C", repo, *a], check=True, capture_output=True)
+            run("init", "-q", "-b", "main")
+            run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "first")
+            open(os.path.join(repo, "new.txt"), "w").close()
+            import mnrh_todo
+            with patch.object(mnrh_todo, "TODO_DIR", os.path.join(d, "todo")):
+                mnrh_todo.add(repo, "write the screen")
+                out = app_state.project(repo)
+        self.assertEqual(out["git"]["branch"], "main")
+        self.assertEqual(out["git"]["dirty"], 1)
+        self.assertEqual(out["git"]["commits"][0]["subject"], "first")
+        self.assertEqual(out["todos"], [{"n": 1, "text": "write the screen", "done": False}])
+        self.assertEqual(out["parallel"], [])
+        self.assertFalse(out["tools"]["gradle"])
+
+
 if __name__ == "__main__":
     unittest.main()
