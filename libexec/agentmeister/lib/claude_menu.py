@@ -191,45 +191,89 @@ def version():
         return "?"
 
 
+def cwd():
+    """Текущая папка. Если ее удалили, os.getcwd() падает, тогда $PWD."""
+    try:
+        return os.getcwd()
+    except OSError:
+        return os.environ.get("PWD") or "?"
+
+
+# Что меню уже узнало о версиях и прокси. При возврате в меню (после переключения режима, Esc из подменю)
+# Describe берет их отсюда: нет «проверяю» и нового claude --version. Команды сбрасывают кэш (forget_facts),
+# поток, начатый до сброса, свой ответ сюда уже не пишет.
+FACTS = {}
+FACTS_GEN = [0]
+
+
+def forget_facts():
+    FACTS.clear()
+    FACTS_GEN[0] += 1
+
+
+def installed_version(path, prefix=""):
+    if not path:
+        return tr("не найден", "not found")
+    # первый запуск только что обновленного claude бывает дольше 2 с; поток фоновый, ждать можно
+    return capture([path, "--version"], timeout=10).strip().removeprefix(prefix) or "?"
+
+
+def humanize_hooks():
+    count = codex_harness.configured_humanize_hooks()
+    return "?" if count is None else tr(f"{count}/{len(codex_harness.HOOK_EVENTS)} настроено",
+                                        f"{count}/{len(codex_harness.HOOK_EVENTS)} configured")
+
+
+def proxy_state():
+    import claude_proxy
+    if not claude_proxy.configured():
+        return tr("не настроен", "not set up")
+    _, kind = claude_proxy.active_node()
+    return tr(f"работает, {kind}", f"running, {kind}") if kind else \
+        tr("настроен, mihomo не запущен", "set up, mihomo not running")
+
+
 class Describe:
-    """Правая панель: описание пункта и что сейчас настроено. Прокси спрашивается в фоне, mihomo может молчать."""
+    """Правая панель: описание пункта и что сейчас настроено. Версии и прокси спрашиваются в фоне, mihomo может
+    молчать; ответы остаются в FACTS до следующей команды."""
+    VERSIONS = ("claude", "codex", "promptsill", "hooks")
 
     def __init__(self, state):
         self.state = state
-        self.proxy = tr("проверяю", "checking")
-        self.claude = self.codex = self.promptsill = self.hooks = self.proxy
         self.fresh = threading.Event()
-        threading.Thread(target=self.ask_proxy, daemon=True).start()
-        threading.Thread(target=self.ask_versions, daemon=True).start()
+        checking = tr("проверяю", "checking")
+        for name in self.VERSIONS + ("proxy",):
+            setattr(self, name, FACTS.get(name, checking))
+        if "proxy" not in FACTS:
+            threading.Thread(target=self.ask_proxy, daemon=True).start()
+        if any(name not in FACTS for name in self.VERSIONS):
+            threading.Thread(target=self.ask_versions, daemon=True).start()
+
+    def ask(self, probes):
+        """Узнать значения по очереди. Ошибка одного (exec format error, не UTF-8 в ответе) дает «?», а не
+        вечное «проверяю» и трейсбек потока поверх рамки."""
+        gen = FACTS_GEN[0]
+        try:
+            for name, probe in probes:
+                try:
+                    value = probe()
+                except Exception:
+                    value = "?"
+                setattr(self, name, value)
+                if gen == FACTS_GEN[0]:
+                    FACTS[name] = value
+        finally:
+            self.fresh.set()
 
     def ask_versions(self):
-        def installed_version(path, prefix=""):
-            if not path:
-                return tr("не найден", "not found")
-            return capture([path, "--version"], timeout=2).strip().removeprefix(prefix) or "?"
-
         claude = shutil.which(os.environ.get("MNRH_CLAUDE_BIN", "claude"))
-        self.claude = installed_version(claude).removesuffix(" (Claude Code)")
-        self.codex = installed_version(codex_harness.executable(), "codex-cli ")
-        self.promptsill = installed_version(promptsill_path())
-        count = codex_harness.configured_humanize_hooks()
-        self.hooks = "?" if count is None else tr(f"{count}/{len(codex_harness.HOOK_EVENTS)} настроено",
-                                                  f"{count}/{len(codex_harness.HOOK_EVENTS)} configured")
-        self.fresh.set()
+        self.ask([("claude", lambda: installed_version(claude).removesuffix(" (Claude Code)")),
+                  ("codex", lambda: installed_version(codex_harness.executable(), "codex-cli ")),
+                  ("promptsill", lambda: installed_version(promptsill_path())),
+                  ("hooks", humanize_hooks)])
 
     def ask_proxy(self):
-        try:
-            import claude_proxy
-            if not claude_proxy.configured():
-                text = tr("не настроен", "not set up")
-            else:
-                _, kind = claude_proxy.active_node()
-                text = tr(f"работает, {kind}", f"running, {kind}") if kind else \
-                    tr("настроен, mihomo не запущен", "set up, mihomo not running")
-        except Exception:
-            text = "?"
-        self.proxy = text
-        self.fresh.set()
+        self.ask([("proxy", proxy_state)])
 
     def dirty(self):
         if not self.fresh.is_set():
@@ -253,7 +297,7 @@ class Describe:
                  ("Codex", self.codex)]
         if key.startswith("--harness codex "):
             facts += [("promptsill", self.promptsill), (tr("Хуки humanize", "Humanize hooks"), self.hooks)]
-        facts += [(tr("Папка", "Folder"), tilde(os.getcwd())),
+        facts += [(tr("Папка", "Folder"), tilde(cwd())),
                   (tr("Проекты", "Projects"), tilde(DEV)),
                   (tr("Режимы", "Modes"), ", ".join(on) if on else tr("все выключены", "all off")),
                   (tr("Прокси", "Proxy"), self.proxy)]
@@ -326,6 +370,7 @@ def shown(args):
 
 def launch(screen, args):
     """Вернуть обычный терминал, запустить agentmeister args и спросить, вернуться ли в меню."""
+    forget_facts()  # команда могла обновить Claude Code, Codex или прокси
     screen.close()
     print(dim(f"$ agentmeister {shown(args)}"), flush=True)
     return again(run(args))
@@ -334,6 +379,7 @@ def launch(screen, args):
 def framed(screen, args):
     """Команду в рамке на этом же экране, без мигания. Ответ: вернуться ли в меню. При выходе по q вывод
     остается в обычном терминале, его можно прокрутить."""
+    forget_facts()
     title = f"agentmeister {shown(args)}"
     installing = args[:1] == ["--harness"] and args[2:] == ["install"]
     code, out = run_framed(screen, [LOCAL_CLI] + args, title, show_elapsed=installing)
@@ -415,8 +461,8 @@ def harness_options():
 def saved_codex(screen):
     from codex_sessions import session_list
 
-    cwd = os.getcwd()
-    found = session_list(cwd)
+    folder = cwd()
+    found = session_list(folder)
     if not found:
         return tr("В этой папке нет сессий Codex", "No Codex sessions in this folder")
     items, describe, title, sessions = found
@@ -426,7 +472,7 @@ def saved_codex(screen):
         if picked is None:
             return None
         at = picked
-        state = open_flow.flow(screen, cwd, ask_session=False, harness="codex")
+        state = open_flow.flow(screen, folder, ask_session=False, harness="codex")
         if state is not None:
             state["sid"] = sessions[picked]["id"]
             return launch(screen, open_flow.command(state, "codex"))
