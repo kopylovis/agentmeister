@@ -27,6 +27,14 @@ enum LoginEnvironment {
         return env
     }
 
+    /// restart_job.py рядом с тем agentmeister, который запускают вкладки. Нет его, и вкладка без перезапуска.
+    static let restartJob: String? = {
+        let real = (agentmeister as NSString).resolvingSymlinksInPath
+        let root = ((real as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+        let job = (root as NSString).appendingPathComponent("libexec/agentmeister/lib/restart_job.py")
+        return FileManager.default.fileExists(atPath: job) ? job : nil
+    }()
+
     /// Полный путь к agentmeister из PATH пользователя.
     static var agentmeister: String {
         let path = shared["PATH"] ?? "/usr/bin:/bin"
