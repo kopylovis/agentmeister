@@ -645,14 +645,9 @@ struct AddHostRunSheet: View {
             }
             HStack {
                 Spacer()
-                Button(l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button {
-                    add()
-                } label: {
-                    if busy { ProgressView().controlSize(.small) } else { Text(l.t("Добавить", "Add")) }
-                }
-                .buttonStyle(.glassProminent)
-                .keyboardShortcut(.defaultAction)
+                PillButton(title: l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                PillButton(title: l.t("Добавить", "Add"), prominent: true, busy: busy) { add() }
+                    .keyboardShortcut(.defaultAction)
                 .disabled(busy || name.isEmpty || folder.isEmpty || shellWords(command).isEmpty)
             }
         }
