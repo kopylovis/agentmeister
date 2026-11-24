@@ -22,6 +22,7 @@ struct HeaderSwitch: View {
 /// справа humanize, buildlog и lid.
 struct ModesPane: View {
     @EnvironmentObject var backend: Backend
+    @EnvironmentObject var workspace: Workspace
     let data: SettingsData?
     let reload: () async -> Void
     @State private var test = "git push --force origin main"
@@ -149,7 +150,9 @@ struct ModesPane: View {
 
     private func check() {
         let command = test
-        Task { result = await Backend.json(["app-state", "guard-test", command]) }
+        // проверяем как будто из проекта, иначе относительный rm -r выглядит как удаление в корне диска
+        let cwd = workspace.current?.spec.projectPath ?? backend.state.projectsDir
+        Task { result = await Backend.json(["app-state", "guard-test", "--cwd", cwd.isEmpty ? NSHomeDirectory() : cwd, command]) }
     }
 
     private func describe(_ r: GuardTest) -> String {
