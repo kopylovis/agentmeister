@@ -31,6 +31,10 @@ class Quit(Cancel):
     """Ctrl+C: выйти совсем, а не на шаг назад, как Esc."""
 
 
+class Reshape(Exception):
+    """Окно поменяло размер так, что этому виду меню (рамки или список) пора смениться другим."""
+
+
 # нажатия, пришедшие одной пачкой после Enter или Esc: их получит следующее меню на том же экране
 PENDING = []
 UNFINISHED = re.compile(rb"\x1b(\[[0-9;]*|O)?$")
@@ -148,6 +152,7 @@ class Menu:
     marks = None
     esc = None
     numbers = True
+    keep = None  # keep(): подходит ли еще окно этому виду меню; нет, и run() бросает Reshape
 
     def __init__(self, tty_fd, items, title, label, start, default):
         self.fd = tty_fd
@@ -359,6 +364,8 @@ class Menu:
                 keys = split_keys(self.read_key())
             else:
                 if self.stale():
+                    if self.keep is not None and not self.keep():
+                        raise Reshape
                     self.draw()
                 continue
             if self.handle_batch(keys):
@@ -897,23 +904,42 @@ class Screen:
                    f"↑↓ move · Enter · a number or letters to jump · {tab}Esc {back}") if numbers else
                 tr(f"↑↓ выбрать · Enter · буквы ищут · {tab}Esc {back}",
                    f"↑↓ move · Enter · type to search · {tab}Esc {back}"))
-        if roomy(self.fd):
-            menu = Panel(self.fd, items, top or brand(), default, describe,
-                         (heading(title), tr("Описание", "Description")), hint, start=start, numbers=numbers)
-        else:
-            # окно меньше 60 на 14: рамки не влезут, старый список в строку на том же экране
-            os.write(self.fd, b"\x1b[H\x1b[2J")
-            menu = Menu(self.fd, items, heading(title), "", start, default)
-            menu.esc = back
-        if marked is not None:
-            menu.marks = set(marked)
-            menu.summary = summary
+        def panel(at):
+            return Panel(self.fd, items, top or brand(), at, describe, (heading(title), tr("Описание", "Description")),
+                         hint, start=start, numbers=numbers)
+
         try:
-            return menu.run()
+            return self.run_sized(panel, lambda at: self.plain(items, title, at, start, back), default, marked, summary)
         except Quit:
             raise
         except Cancel:
             return None
+
+    def plain(self, items, title, default, start=1, back=None):
+        """Список в строку на этом экране: для окна меньше 60 на 14, где рамки не влезут."""
+        write_all(self.fd, "\x1b[H\x1b[2J")
+        menu = Menu(self.fd, items, heading(title), "", start, default)
+        menu.esc = back or tr("назад", "back")
+        return menu
+
+    def run_sized(self, panel, plain, default=0, marked=None, summary=None):
+        """Меню в рамках, пока окно не меньше roomy(), иначе список; panel(at) и plain(at) их делают. Окно
+        сжалось или выросло: меню сменяется другим видом с тем же выбранным пунктом, поиском и отметками."""
+        at, query, marks = default, "", None if marked is None else set(marked)
+        while True:
+            big = roomy(self.fd)
+            menu = panel(at) if big else plain(at)
+            menu.keep = (lambda: roomy(self.fd)) if big else (lambda: not roomy(self.fd))
+            if marks is not None:
+                menu.marks, menu.summary = marks, summary
+            if query:
+                menu.query = query
+                menu.refilter()
+                menu.sel = at if at in menu.choices() else menu.sel
+            try:
+                return menu.run()
+            except Reshape:
+                at, query, marks = menu.sel, menu.query, menu.marks
 
 
 class Output:
