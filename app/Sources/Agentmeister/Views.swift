@@ -397,17 +397,24 @@ struct TabChip: View {
             workspace.selected = tab.id
         } label: {
             HStack(spacing: 7) {
-                Text(tab.spec.agent == .codex ? "X" : "C")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .frame(width: 18, height: 18)
-                    .background(Circle().fill((tab.spec.agent == .codex ? Color.blue : Color.orange).opacity(0.22)))
+                Group {
+                    if tab.spec.utility != nil {
+                        Image(systemName: "terminal").font(.system(size: 9, weight: .bold))
+                    } else {
+                        Text(tab.spec.agent == .codex ? "X" : "C").font(.system(size: 10, weight: .bold, design: .monospaced))
+                    }
+                }
+                .frame(width: 18, height: 18)
+                .background(Circle().fill((tab.spec.utility != nil ? Color.secondary : tab.spec.agent == .codex ? Color.blue : Color.orange).opacity(0.22)))
                 Text(tab.title)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: 200, alignment: .leading)
-                Text(tab.spec.direct ? l.direct : l.proxy)
-                    .font(.caption)
-                    .foregroundStyle(tab.spec.direct ? Color.orange : Color.teal)
+                if tab.spec.proxied || tab.spec.utility == nil {
+                    Text(tab.spec.proxied ? l.proxy : l.direct)
+                        .font(.caption)
+                        .foregroundStyle(tab.spec.proxied ? Color.teal : Color.orange)
+                }
                 if hover {
                     Button {
                         workspace.close(tab.id)
@@ -456,12 +463,14 @@ struct InfoBar: View {
             Text(tilde(tab.spec.projectPath))
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(.secondary)
-            Text(tab.spec.direct ? l.direct : (l.proxy + " · sandbox-exec"))
+            let route = tab.spec.proxied ? l.proxy + " · sandbox-exec" : tab.spec.utility != nil ? l.t("команда agentmeister", "agentmeister command") : l.direct
+            let tint: Color = tab.spec.proxied ? .teal : tab.spec.utility != nil ? .secondary : .orange
+            Text(route)
                 .font(.caption)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Capsule().fill((tab.spec.direct ? Color.orange : Color.teal).opacity(0.15)))
-                .foregroundStyle(tab.spec.direct ? Color.orange : Color.teal)
+                .background(Capsule().fill(tint.opacity(0.15)))
+                .foregroundStyle(tint)
             if tab.running {
                 Text(l.statusTitle(tab.status))
                     .font(.caption)
@@ -565,8 +574,8 @@ struct TabInspector: View {
             Section {
                 Text(saved?.title.isEmpty == false ? saved!.title : tab.title)
                     .font(.headline)
-                row(l.agent, tab.spec.agent == .codex ? "Codex" : "Claude Code")
-                row(l.route, tab.spec.direct ? l.directly : l.viaProxy)
+                row(l.agent, tab.spec.utility != nil ? "agentmeister" : tab.spec.agent == .codex ? "Codex" : "Claude Code")
+                row(l.route, tab.spec.proxied ? l.viaProxy : l.directly)
                 row(l.status, tab.running ? l.statusTitle(tab.status) : l.exited)
                 row(l.folder, tilde(tab.spec.projectPath), truncate: .head)
                 if let branch = saved?.branch, !branch.isEmpty {
