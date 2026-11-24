@@ -308,6 +308,56 @@ class Layout(unittest.TestCase):
         _, lines = self.frame(120, title=lambda side: f"side={side}")
         self.assertIn("side=True", lines[0])
 
+    def test_scroll_marks_sit_on_the_border(self):
+        lines = [ANSI.sub("", line) for line in menu.box(" t ", ["row"], 20, 4, True, "↑ 3", "↓ 5")]
+        self.assertEqual(lines[0], "╭─ t ──────── ↑ 3 ─╮")
+        self.assertEqual(lines[-1], "╰──────────── ↓ 5 ─╯")
+        self.assertEqual({menu.width(line) for line in lines}, {20})
+
+    def test_selected_row_is_not_covered_by_scroll_mark(self):
+        out = []
+
+        class P(menu.Panel):
+            def size(self):
+                return 8, 60
+
+            def write(self, s):
+                out.append(s)
+
+        items = [(f"k{i}", f"row {i} " + "x" * 40) for i in range(20)]
+        p = P(0, items, "t", 19, None, ("L", "R"), "")
+        p.draw()
+        lines = ANSI.sub("", out[-1]).split("\r\n")
+        self.assertIn("↑ 17", lines[1])
+        self.assertIn("row 19 " + "x" * 40, lines[-3])
+        self.assertNotIn("↓", "".join(lines))
+
+    def test_low_window_drops_title_then_hint(self):
+        self.assertEqual(menu.layout_rows(20), (17, True, True))
+        self.assertEqual(menu.layout_rows(8), (5, True, True))
+        self.assertEqual(menu.layout_rows(7), (5, False, True))
+        self.assertEqual(menu.layout_rows(6), (5, False, False))
+        for rows in range(6, 20):
+            h, title, hint = menu.layout_rows(rows)
+            self.assertLessEqual(h + title + hint, rows - 1)
+
+    def test_fallback_list_keeps_title_on_screen(self):
+        out = []
+
+        class M(menu.Menu):
+            def size(self):
+                return 12, 50
+
+            def write(self, s):
+                out.append(s)
+
+        m_ = M(0, [(f"k{i}", f"item {i}") for i in range(40)], "Title", "", 1, 20)
+        m_.draw()
+        lines = out[-1].split("\r\n")
+        self.assertLessEqual(len(lines), 11)
+        self.assertIn("Title", lines[0])
+        self.assertIn("↑", lines[1])
+
     def test_note_markup(self):
         self.assertEqual([ANSI.sub("", x) for x in menu.render_note(r"Name\npath\n# commits\nfix")],
                          ["Name", "path", "COMMITS", "fix"])
