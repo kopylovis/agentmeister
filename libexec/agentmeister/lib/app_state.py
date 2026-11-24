@@ -226,17 +226,118 @@ def usage(days=7):
             "daily": [{"day": k, "active": v} for k, v in sorted(daily.items())]}
 
 
+def agent_info(binary):
+    """Путь и версия агента. Версию спрашиваем у самого бинарника, как agentmeister doctor."""
+    import shutil
+    import subprocess
+    path = shutil.which(binary)
+    if not path:
+        return {"installed": False, "path": None, "version": None}
+    try:
+        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=10).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        out = []
+    version = next((w for w in out if w[:1].isdigit()), None)
+    return {"installed": True, "path": path, "version": version}
+
+
+def settings():
+    """Все, что показывает окно настроек: уведомления, Telegram, телефон, guard, host-run, proxy, агенты."""
+    cfg = mnrhlib.read_config()
+    out = {"errors": {}}
+
+    def part(name, fn):
+        try:
+            out[name] = fn()
+        except Exception as e:  # окно настроек показывает остальное и причину
+            out[name] = None
+            out["errors"][name] = f"{type(e).__name__}: {e}"
+
+    def notify():
+        import ntfy_alert
+        import telegram
+        try:
+            after = int(cfg.get("notify_after", 20))
+        except ValueError:
+            after = 20
+        try:
+            away = int(cfg.get("telegram_away", telegram.DEFAULT_AWAY))
+        except ValueError:
+            away = telegram.DEFAULT_AWAY
+        return {"on": cfg.get("notify", "on") != "off", "after": after, "sound": cfg.get("notify_sound", "on") != "off",
+                "telegram": {"connected": bool(cfg.get("telegram_chat")), "bot": cfg.get("telegram_bot") or None,
+                             "when": "always" if cfg.get("telegram_when") == "always" else "away", "away": away,
+                             "approve": cfg.get("telegram_approve", "off") == "on"},
+                "phone": {"mode": ntfy_alert.phone_mode(), "configured": ntfy_alert.configured()}}
+
+    def guard():
+        import claude_guard
+        skipped = claude_guard.skipped()
+        return {"on": claude_guard.enabled() if hasattr(claude_guard, "enabled") else cfg.get("guard", "on") != "off",
+                "rules": [{"id": rid, "text": text, "on": rid not in skipped} for rid, text in claude_guard.RULES.items()]}
+
+    def host_run():
+        import host_run as hr
+        try:
+            info = hr.ping()
+        except Exception:
+            info = None
+        try:
+            rules = hr.load()
+        except Exception as e:
+            rules, out["errors"]["hostRunList"] = {}, str(e)
+        cmds = [{"name": name, "cwd": r.get("cwd"), "run": r.get("run"), "args": bool(r.get("args"))}
+                for name, r in sorted(rules.items())]
+        return {"running": bool(info), "pid": (info or {}).get("pid"), "version": (info or {}).get("version"),
+                "commands": cmds}
+
+    def proxy_settings():
+        import claude_proxy
+        base = proxy()
+        base["country"] = claude_proxy.setting("country") or None if claude_proxy.configured() else None
+        return base
+
+    part("notify", notify)
+    part("guard", guard)
+    part("hostRun", host_run)
+    part("proxy", proxy_settings)
+    part("modes", modes)
+    part("claude", lambda: agent_info("claude"))
+    part("codex", lambda: agent_info("codex"))
+    return out
+
+
+def doctor():
+    """Проверки agentmeister doctor данными: группа, уровень ok, warn или bad, текст."""
+    import claude_doctor
+    rows = []
+    for check in claude_doctor.CHECKS:
+        name = check.__name__[6:]
+        try:
+            found = check()
+        except Exception as e:
+            found = [("bad", f"{name}: проверка упала ({e!r})")]
+        rows += [{"check": name, "level": level, "text": text} for level, text in found]
+    return {"rows": rows}
+
+
 def main(argv):
     if argv and argv[0] in ("-h", "--help", "help"):
         print("agentmeister app-state                состояние для десктопного Agentmeister в JSON\n"
               "agentmeister app-state search <слова>  поиск по всем сессиям\n"
               "agentmeister app-state read <id>       последние сообщения сессии\n"
-              "agentmeister app-state usage [дней]    статистика, 0 значит за все время")
+              "agentmeister app-state usage [дней]    статистика, 0 значит за все время\n"
+              "agentmeister app-state settings        что показывает окно настроек\n"
+              "agentmeister app-state doctor          проверки agentmeister doctor")
         return 0
     if argv and argv[0] == "search":
         out = search(" ".join(argv[1:]))
     elif argv and argv[0] == "read" and len(argv) > 1:
         out = read(argv[1])
+    elif argv and argv[0] == "settings":
+        out = settings()
+    elif argv and argv[0] == "doctor":
+        out = doctor()
     elif argv and argv[0] == "usage":
         out = usage(int(argv[1]) if len(argv) > 1 and argv[1].isdigit() else 7)
     elif argv:

@@ -159,5 +159,37 @@ class Usage(unittest.TestCase):
         self.assertEqual(out["daily"][0]["active"], 3600.0)
 
 
+class SettingsAndDoctor(unittest.TestCase):
+    def test_doctor_rows_keep_going_after_a_crash(self):
+        import claude_doctor
+
+        def check_ok():
+            return [("ok", "все хорошо")]
+
+        def check_boom():
+            raise RuntimeError("boom")
+
+        with patch.object(claude_doctor, "CHECKS", [check_ok, check_boom]):
+            rows = app_state.doctor()["rows"]
+        self.assertEqual(rows[0], {"check": "ok", "level": "ok", "text": "все хорошо"})
+        self.assertEqual(rows[1]["level"], "bad")
+        self.assertIn("boom", rows[1]["text"])
+
+    def test_settings_report_a_broken_part_and_keep_the_rest(self):
+        import claude_guard
+        with patch.object(app_state, "agent_info", return_value={"installed": False, "path": None, "version": None}), \
+             patch.object(app_state, "proxy", side_effect=RuntimeError("no proxy")), \
+             patch.object(app_state, "modes", return_value={"guard": True}), \
+             patch.object(claude_guard, "skipped", return_value={"destructive"}):
+            out = app_state.settings()
+        self.assertIsNone(out["proxy"])
+        self.assertIn("no proxy", out["errors"]["proxy"])
+        rules = {r["id"]: r["on"] for r in out["guard"]["rules"]}
+        self.assertFalse(rules["destructive"])
+        self.assertTrue(rules["secrets-read"])
+        self.assertIn("after", out["notify"])
+        self.assertFalse(out["claude"]["installed"])
+
+
 if __name__ == "__main__":
     unittest.main()

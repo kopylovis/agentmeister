@@ -39,6 +39,12 @@ struct AgentmeisterApp: App {
                 .environmentObject(ui)
         }
         .defaultSize(width: 980, height: 760)
+        Settings {
+            SettingsView()
+                .environmentObject(backend)
+                .environmentObject(workspace)
+                .environmentObject(ui)
+        }
         .commands {
             let l = L(backend.state.lang)
             CommandGroup(replacing: .newItem) {
