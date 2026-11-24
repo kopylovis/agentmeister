@@ -381,14 +381,16 @@ def matches_project(data, project):
 K1, B = 1.2, 0.75
 
 
-def search(query, project=None, days=None, roles=None, limit=8, exclude=None):
+class Found:
+    """Результат поиска без текста для людей: его печатает search, а приложение получает JSON."""
+
+    def __init__(self, q, idf, df, scope, chosen, exact):
+        self.q, self.idf, self.df, self.scope, self.chosen, self.exact = q, idf, df, scope, chosen, exact
+
+
+def find_sessions(q, project=None, days=None, roles=None, exclude=None):
     """BM25 по сообщениям: все слова в одном сообщении (или хотя бы половина, если так ничего нет),
-    сессии по сумме трёх лучших сообщений с небольшой прибавкой за свежесть."""
-    if not query.strip():
-        return "Пустой запрос: дай хотя бы одно слово.", True
-    q = Query(query)
-    if not q.terms:
-        return f"В запросе «{query}» одни служебные слова (как, мы, в…), а они не индексируются. Дай слова по теме.", True
+    сессии по сумме трёх лучших сообщений с небольшой прибавкой за свежесть. q уже не пустой."""
     idx = refresh()
     exclude = set(exclude or [])
     scope = []
@@ -436,6 +438,17 @@ def search(query, project=None, days=None, roles=None, limit=8, exclude=None):
                 bucket.append((top * fresh, sid, data, [i for _, i in found]))
     exact = bool(hits)
     chosen = sorted(hits or partial, key=lambda x: (-x[0], x[1]))
+    return Found(q, idf, df, scope, chosen, exact)
+
+
+def search(query, project=None, days=None, roles=None, limit=8, exclude=None):
+    if not query.strip():
+        return "Пустой запрос: дай хотя бы одно слово.", True
+    q = Query(query)
+    if not q.terms:
+        return f"В запросе «{query}» одни служебные слова (как, мы, в…), а они не индексируются. Дай слова по теме.", True
+    r = find_sessions(q, project, days, roles, exclude)
+    q, idf, df, scope, chosen, exact = r.q, r.idf, r.df, r.scope, r.chosen, r.exact
     where = (f" в проекте «{project}»" if project else "") + (f" за {days} дн." if days else "")
     if not chosen:
         missing = [q.words[x] for x in q.terms if not df[x]]
