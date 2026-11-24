@@ -30,6 +30,8 @@ GRACE = 120  # перезапуск сессии с claude update бывает �
 POLL = 15
 LOW_BATTERY = 15
 SESSION = re.compile(r"^caffeinate(\s+-\S+)*\s+\S*/?claude(\s|$)")
+# сторож agentmeister (claude_lid.py watch) или mnrh (lid.py watch): pid-файл у них общий
+WATCHER = re.compile(r"(^|[\s/])(claude_)?lid\.py\s+watch(\s|$)")
 
 
 def ready():
@@ -64,14 +66,35 @@ def battery():
     return "AC Power" in out, int(pct.group(1)) if pct else None
 
 
+def is_watcher(pid):
+    """Под этим pid сейчас идет сторож, а не чужой процесс, которому pid достался после сбоя или перезагрузки."""
+    return WATCHER.search(run(["ps", "-o", "command=", "-p", str(pid)]).strip()) is not None
+
+
 def watcher_pid():
+    """pid живого сторожа из lid.pid. Устаревший файл (процесса нет или pid уже чужой) удаляется."""
     try:
         with open(PIDFILE) as f:
             pid = int(f.read().strip())
-        os.kill(pid, 0)
-        return pid
     except (OSError, ValueError):
         return None
+    try:
+        os.kill(pid, 0)
+        alive = True
+    except PermissionError:
+        alive = True  # процесс есть, но не наш пользователь: проверит командная строка
+    except OSError:
+        alive = False
+    if alive and is_watcher(pid):
+        return pid
+    try:
+        with open(PIDFILE) as f:
+            same = f.read().strip() == str(pid)  # новый сторож мог уже записать свой pid
+        if same:
+            os.remove(PIDFILE)
+    except OSError:
+        pass
+    return None
 
 
 def log(text):

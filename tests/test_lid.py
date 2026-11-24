@@ -1,6 +1,8 @@
 import os
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -38,6 +40,59 @@ class Lid(unittest.TestCase):
         self.assertTrue(lid.disabled())
         lid.run = lambda cmd, **kw: " hibernatemode 3\n"
         self.assertFalse(lid.disabled())
+
+    def pidfile(self, pid):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        path = os.path.join(d.name, "lid.pid")
+        with open(path, "w") as f:
+            f.write(str(pid))
+        patcher = mock.patch.object(lid, "PIDFILE", path)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return path
+
+    def test_watcher_pid_trusts_only_our_watcher(self):
+        path = self.pidfile(os.getpid())  # живой pid
+        for cmd in ("/usr/bin/python3 /x/libexec/agentmeister/lib/claude_lid.py watch",
+                    "/usr/bin/python3 /Users/me/mnrh-utils/libexec/mnrh/lib/lid.py watch"):
+            lid.run = lambda c, _cmd=cmd, **kw: _cmd + "\n"
+            self.assertEqual(lid.watcher_pid(), os.getpid())
+            self.assertTrue(os.path.exists(path))
+
+    def test_reused_pid_is_stale_and_removed(self):
+        path = self.pidfile(os.getpid())
+        seen = []
+        lid.run = lambda c, **kw: seen.append(c) or "/Applications/Safari.app/Contents/MacOS/Safari\n"
+        self.assertIsNone(lid.watcher_pid())
+        self.assertEqual(seen[0][:4], ["ps", "-o", "command=", "-p"])
+        self.assertFalse(os.path.exists(path))
+
+    def test_dead_pid_is_stale_and_removed(self):
+        path = self.pidfile(999999)
+        lid.run = lambda c, **kw: ""
+        with mock.patch.object(lid.os, "kill", side_effect=ProcessLookupError):
+            self.assertIsNone(lid.watcher_pid())
+        self.assertFalse(os.path.exists(path))
+
+    def test_release_does_not_signal_foreign_process(self):
+        self.pidfile(os.getpid())
+        lid.run = lambda c, **kw: "/usr/sbin/cupsd -l\n"
+        kills = []
+        with mock.patch.object(lid.os, "kill", side_effect=lambda pid, sig: kills.append(sig)), \
+                mock.patch.object(lid, "disabled", return_value=False):
+            lid.release()
+        self.assertNotIn(lid.signal.SIGTERM, kills)
+
+    def test_keep_starts_watcher_over_stale_pid(self):
+        path = self.pidfile(os.getpid())
+        lid.run = lambda c, **kw: "/bin/zsh -l\n"
+        with mock.patch.object(lid, "switched_on", return_value=True), \
+                mock.patch.object(lid, "ready", return_value=True), \
+                mock.patch.object(lid.subprocess, "Popen") as popen:
+            self.assertTrue(lid.keep())
+        popen.assert_called_once()
+        self.assertFalse(os.path.exists(path))
 
     def test_unknown_command(self):
         self.assertEqual(lid.main(["nope"]), 2)
