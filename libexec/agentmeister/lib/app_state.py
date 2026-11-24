@@ -177,16 +177,68 @@ def read(ref, tail=12, chars=700):
                          for i, (role, ts, text) in enumerate(msgs[start:], start)]}
 
 
+def usage(days=7):
+    """Статистика как у agentmeister usage, но числами: по проектам, по моделям, тяжелые сессии и активное время
+    по дням для графика. days=0 значит за все время."""
+    import claude_search
+    import claude_usage
+    rows = claude_usage.collect(days)
+    since = claude_usage.period_start(days) if days else None
+    total = [0] * 5
+    by_project, by_model = {}, {}
+    for r in rows:
+        home = claude_search.home_of(r["data"])
+        name = claude_search.folder(r["data"])
+        p = by_project.setdefault(name, {"name": name, "home": home, "sessions": 0, "active": 0.0, "tokens": [0] * 5})
+        p["sessions"] += 1
+        p["active"] += r["active"]
+        for model, row in r["models"].items():
+            m = by_model.setdefault(model, {"name": model, "sessions": 0, "tokens": [0] * 5})
+            m["sessions"] += 1
+            for i in range(5):
+                m["tokens"][i] += row[i]
+                p["tokens"][i] += row[i]
+                total[i] += row[i]
+    # активное время по дням: промежутки работы режутся по местной полуночи
+    daily = {}
+    for r in rows:
+        for a, b in r["data"]["spans"]:
+            if since:
+                a = max(a, since)
+            while a < b:
+                lt = time.localtime(a)
+                midnight = time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + 1, 0, 0, 0, 0, 0, -1))
+                end = min(b, midnight)
+                day = time.strftime("%Y-%m-%d", lt)
+                daily[day] = daily.get(day, 0.0) + (end - a)
+                a = end
+    heavy = []
+    for r in sorted(rows, key=lambda r: -r["total"])[:8]:
+        d = r["data"]
+        heavy.append({"id": r["sid"], "title": d.get("custom") or d.get("ai") or d.get("prompt") or "",
+                      "project": claude_search.folder(d), "active": r["active"], "last": r["last"],
+                      "total": r["total"], "output": sum(m[1] for m in r["models"].values())})
+    return {"days": days, "since": since, "sessions": len(rows), "active": sum(r["active"] for r in rows),
+            "requests": total[4], "tokens": total[:4],
+            "projects": sorted(by_project.values(), key=lambda p: -p["active"]),
+            "models": sorted(by_model.values(), key=lambda m: -sum(m["tokens"][:4])),
+            "heavy": heavy,
+            "daily": [{"day": k, "active": v} for k, v in sorted(daily.items())]}
+
+
 def main(argv):
     if argv and argv[0] in ("-h", "--help", "help"):
         print("agentmeister app-state                состояние для десктопного Agentmeister в JSON\n"
               "agentmeister app-state search <слова>  поиск по всем сессиям\n"
-              "agentmeister app-state read <id>       последние сообщения сессии")
+              "agentmeister app-state read <id>       последние сообщения сессии\n"
+              "agentmeister app-state usage [дней]    статистика, 0 значит за все время")
         return 0
     if argv and argv[0] == "search":
         out = search(" ".join(argv[1:]))
     elif argv and argv[0] == "read" and len(argv) > 1:
         out = read(argv[1])
+    elif argv and argv[0] == "usage":
+        out = usage(int(argv[1]) if len(argv) > 1 and argv[1].isdigit() else 7)
     elif argv:
         print(f"agentmeister app-state: не знаю {argv[0]}", file=sys.stderr)
         return 2
