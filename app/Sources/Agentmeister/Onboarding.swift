@@ -25,6 +25,8 @@ struct OnboardingView: View {
     @State private var country = ""
     @State private var screenAllowed = CGPreflightScreenCaptureAccess()
     @State private var loginItem = SMAppService.mainApp.status == .enabled
+    /// Агент, в которого сейчас входят через диалог входа.
+    @State private var signingIn: LaunchSpec.Agent?
 
     var l: L { L(backend.state.lang) }
 
@@ -126,6 +128,9 @@ struct OnboardingView: View {
         .task { await reload() }
         .onChange(of: step) { Task { await reload() } }
         .onDisappear { console?.terminate() }
+        .sheet(item: $signingIn, onDismiss: { Task { await reload() } }) { agent in
+            AuthDialog(agent: agent)
+        }
     }
 
     private func title(_ s: Step) -> String {
@@ -336,7 +341,8 @@ struct OnboardingView: View {
                 .frame(height: 26)
                 .background(Capsule().fill(Ink.tealChip))
             } else {
-                Text(l.t("Сначала настрой proxy на прошлом шаге: вход идет через него.", "Set up the proxy on the previous step first: sign-in goes through it."))
+                Text(l.t("Сначала настрой proxy на прошлом шаге: вход идет через него. Напрямую можно войти, только выбрав это в окне входа.",
+                         "Set up the proxy on the previous step first: sign-in goes through it. Signing in directly needs picking Direct in the sign-in window."))
                     .font(.system(size: 12)).foregroundStyle(Ink.amber)
             }
             signInCard(.claude, data?.claude, ready: ready)
@@ -347,7 +353,6 @@ struct OnboardingView: View {
     }
 
     private func signInCard(_ agent: LaunchSpec.Agent, _ info: SettingsData.Agent?, ready: Bool) -> some View {
-        let login = agent == .claude ? ["claude", "auth", "login"] : ["codex", "login"]
         let logout = agent == .claude ? ["claude", "auth", "logout"] : ["codex", "logout"]
         return VStack(alignment: .leading, spacing: 8) {
             card {
@@ -377,9 +382,9 @@ struct OnboardingView: View {
                         UtilityButton(title: l.t("Выйти", "Sign out"), args: ["proxy", "run", "--claude", "--"] + logout)
                             .disabled(!ready)
                     } else {
-                        UtilityButton(title: l.t("Войти", "Sign in"), args: ["proxy", "run", "--claude", "--"] + login)
+                        // способ, маршрут и где открыть вход выбираются в диалоге, по умолчанию через proxy
+                        Button(l.t("Войти", "Sign in")) { signingIn = agent }
                             .buttonStyle(.glassProminent)
-                            .disabled(!ready)
                     }
                 }
             }

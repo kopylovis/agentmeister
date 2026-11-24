@@ -29,6 +29,9 @@ final class UIState: ObservableObject {
     @Published var forgetting: TerminalTab?
     /// Вкладка, сессию которой переименовывают.
     @Published var renaming: TerminalTab?
+    /// Агент, в которого входят через диалог входа из баннера вкладки. Лист висит на окне, а не на баннере:
+    /// баннер пропадает, как только вход прошел, а диалог должен показать "Вход выполнен".
+    @Published var signingIn: LaunchSpec.Agent?
 }
 
 func tilde(_ path: String) -> String {
@@ -73,6 +76,9 @@ struct MainView: View {
         }
         .sheet(item: $ui.renaming) { tab in
             RenameSheet(tab: tab)
+        }
+        .sheet(item: $ui.signingIn, onDismiss: { backend.refresh() }) { agent in
+            AuthDialog(agent: agent)
         }
         .confirmationDialog(l.t("Забыть сессию?", "Forget this session?"),
                             isPresented: Binding(get: { ui.forgetting != nil }, set: { if !$0 { ui.forgetting = nil } })) {
