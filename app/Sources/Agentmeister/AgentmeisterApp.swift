@@ -69,6 +69,19 @@ struct AgentmeisterApp: App {
                 Button(l.restart) { workspace.current?.restart() }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(workspace.current == nil)
+                Divider()
+                Button(l.t("Параллельная задача…", "Parallel task…")) {
+                    ui.newSessionProject = workspace.current?.spec.projectPath
+                    ui.newSessionParallel = true
+                    ui.showNewSession = true
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                Button(l.t("Спросить другой проект", "Ask another project")) { workspace.typeInClaude("/ask ") }
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                    .disabled(!workspace.hasClaudeTab)
+                Button(l.t("Снимок окна", "Window screenshot")) { workspace.typeInClaude("/shot ") }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                    .disabled(!workspace.hasClaudeTab)
             }
             CommandGroup(after: .windowList) {
                 OpenLibraryButton(title: l.t("Сессии", "Sessions"))
