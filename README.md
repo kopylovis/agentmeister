@@ -284,6 +284,14 @@ and Ctrl+C stops it. Create the list yourself in a normal terminal; a proxied se
 checks the runner. The list guards against accidental direct traffic, not against edits to the project
 itself: the command runs whatever Fastfile or script is in the folder.
 
+The sandbox also keeps the session from renaming or replacing the folders above the list and the socket, and
+the runner reads the list only if it belongs to you, nobody else can write to it, and the path to it doesn't
+go through your own symlinks. If `~/.config` is a symlink, set `XDG_CONFIG_HOME` to the real folder.
+
+The sandbox limits the network and protects agentmeister's own control files. It is not a boundary for
+code: a proxied session can still write `~/.zshrc`, git hooks, Claude settings and other files that run
+later outside it.
+
 It runs on [mihomo](https://wiki.metacubex.one) (`brew install mihomo`), which speaks VLESS (including XHTTP)
 and Hysteria2 and uses the first live server from the subscription. One-time setup:
 
