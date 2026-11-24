@@ -50,8 +50,12 @@ MARKERS = [
                 r"|\bunlock\w*\s+the\s+(?:power|potential)"),
     ("освещение в СМИ", r"\b(?:освещал\w*|писали|упоминал\w*)\s+(?:в|во)\s+(?:нескольких|ряде|ведущих|многочисленных|различных)"
                         r"|\bнезависим\w*\s+освещени|\bfeatured\s+in\s+(?:several|numerous|multiple)"),
-    ("дидактика", r"\b(?:важно|стоит|следует|необходимо|нужно|критически\s+важно|крайне\s+важно)\s+"
-                  r"(?:отметить|учесть|учитывать|помнить|запомнить|подчеркнуть|упомянуть|понимать)\b|\bобратите\s+внимание"
+    # "нужно учесть часовой пояс" это просьба, а не дидактика: у "следует / необходимо / нужно" ловим только "..., что"
+    ("дидактика", r"\b(?:важно|стоит|критически\s+важно|крайне\s+важно)\s+"
+                  r"(?:отметить|учесть|учитывать|помнить|запомнить|подчеркнуть|упомянуть|понимать)\b"
+                  r"|\b(?:следует|необходимо|нужно)\s+(?:отметить|подчеркнуть|упомянуть)\b"
+                  r"|\b(?:следует|необходимо|нужно)\s+(?:учесть|учитывать|помнить|запомнить|понимать),?\s+(?:что|:)"
+                  r"|\bобратите\s+внимание"
                   r"|\b(?:значения|результаты|показатели)\s+могут\s+(?:варьироваться|различаться)|\bчтобы\s+избежать\s+путаницы"
                   r"|\bкрайне\s+важно"),
     ("дидактика", r"\bit'?s\s+(?:important|worth|crucial|essential|vital)\s+(?:to\s+(?:note|remember|mention|keep)|noting)"
@@ -127,7 +131,7 @@ MARKERS += [
                    r"|\bread\s+that\s+again|\bfull\s+stop\b|\bmake\s+no\s+mistake|\bsmoking\s+gun"),
     ("псевдоглубина", r"\bпо\s+(?:своей\s+)?сути\b|\bсуть\s+в\s+том|\bглавный\s+вопрос\s+в\s+том|\bправда\s+в\s+том|\bесли\s+копнуть"
                       r"|\bat\s+its\s+core\b|\bthe\s+real\s+question\b|\bwhat\s+really\s+matters"),
-    ("спор с никем", r"\bчтобы\s+было\s+понятно,|\bя\s+не\s+говорю,\s+что|\bне\s+поймите\s+неправильно|\bнаивн\w*\s+подход"
+    ("спор с никем", S + r"\s*чтобы\s+было\s+понятно,|\bя\s+не\s+говорю,\s+что|\bне\s+поймите\s+неправильно|\bнаивн\w*\s+подход"
                      r"|\bto\s+be\s+clear,|\bdon'?t\s+get\s+me\s+wrong|\bone\s+might\s+be\s+tempted"),
     ("служба поддержки", r"\bприношу\s+извинения|\bблагодар\w*\s+за\s+уделенное|\bуверяю\s+вас|\bпонимаю\s+ваше\s+беспокойство"
                          r"|\bв\s+дальнейшем\s+я\s+буду|\bбуду\s+признател|\bс\s+радостью\s+помогу|\bконструктивн\w*\s+диалог"
@@ -140,14 +144,14 @@ MARKERS += [
     ("след чат-инструмента", r"cite(?:turn|\[)|turn\d+(?:search|image|file)\d+|contentReference\[|oaicite|oai_citation|【\d+[:†]"
                              r"|\[cite:\s*\d+\]|start_span|sandbox:/mnt/data|\[attached_file:|grok_card|</?think>|:::writing\{"
                              r"|utm_source=(?:claude|perplexity|copilot)|referrer=grok"),
-    ("канцелярит", r"\bпровод\w*\s+работ|\bоказ\w*\s+(?:помощь|влияние|содействие)|\bприн\w*\s+участие|\bпроизв\w*\s+(?:оценк|расч[её]т|настройк)"
+    ("канцелярит", r"\b(?:провод(?:ит|ят|ить|ил|ила|или|им|ите|ится|ятся)|провед[её]\w*|провел\w*)\s+работ[уыа]?\b|\bоказ\w*\s+(?:помощь|влияние|содействие)|\bприн\w*\s+участие|\bпроизв\w*\s+(?:оценк|расч[её]т|настройк)"
                    r"|\bимеет\s+место|\bпосредством\b|\bв\s+свете\b|\bв\s+плане\s+\w+ени|\bбыло\s+принято\s+решение"
                    r"|\bпредставляет\s+собой|\bвыступа\w*\s+в\s+(?:качестве|роли)"),
     ("связка-пышный глагол", r"\b(?:serves|functions|acts)\s+as\b|(?:^|[.!?]\s+)это\s+(?:позволяет|помогает|дает|создает)"),
     ("модальная вата", r"\bпотенциально\s+может|\bможет\s+привести\s+к|\bспособ\w*\s+обеспечить|\bпризван\w*\s+(?:решить|обеспечить)"
                        r"|\bcould\s+potentially|\bmay\s+eventually|\bmight\s+arguably|\bremains\s+to\s+be\s+seen"),
     ("усилитель", r"\bпо-настоящему|\bпоистине|\bневероятн|\b(?:genuinely|truly|remarkably|arguably|fundamentally)\b"),
-    ("слова нейросети", r"\b(?:garner\w*|bolster\w*|interplay|robust|comprehensive|streamlin\w*|harness\w*|paradigm|spearhead\w*"
+    ("слова нейросети", r"\b(?:garner\w*|bolster\w*|interplay|robust|comprehensive|streamlin\w*|paradigm|spearhead\w*"
                         r"|myriad|plethora|commendable|noteworthy|invaluable|quintessential|burgeoning|nascent|load-bearing"
                         r"|align(?:s|ed)?\s+with|valuable\s+insights|shed\w*\s+light)\b"),
     ("переход-шаблон", S + r"\s*(?:кроме\s+того|более\s+того|помимо\s+этого|к\s+тому\s+же|moreover|furthermore|additionally|that\s+being\s+said"
@@ -176,6 +180,14 @@ MARKERS += [
                                r"|\b(?:проверьте|уточните|сверьте)\b[^.\n]{0,60}\bперед\s+(?:публикацией|отправкой)"),
     ("след чат-инструмента", r"</?mark>|attributableIndex"),
     ("заглушка", r"\b(?:INSERT|PASTE)_[A-Z0-9_]+|\bexample\.com/(?:source|article|news)\d*|\b20\d\d-XX-XX\b"),
+    # "harness" у разработчиков еще и термин (test harness, Claude Code harness): ловим только "harness the power"
+    # двоеточие-анонс в лог-проверках срабатывает чаще всего: "Цена одна: ...", "Откат простой: ...", "The fix is simple: ..."
+    ("анонс через двоеточие", S + r"\s*[^.!?:\n]{0,40}?\b(?:одн[аио]|один|прост(?:ой|ая|ое)|так(?:ой|ая|ое|ие)"
+                              r"|два|две|три)\s*:(?=[ \t]+\S)"
+                              r"|\bthe\s+(?:fix|answer|reason|rule|problem|idea|catch|trick|difference|plan)\s+is\s+"
+                              r"(?:simple|this|twofold|straightforward)\s*:(?=[ \t]+\S)"
+                              r"|\b(?:short\s+version|bottom\s+line|the\s+upshot|net\s+effect)\s*:(?=[ \t]+\S)"),
+    ("слова нейросети", r"\bharness(?:es|ed|ing)?\s+(?:the\s+|its\s+|their\s+)?(?:full\s+)?(?:power|potential|strength|capabilit)"),
 ]
 COMPILED = [(name, re.compile(rx, re.I)) for name, rx in MARKERS]
 # невидимые и редкие символы; редкие пробелы и минус (U+202F, U+2002-U+200A, U+205F, U+2212, U+2012, U+2015) по замеру
@@ -184,6 +196,14 @@ INVISIBLE = re.compile("[\u200b-\u200d\u2060\u00ad\u2010\u2011\u200e\u200f\u202a
                        "\u202f\u2002-\u200a\u205f\u2212\u2012\u2015\u061c\u180e]|(?<!^)\ufeff")
 NBSP_LIMIT = 3  # обычный неразрывный пробел люди ставят часто: отмечаем, только когда их много
 MERISM = re.compile(r"\bот\s+([^\d.!?,;:\n]{2,40}?)\s+до\s+([^\d.!?,;:\n]{2,40}?)(?=[,.;!?\n]|$)", re.I)
+# по логу проверок почти все "от… до…" были настоящими диапазонами: время и количество словами ("от нескольких
+# часов до суток"), путь ("от Mac до сервера"), имена и идентификаторы латиницей, "от начала до конца"
+MERISM_RANGE = re.compile(r"[A-Za-z\"]|\b(?:одн\w{1,3}|дв(?:а|е|ух)|тр(?:и|ех|ёх)|четыр\w*|пят[иь]\w*|шест[иь]\w*|сем[иь]"
+                          r"|восьм\w*|девят\w*|десят\w*|нескольк\w*|пар[ыу]|сотн\w*|тысяч\w*|секунд\w*|минут\w*|час(?:а|ов)?"
+                          r"|дн(?:я|ей)|сут(?:ок|ки)|недел\w*|месяц\w*|лет|года?|начала|конца|старта)\b", re.I)
+# служебные слова в начале фраз повторяются и у людей ("The… The… The…", "На… На… На…")
+FUNCTION_STARTS = {"the", "a", "an", "in", "on", "at", "to", "for", "it", "this", "и", "в", "во", "на", "с", "по", "у", "к",
+                   "о", "из", "за", "а", "но", "это"}
 
 
 def missing_hooks():
@@ -270,6 +290,7 @@ def prose(text):
     text = re.sub(r"(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$", "", text)
     text = re.sub(r"`[^`\n]*`", "", text)
     text = re.sub(r"(?m)^\s*>.*$", "", text)
+    text = re.sub(r"(?m)^.*🤖 Generated with \[?Claude Code.*$", "", text)  # подпись PR, которую требует Claude Code
     text = re.sub(r"«[^»\n]{0,160}»|“[^”\n]{0,160}”|„[^“”\n]{0,160}[“”]|\"[^\"\n]{0,160}\"", '""', text)
     return re.sub(r"https?://\S+", lambda m: m.group(0) if "utm_source" in m.group(0) else "", text)
 
@@ -306,6 +327,8 @@ def check(text):
             lead = len(m.group(0)) - len(m.group(0).lstrip())
             hits.append((line_of(m.start() + lead), name, frag or m.group(0)))
     for m in MERISM.finditer(clean):
+        if MERISM_RANGE.search(m.group(1)) or MERISM_RANGE.search(m.group(2)):
+            continue
         hits.append((line_of(m.start()), "от… до…", m.group(0)))
     pos = 0
     for para in re.split(r"\n\s*\n", clean):
@@ -320,9 +343,9 @@ def check(text):
             words = re.findall(r"[A-Za-zА-Яа-яЁё][\wЁё'-]*", hm.group(1))
             if len(words) >= 3 and all(w[0].isupper() for w in words) and not hm.group(1).isupper():
                 hits.append((line_of(start + hm.start()), "Заглавные Буквы", hm.group(1).strip()))
-    starts = [m.group(1).lower() for m in re.finditer(r"(?:^|[.!?]\s+)([A-Za-zА-Яа-яЁё]+)", clean)]
+    starts = [m.group(1).lower() for m in re.finditer(r"(?:^|[.!?]\s+)([A-Za-zА-Яа-яЁё][\wЁё-]*)", clean)]
     for i in range(len(starts) - 2):
-        if starts[i] == starts[i + 1] == starts[i + 2] and len(starts[i]) > 1:
+        if starts[i] == starts[i + 1] == starts[i + 2] and len(starts[i]) > 1 and starts[i] not in FUNCTION_STARTS:
             hits.append((1, "одинаковое начало трех фраз", starts[i]))
             break
     bold = len(re.findall(r"\*\*[^*\n]+\*\*", clean))

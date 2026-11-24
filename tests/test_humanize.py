@@ -45,5 +45,39 @@ class NewMarkers(unittest.TestCase):
             self.assertEqual(rules(text), set(), text)
 
 
+class LogFixes(unittest.TestCase):
+    """Ложные срабатывания из ~/Library/Logs/mnrh-humanize.log и то, что маркеры после правки ловят по-прежнему."""
+
+    def test_still_flags(self):
+        cases = {
+            "Подходит всем, от новичков до профессионалов.": "от… до…",
+            "Мы проводим работу по улучшению.": "канцелярит",
+            "Была проведена работа над ошибками.": "канцелярит",
+            "We harness the power of models.": "слова нейросети",
+            "Важно учитывать контекст.": "дидактика",
+            "Следует отметить рост.": "дидактика",
+            "Нужно учитывать, что кэш общий.": "дидактика",
+            "Чтобы было понятно, это не баг.": "спор с никем",
+            "Может упасть. Может зависнуть. Может пропасть.": "одинаковое начало трех фраз",
+            "Ура 🤖 тут.": "эмодзи",
+            "Цена одна: svg больше не открывается.": "анонс через двоеточие",
+            "Если согласен, порядок такой: сначала веб.": "анонс через двоеточие",
+            "The fix is simple: drop the cache.": "анонс через двоеточие",
+            "Short version: it works.": "анонс через двоеточие",
+        }
+        for text, rule in cases.items():
+            self.assertIn(rule, rules(text), text)
+
+    def test_no_false_alarms(self):
+        for text in ("Сборка идет от нескольких часов до суток.", "Пакет идет от Mac до сервера.",
+                     "Хуки от SessionStart до SubagentStop.", "От начала до готового файла прошло шесть минут.",
+                     "Проводник работает быстро.", "Run it in the Codex harness.", "Нужно учесть часовой пояс.",
+                     "Переименую файл, чтобы было понятно, что он делает.", "The cat sat. The dog ran. The end came.",
+                     "На столе ключ. На полке книга. На полу кот.", "Команда такая:\n\n```\nmake test\n```",
+                     "Тестов два, оба проходят.",
+                     "Готово.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"):
+            self.assertEqual(rules(text), set(), text)
+
+
 if __name__ == "__main__":
     unittest.main()
