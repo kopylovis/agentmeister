@@ -3,6 +3,8 @@ import SwiftTerm
 import SwiftUI
 
 /// Вкладки окна. Терминалы живут здесь, а не во view, чтобы переключение вкладок не убивало процессы.
+/// Делегат SwiftTerm живет на главном потоке, поэтому и вкладки тоже.
+@MainActor
 final class Workspace: ObservableObject {
     @Published var sessions: [TerminalSession] = []
     @Published var selected: UUID?

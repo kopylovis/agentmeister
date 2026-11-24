@@ -39,6 +39,7 @@ struct LaunchSpec {
 }
 
 /// Одна вкладка: терминал SwiftTerm и процесс в нем.
+@MainActor
 final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProcessTerminalViewDelegate {
     let id = UUID()
     let spec: LaunchSpec
