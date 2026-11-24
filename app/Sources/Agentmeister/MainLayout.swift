@@ -34,7 +34,7 @@ struct CardsLayout<Main: View>: View {
                             .frame(width: Self.railWidth)
                     }
                 }
-                .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                .glassEffect(.regular, in: .windowCard)
                 if showSidebar {
                     ResizeHandle(width: $sidebarWidth, range: 200...380, sign: 1)
                 } else {
@@ -47,7 +47,7 @@ struct CardsLayout<Main: View>: View {
                     InspectorView()
                         .frame(width: inspectorWidth)
                         .frame(maxHeight: .infinity)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                        .glassEffect(.regular, in: .windowCard)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
