@@ -28,7 +28,14 @@ test:
 	@bash -n bin/agentmeister
 	@./bin/agentmeister --version | grep -qx "$$(cat VERSION)"
 	@./bin/agentmeister --harness codex --help | grep -q 'agentmeister'
-	@/usr/bin/python3 -m unittest discover -s tests -q </dev/null 2>&1 | grep -qx 'OK\( (skipped=[0-9]*)\)\{0,1\}' || /usr/bin/python3 -m unittest discover -s tests </dev/null
+	@# повторный прогон спасает от редкого сбоя, но что упало в первый раз, видно: иначе нестабильный тест прячется
+	@first=$$(/usr/bin/python3 -m unittest discover -s tests -q </dev/null 2>&1); \
+	if ! printf '%s\n' "$$first" | grep -qx 'OK\( (skipped=[0-9]*)\)\{0,1\}'; then \
+		echo "первый прогон тестов не прошел:" >&2; \
+		printf '%s\n' "$$first" | grep -E '^(FAIL|ERROR):' >&2 || printf '%s\n' "$$first" | tail -5 >&2; \
+		echo "повторяю:" >&2; \
+		/usr/bin/python3 -m unittest discover -s tests </dev/null; \
+	fi
 	@bash -n libexec/agentmeister/claude.sh
 	@for f in libexec/agentmeister/*.py libexec/agentmeister/lib/*.py; do /usr/bin/python3 -m py_compile "$$f" || exit 1; done
 	@./bin/agentmeister --version | grep -qx "$$(cat VERSION)"

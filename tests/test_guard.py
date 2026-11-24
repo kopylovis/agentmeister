@@ -6,6 +6,17 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
 import claude_guard as g  # noqa: E402
+import mnrhlib  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+
+# Домашняя папка для проверок guard. С настоящей HOME под /tmp (песочница, CI) правила для временных папок
+# и для домашней папки накладывались бы друг на друга, и Destructive падал.
+FAKE_HOME = "/Users/guard-test-home"
+
+
+def rehome(paths, real, fake=FAKE_HOME):
+    """Те же пути, но с fake вместо домашней папки real."""
+    return type(paths)(fake + p[len(real):] if p == real or p.startswith(real + "/") else p for p in paths)
 
 
 class Grep(unittest.TestCase):
@@ -200,9 +211,19 @@ class Destructive(unittest.TestCase):
         self.root = os.path.join(self.tmp, "proj")
         os.makedirs(os.path.join(self.root, ".git"))
         os.makedirs(os.path.join(self.root, "sub"))
+        real = g.HOME
+        self.patches = [patch.dict(os.environ, HOME=FAKE_HOME),
+                        patch.object(g, "HOME", FAKE_HOME),
+                        patch.object(mnrhlib, "HOME", FAKE_HOME),
+                        patch.object(g, "CACHE_DIRS", rehome(g.CACHE_DIRS, real)),
+                        patch.object(g, "SYSTEM_DIRS", rehome(g.SYSTEM_DIRS, real))]
+        for p in self.patches:
+            p.start()
 
     def tearDown(self):
         import shutil
+        for p in reversed(self.patches):
+            p.stop()
         shutil.rmtree(self.tmp)
 
     def rule(self, cmd, cwd=None, skip=("secrets-read", "secrets-delete")):

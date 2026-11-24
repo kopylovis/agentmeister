@@ -753,8 +753,9 @@ class Framed(unittest.TestCase):
         self.assertEqual(code, 3)
         self.assertEqual(out.plain(), "Я\n�")
 
-    def framed(self, child, keys=b"", size=(20, 70)):
-        """run_framed на pty вместо окна: keys набираются в окне, ответ (код, Output)."""
+    def framed(self, child, keys=b"", size=(20, 70), ready=""):
+        """run_framed на pty вместо окна: keys набираются в окне, когда в рамке появился текст ready
+        (программа запущена и ждет ввода). Ответ (код, Output)."""
         import fcntl
         import struct
         master, slave = os.openpty()
@@ -762,18 +763,45 @@ class Framed(unittest.TestCase):
         screen = menu.Screen()
         screen.fd, screen.saved = slave, termios.tcgetattr(slave)  # как Screen.open: обычный режим до cbreak
         tty.setcbreak(slave)
-        reader = threading.Thread(target=Ask.drain, args=(master,), daemon=True)
+        # нажатия только после вывода программы: раньше окно еще в режиме меню и съело бы Ctrl+C,
+        # а по таймеру они под нагрузкой приходили до запуска программы
+        self.assertTrue(not keys or ready, "keys need a ready text")
+        lock, pending = threading.Lock(), [keys]
+
+        def type_keys():
+            with lock:
+                if pending[0]:
+                    os.write(master, pending[0])
+                    pending[0] = b""
+
+        def read():
+            seen = b""
+            try:
+                while True:
+                    chunk = os.read(master, 4096)
+                    if not chunk:
+                        return
+                    if pending[0]:
+                        seen = (seen + chunk)[-4096:]
+                        if ready.encode() in seen:
+                            type_keys()
+            except OSError:
+                pass
+
+        reader = threading.Thread(target=read, daemon=True)
         reader.start()
-        # нажатия, когда программа уже запущена: до этого окно в режиме меню и съело бы Ctrl+C
-        typist = threading.Timer(0.5, os.write, (master, keys))
+        # если ready так и не пришел, тест не должен висеть: нажатия уходят через 10 секунд, проверки упадут
+        fallback = threading.Timer(10, type_keys)
         if keys:
-            typist.start()
+            fallback.start()
         lib = os.path.dirname(menu.__file__)
         try:
             return menu.run_framed(screen, [sys.executable, "-c", f"import sys; sys.path.insert(0, {lib!r})\n" + child],
                                    "t")
         finally:
-            typist.cancel()
+            fallback.cancel()
+            with lock:
+                pending[0] = b""
             screen.fd = None
             os.close(slave)
             reader.join(2)
@@ -782,7 +810,8 @@ class Framed(unittest.TestCase):
     def test_long_answer_is_echoed_into_the_frame(self):
         # эхо ввода приходит из pty рамки и переносится внутри рамки, а не уходит за правую линию
         answer = "x" * 90 + "яя\x7fz"
-        code, out = self.framed("a = input('Answer: '); print(len(a), a[-3:])", (answer + "\r").encode())
+        code, out = self.framed("a = input('Answer: '); print(len(a), a[-3:])", (answer + "\r").encode(),
+                                ready="Answer: ")
         self.assertEqual(code, 0, out.plain())
         self.assertEqual(out.lines[0], "Answer: " + "x" * 90 + "яz")
         self.assertEqual(out.lines[1], "92 xяz")
@@ -800,7 +829,8 @@ class Framed(unittest.TestCase):
         self.assertEqual((code, out.lines[0]), (0, "True True True"), out.plain())
 
     def test_ctrl_c_reaches_the_program_through_the_pty(self):
-        code, out = self.framed("import time; print('go', flush=True); time.sleep(10)", b"\x03")
+        code, out = self.framed("import time; print('ready-for-keys', flush=True); time.sleep(10)", b"\x03",
+                                ready="ready-for-keys")
         self.assertEqual(code, 130, out.plain())
 
     def test_menu_in_frame_gets_the_whole_window(self):

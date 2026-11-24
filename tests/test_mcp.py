@@ -151,11 +151,19 @@ class ParallelFinishInBackground(unittest.TestCase):
     def args(self, **extra):
         return dict(branch="feat/x", action="pr", record=os.path.join(self.tmp, "record.json"), **extra)
 
-    def wait_for(self, path, seconds=15):
+    def wait_for(self, path, text, seconds=15):
+        """Ждать, пока в файле появится text. Файл создается раньше, чем в него пишут, поэтому мало его наличия."""
         deadline = time.time() + seconds
-        while not os.path.exists(path) and time.time() < deadline:
+        while True:
+            try:
+                with open(path) as f:
+                    if text in f.read():
+                        return True
+            except OSError:
+                pass
+            if time.time() >= deadline:
+                return False
             time.sleep(0.1)
-        return os.path.exists(path)
 
     def test_quick_result_comes_back_directly(self):
         text, err = mcp_server.HANDLERS["parallel_finish"](self.args(fail=True))
@@ -167,16 +175,14 @@ class ParallelFinishInBackground(unittest.TestCase):
         self.assertFalse(os.path.exists(self.shown))
 
     def test_long_run_returns_early_and_notifies(self):
+        # ответ приходит через FINISH_WAIT, задолго до конца работы (4 секунды); запас на занятый Mac
         with patch.object(mcp_server, "FINISH_WAIT", 0.3):
             started = time.time()
-            text, err = mcp_server.HANDLERS["parallel_finish"](self.args(sleep=2))
-        self.assertLess(time.time() - started, 1.5)
+            text, err = mcp_server.HANDLERS["parallel_finish"](self.args(sleep=4))
+        self.assertLess(time.time() - started, 3)
         self.assertFalse(err)
         self.assertIn("в фоне", text)
-        self.assertTrue(self.wait_for(self.shown))
-        time.sleep(0.2)
-        with open(self.shown) as f:
-            self.assertIn("done feat/x", f.read())
+        self.assertTrue(self.wait_for(self.shown, "done feat/x"))
         logs = os.listdir(os.path.join(self.tmp, "logs"))
         log = next(n for n in logs if n.endswith(".log"))
         self.assertIn("feat_x", log)
