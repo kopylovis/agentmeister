@@ -1,7 +1,9 @@
+import hmac
 import html
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 import time
@@ -183,19 +185,35 @@ def reset_updates(tok=None):
     call("getUpdates", tok, timeout=0, limit=1, allowed_updates="[]")
 
 
-def wait_for_start(tok, seconds=180):
+def who(ch):
+    name = " ".join(x for x in (ch.get("first_name"), ch.get("last_name")) if x)
+    user = f"@{ch['username']}" if ch.get("username") else ""
+    return " ".join(x for x in (name, user) if x) or str(ch.get("id", "?"))
+
+
+def wait_for_start(tok, code, seconds=180):
+    """Личный чат, из которого пришел /start <code>. /start без кода или с чужим кодом мог прислать
+    кто угодно, кто знает адрес бота: такие пропускаем, иначе уведомления ушли бы ему."""
     offset = None
     deadline = time.time() + seconds
     reset_updates(tok)
+    skipped = set()
     while time.time() < deadline:
         updates = call("getUpdates", tok, wait=40, offset=offset, timeout=25)
         for u in updates:
             offset = u["update_id"] + 1
             msg = u.get("message") or {}
             ch = msg.get("chat") or {}
-            if ch.get("type") == "private" and (msg.get("text") or "").startswith("/start"):
+            text = (msg.get("text") or "").strip()
+            if ch.get("type") != "private" or not text.startswith("/start"):
+                continue
+            got = text.split()[1] if len(text.split()) > 1 else ""
+            if hmac.compare_digest(got, code) and (msg.get("from") or {}).get("id") == ch.get("id"):
                 call("getUpdates", tok, offset=offset, timeout=0)
                 return ch
+            if ch.get("id") not in skipped:
+                skipped.add(ch.get("id"))
+                print(f"  Пропускаю /start без верного кода от {who(ch)}: нужна ссылка выше или /start {code}")
     return None
 
 
@@ -225,10 +243,13 @@ def setup():
     save_token(tok)
     name = bot.get("username", "")
     print(f"✓ бот @{name}")
-    print(f"  3. Открываю t.me/{name} — нажми там «Start» (до 3 минут).")
-    subprocess.run(["open", f"https://t.me/{name}"], capture_output=True)
+    code = secrets.token_hex(4)
+    link = f"https://t.me/{name}?start={code}"
+    print(f"  3. Открываю {link} — нажми там «Start» (до 3 минут).")
+    print(f"     Если ссылка не открылась, отправь боту: /start {code}")
+    subprocess.run(["open", link], capture_output=True)
     try:
-        ch = wait_for_start(tok)
+        ch = wait_for_start(tok, code)
     except TelegramError as e:
         print(f"✗ {e}")
         return 1
@@ -236,13 +257,12 @@ def setup():
         print("Не дождался /start. Запусти agentmeister notify telegram ещё раз.")
         return 1
     write_config(telegram_chat=str(ch["id"]), telegram_bot=name)
-    who = " ".join(x for x in (ch.get("first_name"), ch.get("last_name")) if x) or ch.get("username") or ch["id"]
     try:
         call("sendMessage", chat_id=ch["id"], text="agentmeister подключен ✓ Сюда будут приходить уведомления Claude, "
                                                    "когда ты не за Mac.")
     except TelegramError:
         pass
-    print(f"✓ подключено к чату с {who}. Если это не ты — agentmeister notify telegram off")
+    print(f"✓ подключено к чату с {who(ch)}. Если это не ты — agentmeister notify telegram off")
     print(f"Уведомления идут в Telegram, когда ты не за Mac: экран заблокирован или {away_after() // 60} мин "
           f"без мыши и клавиатуры.")
     return 0
