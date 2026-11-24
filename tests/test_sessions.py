@@ -398,6 +398,21 @@ class Lookup(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(r.stdout.split(), ["Fixing", "[]", "[]"])
 
+    def test_rename_sets_the_title_like_slash_rename(self):
+        r, _ = with_sessions("""
+            import session_store as s, claude_sessions as cs
+            target = s.by_id(ids["real"])[0]
+            extra = target["extra"]
+            os.makedirs(extra, exist_ok=True)
+            with open(os.path.join(extra, "custom-title.json"), "w") as f:
+                json.dump({"customTitle": "old"}, f)
+            cs.rename(target, "  New   name ")
+            print(s.by_id(ids["real"])[0]["title"])
+            print(json.load(open(os.path.join(extra, "custom-title.json")))["customTitle"])
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.splitlines()[-2:], ["New name", "New name"])
+
     def test_forget_and_drop_junk_touch_only_their_session(self):
         r, _ = with_sessions("""
             import claude_restart as cr

@@ -111,6 +111,8 @@ def proxy():
     return {"configured": configured, "running": running, "port": p,
             "exit": loc.upper() if isinstance(loc, str) and len(loc) == 2 else None,
             "protocol": info.get("proto") if isinstance(info.get("proto"), str) else None,
+            "ip": info.get("ip") if isinstance(info.get("ip"), str) else None,
+            "node": info.get("node") if isinstance(info.get("node"), str) else None,
             "sessions": held}
 
 
@@ -119,11 +121,25 @@ def modes():
     return claude_menu.modes()
 
 
+def host_run_summary():
+    """Работает ли исполнитель host-run и сколько команд в белом списке, для строки внизу боковой панели."""
+    import host_run as hr
+    try:
+        running = bool(hr.ping())
+    except Exception:
+        running = False
+    try:
+        count = len(hr.load())
+    except Exception:
+        count = 0
+    return {"running": running, "commands": count}
+
+
 def collect():
     state = {"version": version(), "lang": mnrhlib.lang(), "langSetting": lang_setting(), "projectsDir": mnrhlib.projects_dir(),
              "generatedAt": time.time(), "errors": {}}
     for name, part, empty in (("projects", projects, []), ("sessions", sessions, []), ("live", live, []),
-                              ("proxy", proxy, None), ("modes", modes, {})):
+                              ("proxy", proxy, None), ("modes", modes, {}), ("hostRun", host_run_summary, None)):
         try:
             state[name] = part()
         except Exception as e:  # одна сломанная часть не должна оставить окно пустым
