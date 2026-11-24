@@ -69,6 +69,31 @@ on run argv
 end run''',
 }
 
+# Сессия iTerm2 по ее id, а не по tty: в песочнице proxy-сессии ps не запустить, и tty не узнать.
+# id приходит в ITERM_SESSION_ID ("w0t3p0:<GUID>"), в словаре AppleScript это свойство id у session.
+ITERM_BUNDLE = "com.googlecode.iterm2"
+GUID_RE = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
+FOCUS_ITERM_ID = '''
+on run argv
+  tell application "iTerm2"
+    repeat with w in windows
+      repeat with t in tabs of w
+        repeat with s in sessions of t
+          if id of s is (item 1 of argv) then
+            select w
+            tell t to select
+            tell s to select
+            activate
+            return "ok"
+          end if
+        end repeat
+      end repeat
+    end repeat
+  end tell
+  return "notfound"
+end run'''
+SELECTED_ITERM_ID = 'tell application "iTerm2" to return id of current session of current window'
+
 SELECTED = {
     "Terminal": 'tell application "Terminal" to return tty of selected tab of front window',
     "iTerm2": 'tell application "iTerm2" to return tty of current session of current window',
@@ -245,6 +270,12 @@ def app_tab():
     return tab if UUID_RE.match(tab) else ""
 
 
+def iterm_session():
+    """"iterm:<GUID>" из ITERM_SESSION_ID, если сессия идет в iTerm2, иначе пусто."""
+    guid = os.environ.get("ITERM_SESSION_ID", "").rpartition(":")[2]
+    return "iterm:" + guid if GUID_RE.match(guid) else ""
+
+
 def app_front():
     """Вкладка, которая сейчас выбрана в активном окне Agentmeister, или пусто, если окно не впереди."""
     try:
@@ -274,6 +305,8 @@ def watching(bundle, tty):
         return app_front() == tty[4:]
     if not bundle or front_bundle() != bundle:
         return False
+    if tty.startswith("iterm:"):
+        return osascript(SELECTED_ITERM_ID).lower() == tty[6:].lower()
     term = TERMINALS.get(bundle)
     if not term:
         return True
@@ -283,6 +316,11 @@ def watching(bundle, tty):
 def focus(tty, bundle):
     if tty.startswith("app:"):
         return focus_app(tty[4:])
+    if tty.startswith("iterm:"):
+        if GUID_RE.match(tty[6:]) and osascript(FOCUS_ITERM_ID, tty[6:]) == "ok":
+            return 0
+        subprocess.run(["open", "-b", ITERM_BUNDLE], capture_output=True)
+        return 0
     term = TERMINALS.get(bundle)
     if term and tty and osascript(FOCUS[term], tty) == "ok":
         return 0
@@ -450,6 +488,8 @@ def hook(codex=False):
         return 0
     tab = app_tab()
     tty = "app:" + tab if tab else codex_terminal(sid) if codex else own_terminal()
+    # в песочнице proxy ps не работает и tty пустой: сессию iTerm2 узнаем по ее id из окружения
+    tty = tty or iterm_session()
     transcript = payload.get("transcript_path")
     if not tty:
         from claude_proc import interactive_session
@@ -458,6 +498,8 @@ def hook(codex=False):
     bundle = os.environ.get("__CFBundleIdentifier", "")
     if tab:
         bundle = APP_BUNDLE
+    elif tty.startswith("iterm:"):
+        bundle = ITERM_BUNDLE
     elif codex and tty and bundle not in TERMINALS:
         front = front_bundle()
         bundle = front if front in TERMINALS else ""
