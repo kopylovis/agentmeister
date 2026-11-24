@@ -7,11 +7,14 @@ struct LaunchSpec {
     var project: String
     var direct = false
     var codex = false
+    /// Главное меню agentmeister без проекта: там иконки OSC 1337, которых нет в списке сессий.
+    var menu = false
     var agentArgs: [String] = []
 
     /// Аргументы agentmeister. -n выбирает обычный режим без вопроса (без caffeinate), -x или -d маршрут.
     var arguments: [String] {
         var args = codex ? ["--harness", "codex"] : []
+        if menu { return args }
         args += [project, "-n", direct ? "-d" : "-x"]
         if !agentArgs.isEmpty {
             args += ["--"] + agentArgs
@@ -19,7 +22,7 @@ struct LaunchSpec {
         return args
     }
 
-    /// Разбор командной строки спайка: [--direct] [--codex] [проект] [-- аргументы агента].
+    /// Разбор командной строки спайка: [--menu] [--direct] [--codex] [проект] [-- аргументы агента].
     static func parse(_ argv: [String]) -> LaunchSpec {
         var spec = LaunchSpec(project: ProcessInfo.processInfo.environment["AM_SPIKE_PROJECT"] ?? "agentmeister")
         var rest = argv.dropFirst()
@@ -28,6 +31,7 @@ struct LaunchSpec {
             switch arg {
             case "--direct": spec.direct = true
             case "--codex": spec.codex = true
+            case "--menu": spec.menu = true
             case "--":
                 spec.agentArgs = Array(rest)
                 rest = []
