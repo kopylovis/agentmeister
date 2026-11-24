@@ -635,14 +635,14 @@ struct ShortcutsPane: View {
         HStack(alignment: .top, spacing: 16) {
             group(l.t("Сессии и вкладки", "Sessions and tabs"), [
                 (l.newSession, "⌘N"), (l.t("Новая вкладка в этом проекте", "New tab in this project"), "⌘T"),
-                (l.closeTab, "⌘W"), (l.t("Следующая вкладка", "Next tab"), "⌃⇥"), (l.t("Вкладка 1–9", "Tab 1–9"), "⌘1…9"),
+                (l.closeTab, "⌘W"), (l.t("Следующая вкладка", "Next tab"), "⌃⇥"), (l.t("Предыдущая вкладка", "Previous tab"), "⌃⇧⇥"), (l.t("Вкладка 1–9", "Tab 1–9"), "⌘1…9"),
                 (l.t("К вкладке, которая ждет", "Jump to the waiting tab"), "⌘J"), (l.restart, "⌘R"),
                 (l.t("Параллельная задача", "Parallel task"), "⇧⌘P"),
             ])
             group(l.t("Окна и инструменты", "Windows and tools"), [
                 (l.t("Палитра команд", "Command palette"), "⌘K"), (l.t("Сессии", "Session library"), "⇧⌘O"),
                 (l.t("Статистика", "Usage"), "⇧⌘U"), (l.t("Спросить другой проект", "Ask another project"), "⇧⌘A"),
-                (l.t("Снимок окна", "Window screenshot"), "⇧⌘S"), (l.inspector, "⌥⌘I"),
+                (l.t("Снимок окна", "Window screenshot"), "⇧⌘S"), (l.inspector, "⌥⌘I"), (l.t("Свернуть или развернуть проекты", "Collapse or expand projects"), "⌃⌘S"),
                 (l.t("Показать Agentmeister из любого приложения", "Show Agentmeister from any app"), "⌃⌥Space"),
             ])
         }

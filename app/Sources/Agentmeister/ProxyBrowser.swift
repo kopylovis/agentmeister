@@ -213,8 +213,10 @@ struct BrowserView: View {
                 GlassEffectContainer {
                     HStack(spacing: 2) {
                         Button { model.webView.goBack() } label: { Image(systemName: "chevron.left") }
+                            .help(l.t("Назад", "Back")).accessibilityLabel(l.t("Назад", "Back"))
                             .disabled(!model.canBack)
                         Button { model.webView.goForward() } label: { Image(systemName: "chevron.right") }
+                            .help(l.t("Вперед", "Forward")).accessibilityLabel(l.t("Вперед", "Forward"))
                             .disabled(!model.canForward)
                         Button { model.loading ? model.webView.stopLoading() : model.reload() } label: {
                             Image(systemName: model.loading ? "xmark" : "arrow.clockwise")
@@ -235,7 +237,7 @@ struct BrowserView: View {
                 Label(model.proxyUp ? l.t("через proxy", "via proxy") : l.t("proxy выключен", "proxy is off"),
                       systemImage: "shield.lefthalf.filled")
                     .font(.callout)
-                    .foregroundStyle(model.proxyUp ? Color.teal : Color.orange)
+                    .foregroundStyle(model.proxyUp ? Ink.teal : Ink.amber)
                     .help("127.0.0.1:\(model.port)")
                 Button {
                     if let url = model.webView.url ?? URL(string: model.address) { NSWorkspace.shared.open(url) }
