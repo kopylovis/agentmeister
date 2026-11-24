@@ -157,6 +157,11 @@ struct AppState: Decodable {
 
     init() {}
 
+    /// Проект, в папке которого лежит путь. Из вложенных проектов берется самый глубокий.
+    func project(containing path: String) -> Project? {
+        projects.filter { path == $0.path || path.hasPrefix($0.path + "/") }.max { $0.path.count < $1.path.count }
+    }
+
     func sessions(in project: Project, agent: LaunchSpec.Agent? = nil) -> [Session] {
         sessions.filter { ($0.cwd == project.path || $0.cwd.hasPrefix(project.path + "/")) && (agent == nil || $0.kind == agent) }
     }

@@ -596,6 +596,23 @@ final class Workspace: ObservableObject {
         selected = tab.id
     }
 
+    /// Открытые сессии: идущие вкладки этого окна и записи реестра Claude Code, которых среди них нет
+    /// (iTerm2, второй Agentmeister). Реестр знает и наши вкладки, поэтому вкладка с известной сессией
+    /// считается один раз, а вкладка Codex, которой нет в реестре, тоже считается.
+    func openSessions(_ state: AppState) -> (tabs: [TerminalTab], others: [AppState.Live]) {
+        let open = tabs.filter { $0.running && $0.spec.utility == nil }
+        let mine = Set(open.compactMap(\.sessionId))
+        return (open, state.live.filter { $0.sessionId.map { !mine.contains($0) } ?? true })
+    }
+
+    /// Открытые сессии проекта. Вкладка и запись реестра относятся к самому глубокому проекту, в чьей папке
+    /// лежат: продолжение открывается в папке сессии, а это бывает подпапка проекта.
+    func openSessions(in project: AppState.Project, state: AppState) -> (tabs: [TerminalTab], others: [AppState.Live]) {
+        let (open, others) = openSessions(state)
+        let here = { (path: String?) in path.flatMap { state.project(containing: $0)?.path } == project.path }
+        return (open.filter { here($0.spec.projectPath) }, others.filter { here($0.cwd) })
+    }
+
     /// Новая вкладка в проекте текущей: новая сессия с тем же агентом и маршрутом. Без вкладок ничего не делает.
     @discardableResult
     func newTab() -> Bool {
