@@ -157,7 +157,8 @@ struct SettingsView: View {
                 Spacer()
             }
             .padding(10)
-            .padding(.top, 30)
+            // светофор сдвинут вниз и вправо, как в главном окне: первый раздел начинается под ним
+            .padding(.top, 44)
             .frame(width: 210)
             .frame(maxHeight: .infinity)
             .glassEffect(.regular, in: .rect(cornerRadius: 18))
@@ -185,6 +186,8 @@ struct SettingsView: View {
         }
         .ignoresSafeArea(edges: .top)
         .toolbar(removing: .title)
+        // без сдвига светофор лежит на скругленном углу стеклянной карточки разделов
+        .background(TrafficLightsInset())
         .frame(minWidth: 960, idealWidth: 1080, minHeight: 640, idealHeight: 740)
         .task { await reload() }
     }
