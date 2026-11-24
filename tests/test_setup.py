@@ -37,7 +37,7 @@ def sandbox(files, code, promptsill=False):
                    XDG_STATE_HOME=os.path.join(home, ".state"), MNRH_PROMPTSILL=fake, ZDOTDIR=home)
         env.pop("MNRH_CLAUDE_HOME", None)
         r = subprocess.run([sys.executable, "-c", f"import sys; sys.path.insert(0, {LIB!r})\n" + textwrap.dedent(code)],
-                           env=env, capture_output=True, text=True)
+                           env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True)
         if r.returncode != 0:
             raise AssertionError(r.stderr)
         after = {}
