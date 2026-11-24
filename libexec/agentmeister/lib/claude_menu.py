@@ -10,12 +10,12 @@ import shutil
 import signal
 import subprocess
 import sys
-import textwrap
 import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from menu import Cancel, Panel, Quit, Screen, choice, run_framed, show_output, tab_hint, width  # noqa: E402
+from menu import (Cancel, Panel, Pinned, Quit, Screen, choice, facts as fact_lines, run_framed,  # noqa: E402
+                  show_output, tab_hint, width, wrap)
 from mnrhlib import DEV, HOME, LOCAL_CLI, RESTART_QUEUE, ROOT, promptsill_path, run as capture, tilde, tr  # noqa: E402
 import claude_sessions  # noqa: E402
 import codex_harness  # noqa: E402
@@ -240,7 +240,7 @@ class Describe:
     def __call__(self, i, w):
         key, _, ru, en, desc_ru, desc_en = ITEMS[i]
         lines = [f"\x1b[1m{tr(ru, en)}\x1b[0m", ""]
-        lines += textwrap.wrap(tr(desc_ru, desc_en), w) or [""]
+        lines += wrap([tr(desc_ru, desc_en)], w)
         if key.startswith("mode "):
             flag = self.state.get(key.split()[1])
             lines += ["", ("\x1b[32m" + tr("Сейчас включено", "On now") + "\x1b[0m" if flag else
@@ -257,10 +257,9 @@ class Describe:
                   (tr("Проекты", "Projects"), tilde(DEV)),
                   (tr("Режимы", "Modes"), ", ".join(on) if on else tr("все выключены", "all off")),
                   (tr("Прокси", "Proxy"), self.proxy)]
-        pad = max(len(k) for k, _ in facts) + 3
-        lines += ["", "", dim(tr("СЕЙЧАС", "CURRENT SETUP"))]
-        lines += [dim(k.ljust(pad)) + v for k, v in facts]
-        return lines
+        block = ["", "", dim(tr("СЕЙЧАС", "CURRENT SETUP"))] + fact_lines(facts, w)
+        # если описание не влезает по высоте, обрезается его текст, а блок фактов остается целиком
+        return Pinned(lines + block, keep=len(block))
 
 
 def menu_title(describe, note, side):
