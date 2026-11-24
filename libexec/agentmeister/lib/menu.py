@@ -618,6 +618,7 @@ class Panel(Menu):
         self.hint = hint
         self.numbers = numbers
         self.mode = "auto" if describe is not None else "off"
+        self.painted = self.painted_shape = None
 
     def clear(self):
         pass
@@ -670,13 +671,14 @@ class Panel(Menu):
         body = self.body(view, lw - 2, h - 2)
         above, below = self.more
         left = box(f" › {self.heads[0]} ", body, lw, h, True, f"↑ {above}" if above else "", f"↓ {below}" if below else "")
-        screen = left
+        pad = " " * gap
+        screen = [[pad + line] for line in left]
         if side:
             text = self.describe(self.sel, rw - 4) if self.sel in self.choices(view) else []
             keep = min(len(text), getattr(text, "keep", 0))
             text = squeeze(wrap(text[:len(text) - keep], rw - 4), wrap(text[len(text) - keep:], rw - 4), h - 2, rw - 4)
             right = box(f" {self.heads[1]} ", [" " + line for line in text], rw, h, False)
-            screen = [a + " " + b for a, b in zip(left, right)]
+            screen = [[pad + a, " " + b] for a, b in zip(left, right)]
         if self.query:
             hint = tr(f"поиск: {self.query}▏ · Backspace стереть · Esc сбросить",
                       f"search: {self.query}▏ · Backspace to erase · Esc to clear")
@@ -690,10 +692,34 @@ class Panel(Menu):
             if self.describe is None or not can_force(cols, gap):
                 hint = hint.replace(tab_hint(), "")
         title = self.title(side) if callable(self.title) else self.title
-        pad = " " * gap
-        lines = (([pad + cut(title, cols - gap)] if with_title else []) + [pad + line for line in screen]
-                 + ([pad + f"\x1b[2m{fit_hint(hint, cols - gap * 2)}\x1b[0m"] if with_hint else []))
-        self.write(with_icons("\x1b[H" + "\x1b[K\r\n".join(lines) + "\x1b[K\x1b[J"))
+        lines = (([[pad + cut(title, cols - gap)]] if with_title else []) + screen
+                 + ([[pad + f"\x1b[2m{fit_hint(hint, cols - gap * 2)}\x1b[0m"]] if with_hint else []))
+        self.paint(lines)
+
+    def paint(self, lines):
+        """Вывести кадр: строки из кусков (список слева, описание справа). Первый раз и после смены размера
+        целиком, потом только изменившиеся куски: в кадре до двух десятков картинок-значков, и слать их все
+        на каждое нажатие стрелки значит десятки килобайт."""
+        old = self.painted if self.painted_shape == self.shape else None
+        if old is None or len(old) != len(lines):
+            out = "\x1b[H" + "\x1b[K\r\n".join("".join(segs) for segs in lines) + "\x1b[K\x1b[J"
+        else:
+            parts = []
+            for y, (segs, was) in enumerate(zip(lines, old), 1):
+                if segs == was:
+                    continue
+                if [width(seg) for seg in segs] != [width(seg) for seg in was]:
+                    parts.append(f"\x1b[{y};1H" + "".join(segs) + "\x1b[K")
+                    continue
+                col = 1
+                for k, (seg, prev) in enumerate(zip(segs, was)):
+                    if seg != prev:
+                        parts.append(f"\x1b[{y};{col}H{seg}" + ("\x1b[K" if k == len(segs) - 1 else ""))
+                    col += width(seg)
+            out = "".join(parts)
+        self.painted, self.painted_shape = lines, self.shape
+        if out:
+            self.write(with_icons(out))
 
     def stale(self):
         return super().stale() or getattr(self.describe, "dirty", lambda: False)()
