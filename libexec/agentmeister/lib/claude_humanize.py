@@ -118,7 +118,7 @@ MARKERS += [
               r"|\bна\s+новый\s+уровень|\bраскры\w*\s+потенциал|\bкраеугольн|\bиз\s+коробки|\bвстречайте\b|\bмощн\w*\s+инструмент"
               r"|\bнезабываем|\bзаставляет\s+задуматься|\bстал\w*\s+символом|\bстал\w*\s+настоящ\w*\s+открыти|\bзаслуживает\s+внимания"
               r"|\bчто\s+делает\s+(?:его|ее|их|это)\b|\b(?:важн|значим|смел)\w*\s+шаг"),
-    ("штамп", r"\bit\s+just\s+works|\bzero[- ]config|\bbatteries\s+included|\bout\s+of\s+the\s+box|\bmeet\s+[A-Z]\w+,"
+    ("штамп", r"\bit\s+just\s+works|\bzero[- ]config|\bbatteries\s+included|\bout[-\s‐‑–]+of[-\s‐‑–]+the[-\s‐‑–]+box\b|\bmeet\s+[A-Z]\w+,"
               r"|\bthought\s+leader|\bactionable|\bimpactful|\blearnings\b|\btreasure\s+trove|\bstate-of-the-art|\bgroundbreaking"),
     ("пустой прогноз", r"\bвремя\s+покажет|\bбудущее\s+за\b|\bодно\s+можно\s+сказать\s+точно|\bимеет\s+все\s+шансы"
                        r"|\bonly\s+time\s+will\s+tell|\bthe\s+future\s+looks\s+bright|\bone\s+thing\s+is\s+certain|\bis\s+poised\s+to"),
@@ -165,7 +165,7 @@ MARKERS += [
                           r"|надежности|гибкости)|\bwithout\s+(?:sacrificing|compromising)\b"
                           r"|\bwithout\s+losing\s+(?:quality|speed|performance|reliability|flexibility)"),
     ("не только… но и", r"\bless\s+like\b[^.!?\n]{0,60}\bmore\s+like\b|\brather\s+than\s+merely\b"
-                        r"|\bне\s+столько\b[^.!?\n]{0,80}\bсколько\b|\bменьше\s+похож\w*\s+на\b[^.!?\n]{0,60}\bбольше\b"),
+                        r"|\bменьше\s+похож\w*\s+на\b[^.!?\n]{0,60}\bбольше\b"),
     ("дидактика", r"\bmatters\s+(?:because|more\s+than)\b|\bэто\s+важно,\s+потому\s+что"
                   r"|\bshould\s+be\s+(?:treated|understood|read)\s+as\b[^.!?\n]{0,80}\brather\s+than"
                   r"|\bdoes\s+not\s+(?:by\s+itself\s+)?establish\b|\bshould\s+not\s+be\s+confused\s+with"
@@ -189,11 +189,47 @@ MARKERS += [
                               r"|\b(?:short\s+version|bottom\s+line|the\s+upshot|net\s+effect)\s*:(?=[ \t]+\S)"),
     ("слова нейросети", r"\bharness(?:es|ed|ing)?\s+(?:the\s+|its\s+|their\s+)?(?:full\s+)?(?:power|potential|strength|capabilit)"),
 ]
+# Пополнение 2026-11-24: WP:AISIGNS и WP:AITALKSIGNS, дополнение Graphite по Opus 5.5, Pangram, blader/humanizer,
+# avoid-ai-writing, RuSlop из humanizer-ru, avoid-ai-writing-russian, unslop-ui
+MARKERS += [
+    ("значимость", r"\bmaintains?\s+an?\s+(?:active\s+|strong\s+)?(?:digital|social\s+media|online)\s+presence"
+                   r"|\b(?:shaped|contributed\s+to|prompted)\s+(?:the\s+)?(?:wider\s+|broader\s+|public\s+|ongoing\s+)?"
+                   r"(?:conversations?|discussions?|debates?|reflection)\s+(?:about|on|around)\b"
+                   r"|\bforms?\s+part\s+of\s+(?:the|a)\s+(?:wider|broader)\b|\badds?\s+(?:another|a\s+new|an\s+extra)\s+layer\s+of\s+"
+                   r"(?:complexity|depth|meaning|nuance|intrigue)"),
+    ("опора на самоописание", r"\b(?:biography|profile)\s+(?:records|lists|notes)\s+(?:that|him|her|them)\b"),
+    ("дидактика", r"\bshould\s+be\s+distinguished\s+from\b|\bjust\s+as\s+important\b|\bmatters\s+most\b"
+                  r"|" + S + r"\s*(?:this\s+matters|это\s+важно)[.!]|\bстоит\s+напомнить,?\s+что\b|" + S + r"\s*напомним,\s+что\b"),
+    ("не только… но и", r"\bis\s+more\s+than\s+(?:a|an|just)\s+[^.!?\n]{1,40}?[,;]\s*it(?:'s|\s+is)\b|\bбольше,?\s+чем\s+просто\b"),
+    ("постановка", r"\bthe\s+(?:hard|tricky|interesting|fun)\s+part\s+(?:is|was)\b|\bthe\s+part\s+worth\s+\w+ing\b"
+                   r"|\bhere'?s\s+(?:the\s+interesting\s+part|what'?s\s+interesting)|\bсекрет\s+прост|\bмало\s+кто\s+знает"
+                   r"|\bнастоящая\s+история\s+(?:была|в\s+том|оказалась)"),
+    ("усилитель", r"\bperhaps\s+the\s+most\b|\bпожалуй,?\s+(?:самы[йе]|самая|самое)\b"),
+    ("спор с никем", r"\b(?:кто-то|скептики)\s+(?:возразит|возразят|скажет|скажут)\b|\bsome\s+might\s+argue\b"),
+    ("пустой прогноз", r"\bвопрос\s+оста[её]тся\s+открытым|\bперспективы\s+выглядят\s+многообещающ|\bвпереди\s+(?:ещ[её]\s+)?много\s+интересного"
+                       r"|\bбудущее\s+уже\s+(?:здесь|наступило)"),
+    ("служба поддержки", r"\bрады\s+(?:сообщить|представить|объявить)\b|\bс\s+гордостью\s+(?:представляем|сообщаем)"
+                         r"|\bнадеемся\s+на\s+(?:ваше\s+)?понимание|\bблагодарим\s+за\s+(?:понимание|внимание)|\bспасибо,\s+что\s+вы\s+с\s+нами"
+                         r"|\bхочу\s+уточнить,\s+что|\bi\s+would\s+like\s+to\s+clarify\b|\bi\s+understand\s+the\s+importance\s+of"
+                         r"|\bmaintaining\s+the\s+integrity\s+of|\bwe'?re\s+excited\s+to\s+announce"),
+    ("чат-бот", r"\bесли\s+(?:хотите|хочешь),\s+(?:я\s+)?могу\b"),
+    ("калька", r"\bна\s+ежедневной\s+основе|\bпогруз\w*\s+в\s+мир\b"),
+    ("пересказ интерфейса", r"\bclick\s+the\s+button\s+below\b|\bthis\s+chart\s+shows\b|\beach\s+bar\s+represents\b"
+                            r"|\bнажмите\s+(?:на\s+)?кнопку\s+ниже\b|\bна\s+этом\s+графике\s+показан"),
+    ("заглушка", r"\bevidence\s+to\s+be\s+supplied:|(?:^|\n)[ \t]*\*?\((?:~\s*|около\s+|примерно\s+)?\d+\s*(?:знак|символ|слов|words?\b"
+                 r"|characters?\b)[^)\n]{0,60}\)\*?[ \t]*(?=\n|$)"),
+    ("след чат-инструмента", r"\[cite_start\]|grounding-api-redirect|ppl-ai-file-upload|\[web:\d+\]|<grok-card"
+                             r"|grok_render_citation_card|\[citation:\d+\]|\[\^\d+\^\]|<cite\s+index=|\b(?:writing|écriture)\{varian"),
+    ("псевдографика", r"[─-╿]"),
+]
+# URL с такими частями оставляем в тексте: это следы чат-инструментов, а не обычные ссылки
+TOOL_URL = re.compile(r"utm_source|grounding-api-redirect|ppl-ai-file-upload")
 COMPILED = [(name, re.compile(rx, re.I)) for name, rx in MARKERS]
 # невидимые и редкие символы; редкие пробелы и минус (U+202F, U+2002-U+200A, U+205F, U+2212, U+2012, U+2015) по замеру
 # avoid-ai-writing-russian есть в 16-26% ответов o3 и в 2% текстов людей
 INVISIBLE = re.compile("[\u200b-\u200d\u2060\u00ad\u2010\u2011\u200e\u200f\u202a-\u202e\u2066-\u2069"
-                       "\u202f\u2002-\u200a\u205f\u2212\u2012\u2015\u061c\u180e]|(?<!^)\ufeff")
+                       "\u202f\u2002-\u200a\u205f\u2212\u2012\u2015\u061c\u180e"
+                       "\ue200-\ue204\uea01\uea02\U000e0000-\U000e007f]|(?<!^)\ufeff")
 NBSP_LIMIT = 3  # обычный неразрывный пробел люди ставят часто: отмечаем, только когда их много
 MERISM = re.compile(r"\bот\s+([^\d.!?,;:\n]{2,40}?)\s+до\s+([^\d.!?,;:\n]{2,40}?)(?=[,.;!?\n]|$)", re.I)
 # по логу проверок почти все "от… до…" были настоящими диапазонами: время и количество словами ("от нескольких
@@ -292,7 +328,7 @@ def prose(text):
     text = re.sub(r"(?m)^\s*>.*$", "", text)
     text = re.sub(r"(?m)^.*🤖 Generated with \[?Claude Code.*$", "", text)  # подпись PR, которую требует Claude Code
     text = re.sub(r"«[^»\n]{0,160}»|“[^”\n]{0,160}”|„[^“”\n]{0,160}[“”]|\"[^\"\n]{0,160}\"", '""', text)
-    return re.sub(r"https?://\S+", lambda m: m.group(0) if "utm_source" in m.group(0) else "", text)
+    return re.sub(r"https?://\S+", lambda m: m.group(0) if TOOL_URL.search(m.group(0)) else "", text)
 
 
 def is_english(paragraph):
