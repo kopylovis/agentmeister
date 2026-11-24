@@ -4,6 +4,7 @@ import codecs
 import os
 import re
 import select
+import signal
 import sys
 import termios
 import time
@@ -67,6 +68,20 @@ def tr(ru, en):
         return translate(ru, en)
     except Exception:
         return ru
+
+
+def terminated(signum, frame):
+    raise SystemExit(128 + signum)
+
+
+def catch_term():
+    """SIGTERM (kill, закрытие вкладки скриптом) завершает через SystemExit: блоки finally вернут терминал из
+    полноэкранного режима, покажут курсор и включат эхо. Без этого терминал остается без курсора и эха."""
+    try:
+        if signal.getsignal(signal.SIGTERM) == signal.SIG_DFL:
+            signal.signal(signal.SIGTERM, terminated)
+    except ValueError:  # не главный поток
+        pass
 
 
 def write_all(fd, text):
@@ -675,6 +690,7 @@ class Screen:
     def open(self):
         if self.fd is not None:
             return self
+        catch_term()
         self.fd = os.open("/dev/tty", os.O_RDWR)
         self.saved = termios.tcgetattr(self.fd)
         tty.setcbreak(self.fd)
@@ -869,7 +885,6 @@ def run_framed(screen, argv, title, env=None, show_elapsed=False):
     # программе нужен обычный терминал: ввод строки, вопросы да или нет; свои меню она включит сама
     termios.tcsetattr(screen.fd, termios.TCSADRAIN, screen.saved)
     # Ctrl+C прерывает программу, а меню остается: себе SIGINT игнорируем, программе возвращаем обычный
-    import signal
     old_int = signal.signal(signal.SIGINT, signal.SIG_IGN)
     try:
         proc = subprocess.Popen(argv, stdout=slave, stderr=slave, env=child_env,
@@ -1036,6 +1051,7 @@ def show_output(screen, out, title, code):
 
 
 def drive(fd, menu):
+    catch_term()
     saved = termios.tcgetattr(fd)
     try:
         tty.setcbreak(fd)
