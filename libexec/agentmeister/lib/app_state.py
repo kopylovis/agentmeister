@@ -73,9 +73,11 @@ def sessions():
         m = session_meta(s, cache, fresh)
         if not m["answered"] or len(out) >= SESSION_LIMIT:
             continue
+        cwd = s["cwd"] or m["cwd"] or ""
         out.append({
-            "id": s["id"], "cwd": s["cwd"] or m["cwd"] or "", "title": m["title"], "branch": m["branch"],
+            "id": s["id"], "cwd": cwd, "title": m["title"], "branch": m["branch"],
             "mtime": s["mtime"], "size": s["size"], "running": bool(s.get("running")),
+            "cwdExists": bool(cwd) and os.path.isdir(cwd),
         })
     if fresh != cache:
         try:
@@ -124,6 +126,16 @@ def modes():
     return claude_menu.modes()
 
 
+def retention_days():
+    """Сколько дней Claude Code хранит переписки: cleanupPeriodDays, по умолчанию 30."""
+    import claude_settings
+    try:
+        days = claude_settings.load().get("cleanupPeriodDays")
+    except (OSError, ValueError):
+        days = None
+    return days if isinstance(days, int) else 30
+
+
 def host_run_summary():
     """Работает ли исполнитель host-run и сколько команд в белом списке, для строки внизу боковой панели."""
     import host_run as hr
@@ -143,7 +155,8 @@ def collect():
              "generatedAt": time.time(), "errors": {}}
     for name, part, empty in (("projects", projects, []), ("sessions", sessions, []), ("live", live, []),
                               ("proxy", proxy, None), ("modes", modes, {}), ("hostRun", host_run_summary, None),
-                              ("signedIn", lambda: {b: signed_in(b)["signedIn"] for b in ("claude", "codex")}, None)):
+                              ("signedIn", lambda: {b: signed_in(b)["signedIn"] for b in ("claude", "codex")}, None),
+                              ("retentionDays", retention_days, None)):
         try:
             state[name] = part()
         except Exception as e:  # одна сломанная часть не должна оставить окно пустым
@@ -161,6 +174,13 @@ def epoch(ts):
         return None
 
 
+def file_size(path):
+    try:
+        return os.path.getsize(path) if path else None
+    except OSError:
+        return None
+
+
 def search(query, limit=30):
     """Поиск по всем сессиям всех проектов тем же индексом, что agentmeister sessions search и session_search."""
     import claude_search
@@ -172,7 +192,7 @@ def search(query, limit=30):
     for _, sid, data, found in r.chosen[:limit]:
         results.append({
             "id": sid, "title": claude_search.title(sid, data), "home": claude_search.home_of(data),
-            "last": epoch(data.get("last")), "count": len(found),
+            "last": epoch(data.get("last")), "count": len(found), "size": file_size(data.get("path")),
             "hits": [{"at": i, "role": data["msgs"][i][0], "time": epoch(data["msgs"][i][1]),
                       "snippet": claude_search.snippet(data["msgs"][i][2], q, r.idf, width=240)}
                      for i in found[:3]],
