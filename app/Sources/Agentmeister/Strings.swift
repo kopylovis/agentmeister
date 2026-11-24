@@ -68,6 +68,16 @@ struct L {
         }
     }
 
+    /// "1 вкладка, 2 вкладки, 5 вкладок" и "1 tab, 2 tabs".
+    func count(_ n: Int, _ one: String, _ few: String, _ many: String, _ enOne: String, _ enMany: String) -> String {
+        if en { return "\(n) " + (n == 1 ? enOne : enMany) }
+        let tens = n % 100, ones = n % 10
+        let word = (11...14).contains(tens) ? many : ones == 1 ? one : (2...4).contains(ones) ? few : many
+        return "\(n) \(word)"
+    }
+
+    func tabs(_ n: Int) -> String { count(n, "вкладка", "вкладки", "вкладок", "tab", "tabs") }
+
     func ago(_ time: Double) -> String {
         let s = max(0, Date().timeIntervalSince1970 - time)
         if s < 60 { return t("сейчас", "now") }
