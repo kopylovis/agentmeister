@@ -7,6 +7,45 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_sessions import in_sandbox  # noqa: E402
 
 
+LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "libexec", "agentmeister", "lib")
+sys.path.insert(0, LIB)
+import re  # noqa: E402
+import time  # noqa: E402
+from unittest.mock import patch  # noqa: E402
+import claude_live  # noqa: E402
+import mnrhlib  # noqa: E402
+
+
+class Labels(unittest.TestCase):
+    def rows(self, lang):
+        now = time.time() * 1000
+        sessions = [{"status": "waiting", "cwd": "/w/app", "statusUpdatedAt": now - 5000},
+                    {"status": "busy", "cwd": "/w/app", "name": "fix", "statusUpdatedAt": now - 120000},
+                    {"status": "idle", "cwd": "/w/app", "statusUpdatedAt": now - 7200000}]
+        with patch.object(mnrhlib, "lang", return_value=lang):
+            return [re.sub(r"\x1b\[[0-9;]*m", "", claude_live.row(s)) for s in sessions]
+
+    def test_rows_follow_the_language_setting(self):
+        en = self.rows("en")
+        self.assertTrue(en[0].startswith("waiting "), en[0])
+        self.assertIn("untitled", en[0])
+        self.assertTrue(en[0].rstrip().endswith(" s"), en[0])
+        self.assertTrue(en[1].startswith("working "), en[1])
+        self.assertTrue(en[1].rstrip().endswith("2 min"), en[1])
+        self.assertTrue(en[2].startswith("idle "), en[2])
+        self.assertTrue(en[2].rstrip().endswith("2 h"), en[2])
+        self.assertFalse(re.search("[а-яА-Я]", "".join(en)), en)
+        ru = self.rows("ru")
+        self.assertTrue(ru[0].startswith("ждет тебя"), ru[0])
+        self.assertIn("без названия", ru[0])
+        self.assertTrue(ru[1].rstrip().endswith("2 мин"), ru[1])
+
+    def test_unknown_status_is_shown_as_is(self):
+        with patch.object(mnrhlib, "lang", return_value="en"):
+            self.assertEqual(claude_live.status({"status": "odd"}), ("odd", ""))
+            self.assertEqual(claude_live.status({}), ("?", ""))
+
+
 class Lost(unittest.TestCase):
     def test_restore_keeps_revoked_trust(self):
         r, _ = in_sandbox("""
