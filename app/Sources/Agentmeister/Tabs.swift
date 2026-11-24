@@ -17,6 +17,15 @@ struct LaunchSpec: Hashable {
     /// Такие вкладки не восстанавливаются после перезапуска.
     var utility: [String]?
 
+    /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
+    var proxied: Bool {
+        if let utility { return utility.starts(with: ["proxy", "run"]) }
+        return !direct
+    }
+
+    /// Служебная вкладка входа в агента (claude auth login, codex login).
+    var signIn: Bool { utility?.contains("login") ?? false }
+
     /// Аргументы agentmeister, как их собирает open_flow.command: -n обычный режим без caffeinate, -x или -d маршрут.
     var arguments: [String] {
         if let utility { return utility }
@@ -44,14 +53,15 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Сессия Claude Code в этой вкладке и ее статус из реестра Claude Code (waiting, busy, idle).
     @Published var sessionId: String?
     @Published var status: String?
-    let view: LocalProcessTerminalView
+    let view: AppTerminalView
 
     init(spec: LaunchSpec) {
         self.spec = spec
         self.title = spec.utility.map { "agentmeister " + $0.joined(separator: " ") } ?? spec.projectName
         self.sessionId = spec.resumeId
-        view = LocalProcessTerminalView(frame: NSRect(x: 0, y: 0, width: 960, height: 640))
+        view = AppTerminalView(frame: NSRect(x: 0, y: 0, width: 960, height: 640))
         super.init()
+        view.tab = self
         view.processDelegate = self
         view.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         view.optionAsMetaKey = true
@@ -61,7 +71,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Окружение вкладки. TERM_PROGRAM=Agentmeister, FORCE_HYPERLINK оставляет ссылки OSC 8 в строке promptsill
     /// (Claude Code иначе вырезает их для незнакомого терминала). Картинки OSC 1337 в меню agentmeister
     /// SwiftTerm стирает, как только в строку пишется текст, поэтому меню показывает emoji.
-    static func environment(tab: UUID) -> [String] {
+    static func environment(tab: UUID, spec: LaunchSpec) -> [String] {
         var env = LoginEnvironment.shared
         let drop = ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ITERM_SESSION_ID", "ITERM_PROFILE",
                     "LC_TERMINAL", "LC_TERMINAL_VERSION", "COLORFGBG", "TMUX", "STY",
@@ -82,6 +92,11 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
             // тот же признак, что ставит restart.zsh: claude_restart пишет задание для хука, а не ищет вкладку iTerm2
             env["MNRH_RESTART_HOOK"] = "2"
             env["MNRH_RESTART_JOB"] = job
+        }
+        // страницы, которые агент открывает сам (вход, OAuth для MCP), идут во встроенный браузер через тот же proxy
+        env.removeValue(forKey: "BROWSER")
+        if spec.proxied && BrowserSettings.forAgent, let helper = ProxyBrowser.helper {
+            env["BROWSER"] = helper
         }
         if env["LANG"] == nil { env["LANG"] = "ru_RU.UTF-8" }
         return env.map { "\($0.key)=\($0.value)" }.sorted()
@@ -110,7 +125,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         running = true
         status = nil
         let args = ["-l", "-c", Self.shellScript, LoginEnvironment.agentmeister] + spec.arguments
-        view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(tab: id), execName: "-zsh")
+        view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(tab: id, spec: spec), execName: "-zsh")
     }
 
     /// Перезапуск продолжает ту же сессию, если ее id уже известен.
@@ -331,5 +346,31 @@ final class Workspace: ObservableObject {
 
     func terminateAll() {
         tabs.forEach { $0.terminate() }
+    }
+}
+
+/// Настройки встроенного браузера. Хранятся в UserDefaults, переключаются в Настройки → Proxy.
+enum BrowserSettings {
+    static let forAgentKey = "browserForAgent"
+    static let forLinksKey = "browserForLinks"
+    /// Страницы, которые открывает агент во вкладке через proxy. По умолчанию включено.
+    static var forAgent: Bool { UserDefaults.standard.object(forKey: forAgentKey) as? Bool ?? true }
+    /// Ссылки, по которым кликаешь во вкладке через proxy. По умолчанию браузер системы.
+    static var forLinks: Bool { UserDefaults.standard.bool(forKey: forLinksKey) }
+}
+
+/// Терминал вкладки. Отличается от SwiftTerm одним: ссылки http и https из вкладки через proxy может открыть
+/// во встроенном браузере. Во вкладке входа так всегда, пока включен браузер для агента, иначе по настройке.
+final class AppTerminalView: LocalProcessTerminalView {
+    weak var tab: TerminalTab?
+
+    override func requestOpenLink(source: TerminalView, request: TerminalLinkRequest) {
+        if let spec = tab?.spec, spec.proxied,
+           spec.signIn ? BrowserSettings.forAgent : BrowserSettings.forLinks,
+           let url = URL(string: request.link), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            ProxyBrowser.shared.open(url)
+            return
+        }
+        super.requestOpenLink(source: source, request: request)
     }
 }

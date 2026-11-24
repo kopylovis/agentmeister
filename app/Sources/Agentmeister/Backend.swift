@@ -112,6 +112,7 @@ struct AppState: Decodable {
         let exit: String?
         let `protocol`: String?
         let sessions: Int?
+        let port: Int?
     }
 
     var version = ""
@@ -261,6 +262,8 @@ final class Backend: ObservableObject {
                     do {
                         self.state = try JSONDecoder().decode(AppState.self, from: data)
                         self.lastError = nil
+                        ProxyBrowser.shared.port = self.state.proxy?.port ?? 17890
+                        ProxyBrowser.shared.lang = self.state.lang
                     } catch {
                         self.lastError = "app-state: \(error.localizedDescription)"
                     }
