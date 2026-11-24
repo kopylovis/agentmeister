@@ -9,13 +9,27 @@
 // Аргументы: --title (заголовок окна), --heading, --context, --text, --code, --note, --allow, --deny,
 // --expiry (строка про тайм-аут, {left} заменяется на оставшееся время) и --timeout в секундах. Без новых
 // аргументов окно работает как раньше: заголовок берется из --title, код из --detail.
+// Аргументы идут строго парами "--ключ значение": значение, похожее на ключ (код с "--allow" внутри
+// строки или целиком), остается значением и не подменяет другой аргумент.
 import AppKit
 
-func option(_ name: String, _ fallback: String) -> String {
-    let args = CommandLine.arguments
-    guard let i = args.firstIndex(of: name), i + 1 < args.count else { return fallback }
-    return args[i + 1]
-}
+let options: [String: String] = {
+    var out: [String: String] = [:]
+    let args = Array(CommandLine.arguments.dropFirst())
+    var i = 0
+    while i < args.count {
+        let key = args[i]
+        guard key.hasPrefix("--"), i + 1 < args.count else {
+            note("ignored arguments from \(i + 1): expected --key value pairs")
+            break
+        }
+        if out[key] == nil { out[key] = args[i + 1] }
+        i += 2
+    }
+    return out
+}()
+
+func option(_ name: String, _ fallback: String) -> String { options[name] ?? fallback }
 
 func finish(_ answer: String) -> Never {
     print(answer)
@@ -105,6 +119,11 @@ final class Box: NSView {
         super.viewDidChangeEffectiveAppearance()
         needsDisplay = true
     }
+}
+
+// Документ прокрутки кода: начало текста сверху.
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 // Окно без рамки: лист со стеклом рисует себя сам. Cmd+W закрывает окно, это отказ.
@@ -220,7 +239,24 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             block.border = Palette.codeBorder
             block.radius = 16
             let field = label(code, size: 12, color: Palette.codeText, width: inner - 32, lineSpacing: 5, mono: true)
-            pin(field, in: block, inset: NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16))
+            // длинная команда прокручивается внутри блока: иначе окно выше экрана и кнопок не достать
+            let document = FlippedView()
+            pin(field, in: document, inset: NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16))
+            let scroll = NSScrollView()
+            scroll.drawsBackground = false
+            scroll.borderType = .noBorder
+            scroll.hasVerticalScroller = true
+            scroll.autohidesScrollers = true
+            scroll.documentView = document
+            document.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                document.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+                document.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+                document.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
+            ])
+            pin(scroll, in: block, inset: NSEdgeInsets())
+            scroll.heightAnchor.constraint(equalToConstant: min(ceil(field.fittingSize.height) + 28, 260)).isActive = true
+            block.layer?.masksToBounds = true
             block.translatesAutoresizingMaskIntoConstraints = false
             block.widthAnchor.constraint(equalToConstant: inner).isActive = true
             rows.append(block)
