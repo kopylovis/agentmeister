@@ -77,7 +77,9 @@ struct MenuBarPanel: View {
         let (tabs, others) = workspace.openSessions(backend.state)
         let list = tabs.map { Entry(id: "tab-" + $0.id.uuidString, tab: $0, live: nil, status: $0.status) }
             + others.enumerated().map { index, live in
-                Entry(id: "live-" + (live.sessionId ?? "\(live.pid ?? 0)-\(index)"), tab: nil, live: live, status: live.status)
+                // одна сессия бывает открыта в двух окнах сразу: id из сессии и pid, без pid из номера
+                Entry(id: "live-\(live.sessionId ?? "")-" + (live.pid.map { String($0) } ?? "n\(index)"),
+                      tab: nil, live: live, status: live.status)
             }
         // сортировка устойчивая: внутри одного статуса порядок вкладок как в окне
         return list.enumerated().sorted { a, b in
@@ -211,6 +213,8 @@ struct MenuBarPanel: View {
                     .frame(maxWidth: .infinity)
                 PillButton(title: l.t("Выйти", "Quit"), small: true) {
                     dismiss()
+                    // вопрос "закрыть идущие сессии?" должен встать впереди, а не за другим приложением
+                    NSApp.activate()
                     NSApp.terminate(nil)
                 }
                 .frame(maxWidth: .infinity)
