@@ -34,13 +34,15 @@ def version():
 
 def check_install():
     where = "Homebrew" if any(f"/Cellar/{name}/" in ROOT + "/" for name in ("agentmeister", "claudemeister")) \
-        else f"из папки {tilde(ROOT)}"
+        else tr(f"из папки {tilde(ROOT)}", f"from {tilde(ROOT)}")
     rows = [("ok", f"agentmeister {version()}, {where}")]
     if not shutil.which("agentmeister"):
-        rows.append(("bad", "agentmeister нет в PATH, а команды и хуки вызывают его по имени"))
+        rows.append(("bad", tr("agentmeister нет в PATH, а команды и хуки вызывают его по имени",
+                               "agentmeister isn't in PATH, but commands and hooks call it by name")))
     claude = shutil.which(CLAUDE_BIN)
     if not claude:
-        return rows + [("bad", f"нет {CLAUDE_BIN} в PATH: поставь Claude Code")]
+        return rows + [("bad", tr(f"нет {CLAUDE_BIN} в PATH: поставь Claude Code",
+                                  f"{CLAUDE_BIN} isn't in PATH: install Claude Code"))]
     code, out = run([claude, "--version"])
     rows.append(("ok", f"Claude Code {out.split()[0] if code == 0 and out.split() else '?'}"))
     return rows
@@ -62,37 +64,47 @@ def check_commands():
         except OSError:
             missing.append(name)
     if missing:
-        return [("bad", f"нет команд {', '.join(missing)}: agentmeister setup")]
+        return [("bad", tr(f"нет команд {', '.join(missing)}: agentmeister setup",
+                           f"missing commands {', '.join(missing)}: agentmeister setup"))]
     if stale:
-        return [("warn", f"команды {', '.join(stale)} от другой версии: agentmeister setup обновит их")]
-    return [("ok", f"команды /restart, /forget и еще {len(pages) - 2} на месте")]
+        return [("warn", tr(f"команды {', '.join(stale)} от другой версии: agentmeister setup обновит их",
+                            f"commands {', '.join(stale)} are from another version: agentmeister setup updates them"))]
+    return [("ok", tr(f"команды /restart, /forget и еще {len(pages) - 2} на месте",
+                      f"commands /restart, /forget and {len(pages) - 2} more in place"))]
 
 
 def check_settings():
     try:
         settings = claude_settings.load()
     except ValueError as e:
-        return [("bad", f"{tilde(claude_settings.PATH)} не читается как JSON: {e}")]
+        return [("bad", tr(f"{tilde(claude_settings.PATH)} не читается как JSON: {e}",
+                           f"{tilde(claude_settings.PATH)} doesn't parse as JSON: {e}"))]
     rows = []
     lost = claude_settings.missing(settings, exact=True)
     if lost:
         names = sorted({f"{event} {cmd}" for event, cmd, _, _ in lost})
-        rows.append(("bad", f"нет хуков или они старые: {', '.join(names)}. agentmeister setup поставит"))
+        rows.append(("bad", tr(f"нет хуков или они старые: {', '.join(names)}. agentmeister setup поставит",
+                               f"hooks missing or outdated: {', '.join(names)}. agentmeister setup installs them")))
     else:
-        rows.append(("ok", "хуки Claude Code на месте"))
+        rows.append(("ok", tr("хуки Claude Code на месте", "Claude Code hooks in place")))
     days = settings.get("cleanupPeriodDays")
-    rows.append(("ok", f"переписки хранятся {days} дней") if isinstance(days, int) and days >= 90 else
-                ("warn", f"переписки удаляются через {days or 30} дней, поиск по сессиям их потеряет. "
-                         "agentmeister setup поставит 365"))
+    rows.append(("ok", tr(f"переписки хранятся {days} дней", f"transcripts kept for {days} days"))
+                if isinstance(days, int) and days >= 90 else
+                ("warn", tr(f"переписки удаляются через {days or 30} дней, поиск по сессиям их потеряет. "
+                            "agentmeister setup поставит 365",
+                            f"transcripts are deleted after {days or 30} days and session search loses them. "
+                            "agentmeister setup sets 365")))
     line = claude_settings.statusline_command(settings)
     if "promptsill" in line:
-        rows.append(("ok", "строка состояния promptsill"))
+        rows.append(("ok", tr("строка состояния promptsill", "promptsill status line")))
     elif line:
-        rows.append(("ok", f"строка состояния своя: {line[:60]}"))
+        rows.append(("ok", tr(f"строка состояния своя: {line[:60]}", f"custom status line: {line[:60]}")))
     elif promptsill_path():
-        rows.append(("warn", "promptsill стоит, но statusLine пустая: promptsill install"))
+        rows.append(("warn", tr("promptsill стоит, но statusLine пустая: promptsill install",
+                                "promptsill is installed, but statusLine is empty: promptsill install")))
     else:
-        rows.append(("warn", "строки состояния нет: brew install kopylovis/tap/promptsill && promptsill install"))
+        rows.append(("warn", tr("строки состояния нет: brew install kopylovis/tap/promptsill && promptsill install",
+                                "no status line: brew install kopylovis/tap/promptsill && promptsill install")))
     return rows
 
 
@@ -111,12 +123,15 @@ def iterm_rows(settings):
         if words and os.path.basename(words[0]) == "cc-status":
             old.add(os.path.expanduser(words[0]))
     if not old:
-        return [("ok", "статус в iTerm2: it2 handle-agent-hook")] if new else []
-    fix = "iTerm2 > Install Claude Code Integration поставит it2 handle-agent-hook, потом снова agentmeister doctor"
+        return [("ok", tr("статус в iTerm2: it2 handle-agent-hook", "iTerm2 status: it2 handle-agent-hook"))] if new else []
+    fix = tr("iTerm2 > Install Claude Code Integration поставит it2 handle-agent-hook, потом снова agentmeister doctor",
+             "iTerm2 > Install Claude Code Integration installs it2 handle-agent-hook, then run agentmeister doctor again")
     gone = sorted(p for p in old if not os.path.exists(p))
     if gone:
-        return [("bad", f"хуки iTerm2 вызывают {', '.join(map(tilde, gone))}, а файла нет. {fix}")]
-    return [("warn", f"хуки iTerm2 старые, вызывают {', '.join(map(tilde, sorted(old)))}. Пока работают. {fix}")]
+        return [("bad", tr(f"хуки iTerm2 вызывают {', '.join(map(tilde, gone))}, а файла нет. {fix}",
+                           f"iTerm2 hooks call {', '.join(map(tilde, gone))}, but the file is gone. {fix}"))]
+    return [("warn", tr(f"хуки iTerm2 старые, вызывают {', '.join(map(tilde, sorted(old)))}. Пока работают. {fix}",
+                        f"iTerm2 hooks are old and call {', '.join(map(tilde, sorted(old)))}. They still work. {fix}"))]
 
 
 def check_iterm():
@@ -131,26 +146,32 @@ def check_mcp():
     from mcp_server import MCP_NAME
     listed, registered = setup_cmd.mcp_get(MCP_NAME)
     if not listed:
-        return [("bad", f"MCP-сервер {MCP_NAME} не подключен: agentmeister setup")]
+        return [("bad", tr(f"MCP-сервер {MCP_NAME} не подключен: agentmeister setup",
+                           f"MCP server {MCP_NAME} isn't connected: agentmeister setup"))]
     rows = []
     if registered[1:] != ["mcp"] or os.path.realpath(registered[0]) != os.path.realpath(CM):
-        rows.append(("warn", f"MCP-сервер подключен к {' '.join(registered)}, а не к {tilde(CM)} mcp"))
+        rows.append(("warn", tr(f"MCP-сервер подключен к {' '.join(registered)}, а не к {tilde(CM)} mcp",
+                                f"MCP server points to {' '.join(registered)}, not {tilde(CM)} mcp")))
     req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}) + "\n"
     code, out = run(registered or [CM, "mcp"], timeout=20, stdin=req)
     try:
         count = len(json.loads(out.splitlines()[0])["result"]["tools"])
-        rows.append(("ok", f"MCP-сервер {MCP_NAME} отвечает, инструментов {count}"))
+        rows.append(("ok", tr(f"MCP-сервер {MCP_NAME} отвечает, инструментов {count}",
+                              f"MCP server {MCP_NAME} responding, {count} tools")))
     except (ValueError, KeyError, IndexError):
-        rows.append(("bad", f"MCP-сервер не ответил на tools/list: {out.strip()[:120] or code}"))
+        rows.append(("bad", tr(f"MCP-сервер не ответил на tools/list: {out.strip()[:120] or code}",
+                               f"MCP server didn't answer tools/list: {out.strip()[:120] or code}")))
     return rows
 
 
 def check_zsh():
     import setup_cmd
     if any(setup_cmd.is_zsh_hook(line) for line in setup_cmd.zshrc_lines()):
-        return [("ok", f"хук перезапуска в {tilde(setup_cmd.ZSHRC)}")]
-    return [("warn", f"нет хука перезапуска в {tilde(setup_cmd.ZSHRC)}: /restart вернется во вкладку только в "
-                     "Terminal и iTerm2. agentmeister setup добавит")]
+        return [("ok", tr(f"хук перезапуска в {tilde(setup_cmd.ZSHRC)}", f"restart hook in {tilde(setup_cmd.ZSHRC)}"))]
+    return [("warn", tr(f"нет хука перезапуска в {tilde(setup_cmd.ZSHRC)}: /restart вернется во вкладку только в "
+                        "Terminal и iTerm2. agentmeister setup добавит",
+                        f"no restart hook in {tilde(setup_cmd.ZSHRC)}: /restart returns to the tab only in "
+                        "Terminal and iTerm2. agentmeister setup adds it"))]
 
 
 CODEX_SETUP = "agentmeister --harness codex setup"
@@ -159,19 +180,20 @@ CODEX_SETUP = "agentmeister --harness codex setup"
 def check_codex_mcp(config):
     entry = (config.get("mcp_servers") or {}).get(codex_harness.MCP)
     if not entry or not entry.get("enabled", True):
-        return "bad", f"Codex MCP выключен или не подключен. Проверь {CODEX_SETUP}"
+        return "bad", tr(f"Codex MCP выключен или не подключен. Проверь {CODEX_SETUP}",
+                         f"Codex MCP is off or not connected. Check {CODEX_SETUP}")
     command = shutil.which(entry.get("command") or "")
     if not command or os.path.realpath(command) != os.path.realpath(CM) or entry.get("args") != codex_harness.MCP_ARGS:
-        return "warn", "Codex MCP указывает на другую команду."
+        return "warn", tr("Codex MCP указывает на другую команду.", "Codex MCP points to another command.")
     req = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}) + "\n"
     code, out = run([command, *codex_harness.MCP_ARGS], timeout=5, stdin=req)
     try:
         tools = json.loads(out.splitlines()[0])["result"]["tools"]
         if code == 0 and isinstance(tools, list) and tools:
-            return "ok", f"Codex MCP отвечает, инструментов {len(tools)}"
+            return "ok", tr(f"Codex MCP отвечает, инструментов {len(tools)}", f"Codex MCP responding, {len(tools)} tools")
     except (IndexError, ValueError, KeyError, TypeError):
         pass
-    return "bad", "Codex MCP не ответил на tools/list."
+    return "bad", tr("Codex MCP не ответил на tools/list.", "Codex MCP didn't answer tools/list.")
 
 
 def check_codex_hooks(hooks, name="humanize-hook"):
@@ -179,24 +201,27 @@ def check_codex_hooks(hooks, name="humanize-hook"):
     events = codex_harness.HOOK_COMMANDS[name]
     if hooks is None:
         count = codex_harness.configured_hooks(name)
-        return "warn", (f"{label}, настроено {count if count is not None else '?'} из "
-                        f"{len(events)} хуков. Статус доверия виден в /hooks.")
+        shown = count if count is not None else '?'
+        return "warn", tr(f"{label}, настроено {shown} из {len(events)} хуков. Статус доверия виден в /hooks.",
+                          f"{label}, {shown} of {len(events)} hooks set up. Trust status is in /hooks.")
     trusted = {hook["eventName"] for hook in hooks if hook.get("enabled") and not hook.get("matcher")
                and hook.get("trustStatus") == "trusted" and is_hook(hook.get("command"), name)}
     expected = {event[0].lower() + event[1:] for event in events}
     count = len(trusted & expected)
     if count != len(expected):
-        return "bad", f"{label}, подтверждено {count} из {len(expected)} хуков. Проверь {CODEX_SETUP} и /hooks."
-    return "ok", f"{label}, подтверждено {count} из {len(expected)} хуков"
+        return "bad", tr(f"{label}, подтверждено {count} из {len(expected)} хуков. Проверь {CODEX_SETUP} и /hooks.",
+                         f"{label}, {count} of {len(expected)} hooks trusted. Check {CODEX_SETUP} and /hooks.")
+    return "ok", tr(f"{label}, подтверждено {count} из {len(expected)} хуков",
+                    f"{label}, {count} of {len(expected)} hooks trusted")
 
 
 def check_codex():
     codex = codex_harness.executable()
     if not codex:
-        return [("ok", "Codex отсутствует в PATH, проверка пропущена")]
+        return [("ok", tr("Codex отсутствует в PATH, проверка пропущена", "Codex isn't in PATH, check skipped"))]
     code, out = run([codex, "--version"], timeout=5)
     if code != 0 or not out.strip():
-        return [("bad", "Codex не ответил на --version")]
+        return [("bad", tr("Codex не ответил на --version", "Codex didn't answer --version"))]
     rows = [("ok", "Codex " + out.splitlines()[0].strip().removeprefix("codex-cli "))]
     cwd = os.getcwd()
     try:
@@ -212,51 +237,62 @@ def check_codex():
                 rows.append(check_codex_hooks(hooks, "notify-hook"))
             skills = request("skills/list", {"cwds": [cwd]})["data"]
     except (OSError, ValueError, KeyError, TypeError):
-        return rows + [("bad", "Codex App Server не вернул данные установки.")]
-    rows.append(("ok", "Codex видит навык $agentmeister") if any(
+        return rows + [("bad", tr("Codex App Server не вернул данные установки.",
+                                  "Codex App Server didn't return the install data."))]
+    rows.append(("ok", tr("Codex видит навык $agentmeister", "Codex sees the $agentmeister skill")) if any(
         skill.get("name") == "agentmeister" and skill.get("enabled")
         for group in skills for skill in group["skills"]
-    ) else ("warn", f"Codex не видит навык $agentmeister. Запусти {CODEX_SETUP}"))
+    ) else ("warn", tr(f"Codex не видит навык $agentmeister. Запусти {CODEX_SETUP}",
+                       f"Codex doesn't see the $agentmeister skill. Run {CODEX_SETUP}")))
     footer = (config.get("tui") or {}).get("status_line")
-    rows.append(("ok", f"Строка состояния Codex, полей {len(footer)}") if footer else
-                ("warn", "Строка состояния Codex выключена. Поля можно выбрать через /statusline."))
+    rows.append(("ok", tr(f"Строка состояния Codex, полей {len(footer)}", f"Codex status line, {len(footer)} fields"))
+                if footer else
+                ("warn", tr("Строка состояния Codex выключена. Поля можно выбрать через /statusline.",
+                            "Codex status line is off. Pick its fields with /statusline.")))
     return rows
 
 
 def check_notify():
     import claude_notify
     if not claude_notify.enabled():
-        return [("ok", "уведомления выключены (agentmeister notify on)")]
+        return [("ok", tr("уведомления выключены (agentmeister notify on)", "notifications off (agentmeister notify on)"))]
     if os.path.isdir(claude_notify.AGENT.app):
-        return [("ok", f"уведомления: {tilde(claude_notify.AGENT.app)}")]
-    return [("bad", "уведомления включены, но приложения нет: agentmeister setup соберет его (нужен swiftc)")]
+        return [("ok", tr(f"уведомления: {tilde(claude_notify.AGENT.app)}", f"notifications: {tilde(claude_notify.AGENT.app)}"))]
+    return [("bad", tr("уведомления включены, но приложения нет: agentmeister setup соберет его (нужен swiftc)",
+                       "notifications are on, but the app is missing: agentmeister setup builds it (needs swiftc)"))]
 
 
 def check_proxy():
     import claude_proxy
     if claude_proxy.configured():
-        return [("ok", "прокси настроен (проверить выход: agentmeister proxy test)")]
-    return [("ok", "прокси не настроен, agentmeister -x недоступен")]
+        return [("ok", tr("прокси настроен (проверить выход: agentmeister proxy test)",
+                          "proxy configured (test the exit: agentmeister proxy test)"))]
+    return [("ok", tr("прокси не настроен, agentmeister -x недоступен", "proxy not configured, agentmeister -x is unavailable"))]
 
 
 def check_lid():
     import claude_lid
     if not claude_lid.switched_on():
-        return [("ok", "крышка: выключено, закрытая крышка усыпит Mac (agentmeister lid on)")]
+        return [("ok", tr("крышка: выключено, закрытая крышка усыпит Mac (agentmeister lid on)",
+                          "lid: off, closing the lid puts the Mac to sleep (agentmeister lid on)"))]
     if claude_lid.ready():
-        return [("ok", f"крышка: caffeinate-сессии не уснут и с закрытой крышкой (на батарее до "
-                       f"{claude_lid.LOW_BATTERY}% заряда)")]
+        return [("ok", tr(f"крышка: caffeinate-сессии не уснут и с закрытой крышкой (на батарее до "
+                          f"{claude_lid.LOW_BATTERY}% заряда)",
+                          f"lid: caffeinate sessions stay awake with the lid closed (on battery down to "
+                          f"{claude_lid.LOW_BATTERY}%)"))]
     if claude_lid.disabled() and not claude_lid.watcher_pid():
-        return [("warn", "сон отключен (pmset disablesleep 1), а сторожа нет: agentmeister lid release")]
-    return [("ok", "крышка: закрытая крышка усыпит Mac и в caffeinate-сессии (agentmeister lid setup)")]
+        return [("warn", tr("сон отключен (pmset disablesleep 1), а сторожа нет: agentmeister lid release",
+                            "sleep is disabled (pmset disablesleep 1) with no watcher: agentmeister lid release"))]
+    return [("ok", tr("крышка: закрытая крышка усыпит Mac и в caffeinate-сессии (agentmeister lid setup)",
+                      "lid: closing the lid puts the Mac to sleep even in caffeinate sessions (agentmeister lid setup)"))]
 
 
 def check_modes():
     conf = read_config()
-    states = [f"{name} {'вкл' if on else 'выкл'}" for name, on in
+    states = [f"{name} {tr('вкл', 'on') if on else tr('выкл', 'off')}" for name, on in
               (("guard", conf.get("guard", "on") != "off"), ("humanize", conf.get("humanize", "off") == "on"),
                ("buildlog", conf.get("buildlog", "on") != "off"))]
-    return [("ok", "режимы: " + ", ".join(states))]
+    return [("ok", tr("режимы: ", "modes: ") + ", ".join(states))]
 
 
 CHECKS = [check_install, check_commands, check_settings, check_iterm, check_mcp, check_codex, check_zsh, check_notify, check_proxy,
@@ -280,8 +316,8 @@ def main(args):
             if level == "bad" or (level == "warn" and worst == "ok"):
                 worst = level
     print()
-    print({"ok": "Все в порядке.", "warn": "Работает, но есть что поправить.",
-           "bad": "Есть ошибки установки. Подробности выше."}[worst])
+    print({"ok": tr("Все в порядке.", "All good."), "warn": tr("Работает, но есть что поправить.", "Works, but some things need fixing."),
+           "bad": tr("Есть ошибки установки. Подробности выше.", "The install has errors. Details above.")}[worst])
     return 1 if worst == "bad" else 0
 
 
