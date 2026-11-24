@@ -288,8 +288,11 @@ The sandbox also keeps the session from renaming or replacing the folders above 
 the runner reads the list only if it belongs to you, nobody else can write to it, and the path to it doesn't
 go through your own symlinks. If `~/.config` is a symlink, set `XDG_CONFIG_HOME` to the real folder.
 
-The sandbox limits the network and protects agentmeister's own control files. It is not a boundary for
-code: a proxied session can still write `~/.zshrc`, git hooks, Claude settings and other files that run
+The sandbox limits the network and protects agentmeister's own control files. Those include the mihomo
+config and subscription in `~/.config/mnrh/proxy/` and mihomo's control socket, because through the socket
+mihomo would load any config. So inside a proxied session `agentmeister proxy` shows the server picked when
+mihomo started instead of the current one, and `agentmeister proxy restart` asks you to run it in a normal
+terminal. The sandbox is not a boundary for code: a proxied session can still write `~/.zshrc`, git hooks, Claude settings and other files that run
 later outside it.
 
 It runs on [mihomo](https://wiki.metacubex.one) (`brew install mihomo`), which speaks VLESS (including XHTTP)

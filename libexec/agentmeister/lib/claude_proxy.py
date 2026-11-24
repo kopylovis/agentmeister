@@ -6,7 +6,9 @@ mihomo слушает HTTP/SOCKS на 127.0.0.1 и отправляет всё �
 mihomo запускается с первой такой сессией и останавливается после последней.
 
 Песочница сессии ограничивает сеть и защищает файлы, через которые agentmeister выпускает команды из нее:
-список и сокет host-run и папки над ними. Задание перезапуска сессия пишет сама, поэтому оно только данные
+список и сокет host-run и папки над ними, настройку и подписку mihomo и его сокет управления (через него
+mihomo загрузил бы любой конфиг). Поэтому изнутри сессии mihomo не перезапустить и текущий сервер не узнать:
+это делается в обычном терминале. Задание перезапуска сессия пишет сама, поэтому оно только данные
 (restart_job.py). Границей для кода песочница не служит: сессия может писать ~/.zshrc, хуки git,
 настройки Claude и другие файлы, которые потом выполнятся вне нее.
 """
@@ -427,6 +429,23 @@ def refresh_subscription():
     return False
 
 
+_sandboxed = None
+
+
+def in_session():
+    """Мы в сессии через proxy, то есть в ее песочнице: сокет управления mihomo и его настройка закрыты.
+    MNRH_PROXY мог и просочиться в обычный терминал, поэтому проверяем и саму песочницу."""
+    global _sandboxed
+    if not os.environ.get("MNRH_PROXY"):
+        return False
+    if _sandboxed is None:
+        _sandboxed = not host_run.nested_sandbox_ok()
+    return _sandboxed
+
+
+IN_SESSION = "из сессии через proxy это не сделать: песочница закрывает управление mihomo. Выполни в обычном терминале"
+
+
 def start(strict=True):
     """mihomo на нашем порту: уже запущенный или новый. Вызывать под locked(). strict: если выход не в стране
     из настройки, остановить mihomo и выдать ProxyError (новую сессию не запускаем). Без strict mihomo
@@ -434,6 +453,9 @@ def start(strict=True):
     p = port()
     if read_pid() and listening(p):
         return None
+    if in_session():
+        # mihomo из песочницы не смог бы ни поправить свою настройку, ни выйти к серверу напрямую
+        raise ProxyError(f"mihomo не запущен. {IN_SESSION}: agentmeister proxy restart")
     pin_config()
     refresh_subscription()
     pin_hosts()
@@ -630,22 +652,49 @@ def watcher_alive():
 
 
 def ensure_watch():
-    """Запустить сторожа, если его еще нет. Под locked(), после start()."""
-    if watcher_alive():
+    """Запустить сторожа, если его еще нет. Под locked(), после start(). Из песочницы сторож до mihomo не
+    достучится, его запускает только лаунчер сессии."""
+    if in_session() or watcher_alive():
         return
     subprocess.Popen([sys.executable, os.path.abspath(__file__), "watch"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True, cwd="/")
 
 
+def guarded_paths():
+    """(сокет управления mihomo, папка настройки): как есть и после раскрытия ссылок, без повторов."""
+    socks, confs = [], []
+    for path, out in ((SOCK, socks), (CONF_DIR, confs)):
+        for form in (os.path.abspath(path), os.path.realpath(path)):
+            if form not in out:
+                out.append(form)
+    return socks, confs
+
+
+def sandbox_profile_lines():
+    """Сокет управления mihomo: подключиться, удалить или подменить нельзя. Настройку и подписку менять нельзя:
+    mihomo прочитал бы их при следующем запуске вне песочницы."""
+    socks, confs = guarded_paths()
+    sock = " ".join(f'(literal (param "MIHOMO_SOCK{i}"))' for i in range(len(socks)))
+    conf = " ".join(f'(subpath (param "MIHOMO_CONF{i}"))' for i in range(len(confs)))
+    return [f"(deny network-outbound {sock})", f"(deny file-write* {sock} {conf})"]
+
+
+def sandbox_params():
+    socks, confs = guarded_paths()
+    return ([a for i, path in enumerate(socks) for a in ("-D", f"MIHOMO_SOCK{i}={path}")]
+            + [a for i, path in enumerate(confs) for a in ("-D", f"MIHOMO_CONF{i}={path}")])
+
+
 def session_command(p, cmd, *, claude=False):
     if not 1 <= p <= 65535:
         raise ValueError(f"Недопустимый порт proxy: {p}")
+    guard = "\n".join(sandbox_profile_lines()) + "\n"
     if claude:
-        # Список команд host-run и его сокет сессия видит, но поменять не может.
-        profile = CLAUDE_PROFILE + "\n".join(host_run.sandbox_profile_lines()) + "\n"
-        return ["/usr/bin/sandbox-exec", *host_run.sandbox_params(), "-p", profile, "--", *cmd]
+        # Список команд host-run и его сокет сессия видит, но поменять не может. mihomo ей не подвластен.
+        profile = CLAUDE_PROFILE + "\n".join(host_run.sandbox_profile_lines()) + "\n" + guard
+        return ["/usr/bin/sandbox-exec", *host_run.sandbox_params(), *sandbox_params(), "-p", profile, "--", *cmd]
     profile = SESSION_PROFILE.format(port=p)
-    params = []
+    params = sandbox_params()
     agent = os.environ.get("SSH_AUTH_SOCK", "")
     if os.path.isabs(agent):
         path = os.path.realpath(agent)
@@ -655,9 +704,10 @@ def session_command(p, cmd, *, claude=False):
             pass
         else:
             if info.st_uid == os.getuid() and stat.S_ISSOCK(info.st_mode):
-                params = ["-D", f"SSH_AUTH_SOCK={path}"]
+                params += ["-D", f"SSH_AUTH_SOCK={path}"]
                 profile += '(allow network-outbound (literal (param "SSH_AUTH_SOCK")))\n'
-    return ["/usr/bin/sandbox-exec", *params, "-p", profile, "--", *cmd]
+    # запреты mihomo последними: в профиле побеждает последнее подходящее правило
+    return ["/usr/bin/sandbox-exec", *params, "-p", profile + guard, "--", *cmd]
 
 
 def proxy_env(p, *, claude=False):
@@ -968,6 +1018,10 @@ def update():
         return 1
     after = installed_version()
     print(f"{OK} mihomo {before} → {after}" if newer(after, before) else f"{OK} mihomo {after}, это последняя версия")
+    if in_session():
+        print(f"{WARN} запущенный mihomo не перезапускаю: песочница сессии закрывает управление им. Если новая "
+              "версия нужна сейчас, выполни в обычном терминале agentmeister proxy restart")
+        return 0
     running = running_version()
     if not running or running == after:
         return 0
@@ -996,6 +1050,9 @@ def update():
 
 
 def restart_cmd():
+    if in_session():
+        print(f"{WARN} {IN_SESSION}: agentmeister proxy restart")
+        return 1
     if not (read_pid() and listening(port())):
         print(paint("  mihomo не запущен: он поднимется вместе с первой сессией через proxy", "2"))
         return 0
@@ -1011,6 +1068,19 @@ def restart_cmd():
     node, proto = active_node()
     print(f"{OK} mihomo перезапущен" + (f", сервер {node}" + (f", протокол {proto}" if proto else "") if node else ""))
     return 0
+
+
+def started_node():
+    """Сервер из exit.json, который записан при запуске mihomo."""
+    try:
+        with open(EXIT) as f:
+            info = json.load(f)
+    except (OSError, ValueError):
+        info = {}
+    node, proto = info.get("node"), info.get("proto")
+    if not isinstance(node, str) or not node:
+        return "При запуске mihomo сервер не определился"
+    return f"При запуске mihomo был сервер {node}" + (f", протокол {proto}" if isinstance(proto, str) else "")
 
 
 def fmt(t):
@@ -1037,6 +1107,9 @@ def status(test=False):
         node, proto = active_node()
         if node:
             print(f"{OK} сейчас сервер {node}" + (f", протокол {proto}" if proto else ""))
+        elif in_session():
+            print(paint("  " + started_node() + ". Текущий сервер из сессии не виден: песочница закрывает "
+                        "сокет управления mihomo, смотри agentmeister proxy в обычном терминале", "2"))
     else:
         print(paint("  mihomo не запущен: он поднимется вместе с первой сессией через proxy", "2"))
     if os.environ.get("MNRH_PROXY"):
