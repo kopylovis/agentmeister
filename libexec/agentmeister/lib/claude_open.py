@@ -4,9 +4,11 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import time
 
-from mnrhlib import HOME, LOCAL_CLI, projects_dir, run, settings_path, tilde
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from mnrhlib import HOME, LOCAL_CLI, projects_dir, run, settings_path, tilde  # noqa: E402
 
 OPEN = {
     "Apple_Terminal": '''
@@ -194,6 +196,101 @@ def trust(path, attempts=5):
     raise OSError(f"{tilde(CLAUDE_JSON)} всё время меняется, попробуй ещё раз")
 
 
+def shell_word(arg):
+    """Слово для строки, которую терминал наберет в zsh. Без управляющих символов это обычные кавычки,
+    с ними $'...', чтобы перевод строки не стал нажатием Enter и вся команда осталась одной строкой."""
+    if not any(ord(c) < 0x20 or 0x7f <= ord(c) <= 0x9f for c in arg):
+        return shlex.quote(arg)
+    out = []
+    for c in arg:
+        code = ord(c)
+        if c in "\\'":
+            out.append("\\" + c)
+        elif c in "\n\t\r":
+            out.append({"\n": "\\n", "\t": "\\t", "\r": "\\r"}[c])
+        elif code < 0x20 or code == 0x7f:
+            out.append(f"\\x{code:02x}")
+        elif 0x80 <= code <= 0x9f:  # байты UTF-8: \u не знает bash 3.2 из macOS
+            out.append("".join(f"\\x{b:02x}" for b in c.encode()))
+        else:
+            out.append(c)
+    return "$'" + "".join(out) + "'"
+
+
+def shell_line(argv):
+    return " ".join(shell_word(a) for a in argv)
+
+
+# Флаги agentmeister open, которые сессия может передать через host-run open. -d нет: сессия из песочницы
+# не должна открывать сессию без нее. -x и --new добавляются всегда, без --new agentmeister спросил бы в меню.
+HOST_FLAGS = {"-k": "-k", "--caffeinate": "-k", "-n": "-n", "--normal": "-n", "-i": "-i", "--incognito": "-i",
+              "-x": None, "--proxy": None, "--new": None}
+
+
+def host_open_command(argv):
+    """Команда agentmeister open для host-run open <проект> [флаги] -- [аргументы claude]. Ошибка: ValueError."""
+    if "--" in argv:
+        cut = argv.index("--")
+        head, tail = argv[:cut], argv[cut + 1:]
+    else:
+        head, tail = argv, []
+    project, mode, incognito = None, None, False
+    for arg in head:
+        if arg in ("-d", "--direct"):
+            raise ValueError("host-run open открывает сессию только через proxy, -d нельзя")
+        if arg.startswith("-"):
+            if arg not in HOST_FLAGS:
+                raise ValueError(f"флаг {arg} не подходит, можно -k, -n, -i, -x, --new")
+            if HOST_FLAGS[arg] == "-i":
+                incognito = True
+            elif HOST_FLAGS[arg]:
+                mode = HOST_FLAGS[arg]
+        elif project is None:
+            project = arg
+        else:
+            raise ValueError(f"лишний аргумент {arg}, аргументы claude пиши после --")
+    if not project:
+        raise ValueError("нужен проект: host-run open <проект> [флаги agentmeister open] -- [аргументы claude]")
+    cmd = [LOCAL_CLI, "open", project, mode or "-k", "-x", "--new"] + (["-i"] if incognito else [])
+    return cmd + (["--", *tail] if tail else [])
+
+
+def open_tab(cmd):
+    """Открыть вкладку в текущем окне iTerm2 и запустить там cmd. Это зовет исполнитель host-run вне песочницы.
+    -> (текст, ошибка ли)"""
+    tty, err = launch("iTerm.app", shell_line(cmd), "tab")
+    if not tty:
+        return f"iTerm2 не открыл вкладку ({err}).", True
+    rc = "--remote-control" in cmd[cmd.index("--") + 1:] if "--" in cmd else False
+    where = f"{tilde(cmd[2])}, через proxy"
+    return report("iTerm.app", tty, cmd, "новую вкладку", where, rc, prompt=False)
+
+
+def launch(term, line, placement):
+    """Набрать line в новой вкладке или окне. -> (tty, текст ошибки)"""
+    script_args = [line, placement] if term == "iTerm.app" else [line]
+    try:
+        r = subprocess.run(["osascript", "-e", OPEN[term], *script_args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, f"AppleScript: {exc.__class__.__name__}"
+    tty = r.stdout.strip()
+    if r.returncode or not tty.startswith("/dev/"):
+        return None, (r.stderr or r.stdout).strip() or "osascript без ответа"
+    return tty, ""
+
+
+def via_host_run(cmd):
+    """Попросить исполнитель host-run открыть вкладку вне песочницы. None, если исполнителя нет или он старый."""
+    import io
+    import host_run
+    out, err = io.BytesIO(), io.StringIO()
+    code = host_run.send_op({"op": "open", "argv": cmd[2:]}, out=out, err=err)
+    if code == 125:
+        return None
+    text = (out.getvalue().decode(errors="replace") + err.getvalue()).strip()
+    return text.replace("agentmeister host-run: ", ""), code != 0
+
+
 def terminal():
     term = os.environ.get("TERM_PROGRAM", "")
     return term if term in OPEN else "Apple_Terminal"
@@ -261,33 +358,43 @@ def open_claude(args, cm):
         ([args["prompt"]] if args.get("prompt") else [])
     if extra:
         cmd += ["--"] + extra
-    line = " ".join(shlex.quote(c) for c in cmd)
+    line = shell_line(cmd)
 
     if term == "iTerm.app" and "placement" not in args:
         placement = "auto"
         destination = "новую сессию"
-    script_args = [line, placement] if term == "iTerm.app" else [line]
-    try:
-        r = subprocess.run(["osascript", "-e", OPEN[term], *script_args], capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return f"Не удалось подтвердить запуск через AppleScript ({exc.__class__.__name__}). Проверь терминал.", True
-    tty = r.stdout.strip()
+    tty, err = launch(term, line, placement)
     app = "iTerm2" if term == "iTerm.app" else "Terminal"
-    if r.returncode or not tty.startswith("/dev/"):
-        err = (r.stderr or r.stdout).strip()
+    if not tty:
+        tab = term == "iTerm.app" and placement in ("tab", "auto")
+        if tab and net == "-x":
+            # MCP-сервер сессии через proxy в песочнице, и iTerm2 его Apple Events не принимает (-10004).
+            # Исполнитель host-run работает вне песочницы и откроет вкладку сам.
+            answer = via_host_run(cmd)
+            if answer:
+                text, failed = answer
+                if failed:
+                    text += f" В iTerm2 нажми ⌘T и выполни в новой вкладке:\n{line}"
+                return text, failed
         hint = (f" Нужно разрешение: {settings_path('settings', 'privacy', 'automation')} → разрешить управлять "
                 f"{app}.") if "-1743" in err or "not allowed" in err.lower() else ""
-        if placement in ("tab", "auto"):
+        if tab:
             hint += f" В iTerm2 нажми ⌘T и выполни в новой вкладке:\n{line}"
-        return f"Не удалось подтвердить запуск в {app} ({err or 'osascript без ответа'}).{hint}", True
+        return f"Не удалось подтвердить запуск в {app} ({err}).{hint}", True
 
+    where = f"{tilde(target)}, режим {mode}" + (", через proxy" if net == "-x" else "")
+    return report(term, tty, cmd, destination, where, rc, bool(args.get("prompt")))
+
+
+def report(term, tty, cmd, destination, where, rc, prompt):
+    """Дождаться Claude в терминале tty и ссылки Remote Control. -> (текст, ошибка ли)"""
+    app = "iTerm2" if term == "iTerm.app" else "Terminal"
     pid = None
     for _ in range(40):  # до 20 секунд: caffeinate, node, первый запуск
         pid = claude_on(tty)
         if pid:
             break
         time.sleep(0.5)
-    where = f"{tilde(target)}, режим {mode}" + (", через proxy" if net == "-x" else "")
     url = remote_url(term, tty) if pid and rc else ""
     if pid:
         text = f"Открыл {destination} {app} ({tty}): Claude Code запущен в {where}, pid {pid}."
@@ -298,7 +405,7 @@ def open_claude(args, cm):
     else:
         text = (f"Открыл {destination} {app} ({tty}) и запустил там `{' '.join(cmd[1:])}`, но за 20 секунд "
                 f"Claude Code не появился — проверь терминал ({where}).")
-    if args.get("prompt"):
+    if prompt:
         text += " Первый запрос передан."
     return text, not pid
 
