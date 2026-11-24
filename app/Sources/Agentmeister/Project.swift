@@ -56,6 +56,8 @@ struct ProjectView: View {
     let path: String
     @State private var data: ProjectData?
     @State private var newTask = ""
+    /// Ширина области карточек: от нее зависит, две колонки или одна.
+    @State private var width: CGFloat = 1000
 
     var l: L { L(backend.state.lang) }
 
@@ -66,12 +68,23 @@ struct ProjectView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 if let data {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 16, alignment: .top)], alignment: .leading, spacing: 16) {
-                        leftOff(data)
-                        backlog(data)
-                        parallel(data)
-                        tools(data)
+                    // две колонки, каждая заполняется сама: короткая карточка не оставляет дыру рядом с длинной
+                    Group {
+                        if width >= 700 {
+                            HStack(alignment: .top, spacing: 16) {
+                                VStack(spacing: 16) { leftOff(data); parallel(data) }
+                                    .frame(maxWidth: .infinity)
+                                VStack(spacing: 16) { backlog(data); tools(data) }
+                                    .frame(maxWidth: .infinity)
+                            }
+                        } else {
+                            VStack(spacing: 16) {
+                                leftOff(data); backlog(data); parallel(data); tools(data)
+                            }
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
                 } else {
                     ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                 }
@@ -106,13 +119,8 @@ struct ProjectView: View {
             .opacity(workspace.tabs.isEmpty ? 0 : 1)
             if let last = data?.last {
                 Button(l.resumeLast) { open(resume: last.id) }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.glassProminent)
             }
-            Button(l.newSession) {
-                ui.newSessionProject = path
-                ui.showNewSession = true
-            }
-            .buttonStyle(.glassProminent)
         }
     }
 

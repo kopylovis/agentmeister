@@ -148,3 +148,45 @@ struct SectionCaption: View {
         Text(text).font(.system(size: 11, weight: .semibold)).foregroundStyle(Ink.faint)
     }
 }
+
+/// Точка состояния сессии, одна схема на все окно. Зеленая: сессия открыта и ничего не делает. Желтая и мигает:
+/// агент работает. Синяя: агент ждет ответа или разрешения. Серая: сессия сохранена, но не открыта.
+struct SessionDot: View {
+    let status: String?
+    var open = true
+    var size: CGFloat = 8
+    @State private var dim = false
+
+    static let idle = Color(hex: 0x3FB66A)
+    static let busy = Color(hex: 0xF2C230)
+    static let waiting = Color(hex: 0x3D8BFF)
+
+    private var color: Color {
+        guard open else { return Ink.savedDot }
+        switch status {
+        case "busy": return Self.busy
+        case "waiting": return Self.waiting
+        default: return Self.idle
+        }
+    }
+
+    var body: some View {
+        let busy = open && status == "busy"
+        Circle()
+            .fill(color)
+            .frame(width: size, height: size)
+            .shadow(color: open ? color.opacity(0.8) : .clear, radius: 4)
+            .opacity(busy && dim ? 0.35 : 1)
+            .onAppear { startPulse(busy) }
+            .onChange(of: busy) { startPulse(busy) }
+            .accessibilityLabel(!open ? "saved" : status == "waiting" ? "waiting for you" : status == "busy" ? "working" : "open")
+    }
+
+    private func startPulse(_ on: Bool) {
+        if on {
+            withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { dim = true }
+        } else {
+            withAnimation(.default) { dim = false }
+        }
+    }
+}

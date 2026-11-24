@@ -542,12 +542,11 @@ struct SessionRow: View {
         let live = backend.state.live.first { $0.sessionId == session.id }
         let status = tab?.status ?? live?.status
         let current = tab != nil && tab?.id == workspace.selected
-        let dot: Color = status == "waiting" ? Ink.amberDot : status != nil ? Ink.tealDot : Ink.savedDot
         Button {
             workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path, resumeId: session.id))
         } label: {
             HStack(spacing: 8) {
-                GlowDot(color: dot, glow: status != nil)
+                SessionDot(status: status, open: status != nil || tab != nil, size: 7)
                 Text(session.title.isEmpty ? l.untitled : session.title)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -675,9 +674,8 @@ struct TabChip: View {
                     }
                     .buttonStyle(.plain)
                     .help(l.closeTab + ", ⌘W")
-                } else if tab.status == "waiting" {
-                    GlowDot(color: Ink.amberDot, size: 8)
-                        .accessibilityLabel(l.t("ждет ответа", "waiting for you"))
+                } else if tab.running && (tab.status == "waiting" || tab.status == "busy") {
+                    SessionDot(status: tab.status)
                 } else if tab.rang && !selected {
                     Image(systemName: "bell.fill").font(.system(size: 9)).foregroundStyle(Ink.amber)
                 } else if !tab.running {
