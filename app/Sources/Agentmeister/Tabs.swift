@@ -692,7 +692,10 @@ final class Workspace: ObservableObject {
     private var codexScanning = false
 
     /// Узнать тред Codex у вкладок, где его id еще нет: самый ранний новый тред в папке вкладки, начатый после
-    /// ее запуска и не занятый другой вкладкой. Codex заводит rollout с первым запросом, до него продолжать нечего.
+    /// ее запуска, не занятый другой вкладкой и принадлежащий процессу этой вкладки. Свой значит, что rollout
+    /// держит открытым потомок shell вкладки, а если файл сейчас закрыт, что id треда есть в argv потомка codex.
+    /// Иначе тред мог начать Codex в iTerm2 в той же папке: не берем и смотрим снова через 5 секунд.
+    /// Codex заводит rollout с первым запросом, до него продолжать нечего.
     /// Зовется раз в секунду, а файлы смотрит не чаще раза в 5 секунд и только пока такие вкладки есть.
     func trackCodexThreads() {
         let waiting = tabs.filter { $0.running && $0.spec.agent == .codex && $0.spec.utility == nil && $0.sessionId == nil }
@@ -700,16 +703,24 @@ final class Workspace: ObservableObject {
         codexScanAt = Date()
         codexScanning = true
         let since = waiting.map(\.startedAt).min() ?? Date()
+        let roots = waiting.map(\.shellPid)
         Task.detached(priority: .utility) {
             let threads = CodexThreads.recent(since: since)
+            // процессы вкладок смотрим, только если есть что сопоставлять
+            let trees = threads.isEmpty ? [] : roots.map { ProcessTree.Snapshot(root: $0) }
             await MainActor.run {
                 self.codexScanning = false
                 var claimed = Set(self.tabs.filter { $0.spec.agent == .codex }.compactMap(\.sessionId))
-                for tab in waiting.sorted(by: { $0.startedAt < $1.startedAt }) where tab.running && tab.sessionId == nil {
+                let order = waiting.indices.sorted { waiting[$0].startedAt < waiting[$1].startedAt }
+                for index in order where index < trees.count {
+                    let tab = waiting[index], tree = trees[index]
+                    // shell вкладки сменился (перезапуск): дерево снято с прошлого процесса
+                    guard tab.running, tab.sessionId == nil, tab.shellPid == tree.root else { continue }
                     let path = (tab.spec.projectPath as NSString).resolvingSymlinksInPath
                     guard let thread = threads.first(where: { thread in
                         !claimed.contains(thread.id) && thread.created >= tab.startedAt.addingTimeInterval(-2)
                             && (thread.cwd as NSString).resolvingSymlinksInPath == path
+                            && tree.owns(thread)
                     }) else { continue }
                     claimed.insert(thread.id)
                     tab.sessionId = thread.id
@@ -795,6 +806,8 @@ enum CodexThreads {
         let id: String
         let cwd: String
         let created: Date
+        /// Файл rollout: по нему видно, какой процесс пишет тред.
+        var path = ""
     }
 
     static var home: String {
@@ -818,7 +831,8 @@ enum CodexThreads {
                 let path = (dir as NSString).appendingPathComponent(name)
                 guard let modified = (try? fm.attributesOfItem(atPath: path)[.modificationDate]) as? Date,
                       modified >= since.addingTimeInterval(-5),
-                      let thread = firstLine(path, iso: iso) else { continue }
+                      var thread = firstLine(path, iso: iso) else { continue }
+                thread.path = path
                 out.append(thread)
             }
             day = calendar.date(byAdding: .day, value: 1, to: day) ?? Date.distantFuture
@@ -840,6 +854,127 @@ enum CodexThreads {
         // треды субагентов Codex заводит сам, это не разговор вкладки
         if meta["source"] is [String: Any] || meta["thread_source"] as? String == "subagent" { return nil }
         return Thread(id: id.lowercased(), cwd: cwd, created: created)
+    }
+}
+
+/// Процессы вкладки через libproc: потомки shell, их открытые файлы и argv. Нужно, чтобы вкладка Codex взяла
+/// свой тред, а не тред Codex из iTerm2 в той же папке. Приложение идет вне песочницы и видит процессы своего
+/// пользователя, как lsof.
+enum ProcessTree {
+    /// Потомки root, открытые ими файлы и argv тех, кто похож на codex. Снимок делается вне главного потока.
+    struct Snapshot {
+        let root: pid_t
+        /// Открытые потомками rollout-файлы, пути приведены через samePath.
+        var openFiles: Set<String> = []
+        /// argv потомков, у которых в пути программы или в argv есть codex.
+        var codexArgv: [[String]] = []
+
+        nonisolated init(root: pid_t) {
+            self.root = root
+            for pid in ProcessTree.descendants(of: root) {
+                // нужны только rollout, остальные файлы node и codex не приводим
+                for file in ProcessTree.openFiles(of: pid) where (file as NSString).lastPathComponent.hasPrefix("rollout-") {
+                    openFiles.insert(ProcessTree.samePath(file))
+                }
+                if let argv = ProcessTree.arguments(of: pid), argv.contains(where: ProcessTree.isCodex) {
+                    codexArgv.append(argv)
+                }
+            }
+        }
+
+        /// Тред принадлежит вкладке: его rollout открыт у потомка, а если закрыт между записями, id треда
+        /// стоит в argv потомка codex (codex resume <id>).
+        nonisolated func owns(_ thread: CodexThreads.Thread) -> Bool {
+            if !thread.path.isEmpty, openFiles.contains(ProcessTree.samePath(thread.path)) { return true }
+            return codexArgv.contains { argv in argv.contains { $0.lowercased().contains(thread.id) } }
+        }
+    }
+
+    /// Один путь в одном виде: без симлинков и без /private, который macOS дописывает к /var и /tmp.
+    nonisolated static func samePath(_ path: String) -> String {
+        (path as NSString).resolvingSymlinksInPath
+    }
+
+    nonisolated static func isCodex(_ arg: String) -> Bool {
+        (arg as NSString).lastPathComponent.lowercased().contains("codex")
+    }
+
+    /// Все потомки root обходом в ширину по PROC_PPID_ONLY. Предел на случай дерева, которое растет под нами.
+    nonisolated static func descendants(of root: pid_t) -> [pid_t] {
+        guard root > 1 else { return [] }
+        var out: [pid_t] = []
+        var queue = [root]
+        var seen: Set<pid_t> = [root]
+        while !queue.isEmpty, out.count < 1024 {
+            let pid = queue.removeFirst()
+            for child in children(of: pid) where seen.insert(child).inserted {
+                out.append(child)
+                queue.append(child)
+            }
+        }
+        return out
+    }
+
+    nonisolated static func children(of pid: pid_t) -> [pid_t] {
+        let estimate = proc_listpids(UInt32(PROC_PPID_ONLY), UInt32(pid), nil, 0)
+        guard estimate > 0 else { return [] }
+        // запас: между двумя вызовами могли появиться новые дети
+        var pids = [pid_t](repeating: 0, count: Int(estimate) / MemoryLayout<pid_t>.stride + 16)
+        let bytes = pids.withUnsafeMutableBytes { buffer in
+            proc_listpids(UInt32(PROC_PPID_ONLY), UInt32(pid), buffer.baseAddress, Int32(buffer.count))
+        }
+        guard bytes > 0 else { return [] }
+        return pids.prefix(Int(bytes) / MemoryLayout<pid_t>.stride).filter { $0 > 0 }
+    }
+
+    /// Пути файлов, открытых процессом: PROC_PIDLISTFDS, затем PROC_PIDFDVNODEPATHINFO по каждому vnode.
+    nonisolated static func openFiles(of pid: pid_t) -> [String] {
+        let estimate = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+        guard estimate > 0 else { return [] }
+        let stride = MemoryLayout<proc_fdinfo>.stride
+        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: Int(estimate) / stride + 16)
+        let bytes = fds.withUnsafeMutableBytes { buffer in
+            proc_pidinfo(pid, PROC_PIDLISTFDS, 0, buffer.baseAddress, Int32(buffer.count))
+        }
+        guard bytes > 0 else { return [] }
+        var out: [String] = []
+        let size = Int32(MemoryLayout<vnode_fdinfowithpath>.size)
+        for fd in fds.prefix(Int(bytes) / stride) where fd.proc_fdtype == UInt32(PROX_FDTYPE_VNODE) {
+            var info = vnode_fdinfowithpath()
+            guard proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDVNODEPATHINFO, &info, size) == size else { continue }
+            let path = withUnsafeBytes(of: &info.pvip.vip_path) { raw in
+                String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self)
+            }
+            if !path.isEmpty { out.append(path) }
+        }
+        return out
+    }
+
+    /// argv процесса из KERN_PROCARGS2: argc, путь программы, нули выравнивания, затем argc строк.
+    /// Первым элементом идет путь программы, чтобы узнать codex и тогда, когда argv[0] у него node.
+    nonisolated static func arguments(of pid: pid_t) -> [String]? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        let data = buffer.prefix(size)
+        let argc = data.prefix(4).withUnsafeBytes { $0.loadUnaligned(as: Int32.self) }
+        var index = data.startIndex + 4
+        func next() -> String? {
+            while index < data.endIndex, data[index] == 0 { index += 1 }
+            guard index < data.endIndex else { return nil }
+            let end = data[index...].firstIndex(of: 0) ?? data.endIndex
+            defer { index = end }
+            return String(decoding: data[index..<end], as: UTF8.self)
+        }
+        guard let exec = next() else { return nil }
+        var out = [exec]
+        for _ in 0..<max(0, Int(argc)) {
+            guard let arg = next() else { break }
+            out.append(arg)
+        }
+        return out
     }
 }
 
