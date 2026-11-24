@@ -99,6 +99,8 @@ struct MainView: View {
         .onChange(of: backend.ready) {
             guard backend.ready else { return }
             workspace.restore(live: backend.state.live, projects: backend.state.projects, sessions: backend.state.sessions)
+            // клик по уведомлению мог и запустить приложение: запрос ждет в focus.json
+            workspace.takeFocusRequest(state: backend.state)
             // мастер один раз, при первом запуске
             if !UserDefaults.standard.bool(forKey: "onboardingDone") { ui.showOnboarding = true }
         }
@@ -113,12 +115,16 @@ struct MainView: View {
                 }
                 return
             }
-            // agentmeister://focus?tab=<id> из клика по уведомлению
-            guard url.host() == "focus",
-                  let tab = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "tab" })?.value
-            else { return }
+            // agentmeister://focus?tab=<id>&session=<id> из клика по уведомлению
+            let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+            guard url.host() == "focus", let tab = query?.first(where: { $0.name == "tab" })?.value else { return }
+            if !workspace.restoredTabs || workspace.pendingRestore != nil {
+                // приложение только что запустилось по ссылке: вкладок еще нет, запрос заберем из focus.json
+                Workspace.bringMainWindowForward()
+                return
+            }
             try? FileManager.default.removeItem(atPath: Workspace.focusFile)
-            workspace.focus(tab: tab)
+            workspace.focus(tab: tab, session: query?.first(where: { $0.name == "session" })?.value, state: backend.state)
         }
         .onChange(of: workspace.selected) {
             workspace.writeFront(active: NSApp.isActive)
@@ -131,7 +137,7 @@ struct MainView: View {
             workspace.writeFront(active: false)
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
-            workspace.takeFocusRequest()
+            workspace.takeFocusRequest(state: backend.state)
         }
     }
 
