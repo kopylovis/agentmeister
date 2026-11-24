@@ -20,6 +20,8 @@ struct LaunchSpec: Hashable {
     var remoteControl = false
     /// Не давать Mac уснуть, пока идет сессия. Держит caffeinate, который запускает само приложение.
     var awake = false
+    /// Дополнительные флаги агента после --, например --resume <id> --fork-session для форка разговора.
+    var extraFlags: [String] = []
 
     /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
     var proxied: Bool {
@@ -36,7 +38,7 @@ struct LaunchSpec: Hashable {
         var args = agent == .codex ? ["--harness", "codex"] : []
         args += [projectPath, "-n", direct ? "-d" : "-x"]
         // флаги после -- agentmeister передает самому агенту
-        var agentArgs: [String] = []
+        var agentArgs: [String] = resumeId == nil ? extraFlags : []
         if remoteControl && agent == .claude { agentArgs += ["--remote-control", projectName] }
         if let id = resumeId, agent == .claude {
             args += ["--", "--resume", id] + agentArgs
@@ -142,7 +144,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         status = nil
         startedAt = Date()
         let args = ["-l", "-c", Self.shellScript, LoginEnvironment.agentmeister] + spec.arguments
-        view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(tab: id, spec: spec), execName: "-zsh")
+        view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(tab: id, spec: spec), execName: "-zsh",
+                          currentDirectory: FileManager.default.fileExists(atPath: spec.projectPath) ? spec.projectPath : NSHomeDirectory())
         updateAwake()
     }
 
@@ -160,6 +163,34 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         task.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
         task.arguments = ["-i", "-w", String(shellPid)]
         if (try? task.run()) != nil { caffeinate = task }
+    }
+
+    /// Перезапуск с claude update перед ним, как /restart. Обновление идет вне песочницы, прямо из приложения.
+    func restartWithUpdate(note: String) {
+        guard spec.agent == .claude, spec.utility == nil else { restart(); return }
+        if running { view.terminate() }
+        view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
+        Task.detached(priority: .userInitiated) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            task.arguments = ["-c", "claude update 2>&1 | tail -3"]
+            task.environment = LoginEnvironment.shared
+            let pipe = Pipe()
+            task.standardOutput = pipe
+            task.standardInput = FileHandle.nullDevice
+            try? task.run()
+            let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            task.waitUntilExit()
+            await MainActor.run {
+                self.view.feed(text: out.replacingOccurrences(of: "\n", with: "\r\n"))
+                self.restart()
+            }
+        }
+    }
+
+    /// Вписать текст в строку ввода агента, не отправляя. Палитра так подставляет /ask, /shot и другие команды.
+    func type(_ text: String) {
+        view.send(txt: text)
     }
 
     /// Та же сессия, другой маршрут: через proxy или напрямую.
@@ -368,6 +399,16 @@ final class Workspace: ObservableObject {
         spec.firstPrompt = ""
         open(spec)
         return true
+    }
+
+    /// Текущая вкладка с идущим Claude Code: в нее меню и палитра вписывают /ask, /shot и другие команды.
+    var hasClaudeTab: Bool {
+        guard let tab = current else { return false }
+        return tab.spec.utility == nil && tab.spec.agent == .claude && tab.running
+    }
+
+    func typeInClaude(_ text: String) {
+        if hasClaudeTab { current?.type(text) }
     }
 
     func close(_ id: UUID?) {

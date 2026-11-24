@@ -13,6 +13,8 @@ final class UIState: ObservableObject {
     @Published var showOnboarding = false
     @Published var showInspector = true
     @Published var newSessionProject: String?
+    /// Лист новой сессии открыть сразу на "параллельно, своя ветка и worktree".
+    @Published var newSessionParallel = false
     /// Вкладка, сессию которой переименовывают.
     @Published var renaming: TerminalTab?
 }
@@ -915,74 +917,217 @@ struct TabInspector: View {
 struct NewSessionSheet: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var ui: UIState
     @Environment(\.dismiss) private var dismiss
     let initialProject: String?
+
+    enum StartMode: Hashable { case new, resume, parallel }
 
     @State private var projectPath = ""
     @State private var agent: LaunchSpec.Agent = .claude
     @State private var direct = false
-    @State private var resumeLast = false
+    @State private var mode: StartMode = .new
+    @State private var fork = false
+    @State private var remoteControl = true
     @State private var prompt = ""
+    @State private var busy = false
+    @State private var error: String?
 
     var l: L { L(backend.state.lang) }
+
+    /// Сессия текущей вкладки, если это Claude в том же проекте: ее можно скопировать во второй Claude.
+    private var forkSource: String? {
+        guard let tab = workspace.current, tab.spec.utility == nil, tab.spec.agent == .claude,
+              tab.spec.projectPath == projectPath else { return nil }
+        return tab.sessionId
+    }
 
     var body: some View {
         let project = backend.state.projects.first { $0.path == projectPath }
         let last = project.flatMap { backend.state.sessions(in: $0).first }
-        VStack(alignment: .leading, spacing: 16) {
-            Text(l.newSession).font(.title3.weight(.semibold))
-            Form {
-                Picker(l.project, selection: $projectPath) {
-                    ForEach(backend.state.projects) { p in Text(p.name).tag(p.path) }
-                }
-                Picker(l.agent, selection: $agent) {
-                    Text("Claude Code").tag(LaunchSpec.Agent.claude)
-                    Text("Codex").tag(LaunchSpec.Agent.codex)
-                }
-                .pickerStyle(.segmented)
-                Picker(l.route, selection: $direct) {
-                    Text(l.viaProxy).tag(false)
-                    Text(l.directly).tag(true)
-                }
-                .pickerStyle(.segmented)
-                if agent == .claude, let last {
-                    Picker(l.start, selection: $resumeLast) {
-                        Text(l.startNew).tag(false)
-                        Text(l.resumeLast + ", \"" + (last.title.isEmpty ? l.untitled : last.title) + "\"").tag(true)
+        let exit = backend.state.proxy?.exit
+        VStack(alignment: .leading, spacing: 18) {
+            Text(l.newSession).font(.system(size: 17, weight: .semibold))
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 14) {
+                GridRow {
+                    Text(l.project).foregroundStyle(Ink.muted).frame(width: 104, alignment: .leading)
+                    Picker(l.project, selection: $projectPath) {
+                        ForEach(backend.state.projects) { p in Text(p.name).tag(p.path) }
                     }
-                    .pickerStyle(.radioGroup)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                if !(resumeLast && agent == .claude) {
-                    TextField(l.firstPrompt, text: $prompt, prompt: Text(l.firstPromptHint), axis: .vertical)
-                        .lineLimit(3...6)
+                GridRow {
+                    Text(l.agent).foregroundStyle(Ink.muted)
+                    SegmentedCapsule(selection: $agent, options: [(.claude, "Claude Code", nil), (.codex, "Codex", nil)])
+                }
+                GridRow {
+                    Text(l.route).foregroundStyle(Ink.muted)
+                    SegmentedCapsule(selection: $direct, options: [
+                        (false, l.t("Через proxy", "Via proxy") + (exit.map { " " + $0 } ?? ""), Ink.teal),
+                        (true, l.directly, Ink.direct),
+                    ])
+                }
+                GridRow(alignment: .top) {
+                    Text(l.start).foregroundStyle(Ink.muted).padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker(l.start, selection: $mode) {
+                            Text(l.startNew).tag(StartMode.new)
+                            Text(l.t("Продолжить последнюю", "Continue the last one")
+                                 + (last.map { ", \"" + ($0.title.isEmpty ? l.untitled : $0.title) + "\"" } ?? ""))
+                                .tag(StartMode.resume)
+                                .disabled(last == nil || agent != .claude)
+                            Text(l.t("Параллельно, своя ветка и worktree", "In parallel, own branch and worktree"))
+                                .tag(StartMode.parallel)
+                                .disabled(agent != .claude)
+                        }
+                        .pickerStyle(.radioGroup)
+                        .labelsHidden()
+                        Toggle(l.t("С копией этого разговора, второй Claude знает все, что уже обсудили",
+                                   "With a copy of this conversation, so the second Claude knows everything said so far"),
+                               isOn: $fork)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Ink.muted)
+                            .padding(.leading, 26)
+                            .disabled(mode != .parallel || forkSource == nil)
+                            .help(forkSource == nil ? l.t("Нужна открытая вкладка Claude в этом проекте", "Needs an open Claude tab in this project") : "")
+                    }
                 }
             }
-            .formStyle(.grouped)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(mode == .parallel ? l.t("Задача", "Task") : l.firstPrompt).foregroundStyle(Ink.muted)
+                TextEditor(text: $prompt)
+                    .font(.system(size: 12, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(height: 84)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Ink.card))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Ink.buttonBorder))
+                    .overlay(alignment: .topLeading) {
+                        if prompt.isEmpty {
+                            Text(l.t("Что сделать в этой сессии", "What this session should do"))
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(Ink.faint)
+                                .padding(.horizontal, 15)
+                                .padding(.vertical, 8)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .disabled(mode == .resume)
+            }
+            if agent == .claude {
+                Toggle(l.t("Remote Control, чтобы продолжить с телефона", "Remote Control, to continue from your phone"), isOn: $remoteControl)
+                    .foregroundStyle(Ink.text2)
+            }
             if direct {
-                Label(l.directWarning, systemImage: "exclamationmark.triangle")
-                    .foregroundStyle(.orange)
-                    .font(.callout)
+                Text(l.directWarning)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.amber)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Ink.amberDot.opacity(0.14)))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Ink.amberDot.opacity(0.35)))
             }
-            HStack {
+            if let error {
+                Text(error).font(.system(size: 12)).foregroundStyle(Ink.red)
+            }
+            HStack(spacing: 8) {
                 Spacer()
                 Button(l.cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(l.open) {
-                    guard let project else { return }
-                    var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: agent, direct: direct)
-                    if resumeLast && agent == .claude, let last { spec.resumeId = last.id } else { spec.firstPrompt = prompt }
-                    workspace.open(spec)
-                    dismiss()
+                Button {
+                    open(project: project, last: last)
+                } label: {
+                    if busy { ProgressView().controlSize(.small) } else { Text(l.t("Открыть вкладку  ⌘↩", "Open tab  ⌘↩")) }
                 }
-                .keyboardShortcut(.defaultAction)
+                .keyboardShortcut(.return, modifiers: .command)
                 .buttonStyle(.glassProminent)
-                .disabled(project == nil)
+                .disabled(project == nil || busy || (mode == .parallel && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             }
         }
-        .padding(20)
-        .frame(width: 520)
+        .padding(24)
+        .frame(width: 560)
         .onAppear {
             projectPath = initialProject ?? backend.state.projects.first?.path ?? ""
+            if ui.newSessionParallel { mode = .parallel }
+            ui.newSessionParallel = false
         }
+        .onChange(of: agent) { if agent == .codex { mode = .new } }
+    }
+
+    private func open(project: AppState.Project?, last: AppState.Session?) {
+        guard let project else { return }
+        var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: agent, direct: direct)
+        spec.remoteControl = remoteControl && agent == .claude
+        switch mode {
+        case .new:
+            spec.firstPrompt = prompt
+        case .resume:
+            spec.resumeId = last?.id
+        case .parallel:
+            // ветку и worktree делает agentmeister parallel --prepare, а вкладку с задачей открываем сами
+            busy = true
+            error = nil
+            var args = ["parallel", prompt, "-p", project.path, "--prepare"]
+            if fork, let sid = forkSource { args += ["--fork-sid", sid] }
+            Task {
+                let job: ParallelJob? = await Backend.json(args)
+                busy = false
+                guard let job, job.error == nil, let path = job.path else {
+                    error = job?.error ?? l.t("Не получилось сделать worktree", "Couldn't create the worktree")
+                    return
+                }
+                var parallel = spec
+                parallel.projectName = project.name + " · " + (job.branch ?? "")
+                parallel.projectPath = path
+                parallel.firstPrompt = job.prompt ?? prompt
+                parallel.extraFlags = job.flags ?? []
+                workspace.open(parallel)
+                dismiss()
+            }
+            return
+        }
+        workspace.open(spec)
+        dismiss()
+    }
+}
+
+/// Ответ agentmeister parallel --prepare.
+struct ParallelJob: Decodable {
+    let path: String?
+    let branch: String?
+    let prompt: String?
+    let flags: [String]?
+    let error: String?
+}
+
+/// Сегментный переключатель-капсула из макета: дорожка и светлый ползунок у выбранного.
+struct SegmentedCapsule<T: Hashable>: View {
+    @Binding var selection: T
+    let options: [(T, String, Color?)]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                let on = option.0 == selection
+                Button {
+                    selection = option.0
+                } label: {
+                    Text(option.1)
+                        .fontWeight(.medium)
+                        .foregroundStyle(on ? (option.2 ?? Ink.strong) : Ink.muted)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30)
+                        .background(Capsule().fill(on ? Ink.thumb : .clear).shadow(color: .black.opacity(on ? 0.2 : 0), radius: 3, y: 1))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Ink.chip))
     }
 }

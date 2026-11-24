@@ -95,6 +95,14 @@ struct L {
         }
     }
 
+    /// "3 ч назад", "вчера", "5 дн назад": для подписи, где одно число без слова непонятно.
+    func agoLong(_ time: Double) -> String {
+        let short = ago(time)
+        let s = Date().timeIntervalSince1970 - time
+        if s < 60 || (s >= 86400 && s < 172800) { return short }
+        return t(short + " назад", short + " ago")
+    }
+
     func ago(_ time: Double) -> String {
         let s = max(0, Date().timeIntervalSince1970 - time)
         if s < 60 { return t("сейчас", "now") }
