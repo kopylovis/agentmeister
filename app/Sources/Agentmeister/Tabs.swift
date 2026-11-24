@@ -84,7 +84,9 @@ extension LaunchSpec {
 /// Одна вкладка: терминал SwiftTerm и процесс в нем.
 @MainActor
 final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessTerminalViewDelegate {
-    let id = UUID()
+    /// Id вкладки переживает перезапуск приложения (tabs.json): по нему клик по старому уведомлению находит
+    /// вкладку, и AGENTMEISTER_TAB у идущего агента остается верным.
+    let id: UUID
     @Published var spec: LaunchSpec
     @Published var title: String
     @Published var running = true
@@ -104,7 +106,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     private var caffeinate: Process?
     let view: AppTerminalView
 
-    init(spec: LaunchSpec) {
+    init(spec: LaunchSpec, id: UUID? = nil) {
+        self.id = id ?? UUID()
         self.spec = spec
         self.title = spec.utility.map { "agentmeister " + $0.joined(separator: " ") } ?? spec.projectName
         self.sessionId = spec.resumeId
@@ -413,6 +416,8 @@ final class Workspace: ObservableObject {
     @Published var tabs: [TerminalTab] = [] { didSet { save() } }
     @Published var selected: UUID? { didSet { save() } }
     private var restored = false
+    /// Вкладки прошлого запуска уже открыты (или их не было). До этого запрос фокуса ждет.
+    var restoredTabs: Bool { restored }
 
     var current: TerminalTab? { tabs.first { $0.id == selected } }
 
@@ -428,6 +433,8 @@ final class Workspace: ObservableObject {
         var selected: Bool
         var awake: Bool?
         var remoteControl: Bool?
+        /// Id вкладки. Nil в tabs.json старых версий.
+        var id: String?
     }
 
     static var savedTabsURL: URL {
@@ -441,7 +448,7 @@ final class Workspace: ObservableObject {
         let saved = tabs.filter { $0.spec.utility == nil }.map {
             SavedTab(projectName: $0.spec.projectName, projectPath: $0.spec.projectPath, agent: $0.spec.agent.rawValue,
                      direct: $0.spec.direct, sessionId: $0.sessionId, selected: $0.id == selected,
-                     awake: $0.spec.awake, remoteControl: $0.spec.remoteControl)
+                     awake: $0.spec.awake, remoteControl: $0.spec.remoteControl, id: $0.id.uuidString.lowercased())
         }
         let url = Self.savedTabsURL
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -456,7 +463,7 @@ final class Workspace: ObservableObject {
 
     struct PendingRestore {
         let reason: RestoreReason
-        let specs: [(spec: LaunchSpec, selected: Bool)]
+        let specs: [(spec: LaunchSpec, selected: Bool, id: UUID?)]
     }
 
     @Published var pendingRestore: PendingRestore?
@@ -490,7 +497,7 @@ final class Workspace: ObservableObject {
         let busy = Set(live.compactMap(\.sessionId))
         let known = Set(projects.map(\.path))
         let resumable = Set(sessions.map(\.id))
-        var specs: [(spec: LaunchSpec, selected: Bool)] = []
+        var specs: [(spec: LaunchSpec, selected: Bool, id: UUID?)] = []
         for item in saved {
             guard known.contains(item.projectPath) || FileManager.default.fileExists(atPath: item.projectPath) else { continue }
             if let sid = item.sessionId, busy.contains(sid) { continue }
@@ -499,7 +506,7 @@ final class Workspace: ObservableObject {
             spec.awake = item.awake ?? false
             spec.remoteControl = item.remoteControl ?? false
             if agent == .claude, let sid = item.sessionId, resumable.contains(sid) { spec.resumeId = sid }
-            specs.append((spec, item.selected))
+            specs.append((spec, item.selected, item.id.flatMap(UUID.init(uuidString:))))
         }
         let modified = (try? FileManager.default.attributesOfItem(atPath: Self.savedTabsURL.path)[.modificationDate]) as? Date
         let reason: RestoreReason? = {
@@ -516,12 +523,13 @@ final class Workspace: ObservableObject {
     }
 
     /// Открыть выбранные вкладки после листа восстановления или сразу.
-    func finishRestore(_ specs: [(spec: LaunchSpec, selected: Bool)]) {
+    func finishRestore(_ specs: [(spec: LaunchSpec, selected: Bool, id: UUID?)]) {
         pendingRestore = nil
         defer { restored = true; save() }
         var select: UUID?
         for item in specs {
-            let tab = TerminalTab(spec: item.spec)
+            // id второй раз не берем: две вкладки с одним id перепутали бы уведомления
+            let tab = TerminalTab(spec: item.spec, id: item.id.flatMap { id in tabs.contains { $0.id == id } ? nil : id })
             tabs.append(tab)
             if item.selected { select = tab.id }
         }
@@ -632,23 +640,50 @@ final class Workspace: ObservableObject {
         }
     }
 
-    /// Открыть вкладку по id из клика по уведомлению. true, если такая вкладка есть.
+    /// Открыть вкладку из клика по уведомлению: по id вкладки, иначе вкладку с той же сессией, иначе продолжить
+    /// сохраненную сессию в новой вкладке, если она не открыта в другом окне. true, если что-то открыли.
     @discardableResult
-    func focus(tab: String) -> Bool {
-        guard let target = tabs.first(where: { $0.id.uuidString.lowercased() == tab.lowercased() }) else { return false }
-        selected = target.id
-        NSApp.activate()
+    func focus(tab: String, session: String? = nil, state: AppState? = nil) -> Bool {
+        let tabId = UUID(uuidString: tab)
+        let sid = session.flatMap { $0.range(of: Self.sessionPattern, options: .regularExpression) != nil ? $0.lowercased() : nil }
+        if let tabId, let target = tabs.first(where: { $0.id == tabId }) {
+            selected = target.id
+        } else if let sid, let target = tabs.first(where: { $0.sessionId == sid }) {
+            selected = target.id
+        } else if let sid, !liveElsewhere.contains(sid), let state,
+                  let saved = state.sessions.first(where: { $0.id == sid }),
+                  let project = state.projects.first(where: { saved.cwd == $0.path || saved.cwd.hasPrefix($0.path + "/") }) {
+            open(LaunchSpec.resume(sid, cwd: saved.cwd, project: project))
+        } else {
+            return false
+        }
+        current?.rang = false
+        Self.bringMainWindowForward()
         return true
     }
 
-    /// Забрать запрос фокуса, который оставил клик по уведомлению. Старше минуты запрос уже не нужен.
-    func takeFocusRequest() {
-        guard let data = FileManager.default.contents(atPath: Self.focusFile) else { return }
+    /// id сессии Claude Code: UUID в нижнем регистре. Что-то другое в ссылку не пускаем.
+    static let sessionPattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+
+    /// Главное окно вперед, и свернутое тоже.
+    static func bringMainWindowForward() {
+        NSApp.activate()
+        guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true || $0.title == "Agentmeister" })
+        else { return }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Забрать запрос фокуса, который оставил клик по уведомлению. До восстановления вкладок запрос не трогаем:
+    /// после запуска приложения нужная вкладка появится только тогда. Старше двух минут запрос уже не нужен.
+    func takeFocusRequest(state: AppState) {
+        guard restored, pendingRestore == nil,
+              let data = FileManager.default.contents(atPath: Self.focusFile) else { return }
         try? FileManager.default.removeItem(atPath: Self.focusFile)
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tab = obj["tab"] as? String else { return }
-        if let at = obj["at"] as? Double, Date().timeIntervalSince1970 - at > 60 { return }
-        focus(tab: tab)
+        if let at = obj["at"] as? Double, Date().timeIntervalSince1970 - at > 120 { return }
+        focus(tab: tab, session: obj["session"] as? String, state: state)
     }
 
     func terminateAll() {
