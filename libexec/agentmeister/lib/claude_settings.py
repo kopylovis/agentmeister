@@ -101,12 +101,28 @@ def entry(cmd, run_async, matcher):
     return dict({"matcher": matcher} if matcher else {}, hooks=[hook])
 
 
+def without_hook(entries, cmd):
+    """Записи события без наших хуков cmd. Чужие хуки в той же записи остаются, запись уходит, только если
+    в ней не осталось ни одного хука."""
+    out = []
+    for e in entries:
+        inner = e.get("hooks") if isinstance(e, dict) else None
+        if not isinstance(inner, list):
+            out.append(e)
+            continue
+        kept = [h for h in inner if not (isinstance(h, dict) and is_hook(str(h.get("command", "")), cmd))]
+        if len(kept) == len(inner):
+            out.append(e)
+        elif kept:
+            out.append(dict(e, hooks=kept))
+    return out
+
+
 def ensure_hooks(settings, install=True, wanted=HOOKS):
-    """Переставить наши хуки: записи с ними (и со старыми mnrh claude ...) убрать, при install добавить в конец."""
+    """Переставить наши хуки: их (и старые mnrh claude ...) убрать, при install добавить в конец."""
     hooks = settings.setdefault("hooks", {})
     for event, cmd, run_async, matcher in wanted:
-        entries = [e for e in hooks.get(event, [])
-                   if not any(is_hook(h.get("command", ""), cmd) for h in e.get("hooks", []))]
+        entries = without_hook(hooks.get(event, []), cmd)
         if install:
             entries.append(entry(cmd, run_async, matcher))
         if entries:

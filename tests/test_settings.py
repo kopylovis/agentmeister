@@ -98,6 +98,22 @@ class Hooks(unittest.TestCase):
         self.assertEqual(len(s["hooks"]["Stop"]), 1)
         self.assertEqual(cs.add_missing_hooks(s, rows), [])
 
+    def test_foreign_hook_sharing_an_entry_with_ours_is_kept(self):
+        mixed = {"matcher": "Bash", "hooks": [FOREIGN, LEGACY, {"type": "command", "command": "~/bin/after.sh"}]}
+        s = {"hooks": {"Stop": [mixed]}}
+        cs.ensure_hooks(s)
+        self.assertEqual(s["hooks"]["Stop"][0], {"matcher": "Bash", "hooks": [FOREIGN, {"type": "command",
+                                                                                       "command": "~/bin/after.sh"}]})
+        self.assertEqual(cs.missing(s, exact=True), [])
+        cs.ensure_hooks(s, install=False)
+        self.assertEqual(s, {"hooks": {"Stop": [{"matcher": "Bash", "hooks": [
+            FOREIGN, {"type": "command", "command": "~/bin/after.sh"}]}]}})
+
+    def test_entry_with_only_our_hooks_goes_away(self):
+        s = {"hooks": {"Stop": [{"hooks": [LEGACY]}, {"hooks": [FOREIGN]}]}}
+        cs.ensure_hooks(s, install=False)
+        self.assertEqual(s, {"hooks": {"Stop": [{"hooks": [FOREIGN]}]}})
+
     def test_malformed_hooks(self):
         for bad in ([1, 2], {"Stop": "x"}, {"Stop": [{"hooks": None}]}):
             self.assertRaises(ValueError, cs.hook_commands, {"hooks": bad})
