@@ -290,9 +290,13 @@ go through your own symlinks. If `~/.config` is a symlink, set `XDG_CONFIG_HOME`
 
 The sandbox limits the network and protects agentmeister's own control files. Those include the mihomo
 config and subscription in `~/.config/mnrh/proxy/` and mihomo's control socket, because through the socket
-mihomo would load any config. So inside a proxied session `agentmeister proxy` shows the server picked when
-mihomo started instead of the current one, and `agentmeister proxy restart` asks you to run it in a normal
-terminal. The sandbox is not a boundary for code: a proxied session can still write `~/.zshrc`, git hooks, Claude settings and other files that run
+mihomo would load any config. The session also can't change anything in `~/.local/state/mnrh/proxy/` (the
+records of running sessions, mihomo's pid, the watcher's log) or hard-link files out of these folders, and it
+can't even open the lock there. The session launcher records the session under its own pid before the sandbox
+starts. So inside a proxied session `agentmeister proxy` shows the server picked when
+mihomo started instead of the current one, `agentmeister proxy test` and a nested `agentmeister proxy run` use
+the mihomo this session already holds (the nested command stays in the session's sandbox, macOS doesn't nest
+them), and `restart`, `setup` and `remove` ask you to run them in a normal terminal. The sandbox is not a boundary for code: a proxied session can still write `~/.zshrc`, git hooks, Claude settings and other files that run
 later outside it.
 
 It runs on [mihomo](https://wiki.metacubex.one) (`brew install mihomo`), which speaks VLESS (including XHTTP)
