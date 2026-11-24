@@ -11,7 +11,13 @@ final class UIState: ObservableObject {
     @Published var showNewSession = false
     @Published var showPalette = false
     @Published var showOnboarding = false
-    @Published var showInspector = true
+    @Published var showInspector = UserDefaults.standard.object(forKey: "layout.showInspector") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(showInspector, forKey: "layout.showInspector") }
+    }
+    /// Проекты свернуты в рельсу.
+    @Published var sidebarCollapsed = UserDefaults.standard.bool(forKey: "layout.sidebarCollapsed") {
+        didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "layout.sidebarCollapsed") }
+    }
     @Published var newSessionProject: String?
     /// Лист новой сессии открыть сразу на "параллельно, своя ветка и worktree".
     @Published var newSessionParallel = false
@@ -45,19 +51,17 @@ struct MainView: View {
     var l: L { L(backend.state.lang) }
 
     var body: some View {
-        NavigationSplitView {
-            Sidebar()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 360)
-        } detail: {
-            DetailView()
-                .inspector(isPresented: $ui.showInspector) {
-                    InspectorView()
-                        .inspectorColumnWidth(min: 260, ideal: 290, max: 380)
-                }
+        CardsLayout {
+            VStack(spacing: 10) {
+                MainHeader()
+                DetailView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.horizontal, 4)
+            .frame(maxHeight: .infinity, alignment: .top)
         }
-        .navigationTitle("Agentmeister")
-        .navigationSubtitle(subtitle)
-        .toolbar { toolbar }
+        .ignoresSafeArea()
+        .background(WindowDragArea().opacity(0))
         .sheet(isPresented: $ui.showNewSession) {
             NewSessionSheet(initialProject: ui.newSessionProject)
         }
@@ -174,7 +178,7 @@ struct SearchCapsule: View {
             }
             .foregroundStyle(Ink.muted)
             .padding(.horizontal, 14)
-            .frame(width: 240, height: 34)
+            .frame(minWidth: 120, idealWidth: 240, maxWidth: 240, minHeight: 34, maxHeight: 34)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -225,12 +229,30 @@ struct Sidebar: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var ui: UIState
     @State private var expanded: Set<String> = []
+    @AppStorage("layout.projectsOpen") private var projectsOpen = true
 
     var l: L { L(backend.state.lang) }
 
     var body: some View {
         VStack(spacing: 0) {
-            projectList
+            HStack {
+                Spacer()
+                SidebarToggle()
+            }
+            .frame(height: 30)
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .background(WindowDragArea())
+            CollapsibleHeader(title: l.projects, open: $projectsOpen,
+                              summary: l.t("открыто \(workspace.tabs.filter(\.running).count)", "\(workspace.tabs.filter(\.running).count) open"))
+                .padding(.horizontal, 18)
+                .padding(.bottom, 4)
+            if projectsOpen {
+                projectList
+                    .scrollContentBackground(.hidden)
+            } else {
+                Spacer(minLength: 0)
+            }
             SidebarFooter()
         }
         .onAppear { expandOpenProjects() }
@@ -239,18 +261,14 @@ struct Sidebar: View {
 
     private var projectList: some View {
         List {
-            Section {
-                ForEach(backend.state.projects) { project in
-                    DisclosureGroup(isExpanded: binding(for: project)) {
-                        ForEach(backend.state.sessions(in: project).prefix(6)) { session in
-                            SessionRow(session: session, project: project)
-                        }
-                    } label: {
-                        ProjectRow(project: project, open: expanded.contains(project.path))
+            ForEach(backend.state.projects) { project in
+                DisclosureGroup(isExpanded: binding(for: project)) {
+                    ForEach(backend.state.sessions(in: project).prefix(6)) { session in
+                        SessionRow(session: session, project: project)
                     }
+                } label: {
+                    ProjectRow(project: project, open: expanded.contains(project.path))
                 }
-            } header: {
-                SectionCaption(text: l.projects)
             }
             if let error = backend.lastError {
                 Section {
@@ -276,34 +294,61 @@ struct Sidebar: View {
 /// Низ боковой панели: режимы капсулами и состояние host-run.
 struct SidebarFooter: View {
     @EnvironmentObject var backend: Backend
+    @AppStorage("layout.modesOpen") private var modesOpen = true
 
     var l: L { L(backend.state.lang) }
+
+    /// Короткое описание режима под его именем.
+    private func modeHint(_ key: String) -> String {
+        switch key {
+        case "humanize": return l.t("текст без примет нейросети", "writing without AI tells")
+        case "guard": return l.t("спросит перед опасной командой", "asks before risky commands")
+        case "notify": return l.t("скажет, что агент ждет", "pings when an agent waits")
+        case "buildlog": return l.t("выжимка длинных сборок", "digest of long builds")
+        case "lid": return l.t("не спать с закрытой крышкой", "awake with the lid closed")
+        default: return ""
+        }
+    }
 
     /// Порядок из макета. Режимы, которых нет в ответе app-state, не показываются.
     private static let order = ["humanize", "guard", "notify", "buildlog", "lid"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionCaption(text: l.modes)
-            FlowLayout(spacing: 6) {
+            CollapsibleHeader(title: l.modes, open: $modesOpen,
+                              summary: Self.order.filter { backend.state.modes[$0] == true }.joined(separator: " · "))
+            if modesOpen {
+            VStack(spacing: 4) {
                 ForEach(Self.order.filter { backend.state.modes[$0] != nil }, id: \.self) { key in
                     let on = backend.state.modes[key] ?? false
                     Button {
                         backend.setMode(key, on: !on)
                     } label: {
-                        Text(key)
-                            .font(.system(size: 12))
-                            .foregroundStyle(on ? Ink.modeOn : Ink.muted)
-                            .padding(.horizontal, 12)
-                            .frame(height: 28)
-                            .background(Capsule().fill(on ? Ink.modeOnBg : Ink.modeOffBg))
-                            .overlay(Capsule().strokeBorder(on ? Ink.modeOnBorder : Ink.modeOffBorder))
-                            .contentShape(Capsule())
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(key).font(.system(size: 12, weight: .medium)).foregroundStyle(on ? Ink.modeOn : Ink.text2)
+                                Text(modeHint(key)).font(.system(size: 11)).foregroundStyle(Ink.faint).lineLimit(1)
+                            }
+                            Spacer(minLength: 4)
+                            Capsule()
+                                .fill(on ? Color.accentColor : Ink.modeOffBorder)
+                                .frame(width: 22, height: 13)
+                                .overlay(alignment: on ? .trailing : .leading) {
+                                    Circle().fill(.white).frame(width: 9, height: 9).padding(2)
+                                }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(on ? Ink.modeOnBg : Ink.modeOffBg))
+                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(on ? Ink.modeOnBorder : Ink.modeOffBorder))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .help(l.modeTitle(key))
+                    .accessibilityLabel(key + ", " + modeHint(key))
                     .accessibilityAddTraits(on ? .isSelected : [])
                 }
+            }
             }
             if let h = backend.state.hostRun {
                 HStack(spacing: 8) {
@@ -321,6 +366,36 @@ struct SidebarFooter: View {
         .padding(.horizontal, 18)
         .padding(.top, 12)
         .padding(.bottom, 14)
+    }
+}
+
+/// Заголовок группы в боковой панели: имя, стрелка, справа сводка, пока группа свернута. Клик сворачивает.
+struct CollapsibleHeader: View {
+    let title: String
+    @Binding var open: Bool
+    var summary = ""
+
+    var body: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.2)) { open.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                SectionCaption(text: title)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Ink.faint)
+                    .rotationEffect(.degrees(open ? 90 : 0))
+                Spacer()
+                if !open && !summary.isEmpty {
+                    Text(summary).font(.system(size: 11)).foregroundStyle(Ink.faint).lineLimit(1)
+                }
+            }
+            .frame(height: 22)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(open ? "expanded" : "collapsed")
     }
 }
 
@@ -511,8 +586,6 @@ struct DetailView: View {
                 TerminalHost(tab: workspace.current)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 10)
         }
     }
 }
