@@ -127,12 +127,13 @@ def system_english():
     if _english is None:
         langs = run(["defaults", "read", "-g", "AppleLanguages"], timeout=5)
         m = re.search(r'"?([A-Za-z]{2})', langs)
-        _english = bool(m) and m.group(1).lower() != "ru"
+        _english = not m or m.group(1).lower() != "ru"  # русский, только если он первый в macOS
     return _english
 
 
 def lang():
-    """Язык интерфейса: lang=ru или lang=en в ~/.config/mnrh/config, иначе первый язык macOS."""
+    """Язык интерфейса: lang=ru или lang=en в ~/.config/mnrh/config, иначе русский, если он первый в macOS,
+    и английский во всех остальных случаях."""
     value = read_config().get("lang", "").lower()
     if value in ("ru", "en"):
         return value
@@ -210,6 +211,7 @@ def read_config():
 def write_config(**values):
     conf = read_config()
     conf.update(values)
+    conf = {k: v for k, v in conf.items() if v is not None}  # None убирает ключ
     os.makedirs(os.path.dirname(CONFIG), exist_ok=True)
     with open(CONFIG, "w") as f:
         for key, value in conf.items():

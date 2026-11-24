@@ -120,7 +120,7 @@ def modes():
 
 
 def collect():
-    state = {"version": version(), "lang": mnrhlib.lang(), "projectsDir": mnrhlib.projects_dir(),
+    state = {"version": version(), "lang": mnrhlib.lang(), "langSetting": lang_setting(), "projectsDir": mnrhlib.projects_dir(),
              "generatedAt": time.time(), "errors": {}}
     for name, part, empty in (("projects", projects, []), ("sessions", sessions, []), ("live", live, []),
                               ("proxy", proxy, None), ("modes", modes, {})):
@@ -338,6 +338,24 @@ def doctor():
     return {"rows": rows}
 
 
+def lang_setting():
+    """Что выбрано в config: ru, en или auto, если язык берется из macOS."""
+    value = mnrhlib.read_config().get("lang", "").lower()
+    return value if value in ("ru", "en") else "auto"
+
+
+def set_lang(value):
+    """agentmeister lang ru|en|auto. auto убирает выбор, и язык снова берется из macOS."""
+    value = (value or "").lower()
+    if value not in ("ru", "en", "auto"):
+        print("agentmeister lang ru|en|auto", file=sys.stderr)
+        return 2
+    mnrhlib.write_config(lang=None if value == "auto" else value)
+    print(mnrhlib.tr(f"язык: {mnrhlib.lang()}" + (" (как в macOS)" if value == "auto" else ""),
+                     f"language: {mnrhlib.lang()}" + (" (from macOS)" if value == "auto" else "")))
+    return 0
+
+
 def main(argv):
     if argv and argv[0] in ("-h", "--help", "help"):
         print("agentmeister app-state                состояние для десктопного Agentmeister в JSON\n"
@@ -345,8 +363,14 @@ def main(argv):
               "agentmeister app-state read <id>       последние сообщения сессии\n"
               "agentmeister app-state usage [дней]    статистика, 0 значит за все время\n"
               "agentmeister app-state settings        что показывает окно настроек\n"
-              "agentmeister app-state doctor          проверки agentmeister doctor")
+              "agentmeister app-state doctor          проверки agentmeister doctor\n"
+              "agentmeister app-state lang [ru|en|auto]  язык интерфейса")
         return 0
+    if argv and argv[0] == "lang":
+        if len(argv) == 1:
+            print(f"{mnrhlib.lang()} ({lang_setting()})")
+            return 0
+        return set_lang(argv[1])
     if argv and argv[0] == "search":
         out = search(" ".join(argv[1:]))
     elif argv and argv[0] == "read" and len(argv) > 1:

@@ -117,6 +117,8 @@ struct AppState: Decodable {
 
     var version = ""
     var lang = "en"
+    /// Что выбрано в ~/.config/mnrh/config: ru, en или auto (язык macOS).
+    var langSetting: String?
     var projectsDir = ""
     var projects: [Project] = []
     var sessions: [Session] = []
