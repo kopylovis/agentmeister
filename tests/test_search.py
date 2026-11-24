@@ -173,6 +173,38 @@ class Search(unittest.TestCase):
         """)
         self.assertEqual(out.split(), ["False", "False", "True"])
 
+    def test_odd_records_and_broken_index_do_not_stop_search(self):
+        out = run("""
+            write(A, [{"type": "assistant", "message": {"content": [{"type": "text", "text": 5},
+                                                                    {"type": "text", "text": ["x"]}]}},
+                      {"type": "user", "message": {"content": [{"type": "tool_result", "is_error": True,
+                                                                "content": [{"type": "text", "text": 7}]}]}},
+                      {"type": "custom-title", "customTitle": {"x": 1}}, {"type": "user", "cwd": 3}], "a")
+            os.makedirs(cs.INDEX, exist_ok=True)
+            for sid, junk in ((B, "[1, 2]"), (C, '{"v": %d, "msgs": 5, "offset": 0}' % cs.VERSION)):
+                with open(cs.index_path(sid), "w") as f:
+                    f.write(junk)
+            idx = cs.refresh()
+            print(sorted(idx) == sorted([A, B, C]), cs.title(A, idx[A]) != {"x": 1}, idx[A]["cwd"])
+            print("bbbbbbbb" in cs.search("подпись")[0], "aaaaaaaa" in cs.search("прокси")[0])
+        """)
+        self.assertEqual(out.split(), ["True", "True", "/tmp/demo", "True", "True"])
+
+    def test_tail_is_indexed_line_by_line_and_partial_line_waits(self):
+        out = run("""
+            cs.refresh()
+            path = os.path.join(PROJ, A + ".jsonl")
+            with open(path, "a") as f:
+                f.write(json.dumps(line("user", "пульсар один")) + "\\n" + json.dumps(line("user", "квазар"))[:20])
+            data = cs.update(A, path)
+            print(data["offset"] == os.path.getsize(path) - 20, data["msgs"][-1][2])
+            with open(path, "a") as f:
+                f.write(json.dumps(line("user", "квазар"))[20:] + "\\n")
+            data = cs.update(A, path)
+            print(data["offset"] == os.path.getsize(path), data["msgs"][-1][2], len(data["msgs"]))
+        """)
+        self.assertEqual(out.split(), ["True", "пульсар", "один", "True", "квазар", "4"])
+
 
 if __name__ == "__main__":
     unittest.main()
