@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import BAD, CM, OK, ROOT, WARN, is_hook, promptsill_path, read_config, tilde  # noqa: E402
+from mnrhlib import BAD, CM, OK, ROOT, WARN, is_hook, promptsill_path, read_config, tilde, tr  # noqa: E402
 from claude_proc import CLAUDE_BIN  # noqa: E402
 import claude_settings  # noqa: E402
 import codex_harness  # noqa: E402
@@ -273,7 +273,8 @@ def main(args):
         try:
             rows = check()
         except Exception as e:
-            rows = [("bad", f"{check.__name__[6:]}: проверка упала ({e!r})")]
+            name = check.__name__[6:]
+            rows = [("bad", tr(f"{name}: проверка упала ({e!r})", f"{name}: the check crashed ({e!r})"))]
         for level, text in rows:
             print(f"{marks[level]} {text}")
             if level == "bad" or (level == "warn" and worst == "ok"):

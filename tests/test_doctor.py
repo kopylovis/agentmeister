@@ -1,3 +1,5 @@
+import contextlib
+import io
 import os
 import subprocess
 import sys
@@ -72,6 +74,18 @@ class ItermHooks(unittest.TestCase):
 
     def test_unparsable_command_is_skipped(self):
         self.assertEqual(claude_doctor.iterm_rows(hooks("cc-status 'unclosed")), [])
+
+    def test_crashed_check_text_follows_the_language(self):
+        def check_boom():
+            raise ValueError("x")
+
+        for lang, expected in (("en", "boom: the check crashed (ValueError('x'))"),
+                               ("ru", "boom: проверка упала (ValueError('x'))")):
+            out = io.StringIO()
+            with self.subTest(lang=lang), patch("mnrhlib.lang", return_value=lang), \
+                    patch.object(claude_doctor, "CHECKS", [check_boom]), contextlib.redirect_stdout(out):
+                self.assertEqual(claude_doctor.main([]), 1)
+                self.assertIn(expected, out.getvalue())
 
 
 if __name__ == "__main__":
