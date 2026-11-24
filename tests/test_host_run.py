@@ -168,6 +168,46 @@ class Roundtrip(unittest.TestCase):
         self.assertIn("не запущен", err.getvalue())
 
 
+class Restart(unittest.TestCase):
+    def test_old_runner_keeps_a_newer_socket(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            path = str(Path(tmp) / "s")
+            old = host_run.listen(path)
+            mine = os.stat(path).st_ino
+            new = host_run.listen(path)  # новый исполнитель занял путь своим сокетом
+            self.addCleanup(old.close)
+            self.addCleanup(new.close)
+            host_run.remove_own_socket(path, mine)
+            self.assertTrue(os.path.exists(path))
+            host_run.remove_own_socket(path, os.stat(path).st_ino)
+            self.assertFalse(os.path.exists(path))
+
+    def test_waits_for_the_old_runner_to_exit(self):
+        child = subprocess.Popen([sys.executable, "-c", "import signal, sys, time\n"
+                                  "signal.signal(signal.SIGTERM, lambda *_: (time.sleep(0.5), sys.exit(0)))\n"
+                                  "print('ready', flush=True)\ntime.sleep(30)"], stdout=subprocess.PIPE)
+        self.assertEqual(child.stdout.readline(), b"ready\n")
+        child.stdout.close()
+        threading.Thread(target=child.wait, daemon=True).start()  # как launchd: выход виден сразу
+        start = time.monotonic()
+        with patch.object(host_run, "log"):
+            host_run.stop_old(child.pid)
+        self.assertGreaterEqual(time.monotonic() - start, 0.4)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(child.pid, 0)
+
+    def test_lock_waits_for_the_old_holder(self):
+        import fcntl
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "pid"
+            held = open(path, "a+")
+            fcntl.flock(held, fcntl.LOCK_EX)
+            with open(path, "a+") as f:
+                self.assertFalse(host_run.lock(f, wait=0.2))
+                threading.Timer(0.2, held.close).start()
+                self.assertTrue(host_run.lock(f, wait=2))
+
+
 class Profile(unittest.TestCase):
     def test_claude_profile_protects_the_list(self):
         command = claude_proxy.session_command(17890, ["true"], claude=True)
