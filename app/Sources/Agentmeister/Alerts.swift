@@ -48,6 +48,20 @@ struct TabAlert: View {
                               primary: (l.t("Перезапустить mihomo", "Restart mihomo"), { perform(["proxy", "restart"]) }),
                               secondary: tab.spec.utility == nil ? (l.t("Продолжить напрямую", "Continue without proxy"), { tab.switchRoute() }) : nil))
         }
+        if let failed = tab.updateFailed {
+            items.append(Item(id: "update-\(failed.at.timeIntervalSince1970)", tone: .red, icon: "exclamationmark.triangle",
+                              title: l.t("claude update не прошел", "claude update failed"),
+                              body: failed.version.map { v in
+                                  l.t("Новая версия не скачалась. Сессия открыта на \(v), работать можно.",
+                                      "The new version didn't download. The session is open on \(v) and usable.")
+                              } ?? l.t("Новая версия не скачалась. Сессия открыта, работать можно.",
+                                       "The new version didn't download. The session is open and usable."),
+                              primary: (l.t("Повторить", "Retry"), {
+                                  tab.updateFailed = nil
+                                  tab.restartPreferred(note: l.updating)
+                              }),
+                              secondary: (l.t("Журнал", "Log"), { showUpdateLog(failed) })))
+        }
         if tab.spec.agent == .codex, tab.spec.utility == nil, backend.state.signedIn?["codex"] == false {
             items.append(Item(id: "codex-signin", tone: .amber, icon: "key",
                               title: l.t("Codex просит войти снова", "Codex wants you to sign in again"),
@@ -135,6 +149,30 @@ struct TabAlert: View {
         var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
         spec.utility = args
         workspace.open(spec)
+    }
+
+    /// Вывод claude update в окне с прокруткой: в баннер он не влезает, а причина обычно в нем.
+    private func showUpdateLog(_ failed: TerminalTab.UpdateFailure) {
+        let alert = NSAlert()
+        alert.messageText = l.t("claude update, код \(failed.code)", "claude update, exit code \(failed.code)")
+        alert.informativeText = failed.log.isEmpty ? l.t("Команда ничего не вывела.", "The command printed nothing.") : ""
+        if !failed.log.isEmpty {
+            let scroll = NSTextView.scrollableTextView()
+            scroll.frame = NSRect(x: 0, y: 0, width: 480, height: 220)
+            scroll.hasVerticalScroller = true
+            if let text = scroll.documentView as? NSTextView {
+                text.string = failed.log
+                text.isEditable = false
+                text.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+            }
+            alert.accessoryView = scroll
+        }
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: l.t("Скопировать", "Copy"))
+        if alert.runModal() == .alertSecondButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(failed.log, forType: .string)
+        }
     }
 
     /// Исполнитель host-run в фоне, как (agentmeister host-run serve &) в обычном терминале.
