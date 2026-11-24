@@ -176,6 +176,8 @@ struct ProxyPane: View {
     @EnvironmentObject var backend: Backend
     let data: SettingsData?
     let reload: () async -> Void
+    @AppStorage(BrowserSettings.forAgentKey) private var browserForAgent = true
+    @AppStorage(BrowserSettings.forLinksKey) private var browserForLinks = false
 
     var l: L { L(backend.state.lang) }
 
@@ -199,6 +201,18 @@ struct ProxyPane: View {
                 } footer: {
                     Text(l.t("Сессия через proxy идет в sandbox-exec. Claude Code ходит в сеть на порты 80 и 443 только через mihomo, SSH и локальные серверы работают. У Codex строгий профиль, вся сеть только через mihomo.",
                              "A proxied session runs in sandbox-exec. Claude Code reaches ports 80 and 443 only through mihomo, SSH and local servers work. Codex gets the strict profile, all network goes through mihomo."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section {
+                    Toggle(l.t("Страницы от агента во встроенном браузере", "Pages the agent opens go to the built-in browser"),
+                           isOn: $browserForAgent)
+                    Toggle(l.t("Ссылки по клику из вкладки тоже", "Links you click in a tab too"), isOn: $browserForLinks)
+                } header: {
+                    Text(l.t("Браузер через proxy", "Proxy browser"))
+                } footer: {
+                    Text(l.t("Вход в агента, OAuth для MCP и другие страницы, которые агент во вкладке через proxy открывает сам, грузятся во встроенном браузере через тот же mihomo. Ссылки из вкладки входа тоже. Если mihomo не запущен, браузер ничего не грузит. Изменение действует для новых вкладок.",
+                             "Agent sign-in, MCP OAuth and other pages a proxied tab opens by itself load in the built-in browser through the same mihomo. So do links in a sign-in tab. With mihomo stopped the browser loads nothing. Applies to new tabs."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
