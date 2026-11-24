@@ -50,6 +50,8 @@ struct AgentmeisterApp: App {
     @StateObject private var ui = UIState()
     /// Меню перестраивается, когда в настройках поменяли сочетание
     @ObservedObject private var shortcuts = ShortcutStore.shared
+    /// Значок в строке меню, выключается в Настройках > Основные.
+    @AppStorage(MenuBarPrefs.showKey) private var showMenuBar = true
 
     var body: some Scene {
         Window("Agentmeister", id: "main") {
@@ -73,6 +75,15 @@ struct AgentmeisterApp: App {
                 .environmentObject(ui)
         }
         .defaultSize(width: 980, height: 760)
+        MenuBarExtra(isInserted: $showMenuBar) {
+            MenuBarPanel()
+                .environmentObject(backend)
+                .environmentObject(workspace)
+                .environmentObject(ui)
+        } label: {
+            MenuBarLabel(backend: backend, workspace: workspace)
+        }
+        .menuBarExtraStyle(.window)
         Settings {
             SettingsView()
                 .environmentObject(backend)
