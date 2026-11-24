@@ -387,11 +387,13 @@ def refresh_subscription():
     return False
 
 
-def start():
-    """mihomo на нашем порту: уже запущенный или новый. Вызывать под locked()."""
+def start(strict=True):
+    """mihomo на нашем порту: уже запущенный или новый. Вызывать под locked(). strict: если выход не в стране
+    из настройки, остановить mihomo и выдать ProxyError (новую сессию не запускаем). Без strict mihomo
+    остается работать, а start возвращает текст о не той стране: так перезапускают его при живых сессиях."""
     p = port()
     if read_pid() and listening(p):
-        return
+        return None
     pin_config()
     refresh_subscription()
     pin_hosts()
@@ -433,11 +435,13 @@ def start():
     except OSError:
         pass
     want = setting("country").upper()
-    if want:
-        if not got or (got[1] or "").upper() != want:
+    if want and (not got or (got[1] or "").upper() != want):
+        problem = f"выход через {fmt(got)}, а нужен {want}"
+        if strict:
             stop()
-            raise ProxyError(f"выход через {fmt(got)}, а нужен {want}. Сессию через прокси не запускаю, "
-                             f"проверь сервер: agentmeister proxy test")
+            raise ProxyError(f"{problem}. Сессию через прокси не запускаю, проверь сервер: agentmeister proxy test")
+        return problem
+    return None
 
 
 def stop():
@@ -491,14 +495,39 @@ def watch_log(text):
 
 
 def restart_mihomo():
-    """Перезапустить mihomo на месте: сессии через proxy остаются, их текущие запросы обрываются. Под locked()."""
+    """Перезапустить mihomo на месте: сессии через proxy остаются, их текущие запросы обрываются. Под locked().
+    Страну выхода не требуем: если остановить mihomo, все сессии через proxy останутся без сети, а сервер
+    часто недоступен как раз тогда, когда его перезапускают. Возвращает текст о не той стране или None."""
     stop()
-    start()
+    return start(strict=False)
+
+
+REVIVE_GAP = 30  # mihomo упал при живых сессиях: поднимать снова не чаще раза в 30 секунд
+
+
+def revive(state, now):
+    """mihomo не работает. False: сессий через proxy больше нет и сторожу пора выйти. Под locked()."""
+    if not holders():
+        return False
+    if read_pid() and listening(port()):
+        return True
+    if now - state.get("revived_at", 0) < REVIVE_GAP:
+        return True
+    state["revived_at"] = now
+    watch_log("mihomo не работает, а сессии через proxy идут: запускаю его снова")
+    try:
+        problem = start(strict=False)
+    except (ProxyError, OSError) as e:
+        watch_log(f"запуск: {e}")
+    else:
+        if problem:
+            watch_log(f"{problem}, но mihomo оставлен: сессии через proxy без него остались бы без сети")
+    return True
 
 
 def watch():
-    """Сторож, пока mihomo запущен. mihomo сам не узнает, что сеть вернулась через другой интерфейс, а мертвый
-    сервер перепроверяет раз в пять минут, и все это время группа VPS отклоняет запросы."""
+    """Сторож, пока идут сессии через proxy. mihomo сам не узнает, что сеть вернулась через другой интерфейс,
+    а мертвый сервер перепроверяет раз в пять минут, и все это время группа VPS отклоняет запросы."""
     with open(WATCH_PID, "w") as f:
         f.write(str(os.getpid()))
     state = {}
@@ -507,7 +536,10 @@ def watch():
         while True:
             time.sleep(WATCH_POLL)
             if not (read_pid() and listening(port())):
-                break  # mihomo остановлен после последней сессии
+                with locked():
+                    if not revive(state, time.time()):
+                        break  # mihomo остановлен после последней сессии
+                continue
             route = default_route()
             group = mihomo_api("/proxies/VPS").get("now") if route else None
             for action in watch_step(state, time.time(), route, pinned_interface(), group):
@@ -523,7 +555,10 @@ def watch():
                     elif action == "restart":
                         watch_log(f"сеть есть, а сервер недоступен {RESTART_AFTER} с, перезапускаю mihomo")
                         with locked():
-                            restart_mihomo()
+                            problem = restart_mihomo()
+                        if problem:
+                            watch_log(f"{problem}, но mihomo оставлен: сессии через proxy без него остались бы "
+                                      "без сети")
                 except (ProxyError, OSError) as e:
                     watch_log(f"{action}: {e}")
     finally:
@@ -893,10 +928,15 @@ def update():
     question = (f"Сейчас через proxy идут сессии ({len(live)}), они работают на mihomo {running}. Перезапустить его сейчас? "
                 "Запросы, которые идут в эту секунду, оборвутся, Claude Code их повторит [y/N] ")
     if sys.stdin.isatty() and input(question).strip().lower() in ("y", "yes", "д", "да"):
-        with locked():
-            stop()
-            start()
-            ensure_watch()
+        try:
+            with locked():
+                problem = restart_mihomo()
+                ensure_watch()
+        except ProxyError as e:
+            print(f"{BAD} {e}")
+            return 1
+        if problem:
+            print(f"{WARN} {problem}: сессии через proxy работают через этот выход, проверь сервер")
         print(f"{OK} mihomo перезапущен, работает {running_version() or after}")
     else:
         print(f"{OK} mihomo {running} работает, пока идут сессии через proxy. {after} заработает после последней")
@@ -909,11 +949,13 @@ def restart_cmd():
         return 0
     try:
         with locked():
-            restart_mihomo()
+            problem = restart_mihomo()
             ensure_watch()
     except ProxyError as e:
         print(f"{BAD} {e}")
         return 1
+    if problem:
+        print(f"{WARN} {problem}: сессии через proxy работают через этот выход, проверь сервер")
     node, proto = active_node()
     print(f"{OK} mihomo перезапущен" + (f", сервер {node}" + (f", протокол {proto}" if proto else "") if node else ""))
     return 0

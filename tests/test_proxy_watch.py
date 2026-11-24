@@ -1,6 +1,9 @@
 import os
+import subprocess
 import sys
+import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -41,6 +44,68 @@ class WatchStep(unittest.TestCase):
         p.watch_step(state, 100, "en0", "en0", "REJECT")
         self.assertEqual(p.watch_step(state, 110, "en0", "en0", SERVER), [])
         self.assertIsNone(state["reject_since"])
+
+
+class CountryOnRestart(unittest.TestCase):
+    """Сервер недоступен, сторож перезапускает mihomo, а выход проверить нельзя: mihomo должен остаться."""
+
+    def start(self, strict):
+        tmp = tempfile.mkdtemp()
+        calls = {"n": 0}
+
+        def listening(_port):
+            calls["n"] += 1
+            return calls["n"] > 1  # первый раз порт свободен, потом mihomo на нем
+
+        proc = MagicMock()
+        proc.pid = 4242
+        proc.poll.return_value = None
+        files = {name: os.path.join(tmp, name.lower()) for name in ("PIDFILE", "LOG", "EXIT", "PAGE")}
+        stop = MagicMock()
+        with patch.multiple(p, STATE=tmp, **files), patch.object(p, "read_pid", return_value=None), \
+                patch.object(p, "listening", side_effect=listening), patch.object(p, "port", return_value=17890), \
+                patch.object(p, "pin_config"), patch.object(p, "refresh_subscription"), \
+                patch.object(p, "pin_hosts"), patch.object(p, "mihomo_bin", return_value="/bin/mihomo"), \
+                patch.object(p.subprocess, "Popen", return_value=proc), \
+                patch.object(p.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "204", "")), \
+                patch.object(p, "trace", return_value=None), patch.object(p, "active_node", return_value=(None, None)), \
+                patch.object(p, "setting", return_value="KZ"), patch.object(p, "stop", stop):
+            try:
+                return p.start(strict=strict), stop
+            except p.ProxyError as e:
+                return e, stop
+
+    def test_session_launch_still_refuses_the_wrong_country(self):
+        result, stop = self.start(strict=True)
+        self.assertIsInstance(result, p.ProxyError)
+        stop.assert_called_once()
+
+    def test_restart_keeps_mihomo_running(self):
+        result, stop = self.start(strict=False)
+        self.assertIn("KZ", result)
+        stop.assert_not_called()
+
+    def test_restart_mihomo_is_not_strict(self):
+        with patch.object(p, "stop"), patch.object(p, "start", return_value="выход через ?") as start:
+            self.assertEqual(p.restart_mihomo(), "выход через ?")
+        start.assert_called_once_with(strict=False)
+
+
+class Revive(unittest.TestCase):
+    def test_watcher_exits_after_the_last_session(self):
+        with patch.object(p, "holders", return_value=[]), patch.object(p, "start") as start:
+            self.assertFalse(p.revive({}, 100))
+        start.assert_not_called()
+
+    def test_mihomo_is_started_again_while_sessions_hold_it(self):
+        state = {}
+        with patch.object(p, "holders", return_value=[123]), patch.object(p, "read_pid", return_value=None), \
+                patch.object(p, "watch_log"), patch.object(p, "start", side_effect=p.ProxyError("нет")) as start:
+            self.assertTrue(p.revive(state, 100))
+            self.assertTrue(p.revive(state, 110))  # не чаще REVIVE_GAP
+            self.assertTrue(p.revive(state, 100 + p.REVIVE_GAP))
+        self.assertEqual(start.call_count, 2)
+        start.assert_called_with(strict=False)
 
 
 if __name__ == "__main__":
