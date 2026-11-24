@@ -157,7 +157,10 @@ struct ProxyBadge: View {
         let proxy = backend.state.proxy
         let text: String
         let color: Color
-        if proxy?.configured != true {
+        if proxy == nil && backend.lastError != nil {
+            text = l.t("нет данных", "no data")
+            color = .orange
+        } else if proxy?.configured != true {
             text = l.proxyOff
             color = .secondary
         } else if proxy?.running == true {
