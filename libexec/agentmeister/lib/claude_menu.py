@@ -15,7 +15,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from menu import Cancel, Panel, Quit, Screen, choice, run_framed, show_output  # noqa: E402
+from menu import Cancel, Panel, Quit, Screen, choice, run_framed, show_output, tab_hint, width  # noqa: E402
 from mnrhlib import DEV, HOME, LOCAL_CLI, RESTART_QUEUE, ROOT, promptsill_path, run as capture, tilde, tr  # noqa: E402
 import claude_sessions  # noqa: E402
 import codex_harness  # noqa: E402
@@ -167,7 +167,8 @@ def rows(state=None):
     """Строки для меню: (ключ для поиска, значок и название). У режима справа [вкл] или [выкл]."""
     state = modes() if state is None else state
     on, off = tr("вкл", "on"), tr("выкл", "off")
-    width = max(len(tr(ru, en)) for key, _, ru, en, _, _ in ITEMS if key) + 2
+    # флаги выравниваются по самому длинному названию режима, другие строки на ширину не влияют
+    pad = max(width(tr(ru, en)) for key, _, ru, en, _, _ in ITEMS if key and key.startswith("mode ")) + 2
     out = []
     for key, icon, ru, en, _, _ in ITEMS:
         label = tr(ru, en)
@@ -177,7 +178,7 @@ def rows(state=None):
         text = f"{icon} {label}"
         if key.startswith("mode "):
             flag = state.get(key.split()[1])
-            text = f"{icon} {label.ljust(width)}" + ("\x1b[32m[" + on + "]\x1b[0m" if flag else dim(f"[{off}]"))
+            text = f"{icon} {label}{' ' * (pad - width(label))}" + ("\x1b[32m[" + on + "]\x1b[0m" if flag else dim(f"[{off}]"))
         out.append((f"{key} {label}", text))
     return out
 
@@ -262,16 +263,24 @@ class Describe:
         return lines
 
 
+def menu_title(describe, note, side):
+    """Строка над рамками. Версии Claude Code и Codex живут в описании; когда его не видно, они здесь."""
+    text = f"\x1b[1;35magentmeister\x1b[0m  {dim('v' + version())}"
+    if not side:
+        text += "  " + dim(f"Claude Code {describe.claude} · Codex {describe.codex}")
+    return text + (f"  \x1b[33m{note}\x1b[0m" if note else "")
+
+
 def pick_action(screen, at=1, note=""):
-    title = f"\x1b[1;35magentmeister\x1b[0m  {dim('v' + version())}" + (f"  \x1b[33m{note}\x1b[0m" if note else "")
     state = modes()
     items = rows(state)
     if not screen.open().roomy():
         return screen.pick(items, title=note or "agentmeister", default=at, back=tr("выход", "quit"))
-    hint = tr("↑↓ выбрать · Enter запустить · буквы ищут · Tab описание · Esc выход",
-              "↑↓ move · Enter run · type to search · Tab description · Esc quit")
+    hint = tr(f"↑↓ выбрать · Enter запустить · буквы ищут · {tab_hint()}Esc выход",
+              f"↑↓ move · Enter run · type to search · {tab_hint()}Esc quit")
+    describe = Describe(state)
     try:
-        return Panel(screen.fd, items, title, at, Describe(state),
+        return Panel(screen.fd, items, lambda side: menu_title(describe, note, side), at, describe,
                      (tr("Действия", "Actions"), tr("Описание", "Description")), hint).run()
     except Cancel:
         return None
