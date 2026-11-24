@@ -18,7 +18,6 @@ class NewMarkers(unittest.TestCase):
             "It speeds up builds without sacrificing safety.": "обещание без цены",
             "Сборка ускорилась без ущерба для надежности.": "обещание без цены",
             "It feels less like a tool and more like a partner.": "не только… но и",
-            "Это не столько инструмент, сколько привычка.": "не только… но и",
             "This matters because users wait.": "дидактика",
             "It should not be confused with Java.": "дидактика",
             "Looking ahead, we plan more.": "переход-шаблон",
@@ -76,6 +75,57 @@ class LogFixes(unittest.TestCase):
                      "На столе ключ. На полке книга. На полу кот.", "Команда такая:\n\n```\nmake test\n```",
                      "Тестов два, оба проходят.",
                      "Готово.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)"):
+            self.assertEqual(rules(text), set(), text)
+
+
+class SourceMarkers202611(unittest.TestCase):
+    """Маркеры из WP:AISIGNS, Graphite по Opus 5.5, Pangram и наборов правил на GitHub, ноябрь 2026."""
+
+    def test_flags(self):
+        cases = {
+            "She maintains an active digital presence.": "значимость",
+            "The book has shaped discussions about memory.": "значимость",
+            "It forms part of the wider history of the town.": "значимость",
+            "The twist adds another layer of complexity.": "значимость",
+            "His parliamentary biography records that he served.": "опора на самоописание",
+            "Rust should be distinguished from C++.": "дидактика",
+            "Tests ran. This matters.": "дидактика",
+            "Стоит напомнить, что кэш общий.": "дидактика",
+            "Напомним, что порт закрыт.": "дидактика",
+            "A cache is more than a store, it's a contract.": "не только… но и",
+            "Это больше, чем просто скрипт.": "не только… но и",
+            "The hard part is the cache.": "постановка",
+            "Here's the interesting part.": "постановка",
+            "Секрет прост, нужен кэш.": "постановка",
+            "It is perhaps the most useful flag.": "усилитель",
+            "Пожалуй, самый быстрый способ.": "усилитель",
+            "Кто-то возразит, что это медленно.": "спор с никем",
+            "Вопрос остается открытым.": "пустой прогноз",
+            "Рады сообщить о релизе.": "служба поддержки",
+            "I would like to clarify that the edit was mine.": "служба поддержки",
+            "Если хотите, могу сократить.": "чат-бот",
+            "Пишем отчеты на ежедневной основе.": "калька",
+            "Click the button below to get started.": "пересказ интерфейса",
+            "Нажмите кнопку ниже, чтобы начать.": "пересказ интерфейса",
+            "Evidence to be supplied: diffs.": "заглушка",
+            "Текст поста.\n(около 120 слов)": "заглушка",
+            "See [cite_start]this.": "след чат-инструмента",
+            "Docs [web:1] say so.": "след чат-инструмента",
+            "writing{variant=\"standard\" id=\"1\"}": "след чат-инструмента",
+            "https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc": "след чат-инструмента",
+            "Схема ├── src": "псевдографика",
+            "It works out-of-the-box.": "штамп",
+            "Тег\U000e0041 внутри.": "невидимые и редкие символы",
+        }
+        for text, rule in cases.items():
+            self.assertIn(rule, rules(text), text)
+
+    def test_no_false_alarms(self):
+        for text in ("Это не столько инструмент, сколько привычка.", "Порт остается открытым.",
+                     "Run tests in the harness.", "Если хочешь, проверю место на диске.", "This matters for the cache size.",
+                     "Speed is important, and so is memory.", "Схема в блоке:\n\n```\n├── src\n```",
+                     "Сборка заняла 120 секунд.", "The part of the code that matters is small.",
+                     "See https://example.org/docs for details.", "Больше чем в два раза."):
             self.assertEqual(rules(text), set(), text)
 
 
