@@ -72,8 +72,8 @@ final class ProxyBrowser {
     /// чтобы путь к нему был всегда свежим.
     static let helper: String? = {
         let fm = FileManager.default
-        guard let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
-        let dir = support.appendingPathComponent("Agentmeister/bin")
+        // путь без пробелов: gh и другие программы делят BROWSER по пробелам
+        let dir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".cache/mnrh/app/bin")
         let file = dir.appendingPathComponent("agentmeister-browse")
         let script = """
         #!/bin/sh
@@ -182,7 +182,15 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
         guard let url = action.request.url, let scheme = url.scheme?.lowercased() else { return .allow }
         if ["http", "https", "about", "blob", "data"].contains(scheme) { return .allow }
-        NSWorkspace.shared.open(url)
+        // другие схемы запускают приложения на Mac: только по клику пользователя в основном окне страницы,
+        // только после вопроса, и никогда file:
+        guard scheme != "file", action.navigationType == .linkActivated, action.targetFrame?.isMainFrame ?? true else { return .cancel }
+        let alert = NSAlert()
+        alert.messageText = "Open \(scheme): link?"
+        alert.informativeText = url.absoluteString
+        alert.addButton(withTitle: "Cancel")
+        alert.addButton(withTitle: "Open")
+        if alert.runModal() == .alertSecondButtonReturn { NSWorkspace.shared.open(url) }
         return .cancel
     }
 

@@ -76,7 +76,7 @@ struct PaletteView: View {
                                    title: session.title.isEmpty ? l.untitled : session.title,
                                    detail: project.name + " · " + (workspace.liveElsewhere.contains(session.id)
                                        ? l.t("открыта в другом окне", "open in another window") : l.agoLong(session.mtime))) {
-                workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path, resumeId: session.id))
+                workspace.open(LaunchSpec.resume(session.id, cwd: session.cwd, project: project))
             })
         }
 
