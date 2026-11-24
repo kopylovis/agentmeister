@@ -98,6 +98,12 @@ struct AppState: Decodable {
         let running: Bool
         /// Есть ли еще папка проекта. Nil в старом ответе app-state.
         let cwdExists: Bool?
+        /// claude или codex. Nil в старом ответе app-state, это Claude Code.
+        var agent: String? = nil
+        /// Когда тред Codex начался, секунды Unix.
+        var created: Double? = nil
+
+        var kind: LaunchSpec.Agent { agent == "codex" ? .codex : .claude }
     }
 
     struct Live: Decodable, Hashable {
@@ -127,6 +133,8 @@ struct AppState: Decodable {
     var projectsDir = ""
     var projects: [Project] = []
     var sessions: [Session] = []
+    /// Треды Codex. app-state отдает их отдельно, Backend сливает их в sessions.
+    var codexSessions: [Session]?
     var live: [Live] = []
     var proxy: Proxy?
     var modes: [String: Bool] = [:]
@@ -149,8 +157,8 @@ struct AppState: Decodable {
 
     init() {}
 
-    func sessions(in project: Project) -> [Session] {
-        sessions.filter { $0.cwd == project.path || $0.cwd.hasPrefix(project.path + "/") }
+    func sessions(in project: Project, agent: LaunchSpec.Agent? = nil) -> [Session] {
+        sessions.filter { ($0.cwd == project.path || $0.cwd.hasPrefix(project.path + "/")) && (agent == nil || $0.kind == agent) }
     }
 }
 
@@ -195,6 +203,8 @@ struct SessionPreview: Decodable {
     let last: Double?
     let messages: [Message]?
     let error: String?
+    /// codex для треда Codex. Nil у сессий Claude Code.
+    var agent: String? = nil
 }
 
 /// Раз в несколько секунд спрашивает agentmeister app-state и раздает результат окнам.
@@ -286,7 +296,12 @@ final class Backend: ObservableObject {
                 case .success(let data):
                     do {
                         let previous = self.state.proxy
-                        self.state = try JSONDecoder().decode(AppState.self, from: data)
+                        var state = try JSONDecoder().decode(AppState.self, from: data)
+                        if let codex = state.codexSessions, !codex.isEmpty {
+                            // один список на все окна, новые первыми, как у Claude Code
+                            state.sessions = (state.sessions + codex).sorted { $0.mtime > $1.mtime }
+                        }
+                        self.state = state
                         if let from = previous?.exit, let to = self.state.proxy?.exit, from != to,
                            previous?.running == true, self.state.proxy?.running == true {
                             self.exitChange = (from, to)

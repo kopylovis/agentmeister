@@ -138,6 +138,7 @@ struct MainView: View {
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             workspace.takeFocusRequest(state: backend.state)
+            workspace.trackCodexThreads()
         }
     }
 
@@ -504,7 +505,7 @@ struct ProjectRow: View {
             }
             if let last = backend.state.sessions(in: project).first {
                 Button(l.resumeLast) {
-                    workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path, resumeId: last.id))
+                    workspace.open(LaunchSpec.resume(last, project: project))
                 }
             }
             Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
@@ -530,10 +531,14 @@ struct SessionRow: View {
         let status = tab?.status ?? live?.status
         let current = tab != nil && tab?.id == workspace.selected
         Button {
-            workspace.open(LaunchSpec.resume(session.id, cwd: session.cwd, project: project))
+            workspace.open(LaunchSpec.resume(session, project: project))
         } label: {
             HStack(spacing: 8) {
                 SessionDot(status: status, open: status != nil || tab != nil, size: 7)
+                if session.kind == .codex {
+                    // у Claude Code значка нет: их в списке большинство, а X сразу выделяет Codex
+                    AgentBadge(agent: .codex, size: 14)
+                }
                 Text(session.title.isEmpty ? l.untitled : session.title)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -707,6 +712,16 @@ struct TabMenu: View {
                 Text(l.t("перезапуск той же сессии", "restarts the same session"))
             }
         }
+        if tab.spec.agent == .codex && tab.spec.utility == nil {
+            Button {
+                workspace.moveToClaude(tab)
+            } label: {
+                Text(l.moveToClaude)
+                Text(tab.sessionId == nil ? l.t("тред Codex еще не сохранен", "the Codex thread isn't saved yet")
+                                          : l.t("контекст этой сессии Codex в новый Claude", "this Codex session's context into a new Claude"))
+            }
+            .disabled(tab.sessionId == nil)
+        }
         if let sid = tab.sessionId {
             Button(l.t("Скопировать id сессии", "Copy session id")) {
                 NSPasteboard.general.clearContents()
@@ -772,6 +787,7 @@ struct RenameSheet: View {
 /// Строка над терминалом: папка, ветка, песочница, Remote Control, "не спать" и смена маршрута.
 struct InfoBar: View {
     @EnvironmentObject var backend: Backend
+    @EnvironmentObject var workspace: Workspace
     @ObservedObject var tab: TerminalTab
 
     var l: L { L(backend.state.lang) }
@@ -834,6 +850,15 @@ struct InfoBar: View {
                     .foregroundStyle(Ink.faint)
             }
             Spacer(minLength: 0)
+            if tab.spec.agent == .codex && tab.spec.utility == nil {
+                Button(l.moveToClaude) { workspace.moveToClaude(tab) }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .disabled(tab.sessionId == nil)
+                    .help(tab.sessionId == nil
+                          ? l.t("Тред Codex появится после первого запроса", "The Codex thread appears after the first request")
+                          : l.t("Новая вкладка Claude Code с контекстом этой сессии Codex", "A new Claude Code tab with this Codex session's context"))
+            }
             if tab.spec.utility == nil {
                 Button(tab.spec.proxied ? l.t("Перезапустить напрямую", "Restart without proxy")
                                         : l.t("Перезапустить через proxy", "Restart via proxy")) { tab.switchRoute() }
@@ -1109,7 +1134,7 @@ struct NewSessionSheet: View {
 
     var body: some View {
         let project = backend.state.projects.first { $0.path == projectPath }
-        let last = project.flatMap { backend.state.sessions(in: $0).first }
+        let last = project.flatMap { backend.state.sessions(in: $0, agent: agent).first }
         let exit = backend.state.proxy?.exit
         VStack(alignment: .leading, spacing: 18) {
             Text(l.newSession).font(.system(size: 17, weight: .semibold))
@@ -1141,7 +1166,7 @@ struct NewSessionSheet: View {
                             Text(l.t("Продолжить последнюю", "Continue the last one")
                                  + (last.map { ", \"" + ($0.title.isEmpty ? l.untitled : $0.title) + "\"" } ?? ""))
                                 .tag(StartMode.resume)
-                                .disabled(last == nil || agent != .claude)
+                                .disabled(last == nil)
                             Text(l.t("Параллельно, своя ветка и worktree", "In parallel, own branch and worktree"))
                                 .tag(StartMode.parallel)
                                 .disabled(agent != .claude)
@@ -1224,7 +1249,7 @@ struct NewSessionSheet: View {
             if ui.newSessionParallel { mode = .parallel }
             ui.newSessionParallel = false
         }
-        .onChange(of: agent) { if agent == .codex { mode = .new } }
+        .onChange(of: agent) { if agent == .codex && mode == .parallel { mode = .new } }
     }
 
     private func open(project: AppState.Project?, last: AppState.Session?) {
@@ -1235,7 +1260,11 @@ struct NewSessionSheet: View {
         case .new:
             spec.firstPrompt = prompt
         case .resume:
-            spec.resumeId = last?.id
+            if let last {
+                // в папке самой сессии: она могла начаться в подпапке проекта
+                spec.projectPath = LaunchSpec.resume(last, project: project).projectPath
+                spec.resumeId = last.id
+            }
         case .parallel:
             // ветку и worktree делает agentmeister parallel --prepare, а вкладку с задачей открываем сами
             busy = true
