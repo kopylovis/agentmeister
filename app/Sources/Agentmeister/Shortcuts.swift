@@ -99,8 +99,29 @@ struct KeyCombo: Codable, Hashable {
         return UInt32(out)
     }
 
-    /// Есть ⌘, ⌃ или ⌥. Без них сочетание отняло бы клавишу у терминала.
-    var hasCommandModifier: Bool { !flags.intersection([.command, .control, .option]).isEmpty }
+    /// Клавиша с символом (буква, цифра, знак), а не Tab, стрелка или другая особая.
+    var isCharacter: Bool { key.count == 1 }
+
+    /// Почему сочетание нельзя дать действию, или nil, если можно. Пункт меню без ⌘ отнял бы у терминала
+    /// управляющие клавиши (⌃C, ⌃D, ⌃R, ⌃Z, ⌥B, ⌥F); исключение ⌃Tab и ⌃⇧Tab, их терминал не использует.
+    /// Глобальная клавиша действует во всех приложениях, поэтому ей нужно два модификатора или ⌘ с особой
+    /// клавишей (⌘Space), а ⌃ или ⌥ с одной буквой не подходят.
+    func refusal(for action: ShortcutAction, l: L) -> String? {
+        if action == .showApp {
+            let count = [NSEvent.ModifierFlags.command, .control, .option, .shift].filter { flags.contains($0) }.count
+            let strong = !flags.intersection([.command, .control, .option]).isEmpty
+            if (count >= 2 && strong) || (flags.contains(.command) && !isCharacter) { return nil }
+            return l.t("Клавише для всех приложений нужно два модификатора, например ⌃⌥Space. Esc отменяет.",
+                       "A shortcut for all apps needs two modifiers, like ⌃⌥Space. Esc cancels.")
+        }
+        if flags.contains(.command) { return nil }
+        if key == "tab" && flags.contains(.control) { return nil }
+        if flags.isEmpty {
+            return l.t("Нужен ⌘. Esc отменяет.", "Add ⌘. Esc cancels.")
+        }
+        return l.t("Нужен ⌘: без него \(label) не дойдет до терминала. Esc отменяет.",
+                   "Add ⌘: without it \(label) would never reach the terminal. Esc cancels.")
+    }
 
     private static let special: [Int: String] = [
         kVK_Tab: "tab", kVK_Space: "space", kVK_Return: "return", kVK_ANSI_KeypadEnter: "return", kVK_Escape: "escape",
@@ -411,8 +432,8 @@ final class ShortcutRecorder: ObservableObject {
             message = (action, l.t("Эту клавишу нельзя назначить. Esc отменяет.", "This key can't be a shortcut. Esc cancels."))
             return nil
         }
-        guard combo.hasCommandModifier else {
-            message = (action, l.t("Нужен ⌘, ⌃ или ⌥. Esc отменяет.", "Add ⌘, ⌃ or ⌥. Esc cancels."))
+        if let refusal = combo.refusal(for: action, l: l) {
+            message = (action, refusal)
             return nil
         }
         if combo == ShortcutStore.shared.combo(action) {
