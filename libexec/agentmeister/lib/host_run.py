@@ -157,10 +157,10 @@ def read_trusted(path):
     return data.decode("utf-8")
 
 
-def protected_parents():
-    """Папки над списком и сокетом: и путь как есть, и после раскрытия ссылок, без корня."""
+def parents(*folders):
+    """Папки над folders: и путь как есть, и после раскрытия ссылок, без корня и без повторов."""
     out = []
-    for folder in (CONF_DIR, STATE):
+    for folder in folders:
         for base in (os.path.abspath(folder), os.path.realpath(folder)):
             parent = os.path.dirname(base)
             while parent != "/" and parent not in out:
@@ -169,16 +169,25 @@ def protected_parents():
     return out
 
 
+def protected_parents():
+    """Папки над списком и сокетом."""
+    return parents(CONF_DIR, STATE)
+
+
 def sandbox_profile_lines():
-    """Для профиля сессии: список и сокет исполнителя менять нельзя, подключаться к сокету можно. Папки над
-    ними нельзя переименовать, удалить или заменить ссылкой, иначе исполнитель прочитал бы чужой список."""
-    parents = " ".join(f'(literal (param "HOST_RUN_UP{i}"))' for i in range(len(protected_parents())))
-    return ['(deny file-write* (subpath (param "HOST_RUN_CONF")) (subpath (param "HOST_RUN_STATE")))',
-            f"(deny file-write* {parents})"]
+    """Для профиля сессии: список и сокет исполнителя менять нельзя, подключаться к сокету можно. Жесткая
+    ссылка на файл из этих папок писала бы в него же, поэтому их тоже нельзя. pid-файл исполнитель держит
+    под flock, а flock берется и на файле, открытом только для чтения, так что сессия его даже не читает.
+    Папки над ними нельзя переименовать, удалить или заменить ссылкой, иначе исполнитель прочитал бы чужой список."""
+    up = " ".join(f'(literal (param "HOST_RUN_UP{i}"))' for i in range(len(protected_parents())))
+    return ['(deny file-write* file-link (subpath (param "HOST_RUN_CONF")) (subpath (param "HOST_RUN_STATE")))',
+            '(deny file-read* (literal (param "HOST_RUN_PID")))',
+            f"(deny file-write* {up})"]
 
 
 def sandbox_params():
-    params = ["-D", f"HOST_RUN_CONF={os.path.realpath(CONF_DIR)}", "-D", f"HOST_RUN_STATE={os.path.realpath(STATE)}"]
+    params = ["-D", f"HOST_RUN_CONF={os.path.realpath(CONF_DIR)}", "-D", f"HOST_RUN_STATE={os.path.realpath(STATE)}",
+              "-D", f"HOST_RUN_PID={os.path.realpath(PIDFILE)}"]
     for i, parent in enumerate(protected_parents()):
         params += ["-D", f"HOST_RUN_UP{i}={parent}"]
     return params

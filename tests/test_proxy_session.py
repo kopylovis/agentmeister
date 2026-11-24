@@ -1,4 +1,5 @@
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
+import fcntl
 import io
 import os
 from pathlib import Path
@@ -25,7 +26,8 @@ class ProxySetup(unittest.TestCase):
                     patch.object(claude_proxy, "mihomo_bin", return_value="mihomo"), \
                     patch.object(claude_proxy, "holders", return_value=[]), patch.object(claude_proxy, "stop"), \
                     patch.object(claude_proxy, "listening", return_value=False), patch.object(claude_proxy, "start"), \
-                    patch.object(claude_proxy, "check_exit", return_value=(None, None)):
+                    patch.object(claude_proxy, "check_exit", return_value=(None, None)), \
+                    patch.object(claude_proxy, "in_session", return_value=False):
                 claude_proxy.write_config("https://old.example.test", 17890, "KZ")
                 for path in (Path(paths["SUB_FILE"]), Path(tmp) / "vps.yaml"):
                     path.write_bytes(b"old")
@@ -48,8 +50,8 @@ class ControllerGuard(unittest.TestCase):
                         self.assertIn(f"MIHOMO_CONF0={real}/conf", command)
                         profile = command[command.index("-p") + 1]
                         self.assertIn('(deny network-outbound (literal (param "MIHOMO_SOCK0")))', profile)
-                        self.assertIn('(deny file-write* (literal (param "MIHOMO_SOCK0")) '
-                                      '(subpath (param "MIHOMO_CONF0")))', profile)
+                        self.assertIn('(deny file-write* file-link (literal (param "MIHOMO_SOCK0")) '
+                                      '(subpath (param "MIHOMO_CONF0")) (subpath (param "MIHOMO_STATE0")))', profile)
 
     def test_symlinked_paths_are_closed_in_both_forms(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -57,7 +59,7 @@ class ControllerGuard(unittest.TestCase):
             os.mkdir(f"{real}/state")
             os.symlink(f"{real}/state", f"{real}/link")
             with patch.multiple(claude_proxy, SOCK=f"{real}/link/mihomo.sock", CONF_DIR=f"{real}/conf"):
-                socks, _ = claude_proxy.guarded_paths()
+                socks = claude_proxy.guarded_paths()["SOCK"]
         self.assertEqual(socks, [f"{real}/link/mihomo.sock", f"{real}/state/mihomo.sock"])
 
     @unittest.skipUnless(sys.platform == "darwin" and host_run.nested_sandbox_ok(), "requires the macOS sandbox")
@@ -93,6 +95,110 @@ for action in (lambda: os.remove(sock), lambda: open(os.path.join(conf, "config.
             self.assertTrue(os.path.exists(sock))
 
 
+def proxy_paths(root):
+    state, conf = f"{root}/state/mnrh/proxy", f"{root}/conf/mnrh/proxy"
+    return {"STATE": state, "LOCK": f"{state}/lock", "HOLDERS": f"{state}/holders", "SOCK": f"{state}/mihomo.sock",
+            "EXIT": f"{state}/exit.json", "WATCH_LOG": f"{state}/watch.log", "CONF_DIR": conf}
+
+
+class StateGuard(unittest.TestCase):
+    """Папка состояния proxy закрыта для сессии: записи о сессиях, замок и журналы пишут только вне песочницы."""
+
+    def test_both_profiles_close_the_state_folder_lock_and_parents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real = os.path.realpath(tmp)
+            paths = proxy_paths(real)
+            with patch.multiple(claude_proxy, **paths):
+                for claude in (True, False):
+                    with self.subTest(claude=claude):
+                        command = claude_proxy.session_command(17890, ["true"], claude=claude)
+                        params = dict(a.split("=", 1) for a in command if a.startswith("MIHOMO_"))
+                        self.assertEqual(params["MIHOMO_STATE0"], paths["STATE"])
+                        self.assertEqual(params["MIHOMO_LOCK0"], paths["LOCK"])
+                        ups = {v for k, v in params.items() if k.startswith("MIHOMO_UP")}
+                        for up in (f"{real}/state/mnrh", f"{real}/state", f"{real}/conf/mnrh", real):
+                            self.assertIn(up, ups)
+                        self.assertNotIn("/", ups)
+                        profile = command[command.index("-p") + 1]
+                        self.assertIn('(subpath (param "MIHOMO_STATE0")))', profile)
+                        self.assertIn('(deny file-read* (literal (param "MIHOMO_LOCK0")))', profile)
+                        self.assertIn(f'(literal (param "MIHOMO_UP{len(ups) - 1}"))', profile)
+                        # запреты последними: в профиле побеждает последнее подходящее правило
+                        self.assertTrue(profile.rstrip().endswith(claude_proxy.sandbox_profile_lines()[-1]))
+
+    def test_symlinked_state_is_closed_in_both_forms(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real = os.path.realpath(tmp)
+            os.mkdir(f"{real}/state")
+            os.symlink(f"{real}/state", f"{real}/link")
+            with patch.multiple(claude_proxy, STATE=f"{real}/link", LOCK=f"{real}/link/lock"):
+                paths = claude_proxy.guarded_paths()
+        self.assertEqual(paths["STATE"], [f"{real}/link", f"{real}/state"])
+        self.assertEqual(paths["LOCK"], [f"{real}/link/lock", f"{real}/state/lock"])
+
+    @unittest.skipUnless(os.path.exists("/usr/bin/sandbox-exec"), "requires sandbox-exec")
+    def test_profiles_compile(self):
+        """sandbox-exec разбирает профиль до того, как применить: ошибка в нем дала бы код 65, а не 0 или 71
+        (71 — вложенная песочница, если тест идет в сессии через proxy)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.multiple(claude_proxy, **proxy_paths(os.path.realpath(tmp))):
+                for claude in (True, False):
+                    with self.subTest(claude=claude):
+                        r = subprocess.run(claude_proxy.session_command(17890, ["/usr/bin/true"], claude=claude),
+                                           capture_output=True, text=True, timeout=10)
+                        self.assertIn(r.returncode, (0, 71), r.stderr)
+
+    @unittest.skipUnless(sys.platform == "darwin" and host_run.nested_sandbox_ok(), "requires the macOS sandbox")
+    def test_session_cannot_touch_the_state_folder(self):
+        """Живая проверка, запускать в обычном терминале: сессия не стирает записи, не берет замок, не пишет
+        журнал сторожа и не подменяет папки, но читает exit.json и пишет рядом."""
+        client = """\
+import fcntl, os, sys
+
+state, lock, holder, log, conf, root = sys.argv[1:]
+assert open(os.path.join(state, "exit.json")).read() == "{}"
+assert os.listdir(os.path.join(state, "holders")) == ["4242"]
+attempts = {
+    "remove a holder": lambda: os.remove(holder),
+    "add a holder": lambda: open(os.path.join(state, "holders", "1"), "w"),
+    "open the lock": lambda: open(lock),
+    "open the lock for writing": lambda: open(lock, "a"),
+    "link the lock": lambda: os.link(lock, os.path.join(root, "lock-link")),
+    "link the config": lambda: os.link(os.path.join(conf, "config.yaml"), os.path.join(root, "conf-link")),
+    "append to the watcher's log": lambda: open(log, "a"),
+    "forge the mihomo pid": lambda: open(os.path.join(state, "mihomo.pid"), "w"),
+    "rename the state folder": lambda: os.rename(state, state + ".old"),
+    "rename a parent": lambda: os.rename(os.path.dirname(state), os.path.dirname(state) + ".old"),
+}
+for name, action in attempts.items():
+    try:
+        action()
+    except PermissionError:
+        continue
+    sys.exit("could " + name)
+open(os.path.join(root, "beside"), "w").close()
+"""
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            paths = proxy_paths(os.path.realpath(tmp))
+            os.makedirs(paths["HOLDERS"])
+            os.makedirs(paths["CONF_DIR"])
+            holder = os.path.join(paths["HOLDERS"], "4242")
+            for path, text in ((holder, ""), (paths["EXIT"], "{}"), (paths["WATCH_LOG"], "watcher\n"),
+                               (paths["LOCK"], ""), (os.path.join(paths["CONF_DIR"], "config.yaml"), "x")):
+                Path(path).write_text(text)
+            with patch.multiple(claude_proxy, **paths):
+                for claude in (True, False):
+                    with self.subTest(claude=claude):
+                        command = claude_proxy.session_command(
+                            17890, [sys.executable, "-c", client, paths["STATE"], paths["LOCK"], holder,
+                                    paths["WATCH_LOG"], paths["CONF_DIR"], os.path.realpath(tmp)], claude=claude)
+                        subprocess.run(command, check=True, timeout=10)
+                        with open(paths["LOCK"]) as f:  # лаунчер по-прежнему берет замок сразу
+                            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.assertTrue(os.path.exists(holder))
+            self.assertEqual(Path(paths["WATCH_LOG"]).read_text(), "watcher\n")
+
+
 class InsideSession(unittest.TestCase):
     """Изнутри песочницы mihomo не перезапустить и не поднять: нужен обычный терминал."""
 
@@ -116,6 +222,46 @@ class InsideSession(unittest.TestCase):
                 patch.object(claude_proxy, "watcher_alive", return_value=False):
             claude_proxy.ensure_watch()
         popen.assert_not_called()
+
+    def test_nested_run_and_test_skip_the_lock_and_holders(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.multiple(claude_proxy, **proxy_paths(os.path.realpath(tmp))), \
+                patch.object(claude_proxy, "configured", return_value=True), \
+                patch.object(claude_proxy, "read_pid", return_value=4242), \
+                patch.object(claude_proxy, "listening", return_value=True), \
+                patch.object(claude_proxy, "check_exit", return_value=(("1.1.1.1", "GE"), ("2.2.2.2", "KZ"))), \
+                patch.object(claude_proxy, "stop") as stop, patch.object(claude_proxy.os, "execvpe") as execvpe, \
+                patch.object(claude_proxy.subprocess, "Popen") as popen, redirect_stderr(io.StringIO()):
+            claude_proxy.run(["codex", "--flag"])
+            self.assertEqual(claude_proxy.check(), (("1.1.1.1", "GE"), ("2.2.2.2", "KZ")))
+            self.assertEqual(os.listdir(tmp), [])  # ни замка, ни записей о сессии
+        stop.assert_not_called()
+        popen.assert_not_called()
+        name, argv, env = execvpe.call_args[0]
+        self.assertEqual((name, argv), ("codex", ["codex", "--flag"]))
+        self.assertEqual(env["HTTPS_PROXY"], f"http://127.0.0.1:{claude_proxy.port()}")
+
+    def test_nested_run_needs_a_running_mihomo(self):
+        with patch.object(claude_proxy, "configured", return_value=True), \
+                patch.object(claude_proxy, "read_pid", return_value=None), \
+                patch.object(claude_proxy.os, "execvpe") as execvpe, redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(claude_proxy.run(["codex"]), 1)
+        execvpe.assert_not_called()
+        self.assertIn("обычном терминале", err.getvalue())
+
+    def test_setup_remove_and_lock_refuse(self):
+        with patch.object(claude_proxy, "stop") as stop, redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(claude_proxy.setup(["https://example.test/sub"]), 1)
+            self.assertEqual(claude_proxy.remove(), 1)
+        stop.assert_not_called()
+        self.assertEqual(out.getvalue().count("обычном терминале"), 2)
+        with self.assertRaises(claude_proxy.ProxyError):
+            with claude_proxy.locked():
+                pass
+
+    def test_remember_survives_a_closed_state_folder(self):
+        with patch.object(claude_proxy.os, "makedirs", side_effect=PermissionError):
+            self.assertEqual(claude_proxy.remember("vps"), 1)
 
     def test_status_shows_the_server_from_launch(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -254,7 +400,9 @@ with socket.socket(type=socket.SOCK_DGRAM) as udp:
                     patch.object(claude_proxy, "configured", return_value=True), \
                     patch.object(claude_proxy, "port", return_value=proxy_port), \
                     patch.object(claude_proxy, "start"), patch.object(claude_proxy, "stop"), \
-                    patch.object(claude_proxy, "ensure_watch"), patch.dict(os.environ, NO_PROXY="*", no_proxy="*"):
+                    patch.object(claude_proxy, "ensure_watch"), \
+                    patch.object(claude_proxy, "in_session", return_value=False), \
+                    patch.dict(os.environ, NO_PROXY="*", no_proxy="*"):
                 self.assertEqual(claude_proxy.run([sys.executable, str(client), str(origin_port)]), 0)
             server.join(timeout=5)
             self.assertEqual(requests, [f"GET http://127.0.0.1:{origin_port}/fixture HTTP/1.1".encode()])
