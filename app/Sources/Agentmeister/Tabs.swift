@@ -169,15 +169,23 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         if (try? task.run()) != nil { caffeinate = task }
     }
 
-    /// Перезапуск с claude update перед ним, как /restart. Обновление идет вне песочницы, прямо из приложения.
+    /// Команда оболочки для claude update. Через proxy (agentmeister proxy run), если не сказано идти напрямую:
+    /// скачивание обновления не должно уходить в обычную сеть Mac мимо mihomo.
+    nonisolated static func updateCommand(direct: Bool) -> String {
+        let am = LoginEnvironment.agentmeister.replacingOccurrences(of: "'", with: "'\\''")
+        return (direct ? "claude update" : "'\(am)' proxy run --claude -- claude update") + " 2>&1 | tail -3"
+    }
+
+    /// Перезапуск с claude update перед ним, как /restart. У вкладки через proxy обновление тоже идет через proxy.
     func restartWithUpdate(note: String) {
         guard spec.agent == .claude, spec.utility == nil else { restart(); return }
         if running { view.terminate() }
         view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
+        let command = TerminalTab.updateCommand(direct: spec.direct)
         Task.detached(priority: .userInitiated) {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            task.arguments = ["-c", "claude update 2>&1 | tail -3"]
+            task.arguments = ["-c", command]
             task.environment = LoginEnvironment.shared
             let pipe = Pipe()
             task.standardOutput = pipe
