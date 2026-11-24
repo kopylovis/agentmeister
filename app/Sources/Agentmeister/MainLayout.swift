@@ -263,7 +263,6 @@ struct SidebarRail: View {
                                             .fill(Color(hue: hue(project.name), saturation: 0.45, brightness: 0.62)))
                                 }
                             }
-                            .opacity(s.count > 0 || current ? 1 : 0.6)
                             .frame(width: 46, height: 44)
                             // выбранный проект на мягкой подложке, как выбранная строка в развернутом списке
                             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(current ? Ink.thumb : .clear))
@@ -292,7 +291,8 @@ struct SidebarRail: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
-            .scrollEdgeEffectStyle(.soft, for: .vertical)
+            .scrollEdgeEffectStyle(.hard, for: .top)
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
             .safeAreaBar(edge: .top, spacing: 0) {
                 Color.clear.frame(height: 40).frame(maxWidth: .infinity).background(WindowDragArea())
             }

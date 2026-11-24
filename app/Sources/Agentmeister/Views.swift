@@ -229,7 +229,9 @@ struct Sidebar: View {
             if projectsOpen {
                 projectList
                     .scrollContentBackground(.hidden)
-                    .scrollEdgeEffectStyle(.soft, for: .vertical)
+                    // под светофором и заголовком плотное размытие, у режимов внизу свое стекло
+                    .scrollEdgeEffectStyle(.hard, for: .top)
+                    .scrollEdgeEffectStyle(.soft, for: .bottom)
             } else {
                 Color.clear
             }
