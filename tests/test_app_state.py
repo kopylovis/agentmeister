@@ -14,7 +14,21 @@ sys.path.insert(0, LIB)
 import app_state  # noqa: E402
 
 
+def isolate_codex(case):
+    """Тесты не читают настоящий ~/.codex и не пишут в настоящий кэш."""
+    tmp = tempfile.TemporaryDirectory()
+    case.addCleanup(tmp.cleanup)
+    for patcher in (patch.object(app_state, "CODEX_CACHE", os.path.join(tmp.name, "codex.json")),
+                    patch.dict(os.environ, {"CODEX_HOME": os.path.join(tmp.name, "codex")})):
+        patcher.start()
+        case.addCleanup(patcher.stop)
+    return tmp.name
+
+
 class AppState(unittest.TestCase):
+    def setUp(self):
+        isolate_codex(self)
+
     def test_broken_part_keeps_the_rest(self):
         with patch.object(app_state, "projects", return_value=[{"name": "kcalm", "path": "/w/kcalm"}]), \
              patch.object(app_state, "sessions", side_effect=RuntimeError("boom")), \
@@ -207,6 +221,9 @@ class SignedIn(unittest.TestCase):
 
 
 class Models(unittest.TestCase):
+    def setUp(self):
+        isolate_codex(self)
+
     def test_collect_reports_the_model_of_each_agent(self):
         with tempfile.TemporaryDirectory() as home:
             codex = os.path.join(home, ".codex")
@@ -216,6 +233,7 @@ class Models(unittest.TestCase):
             with open(os.path.join(codex, "config.toml"), "w") as f:
                 f.write('model = "gpt-5.5"\nmodel_reasoning_effort = "high"\n\n[profiles.fast]\nmodel = "gpt-5-mini"\n')
             with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": home, "CODEX_HOME": codex}), \
+                 patch.object(app_state, "codex_sessions", return_value=[]), \
                  patch.object(app_state, "projects", return_value=[]), \
                  patch.object(app_state, "sessions", return_value=[]), \
                  patch.object(app_state, "live", return_value=[]), \
@@ -226,6 +244,99 @@ class Models(unittest.TestCase):
                 self.assertEqual(state["models"], {"claude": "opus high", "codex": "gpt-5.5 high"})
                 os.remove(os.path.join(codex, "config.toml"))
                 self.assertEqual(app_state.collect()["models"]["codex"], None)
+
+
+class CodexSessions(unittest.TestCase):
+    SID = "01a20d90-9260-7593-b017-582ceb5058cb"
+
+    def setUp(self):
+        self.tmp = isolate_codex(self)
+        self.home = os.environ["CODEX_HOME"]
+        self.project = os.path.join(self.tmp, "app")
+        os.makedirs(self.project)
+
+    def rollout(self, sid, lines, day="2026/11/24", source="cli"):
+        folder = os.path.join(self.home, "sessions", *day.split("/"))
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, f"rollout-2026-11-24T12-38-28-{sid}.jsonl")
+        meta = {"timestamp": "2026-11-24T12:38:28.263Z", "type": "session_meta",
+                "payload": {"id": sid, "session_id": sid, "cwd": self.project, "source": source,
+                            "timestamp": "2026-11-24T12:38:28.263Z", "git": {"branch": "main"}}}
+        with open(path, "w") as f:
+            for row in [meta] + lines:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        return path
+
+    @staticmethod
+    def msg(role, text, ts="2026-11-24T12:39:00.000Z"):
+        return {"timestamp": ts, "type": "response_item",
+                "payload": {"type": "message", "role": role, "content": [{"type": "input_text", "text": text}]}}
+
+    @staticmethod
+    def done(kind, text, ts="2026-11-24T12:39:00.000Z", **extra):
+        item = {"type": kind, "id": "x", "content": [{"type": "text", "text": text}], **extra}
+        return {"timestamp": ts, "type": "event_msg", "payload": {"type": "item_completed", "item": item}}
+
+    def test_answered_threads_with_title_branch_and_agent(self):
+        self.rollout(self.SID, [self.msg("user", "# AGENTS.md instructions for /x"),
+                                self.msg("user", "<environment_context>…</environment_context>"),
+                                self.msg("user", "почини  сборку\nрелиза"), self.msg("assistant", "Поправил.")])
+        # без ответа Codex и треды субагентов в список не идут
+        self.rollout("01a20d90-0000-7593-b017-582ceb5058cb", [self.msg("user", "привет")])
+        self.rollout("01a20d90-1111-7593-b017-582ceb5058cb", [self.msg("user", "часть"), self.msg("assistant", "да")],
+                     source={"subagent": {"thread_spawn": {}}})
+        out = app_state.codex_sessions()
+        self.assertEqual([s["id"] for s in out], [self.SID])
+        s = out[0]
+        self.assertEqual((s["agent"], s["cwd"], s["branch"], s["title"]), ("codex", self.project, "main", "почини сборку релиза"))
+        self.assertTrue(s["cwdExists"])
+        self.assertGreater(s["created"], 0)
+        with open(os.path.join(self.home, "session_index.jsonl"), "w") as f:
+            f.write(json.dumps({"id": self.SID, "thread_name": "Старое"}) + "\n")
+            f.write(json.dumps({"id": self.SID, "thread_name": "Сборка релиза"}) + "\n")
+        self.assertEqual(app_state.codex_sessions()[0]["title"], "Сборка релиза")
+
+    def test_known_threads_are_not_parsed_again(self):
+        path = self.rollout(self.SID, [self.done("UserMessage", "сделай тесты"), self.done("AgentMessage", "Сделал")])
+        self.assertEqual(app_state.codex_sessions()[0]["title"], "сделай тесты")
+        with open(path, "a") as f:
+            f.write(json.dumps(self.done("AgentMessage", "еще")) + "\n")
+        with patch.object(app_state, "codex_meta") as meta:
+            out = app_state.codex_sessions()
+        meta.assert_not_called()
+        self.assertEqual(out[0]["size"], os.path.getsize(path))
+
+    def test_collect_keeps_codex_apart_from_claude_sessions(self):
+        self.rollout(self.SID, [self.msg("user", "вопрос"), self.msg("assistant", "ответ")])
+        claude = [{"id": "c1", "agent": "claude", "mtime": 200.0}]
+        with patch.object(app_state, "projects", return_value=[]), \
+             patch.object(app_state, "sessions", return_value=claude), \
+             patch.object(app_state, "live", return_value=[]), \
+             patch.object(app_state, "proxy", return_value=None), \
+             patch.object(app_state, "modes", return_value={}), \
+             patch.object(app_state, "host_run_summary", return_value=None):
+            state = app_state.collect()
+            with patch.object(app_state, "codex_sessions", side_effect=RuntimeError("bad rollout")):
+                broken = app_state.collect()
+        # старое приложение читает только sessions и не примет тред Codex за сессию Claude Code
+        self.assertEqual([s["id"] for s in state["sessions"]], ["c1"])
+        self.assertEqual([s["id"] for s in state["codexSessions"]], [self.SID])
+        self.assertNotIn("path", state["codexSessions"][0])
+        self.assertEqual(broken["codexSessions"], [])
+        self.assertIn("bad rollout", broken["errors"]["codexSessions"])
+        self.assertEqual(broken["sessions"], claude)
+
+    def test_read_returns_codex_messages(self):
+        self.rollout(self.SID, [self.done("UserMessage", "запусти тесты", "2026-11-24T12:39:00.000Z"),
+                                self.done("CommandExecution", "", command=["/bin/zsh", "-lc", "make test"],
+                                          parsed_cmd=[{"type": "unknown", "cmd": "make test"}]),
+                                self.msg("assistant", "сырой ответ"),
+                                self.done("AgentMessage", "Все прошло", "2026-11-24T12:40:00.000Z")])
+        out = app_state.read(self.SID, tail=2)
+        self.assertEqual(out["agent"], "codex")
+        self.assertEqual(out["total"], 3)
+        self.assertEqual([(m["role"], m["text"]) for m in out["messages"]], [("tool", "$ make test"), ("codex", "Все прошло")])
+        self.assertEqual(out["home"], self.project)
 
 
 class Lang(unittest.TestCase):
