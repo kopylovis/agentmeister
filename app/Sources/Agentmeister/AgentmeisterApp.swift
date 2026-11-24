@@ -32,6 +32,13 @@ struct AgentmeisterApp: App {
                 .environmentObject(ui)
         }
         .defaultSize(width: 1180, height: 720)
+        Window(L(backend.state.lang).t("Статистика", "Usage"), id: "usage") {
+            UsageView()
+                .environmentObject(backend)
+                .environmentObject(workspace)
+                .environmentObject(ui)
+        }
+        .defaultSize(width: 980, height: 760)
         .commands {
             let l = L(backend.state.lang)
             CommandGroup(replacing: .newItem) {
@@ -60,6 +67,7 @@ struct AgentmeisterApp: App {
             }
             CommandGroup(after: .windowList) {
                 OpenLibraryButton(title: l.t("Сессии", "Sessions"))
+                OpenUsageButton(title: l.t("Статистика", "Usage"))
             }
             CommandGroup(after: .sidebar) {
                 Button(l.inspector) { ui.showInspector.toggle() }

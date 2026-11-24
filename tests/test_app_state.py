@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -128,6 +129,34 @@ class SearchAndRead(unittest.TestCase):
         self.assertEqual([m["at"] for m in out["messages"]], [1, 2])
         self.assertEqual(out["messages"][1]["role"], "tool")
         self.assertIn("error", missing)
+
+
+class Usage(unittest.TestCase):
+    def test_usage_sums_projects_models_and_days(self):
+        import claude_search
+        import claude_usage
+        day = time.mktime((2026, 11, 23, 23, 0, 0, 0, 0, -1))
+        rows = [{"sid": "a", "data": {"spans": [[day, day + 7200]], "ai": "Сборка"}, "active": 7200.0, "last": day + 7200,
+                 "models": {"opus": [10, 20, 300, 40, 5]}, "total": 370},
+                {"sid": "b", "data": {"spans": [[day + 3600, day + 5400]], "prompt": "тест"}, "active": 1800.0,
+                 "last": day + 5400, "models": {"opus": [1, 2, 3, 4, 1]}, "total": 10}]
+        homes = {"a": "/w/app", "b": "/w/app"}
+        with patch.object(claude_usage, "collect", return_value=rows), \
+             patch.object(claude_usage, "period_start", return_value=day - 86400), \
+             patch.object(claude_search, "home_of", side_effect=lambda d: "/w/app"), \
+             patch.object(claude_search, "folder", side_effect=lambda d: "app"):
+            out = app_state.usage(7)
+        self.assertEqual(out["sessions"], 2)
+        self.assertEqual(out["active"], 9000.0)
+        self.assertEqual(out["requests"], 6)
+        self.assertEqual(out["tokens"], [11, 22, 303, 44])
+        self.assertEqual(out["projects"][0]["sessions"], 2)
+        self.assertEqual(out["heavy"][0]["title"], "Сборка")
+        self.assertEqual(out["heavy"][0]["output"], 20)
+        # два часа с 23:00 делятся полуночью на два дня
+        self.assertEqual(sum(d["active"] for d in out["daily"]), 9000.0)
+        self.assertEqual(len(out["daily"]), 2)
+        self.assertEqual(out["daily"][0]["active"], 3600.0)
 
 
 if __name__ == "__main__":
