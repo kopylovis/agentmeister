@@ -489,6 +489,8 @@ struct DetailView: View {
                 TabStrip()
                 if let tab = workspace.current {
                     InfoBar(tab: tab)
+                    TabAlert(tab: tab)
+                        .id(tab.id)
                 }
                 TerminalHost(tab: workspace.current)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -763,6 +765,12 @@ struct InfoBar: View {
 /// Показывает терминал выбранной вкладки. NSView терминала не пересоздается, только меняется местами.
 struct TerminalHost: NSViewRepresentable {
     let tab: TerminalTab?
+
+    /// Терминал занимает все, что ему дали, и не диктует высоту сам: иначе баннер над ним выталкивал бы
+    /// полосу вкладок за верх окна.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSView, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions(by: CGSize(width: 400, height: 200))
+    }
 
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
