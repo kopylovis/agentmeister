@@ -102,6 +102,9 @@ struct MainHeader: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            SidebarToggle()
+                .padding(3)
+                .glassEffect(.regular, in: .capsule)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Agentmeister").font(.system(size: 15, weight: .semibold))
                 Text(subtitle).font(.system(size: 11)).foregroundStyle(Ink.muted)
@@ -173,7 +176,7 @@ struct SidebarToggle: View {
         } label: {
             Image(systemName: "sidebar.left")
                 .foregroundStyle(Ink.text2)
-                .frame(width: 28, height: 24)
+                .frame(width: 34, height: 28)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -212,8 +215,7 @@ struct SidebarRail: View {
     var body: some View {
         let active = backend.state.projects.filter { state($0).count > 0 }
         VStack(spacing: 10) {
-            Color.clear.frame(height: 22)
-            SidebarToggle()
+            Color.clear.frame(height: 40).frame(maxWidth: .infinity).background(WindowDragArea())
             ScrollView {
                 VStack(spacing: 10) {
                     ForEach(active) { project in
@@ -269,5 +271,55 @@ struct SidebarRail: View {
             }
         }
         .frame(maxHeight: .infinity)
+    }
+}
+
+/// Сдвигает светофор окна внутрь карточки проектов, чтобы кнопки не касались ее скругленной рамки.
+/// AppKit возвращает кнопки на место при каждой раскладке заголовка, поэтому сдвиг повторяется.
+struct TrafficLightsInset: NSViewRepresentable {
+    var dx: CGFloat = 14
+    var dy: CGFloat = 9
+
+    final class Probe: NSView {
+        var dx: CGFloat = 0, dy: CGFloat = 0
+        private var observers: [NSObjectProtocol] = []
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window else { return }
+            for name in [NSWindow.didResizeNotification, NSWindow.didEndLiveResizeNotification,
+                         NSWindow.didExitFullScreenNotification, NSWindow.didBecomeKeyNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.place() }
+                })
+            }
+            DispatchQueue.main.async { self.place() }
+        }
+
+        func place() {
+            guard let window, !window.styleMask.contains(.fullScreen) else { return }
+            let kinds: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
+            for (i, kind) in kinds.enumerated() {
+                guard let button = window.standardWindowButton(kind), let bar = button.superview else { continue }
+                let x = 7 + CGFloat(i) * 20 + dx
+                let y = (bar.bounds.height - button.frame.height) / 2 - dy
+                button.setFrameOrigin(NSPoint(x: x, y: y))
+            }
+        }
+
+        deinit { observers.forEach(NotificationCenter.default.removeObserver) }
+    }
+
+    func makeNSView(context: Context) -> Probe {
+        let v = Probe()
+        v.dx = dx
+        v.dy = dy
+        return v
+    }
+
+    func updateNSView(_ nsView: Probe, context: Context) {
+        DispatchQueue.main.async { nsView.place() }
     }
 }

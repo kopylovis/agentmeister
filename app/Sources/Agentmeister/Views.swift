@@ -61,7 +61,7 @@ struct MainView: View {
             .frame(maxHeight: .infinity, alignment: .top)
         }
         .ignoresSafeArea()
-        .background(WindowDragArea().opacity(0))
+        .background(TrafficLightsInset())
         .sheet(isPresented: $ui.showNewSession) {
             NewSessionSheet(initialProject: ui.newSessionProject)
         }
@@ -235,15 +235,11 @@ struct Sidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // кнопка в одну строку со светофором: его центр в 8 точках от верха карточки
-            HStack {
-                Spacer()
-                SidebarToggle()
-            }
-            .frame(height: 16)
-            .padding(.horizontal, 10)
-            .padding(.bottom, 12)
-            .background(WindowDragArea())
+            // место под светофор, кнопка свертывания теперь в шапке средней карточки
+            Color.clear
+                .frame(height: 40)
+                .frame(maxWidth: .infinity)
+                .background(WindowDragArea())
             CollapsibleHeader(title: l.projects, open: $projectsOpen,
                               summary: l.t("открыто \(workspace.tabs.filter(\.running).count)", "\(workspace.tabs.filter(\.running).count) open"))
                 .padding(.horizontal, 18)
