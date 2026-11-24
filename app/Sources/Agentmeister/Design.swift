@@ -63,6 +63,32 @@ enum Ink {
     static let modeOffBg = Color(light: .white(0.6), dark: .white(0.05))
     static let modeOffBorder = Color(light: .black(0.10), dark: .white(0.10))
 
+    /// Подписи полей и групп в диалогах (Auth.dc.html): светлее muted.
+    static let label = Color(light: NSColor(hex: 0x4A4E58), dark: NSColor(hex: 0xB4B8C2))
+    /// Строки-варианты с кружком выбора: выбранная светлее и с синей рамкой.
+    static let optionOnBg = Color(light: .white(0.9), dark: .white(0.12))
+    static let optionOnBorder = Color(light: NSColor(hex: 0x2F6FE4, alpha: 0.55), dark: NSColor(hex: 0x8DB8FF, alpha: 0.55))
+    static let optionOffBg = Color(light: .black(0.03), dark: .white(0.04))
+    static let optionOffBorder = Color(light: .black(0.08), dark: .white(0.10))
+    static let dotOff = Color(light: .black(0.25), dark: .white(0.35))
+    /// Поле ввода и рамка встроенного окна.
+    static let field = Color(light: .white(0.8), dark: .black(0.25))
+    static let fieldBorder = Color(light: .black(0.10), dark: .white(0.14))
+    static let segTrack = Color(light: .black(0.06), dark: .black(0.28))
+    static let ringTrack = Color(light: .black(0.10), dark: .white(0.15))
+    /// Выбранный сегмент маршрута: бирюзовый через proxy, янтарный напрямую.
+    static let tealSegBg = Color(light: NSColor(hex: 0x1F8F82, alpha: 0.18), dark: NSColor(hex: 0x3FB6A8, alpha: 0.32))
+    static let tealSeg = Color(light: NSColor(hex: 0x0B5E54), dark: NSColor(hex: 0xA6EDE2))
+    static let directSegBg = Color(light: NSColor(hex: 0xD9822B, alpha: 0.20), dark: NSColor(hex: 0xD9822B, alpha: 0.32))
+    static let directSeg = Color(light: NSColor(hex: 0x6E3C00), dark: NSColor(hex: 0xF5CC9A))
+    /// Янтарная плашка "напрямую" и предупреждения.
+    static let warnChip = Color(light: NSColor(hex: 0xD9822B, alpha: 0.14), dark: NSColor(hex: 0xD9822B, alpha: 0.16))
+    static let warn = Color(light: NSColor(hex: 0x7A4300), dark: NSColor(hex: 0xF0C38E))
+    /// Бирюзовое стекло "Вход выполнен".
+    static let tealGlass = Color(light: NSColor(hex: 0x1F8F82, alpha: 0.12), dark: NSColor(hex: 0x3FB6A8, alpha: 0.16))
+    static let tealGlassBorder = Color(light: NSColor(hex: 0x1F8F82, alpha: 0.30), dark: NSColor(hex: 0x6FD3C5, alpha: 0.30))
+    static let tealBadge = Color(hex: 0x1F8F82)
+
     /// Фон терминала из макета: почти черный в темной теме, белый в светлой.
     static let terminalBg = Color(light: .white, dark: NSColor(hex: 0x08090B))
 }

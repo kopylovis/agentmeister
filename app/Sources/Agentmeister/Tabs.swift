@@ -22,6 +22,11 @@ struct LaunchSpec: Hashable {
     var awake = false
     /// Дополнительные флаги агента после --, например --resume <id> --fork-session для форка разговора.
     var extraFlags: [String] = []
+    /// Служебная команда запускается как есть, без agentmeister впереди: вход напрямую из диалога входа.
+    var bare = false
+    /// Вход из диалога входа: страницу, которую агент открывает сам, BROWSER всегда отдает приложению,
+    /// а диалог открывает ее там, где выбрано. Маршрут при этом любой.
+    var signInDialog = false
 
     /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
     var proxied: Bool {
@@ -124,7 +129,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     init(spec: LaunchSpec, id: UUID? = nil) {
         self.id = id ?? UUID()
         self.spec = spec
-        self.title = spec.utility.map { "agentmeister " + $0.joined(separator: " ") } ?? spec.projectName
+        self.title = spec.utility.map { (spec.bare ? "" : "agentmeister ") + $0.joined(separator: " ") } ?? spec.projectName
         self.sessionId = spec.resumeId
         view = AppTerminalView(frame: NSRect(x: 0, y: 0, width: 960, height: 640))
         super.init()
@@ -162,7 +167,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         }
         // страницы, которые агент открывает сам (вход, OAuth для MCP), идут во встроенный браузер через тот же proxy
         env.removeValue(forKey: "BROWSER")
-        if spec.proxied && BrowserSettings.forAgent, let helper = ProxyBrowser.helper {
+        if (spec.proxied && BrowserSettings.forAgent) || spec.signInDialog, let helper = ProxyBrowser.helper {
             env["BROWSER"] = helper
         }
         if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
@@ -194,7 +199,9 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         running = true
         status = nil
         startedAt = Date()
-        let args = ["-l", "-c", Self.shellScript, LoginEnvironment.agentmeister] + spec.arguments
+        // "$0" в shellScript: agentmeister или, у вкладки bare, сама команда
+        let program = spec.bare ? spec.arguments.first ?? "true" : LoginEnvironment.agentmeister
+        let args = ["-l", "-c", Self.shellScript, program] + (spec.bare ? Array(spec.arguments.dropFirst()) : spec.arguments)
         view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(tab: id, spec: spec), execName: "-zsh",
                           currentDirectory: FileManager.default.fileExists(atPath: spec.projectPath) ? spec.projectPath : NSHomeDirectory())
         updateAwake()
@@ -1025,6 +1032,10 @@ final class AppTerminalView: LocalProcessTerminalView {
     }
 
     override func requestOpenLink(source: TerminalView, request: TerminalLinkRequest) {
+        // ссылку из терминала диалога входа диалог открывает сам, там же, где страницу от BROWSER
+        if tab?.spec.signInDialog == true, let url = URL(string: request.link), ProxyBrowser.shared.offer(url) {
+            return
+        }
         if let spec = tab?.spec, spec.proxied,
            spec.signIn ? BrowserSettings.forAgent : BrowserSettings.forLinks,
            let url = URL(string: request.link), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
