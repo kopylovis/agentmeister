@@ -357,6 +357,49 @@ class Layout(unittest.TestCase):
         self.assertIn("row 19 " + "x" * 40, lines[-3])
         self.assertNotIn("↓", "".join(lines))
 
+    def test_next_frame_sends_only_changed_parts(self):
+        out = []
+
+        class P(menu.Panel):
+            def size(self):
+                return 20, 100
+
+            def write(self, s):
+                out.append(s)
+
+        items = [("a", "📂 alpha"), ("b", "📂 beta"), ("c", "📂 gamma"), ("d", "📂 delta")]
+        p = P(0, items, "title", 0, lambda i, w: ["same"], ("L", "R"), "hint")
+        p.draw()
+        self.assertTrue(out[-1].startswith("\x1b[H"))
+        p.handle("\x1b[B")
+        p.draw()
+        frame = out[-1]
+        self.assertEqual(re.findall(r"\x1b\[(\d+);(\d+)H", frame), [("3", "1"), ("4", "1")])
+        self.assertIn("alpha", frame)
+        self.assertIn("beta", frame)
+        self.assertNotIn("gamma", frame)
+        self.assertNotIn("same", frame)
+        p.draw()
+        self.assertEqual(len(out), 2)  # ничего не поменялось: ничего не пишем
+
+    def test_description_change_is_written_at_its_column(self):
+        out = []
+        text = {"v": "one"}
+
+        class P(menu.Panel):
+            def size(self):
+                return 20, 100
+
+            def write(self, s):
+                out.append(s)
+
+        p = P(0, [("a", "alpha")], "title", 0, lambda i, w: [text["v"]], ("L", "R"), "hint")
+        p.draw()
+        text["v"] = "two"
+        p.draw()
+        lw = menu.columns(100, menu.width("alpha") + 6, "auto")[0]
+        self.assertEqual(re.findall(r"\x1b\[(\d+);(\d+)H", out[-1]), [("3", str(3 + lw))])
+
     def test_low_window_drops_title_then_hint(self):
         self.assertEqual(menu.layout_rows(20), (17, True, True))
         self.assertEqual(menu.layout_rows(8), (5, True, True))
