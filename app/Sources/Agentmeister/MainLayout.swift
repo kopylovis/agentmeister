@@ -215,11 +215,10 @@ struct SidebarRail: View {
 
     /// Сколько сессий проекта открыто и в каком они состоянии: ждущая важнее работающей, работающая важнее простоя.
     private func state(_ p: AppState.Project) -> (count: Int, status: String?) {
-        let tabs = workspace.tabs.filter { $0.spec.projectPath == p.path && $0.running }
-        let live = backend.state.live.filter { ($0.cwd ?? "") == p.path || ($0.cwd ?? "").hasPrefix(p.path + "/") }
-        let statuses = tabs.map(\.status) + live.map(\.status)
+        let (tabs, others) = workspace.openSessions(in: p, state: backend.state)
+        let statuses = tabs.map(\.status) + others.map(\.status)
         let status = statuses.contains("waiting") ? "waiting" : statuses.contains("busy") ? "busy" : nil
-        return (max(tabs.count, live.count), status)
+        return (tabs.count + others.count, status)
     }
 
     /// Две буквы проекта: "Ag" для agentmeister, "TM" для tossling-mobile.
