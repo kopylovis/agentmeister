@@ -2,29 +2,61 @@ import AppKit
 import Foundation
 
 /// Окружение входа пользователя. Приложение запускают из Finder или Dock, а там PATH короткий и без Homebrew.
-/// Поэтому один раз спрашиваем zsh -l и дальше запускаем agentmeister и вкладки с тем же окружением.
+/// Поэтому один раз спрашиваем zsh и дальше запускаем agentmeister и вкладки с тем же окружением. Нужен именно
+/// интерактивный вход (-l -i): PATH часто дописывают в .zshrc, а zsh -l его не читает.
 enum LoginEnvironment {
     static let shared: [String: String] = load()
 
+    private static let marker = "__AGENTMEISTER_ENV__"
+    /// Переменные самой оболочки, которые не нужно переносить во вкладки.
+    private static let shellOnly: Set<String> = ["PWD", "OLDPWD", "SHLVL", "_", "TERM", "ZSH_EXECUTION_STRING"]
+
     private static func load() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let captured = capture(["-l", "-i", "-c"]) ?? capture(["-l", "-c"]) ?? [:]
+        for (key, value) in captured where !shellOnly.contains(key) { env[key] = value }
+        env["PATH"] = withFallbacks(env["PATH"] ?? "/usr/bin:/bin")
+        return env
+    }
+
+    /// Окружение из zsh с данными флагами. Вывод .zshrc отсекается меткой, зависшая оболочка снимается через 5 секунд.
+    private static func capture(_ flags: [String]) -> [String: String]? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        task.arguments = ["-l", "-c", "env -0"]
+        task.arguments = flags + ["print -rn -- \(marker); env -0"]
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = FileHandle.nullDevice
         task.standardInput = FileHandle.nullDevice
-        var env = ProcessInfo.processInfo.environment
-        do {
-            try task.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            task.waitUntilExit()
-            for entry in data.split(separator: 0) {
-                guard let line = String(data: Data(entry), encoding: .utf8), let eq = line.firstIndex(of: "=") else { continue }
-                env[String(line[..<eq])] = String(line[line.index(after: eq)...])
-            }
-        } catch {}
-        return env
+        guard (try? task.run()) != nil else { return nil }
+        var data = Data()
+        let done = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .userInitiated).async {
+            data = pipe.fileHandleForReading.readDataToEndOfFile()
+            done.signal()
+        }
+        if done.wait(timeout: .now() + 5) == .timedOut {
+            task.terminate()
+            return nil
+        }
+        task.waitUntilExit()
+        guard let range = data.range(of: Data(marker.utf8)) else { return nil }
+        var env: [String: String] = [:]
+        for entry in data[range.upperBound...].split(separator: 0) {
+            guard let line = String(data: Data(entry), encoding: .utf8), let eq = line.firstIndex(of: "=") else { continue }
+            env[String(line[..<eq])] = String(line[line.index(after: eq)...])
+        }
+        return env["PATH"] == nil ? nil : env
+    }
+
+    /// Обычные места установки в конец PATH, если их там нет: install.sh кладет agentmeister в ~/.local/bin.
+    static func withFallbacks(_ path: String) -> String {
+        var dirs = path.split(separator: ":").map(String.init)
+        let home = NSHomeDirectory()
+        for dir in ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"] where !dirs.contains(dir) {
+            dirs.append(dir)
+        }
+        return dirs.joined(separator: ":")
     }
 
     /// restart_job.py рядом с тем agentmeister, который запускают вкладки. Нет его, и вкладка без перезапуска.
@@ -44,6 +76,8 @@ enum LoginEnvironment {
         }
         return "agentmeister"
     }
+
+    static var found: Bool { agentmeister.hasPrefix("/") }
 }
 
 /// Ответ agentmeister app-state.
@@ -274,6 +308,10 @@ final class Backend: ObservableObject {
     }
 
     nonisolated static func run(_ args: [String]) -> Result<Data, Error> {
+        guard LoginEnvironment.found else {
+            return .failure(NSError(domain: "agentmeister", code: 127, userInfo: [NSLocalizedDescriptionKey:
+                "agentmeister не найден в PATH. Установи его (./install.sh) или проверь PATH в ~/.zshrc."]))
+        }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: LoginEnvironment.agentmeister)
         task.arguments = args
