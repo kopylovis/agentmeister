@@ -28,14 +28,21 @@ class AppState(unittest.TestCase):
         self.assertNotIn("projects", state["errors"])
 
     def test_sessions_skip_unanswered_and_links(self):
-        rows = [{"id": "a", "cwd": "/w/a", "title": "one", "branch": "main", "mtime": 2, "size": 10,
-                 "running": None, "answered": True, "link": False},
-                {"id": "b", "cwd": "/w/b", "title": "", "branch": None, "mtime": 1, "size": 1,
-                 "running": None, "answered": False, "link": False},
-                {"id": "c", "cwd": "/w/c", "title": "moved", "branch": None, "mtime": 1, "size": 0,
-                 "running": None, "answered": True, "link": True}]
         import session_store
-        with patch.object(session_store, "load", return_value=rows):
+
+        def row(sid, link=False):
+            return {"id": sid, "path": f"/p/{sid}.jsonl", "extra": f"/p/{sid}", "link": link, "cwd": f"/w/{sid}",
+                    "mtime": 1, "size": 1, "running": None, "transcript_version": (1, ord(sid), 1, 1, 1)}
+
+        answered = {"/p/a.jsonl": True, "/p/b.jsonl": False, "/p/c.jsonl": True}
+
+        def meta(path):
+            return {"cwd": None, "branch": None, "custom": None, "ai": "t", "prompt": None, "answered": answered[path]}
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(app_state, "META_CACHE", os.path.join(tmp, "sessions.json")), \
+             patch.object(session_store, "load", return_value=[row("a"), row("b"), row("c", link=True)]), \
+             patch.object(session_store, "read_meta", side_effect=meta):
             out = app_state.sessions()
         self.assertEqual([s["id"] for s in out], ["a"])
         self.assertEqual(out[0]["running"], False)
