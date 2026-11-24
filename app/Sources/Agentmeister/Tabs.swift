@@ -347,18 +347,47 @@ final class Workspace: ObservableObject {
         }
     }
 
+    /// Почему вкладки не закрылись как обычно: приложение упало или Mac перезагрузился. Тогда перед
+    /// открытием спрашиваем, как в макете Restore.dc.html.
+    enum RestoreReason { case crash, reboot }
+
+    struct PendingRestore {
+        let reason: RestoreReason
+        let specs: [(spec: LaunchSpec, selected: Bool)]
+    }
+
+    @Published var pendingRestore: PendingRestore?
+
+    static let cleanExitKey = "cleanExit"
+    static let reopenSilentlyKey = "restore.reopenSilently"
+
+    /// Время загрузки macOS. Если tabs.json старше, вкладки остались от прошлой загрузки.
+    static var bootTime: Date? {
+        var tv = timeval()
+        var size = MemoryLayout<timeval>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_BOOTTIME]
+        guard sysctl(&mib, 2, &tv, &size, nil, 0) == 0 else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(tv.tv_sec))
+    }
+
     /// Открыть вкладки прошлого запуска. Сессию, которая сейчас открыта в другом окне (iTerm2 или второй
     /// Agentmeister), не трогаем: второй Claude на той же переписке испортил бы ее. Сессию, в которой Claude
     /// так и не ответил, Claude Code не сохраняет, и --resume ее не найдет, поэтому такая вкладка начнется заново.
+    /// После обычного выхода вкладки открываются сразу, после сбоя или перезагрузки сначала лист с вопросом.
     func restore(live: [AppState.Live], projects: [AppState.Project], sessions: [AppState.Session]) {
         guard !restored else { return }
-        defer { restored = true; save() }
+        let defaults = UserDefaults.standard
+        let clean = defaults.object(forKey: Self.cleanExitKey) as? Bool ?? true
+        defaults.set(false, forKey: Self.cleanExitKey)
         guard let data = try? Data(contentsOf: Self.savedTabsURL),
-              let saved = try? JSONDecoder().decode([SavedTab].self, from: data) else { return }
+              let saved = try? JSONDecoder().decode([SavedTab].self, from: data) else {
+            restored = true
+            return
+        }
         let busy = Set(live.compactMap(\.sessionId))
         let known = Set(projects.map(\.path))
         let resumable = Set(sessions.map(\.id))
-        var select: UUID?
+        var specs: [(spec: LaunchSpec, selected: Bool)] = []
         for item in saved {
             guard known.contains(item.projectPath) || FileManager.default.fileExists(atPath: item.projectPath) else { continue }
             if let sid = item.sessionId, busy.contains(sid) { continue }
@@ -367,7 +396,28 @@ final class Workspace: ObservableObject {
             spec.awake = item.awake ?? false
             spec.remoteControl = item.remoteControl ?? false
             if agent == .claude, let sid = item.sessionId, resumable.contains(sid) { spec.resumeId = sid }
-            let tab = TerminalTab(spec: spec)
+            specs.append((spec, item.selected))
+        }
+        let modified = (try? FileManager.default.attributesOfItem(atPath: Self.savedTabsURL.path)[.modificationDate]) as? Date
+        let reason: RestoreReason? = {
+            if let boot = Self.bootTime, let modified, modified < boot { return .reboot }
+            return clean ? nil : .crash
+        }()
+        if let reason, !specs.isEmpty, !defaults.bool(forKey: Self.reopenSilentlyKey) {
+            // вкладки пока не трогаем: tabs.json остается, пока не ответили на вопрос
+            pendingRestore = PendingRestore(reason: reason, specs: specs)
+            return
+        }
+        finishRestore(specs)
+    }
+
+    /// Открыть выбранные вкладки после листа восстановления или сразу.
+    func finishRestore(_ specs: [(spec: LaunchSpec, selected: Bool)]) {
+        pendingRestore = nil
+        defer { restored = true; save() }
+        var select: UUID?
+        for item in specs {
+            let tab = TerminalTab(spec: item.spec)
             tabs.append(tab)
             if item.selected { select = tab.id }
         }
