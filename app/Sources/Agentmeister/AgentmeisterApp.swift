@@ -69,6 +69,11 @@ struct AgentmeisterApp: App {
                 OpenLibraryButton(title: l.t("Сессии", "Sessions"))
                 OpenUsageButton(title: l.t("Статистика", "Usage"))
             }
+            CommandGroup(before: .sidebar) {
+                Button(l.t("Палитра команд", "Command palette")) { ui.showPalette = true }
+                    .keyboardShortcut("k")
+                Divider()
+            }
             CommandGroup(after: .sidebar) {
                 Button(l.inspector) { ui.showInspector.toggle() }
                     .keyboardShortcut("i", modifiers: [.command, .option])
