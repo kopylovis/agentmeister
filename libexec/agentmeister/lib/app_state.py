@@ -30,19 +30,58 @@ def projects():
     return [{"name": os.path.basename(p), "path": p} for p in open_flow.project_dirs()]
 
 
+META_CACHE = os.path.join(mnrhlib.CACHE, "app-state", "sessions.json")
+
+
+def session_meta(s, cache, fresh):
+    """Заголовок, ветка, папка и answered сессии. Переписку читаем, только если файл изменился с прошлого раза:
+    приложение спрашивает app-state часто, а разбор всех строк всех переписок стоит больше полсекунды."""
+    import session_store
+    version = list(s["transcript_version"] or [])
+    old = cache.get(s["path"])
+    if old and old.get("v") == version:
+        fresh[s["path"]] = old
+        return old
+    m = session_store.read_meta(s["path"])
+    custom = m["custom"]
+    try:
+        with open(os.path.join(s["extra"], "custom-title.json")) as fh:
+            custom = json.load(fh).get("customTitle") or custom
+    except (OSError, ValueError, AttributeError):
+        pass
+    item = {"v": version, "cwd": m["cwd"], "branch": m["branch"] or "", "answered": bool(m["answered"]),
+            "title": custom or m["ai"] or m["prompt"] or ""}
+    fresh[s["path"]] = item
+    return item
+
+
 def sessions():
     """Сохраненные сессии Claude Code, новые первыми. Пустые, без ответа Claude, приложению не нужны."""
     import session_store
-    out = []
-    for s in session_store.load():
-        if s.get("link") or not s.get("answered"):
+    try:
+        with open(META_CACHE) as f:
+            cache = json.load(f)
+        if not isinstance(cache, dict):
+            cache = {}
+    except (OSError, ValueError):
+        cache = {}
+    fresh, out = {}, []
+    for s in session_store.load(meta=False):
+        if s.get("link"):
+            continue
+        m = session_meta(s, cache, fresh)
+        if not m["answered"] or len(out) >= SESSION_LIMIT:
             continue
         out.append({
-            "id": s["id"], "cwd": s["cwd"], "title": s.get("title") or "", "branch": s.get("branch") or "",
+            "id": s["id"], "cwd": s["cwd"] or m["cwd"] or "", "title": m["title"], "branch": m["branch"],
             "mtime": s["mtime"], "size": s["size"], "running": bool(s.get("running")),
         })
-        if len(out) >= SESSION_LIMIT:
-            break
+    if fresh != cache:
+        try:
+            os.makedirs(os.path.dirname(META_CACHE), exist_ok=True)
+            mnrhlib.write_json(META_CACHE, fresh, mode=0o600, ensure_ascii=False, separators=(",", ":"))
+        except OSError:
+            pass
     return out
 
 
