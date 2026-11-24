@@ -1,16 +1,17 @@
 import SwiftUI
 
-/// Строка палитры: что показать и что сделать по Enter.
+/// Строка палитры: что показать, что сделать по Enter и по ⌘Enter ("в новой вкладке").
 struct PaletteItem: Identifiable {
-    enum Group: Int { case tabs, sessions, actions, projects }
+    enum Group: Int { case sessions, thisSession, tools, projects }
 
     let id: String
     let group: Group
     let title: String
     let detail: String
-    let shortcut: String
-    let icon: String
+    var shortcut = ""
     let run: @MainActor () -> Void
+    /// ⌘Enter. Если nil, ⌘Enter делает то же, что Enter.
+    var runInNewTab: (@MainActor () -> Void)?
 
     /// Подходит ли строка под запрос: все слова запроса есть в названии или подписи.
     func matches(_ query: String) -> Bool {
@@ -21,7 +22,8 @@ struct PaletteItem: Identifiable {
     }
 }
 
-/// Палитра команд по ⌘K: вкладки, недавние сессии, действия окна и новые сессии в проектах.
+/// Палитра команд по ⌘K, как в макете Palette.dc.html: сессии (открытые вкладки и недавние), действия этой
+/// сессии и инструменты agentmeister.
 struct PaletteView: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
@@ -34,48 +36,112 @@ struct PaletteView: View {
 
     var l: L { L(backend.state.lang) }
 
+    /// Текущая вкладка Claude Code, в которую палитра вписывает команды вроде /ask.
+    private var claudeTab: TerminalTab? {
+        guard let tab = workspace.current, tab.spec.utility == nil, tab.spec.agent == .claude, tab.running else { return nil }
+        return tab
+    }
+
+    /// Новая вкладка Claude в проекте текущей вкладки с этим первым запросом.
+    private func openWithPrompt(_ prompt: String) {
+        guard let spec = workspace.current?.spec, spec.utility == nil else { return }
+        var fresh = LaunchSpec(projectName: spec.projectName, projectPath: spec.projectPath, direct: spec.direct)
+        fresh.firstPrompt = prompt
+        workspace.open(fresh)
+    }
+
+    /// Инструмент-команда Claude Code: Enter вписывает ее в текущую вкладку, ⌘Enter открывает с ней новую.
+    private func slash(_ id: String, _ title: String, _ detail: String, _ command: String, key: String = "") -> PaletteItem {
+        PaletteItem(id: id, group: .tools, title: title, detail: detail, shortcut: key, run: {
+            if let tab = claudeTab { tab.type(command) } else { openWithPrompt(command) }
+        }, runInNewTab: { openWithPrompt(command) })
+    }
+
     private var items: [PaletteItem] {
         var out: [PaletteItem] = []
         for (i, tab) in workspace.tabs.enumerated() {
-            out.append(PaletteItem(id: "tab-\(tab.id)", group: .tabs, title: tab.title,
-                                   detail: tab.spec.projectName + " · " + l.statusTitle(tab.status),
-                                   shortcut: i < 9 ? "⌘\(i + 1)" : "", icon: "terminal") {
+            let saved = backend.state.sessions.first { $0.id == tab.sessionId }
+            out.append(PaletteItem(id: "tab-\(tab.id)", group: .sessions,
+                                   title: saved?.title.isEmpty == false ? saved!.title : tab.title,
+                                   detail: tab.spec.projectName + " · " + l.t("открыта", "open"),
+                                   shortcut: i < 9 ? "⌘\(i + 1)" : "") {
                 workspace.selected = tab.id
             })
         }
-        for session in backend.state.sessions.prefix(40) {
+        let open = Set(workspace.tabs.compactMap(\.sessionId))
+        for session in backend.state.sessions.prefix(40) where !open.contains(session.id) {
             let project = backend.state.projects.first { session.cwd == $0.path || session.cwd.hasPrefix($0.path + "/") }
             guard let project else { continue }
             out.append(PaletteItem(id: "s-\(session.id)", group: .sessions,
                                    title: session.title.isEmpty ? l.untitled : session.title,
                                    detail: project.name + " · " + (workspace.liveElsewhere.contains(session.id)
-                                       ? l.t("открыта в другом окне", "open in another window") : l.ago(session.mtime)),
-                                   shortcut: "", icon: "text.bubble") {
+                                       ? l.t("открыта в другом окне", "open in another window") : l.agoLong(session.mtime))) {
                 workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path, resumeId: session.id))
             })
         }
-        let actions: [(String, String, String, @MainActor () -> Void)] = [
-            (l.newSession + "…", "⌘N", "plus", { ui.newSessionProject = workspace.current?.spec.projectPath; ui.showNewSession = true }),
-            (l.t("Сессии", "Sessions"), "⇧⌘O", "books.vertical", { openWindow(id: "library") }),
-            (l.t("Статистика", "Usage"), "⇧⌘U", "chart.bar.xaxis", { openWindow(id: "usage") }),
-            (l.inspector, "⌥⌘I", "sidebar.right", { ui.showInspector.toggle() }),
-            (l.t("Браузер через proxy", "Proxy browser"), "", "safari", {
-                ProxyBrowser.shared.port = backend.state.proxy?.port ?? 17890
-                ProxyBrowser.shared.open(URL(string: "https://1.1.1.1/cdn-cgi/trace")!)
-            }),
-            (l.t("К вкладке, которая ждет", "Jump to the waiting tab"), "⌘J", "bell", {
-                if let tab = workspace.tabs.first(where: { $0.status == "waiting" }) { workspace.selected = tab.id }
-            }),
-            (l.restart, "⇧⌘R", "arrow.clockwise", { workspace.current?.restart() }),
-            (l.closeTab, "⌘W", "xmark", { workspace.close(workspace.selected) }),
-        ]
-        for (i, a) in actions.enumerated() {
-            out.append(PaletteItem(id: "a-\(i)", group: .actions, title: a.0, detail: "", shortcut: a.1, icon: a.2, run: a.3))
+
+        let tab = workspace.current
+        let claude = tab != nil && tab?.spec.utility == nil && tab?.spec.agent == .claude
+        out.append(PaletteItem(id: "a-new", group: .thisSession, title: l.newSession, detail: "", shortcut: "⌘N") {
+            ui.newSessionProject = workspace.current?.spec.projectPath
+            ui.showNewSession = true
+        })
+        if let tab {
+            out.append(PaletteItem(id: "a-restart", group: .thisSession,
+                                   title: claude ? l.t("Перезапустить с обновлением", "Restart with update") : l.restart,
+                                   detail: claude ? "claude update" : "", shortcut: "⌘R") {
+                if claude { tab.restartWithUpdate(note: l.t("Обновляю Claude Code…", "Updating Claude Code…")) } else { tab.restart() }
+            })
+            if claude && tab.sessionId != nil {
+                out.append(PaletteItem(id: "a-slim", group: .thisSession, title: l.slim,
+                                       detail: l.t("убрать старые скриншоты и длинные выводы", "drop old screenshots and long outputs")) {
+                    tab.slim(note: l.slimming)
+                })
+            }
+            if tab.spec.utility == nil {
+                out.append(PaletteItem(id: "a-fresh", group: .thisSession, title: l.t("С чистого листа", "Fresh start"),
+                                       detail: l.t("эта сессия останется в списке", "this one stays in the list")) {
+                    tab.fresh()
+                })
+            }
+            if claude {
+                out.append(PaletteItem(id: "a-forget", group: .thisSession, title: l.forget,
+                                       detail: l.t("удалить без следа и открыть чистую", "delete without a trace and open a clean one")) {
+                    tab.forget(note: l.forgetting)
+                })
+            }
         }
+        out.append(PaletteItem(id: "a-parallel", group: .thisSession, title: l.t("Параллельная задача", "Parallel task"),
+                               detail: l.t("своя ветка и worktree", "own branch and worktree"), shortcut: "⌘⇧P") {
+            ui.newSessionProject = workspace.current?.spec.projectPath
+            ui.newSessionParallel = true
+            ui.showNewSession = true
+        })
+
+        out.append(slash("t-ask", l.t("Спросить другой проект", "Ask another project"),
+                         l.t("отдельный Claude только на чтение", "a separate read-only Claude"), "/ask ", key: "⌘⇧A"))
+        out.append(slash("t-shot", l.t("Снимок окна", "Window screenshot"), "Simulator, Chrome, …", "/shot ", key: "⌘⇧S"))
+        out.append(slash("t-release", l.t("Заметки к релизу", "Release notes"),
+                         l.t("\"Что нового\" для fastlane", "\"What's new\" for fastlane"), "/release-notes"))
+        out.append(PaletteItem(id: "t-deps", group: .tools, title: l.t("Устаревшие зависимости", "Outdated dependencies"), detail: "Gradle") {
+            var spec = LaunchSpec(projectName: "agentmeister", projectPath: workspace.current?.spec.projectPath ?? NSHomeDirectory())
+            spec.utility = ["deps"] + (workspace.current.map { [$0.spec.projectPath] } ?? [])
+            workspace.open(spec)
+        })
+        out.append(slash("t-mac", l.t("Состояние Mac", "Mac status"), l.t("память, swap, диск", "memory, swap, disk"),
+                         l.t("Покажи состояние Mac: память, swap, диск (mac_status)", "Show the Mac status: memory, swap, disk (mac_status)")))
+        out.append(slash("t-free", l.t("Освободить память", "Free up memory"),
+                         l.t("закрыть лишнее, сжать открытые сессии", "close extras, slim open sessions"),
+                         l.t("Освободи память (free_memory)", "Free up memory (free_memory)")))
+        out.append(PaletteItem(id: "t-usage", group: .tools, title: l.t("Статистика", "Usage"),
+                               detail: l.t("токены и время", "tokens and time"), shortcut: "⌘⇧U") {
+            openWindow(id: "usage")
+        })
+
         for project in backend.state.projects {
             out.append(PaletteItem(id: "p-\(project.path)", group: .projects,
                                    title: l.t("Новая сессия в ", "New session in ") + project.name,
-                                   detail: l.t("через proxy", "via proxy"), shortcut: "", icon: "folder") {
+                                   detail: l.t("через proxy", "via proxy")) {
                 workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path))
             })
         }
@@ -85,15 +151,21 @@ struct PaletteView: View {
     private var filtered: [PaletteItem] {
         let q = query.trimmingCharacters(in: .whitespaces)
         let found = items.filter { $0.matches(q) }
-        // без запроса проекты не нужны: их много, а новую сессию проще найти по имени
-        return q.isEmpty ? found.filter { $0.group != .projects } : found
+        guard q.isEmpty else { return found }
+        // без запроса проекты не нужны, а недавних сессий хватит пяти: остальные находятся по словам
+        var recent = 0
+        return found.filter { item in
+            if item.group == .projects { return false }
+            if item.id.hasPrefix("s-") { recent += 1; return recent <= 5 }
+            return true
+        }
     }
 
     private func groupTitle(_ g: PaletteItem.Group) -> String {
         switch g {
-        case .tabs: return l.t("Вкладки", "Tabs")
         case .sessions: return l.t("Сессии", "Sessions")
-        case .actions: return l.t("Действия", "Actions")
+        case .thisSession: return l.t("Эта сессия", "This session")
+        case .tools: return l.t("Инструменты", "Tools")
         case .projects: return l.projects
         }
     }
@@ -101,32 +173,45 @@ struct PaletteView: View {
     var body: some View {
         let list = filtered
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField(l.t("Вкладка, сессия, действие или проект", "Tab, session, action or project"), text: $query)
+            HStack(spacing: 12) {
+                Image(systemName: "magnifyingglass").font(.system(size: 17)).foregroundStyle(Ink.muted)
+                TextField(l.t("Сессия, действие или инструмент", "Session, action or tool"), text: $query)
                     .textFieldStyle(.plain)
-                    .font(.title3)
+                    .font(.system(size: 16))
                     .focused($focused)
-                    .onSubmit { run(list) }
+                    .onSubmit { run(list, newTab: false) }
                     .onKeyPress(.downArrow) { cursor = min(cursor + 1, max(0, list.count - 1)); return .handled }
                     .onKeyPress(.upArrow) { cursor = max(cursor - 1, 0); return .handled }
+                    .onKeyPress(.return, phases: .down) { press in
+                        guard press.modifiers.contains(.command) else { return .ignored }
+                        run(list, newTab: true)
+                        return .handled
+                    }
+                    .accessibilityLabel(l.t("Палитра команд", "Command palette"))
+                Text("esc").font(.system(size: 11)).foregroundStyle(Ink.faint)
             }
-            .padding(14)
-            Divider()
+            .padding(.horizontal, 20)
+            .frame(height: 56)
+            Rectangle().fill(Ink.hairline).frame(height: 1)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(list.enumerated()), id: \.element.id) { index, item in
                             if index == 0 || list[index - 1].group != item.group {
-                                Text(groupTitle(item.group))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 10)
-                                    .padding(.top, index == 0 ? 4 : 10)
+                                SectionCaption(text: groupTitle(item.group))
+                                    .padding(.horizontal, 12)
+                                    .padding(.top, 8)
+                                    .padding(.bottom, 4)
                             }
                             PaletteRow(item: item, selected: index == cursor)
                                 .id(item.id)
-                                .onTapGesture { cursor = index; run(list) }
+                                .onTapGesture { cursor = index; run(list, newTab: false) }
+                        }
+                        if list.isEmpty {
+                            Text(l.t("Ничего не нашлось", "Nothing found"))
+                                .foregroundStyle(Ink.muted)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 24)
                         }
                     }
                     .padding(8)
@@ -135,20 +220,28 @@ struct PaletteView: View {
                     if cursor < list.count { proxy.scrollTo(list[cursor].id, anchor: .center) }
                 }
             }
-            .overlay {
-                if list.isEmpty { ContentUnavailableView.search(text: query) }
+            Rectangle().fill(Ink.hairline).frame(height: 1)
+            HStack(spacing: 16) {
+                Text("↑↓ " + l.t("выбрать", "select"))
+                Text("↩ " + l.t("выполнить", "run"))
+                Text("⌘↩ " + l.t("в новой вкладке", "in a new tab"))
+                Spacer()
             }
+            .font(.system(size: 11))
+            .foregroundStyle(Ink.faint)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 10)
         }
-        .frame(width: 600, height: 440)
+        .frame(width: 600, height: 520)
         .onChange(of: query) { cursor = 0 }
         .onAppear { focused = true }
     }
 
-    private func run(_ list: [PaletteItem]) {
+    private func run(_ list: [PaletteItem], newTab: Bool) {
         guard cursor < list.count else { return }
         let item = list[cursor]
         dismiss()
-        DispatchQueue.main.async { item.run() }
+        DispatchQueue.main.async { (newTab ? item.runInNewTab ?? item.run : item.run)() }
     }
 }
 
@@ -157,24 +250,24 @@ struct PaletteRow: View {
     let selected: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: item.icon)
-                .frame(width: 18)
-                .foregroundStyle(selected ? Color.primary : Color.secondary)
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.title).lineLimit(1)
+                Text(item.title)
+                    .fontWeight(.medium)
+                    .foregroundStyle(selected ? Ink.strong : Ink.text)
+                    .lineLimit(1)
                 if !item.detail.isEmpty {
-                    Text(item.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(item.detail).font(.system(size: 12)).foregroundStyle(Ink.muted).lineLimit(1)
                 }
             }
             Spacer()
             Text(item.shortcut)
-                .font(.system(.caption, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Ink.faint)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(selected ? Color.accentColor.opacity(0.22) : .clear))
+        .padding(.horizontal, 12)
+        .frame(minHeight: 40)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(selected ? Ink.hover : .clear))
         .contentShape(Rectangle())
     }
 }
