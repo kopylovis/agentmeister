@@ -286,16 +286,55 @@ struct PillButton: View {
 
 
 extension View {
-    /// Размытая подложка бара над прокруткой: строки, ушедшие под него, видны только пятнами. Край со стороны
+    /// Размытая подложка бара над прокруткой: строки, ушедшие под него, видны только пятнами, без затемнения. Край со стороны
     /// списка плавно гаснет, чтобы бар не выглядел отдельной полосой.
     func blurBar(edge: VerticalEdge) -> some View {
         background {
-            Rectangle()
-                .fill(.ultraThinMaterial)
+            BackdropBlur(radius: 32)
                 .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.75),
                                              .init(color: .clear, location: 1)],
                                      startPoint: edge == .top ? .top : .bottom, endPoint: edge == .top ? .bottom : .top))
                 .ignoresSafeArea()
         }
     }
+}
+
+/// Чистое размытие того, что под видом, без тона и затемнения, как у материала. AppKit такого не дает,
+/// поэтому слой CABackdropLayer с гауссовым фильтром. Если классов нет, остается самый тонкий материал.
+struct BackdropBlur: NSViewRepresentable {
+    var radius: CGFloat
+
+    final class BlurView: NSView {
+        let radius: CGFloat
+
+        init(radius: CGFloat) {
+            self.radius = radius
+            super.init(frame: .zero)
+            wantsLayer = true
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+        /// Только картинка: клики проходят к тому, что под ним и над ним.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func makeBackingLayer() -> CALayer {
+            guard let backdrop = (NSClassFromString("CABackdropLayer") as? CALayer.Type)?.init(),
+                  let filterClass = NSClassFromString("CAFilter") as? NSObject.Type,
+                  let filter = filterClass.perform(NSSelectorFromString("filterWithType:"), with: "gaussianBlur")?
+                    .takeUnretainedValue() as? NSObject
+            else {
+                let fallback = CALayer()
+                fallback.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.6).cgColor
+                return fallback
+            }
+            filter.setValue(radius, forKey: "inputRadius")
+            filter.setValue(true, forKey: "inputNormalizeEdges")
+            backdrop.filters = [filter]
+            return backdrop
+        }
+    }
+
+    func makeNSView(context: Context) -> BlurView { BlurView(radius: radius) }
+    func updateNSView(_ view: BlurView, context: Context) {}
 }
