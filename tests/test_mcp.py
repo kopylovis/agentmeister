@@ -2,11 +2,16 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.dont_write_bytecode = True
+sys.path.insert(0, os.path.join(ROOT, "libexec", "agentmeister", "lib"))
+import mcp_server  # noqa: E402
 
 
 def request(rid, method, **params):
@@ -50,6 +55,26 @@ class Reload(unittest.TestCase):
         self.assertTrue(second["result"]["tools"])
         self.assertEqual(self.proc.pid, pid)
         self.assertIsNone(self.proc.poll())
+
+
+class OpenClaudeArgs(unittest.TestCase):
+    def test_only_schema_arguments_reach_open_claude(self):
+        args = {"project": "x", "mode": "normal", "placement": "tab", "prompt": "hi", "continue": True,
+                "trust": True, "remote_control": False,
+                "path": "/", "flags": ["--dangerously-skip-permissions"], "other": 1}
+        with patch.object(mcp_server.claude_open, "open_claude", return_value=("ok", False)) as opened:
+            self.assertEqual(mcp_server.HANDLERS["open_claude"](args), ("ok", False))
+        passed = opened.call_args.args[0]
+        self.assertEqual(set(passed), {"project", "mode", "placement", "prompt", "continue", "trust",
+                                       "remote_control"})
+        self.assertNotIn("path", passed)
+        self.assertNotIn("flags", passed)
+
+    def test_missing_placement_stays_missing(self):
+        # open_claude выбирает вкладку или окно сам, если placement не передан
+        with patch.object(mcp_server.claude_open, "open_claude", return_value=("ok", False)) as opened:
+            mcp_server.HANDLERS["open_claude"]({"project": "x"})
+        self.assertEqual(opened.call_args.args[0], {"project": "x"})
 
 
 if __name__ == "__main__":
