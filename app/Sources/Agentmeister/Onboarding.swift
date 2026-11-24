@@ -57,7 +57,8 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(l.t("Шаг \(step + 1) из \(steps.count)", "Step \(step + 1) of \(steps.count)"))
                     .font(.caption).foregroundStyle(.secondary)
-                // лист не выше главного окна: пока открыт терминал, шаг прокручивается над ним
+                // лист не выше главного окна: пока открыт терминал, пояснение шага прячется, а сам шаг
+                // при нехватке места прокручивается
                 ScrollView {
                     Group {
                         switch step {
@@ -74,7 +75,7 @@ struct OnboardingView: View {
                 .frame(maxHeight: .infinity)
                 if let console {
                     ConsolePanel(tab: console, l: l) { close() }
-                        .frame(height: 230)
+                        .frame(height: 220)
                 }
                 HStack {
                     if step < steps.count - 1 {
@@ -82,7 +83,6 @@ struct OnboardingView: View {
                             .buttonStyle(.borderless)
                     }
                     Spacer()
-                    Button(l.t("Проверить снова", "Check again")) { Task { await reload() } }
                     if step > 0 {
                         Button(l.t("Назад", "Back")) { step -= 1 }
                     }
@@ -99,6 +99,7 @@ struct OnboardingView: View {
         .frame(width: 820, height: 540)
         .environment(\.utilityRunner) { args in run(args) }
         .task { await reload() }
+        .onChange(of: step) { Task { await reload() } }
         .onDisappear { console?.terminate() }
     }
 
@@ -129,6 +130,14 @@ struct OnboardingView: View {
         dismiss()
     }
 
+    /// Пояснение под заголовком шага. Пока открыт терминал, его нет: так шаг и терминал помещаются без обрезки.
+    @ViewBuilder
+    private func lead(_ text: String) -> some View {
+        if console == nil {
+            Text(text).foregroundStyle(.secondary)
+        }
+    }
+
     private func status(_ ok: Bool, _ okText: String, _ badText: String) -> some View {
         Label(ok ? okText : badText, systemImage: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
             .foregroundStyle(ok ? Color.teal : Color.orange)
@@ -144,11 +153,12 @@ struct OnboardingView: View {
     private var agentsStep: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(l.t("Какие агенты есть на этом Mac", "Agents on this Mac")).font(.title2.weight(.semibold))
-            Text(l.t("Agentmeister запускает Claude Code и Codex в своих вкладках. Нужен хотя бы один из них.",
+            lead(l.t("Agentmeister запускает Claude Code и Codex в своих вкладках. Нужен хотя бы один из них.",
                      "Agentmeister runs Claude Code and Codex in its own tabs. You need at least one."))
-                .foregroundStyle(.secondary)
             agentCard("Claude Code", data?.claude, install: ["--harness", "claude", "install"])
             agentCard("Codex", data?.codex, install: ["--harness", "codex", "install"])
+            Button(l.t("Проверить снова", "Check again")) { Task { await reload() } }
+                .help(l.t("Перечитать, какие агенты установлены", "Look for installed agents again"))
         }
     }
 
@@ -171,9 +181,8 @@ struct OnboardingView: View {
         let p = data?.proxy
         return VStack(alignment: .leading, spacing: 12) {
             Text(l.t("Proxy для сессий", "Session proxy")).font(.title2.weight(.semibold))
-            Text(l.t("Сессии через proxy идут в sandbox-exec и ходят в сеть через mihomo. Вход в агентов на следующем шаге тоже пойдет через него.",
+            lead(l.t("Сессии через proxy идут в sandbox-exec и ходят в сеть через mihomo. Вход в агентов на следующем шаге тоже пойдет через него.",
                      "Proxied sessions run in sandbox-exec and reach the network through mihomo. Signing in on the next step goes through it too."))
-                .foregroundStyle(.secondary)
             card {
                 if let p {
                     status(p.configured, l.t("proxy настроен", "proxy is set up") + (p.exit.map { ", " + l.t("выход ", "exit ") + $0 } ?? ""),
@@ -195,9 +204,8 @@ struct OnboardingView: View {
     private var signInStep: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(l.t("Вход в агентов", "Sign in to the agents")).font(.title2.weight(.semibold))
-            Text(l.t("Каждый агент хранит свой вход. Команда входа идет здесь же, через proxy: агент получает токен через mihomo, а страница входа открывается во встроенном браузере через тот же mihomo.",
+            lead(l.t("Каждый агент хранит свой вход. Команда входа идет здесь же, через proxy: агент получает токен через mihomo, а страница входа открывается во встроенном браузере через тот же mihomo.",
                      "Each agent keeps its own sign-in. The sign-in command runs right here through the proxy: the agent gets its token through mihomo, and the sign-in page opens in the built-in browser through the same mihomo."))
-                .foregroundStyle(.secondary)
             signInCard("Claude Code", data?.claude, args: ["proxy", "run", "--claude", "--", "claude", "auth", "login"])
             signInCard("Codex", data?.codex, args: ["proxy", "run", "--claude", "--", "codex", "login"])
         }
@@ -225,15 +233,19 @@ struct OnboardingView: View {
     private var modesStep: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(l.t("Режимы", "Modes")).font(.title2.weight(.semibold))
-            Text(l.t("Все это потом переключается на боковой панели и в настройках.", "You can switch these later in the sidebar and in Settings."))
-                .foregroundStyle(.secondary)
+            lead(l.t("Все это потом переключается на боковой панели и в настройках.", "You can switch these later in the sidebar and in Settings."))
             card {
                 ForEach(["humanize", "guard", "buildlog", "notify"], id: \.self) { key in
-                    Toggle(l.modeTitle(key), isOn: Binding(
-                        get: { backend.state.modes[key] ?? false },
-                        set: { backend.setMode(key, on: $0) }
-                    ))
-                    .toggleStyle(.switch)
+                    HStack {
+                        Text(l.modeTitle(key))
+                        Spacer()
+                        Toggle(l.modeTitle(key), isOn: Binding(
+                            get: { backend.state.modes[key] ?? false },
+                            set: { backend.setMode(key, on: $0) }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                    }
                 }
             }
         }
@@ -242,9 +254,8 @@ struct OnboardingView: View {
     private var doneStep: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(l.t("Все готово", "All set")).font(.title2.weight(.semibold))
-            Text(l.t("Проект слева открывает новую сессию через proxy, сессия под проектом продолжается во вкладке. ⌘K ищет вкладки, сессии и действия, ⌘, открывает настройки. Мастер можно открыть снова из меню Help.",
+            lead(l.t("Проект слева открывает новую сессию через proxy, сессия под проектом продолжается во вкладке. ⌘K ищет вкладки, сессии и действия, ⌘, открывает настройки. Мастер можно открыть снова из меню Help.",
                      "A project on the left opens a new session via the proxy, a session under it resumes in a tab. ⌘K finds tabs, sessions and actions, ⌘, opens Settings. You can reopen this from the Help menu."))
-                .foregroundStyle(.secondary)
             card {
                 UtilityButton(title: l.t("Проверить установку (setup)", "Check the install (setup)"), args: ["setup"])
                 Text(l.t("Команды, хуки, MCP-сервер и promptsill. Если что-то не так, это есть и в Настройки → Диагностика.",
