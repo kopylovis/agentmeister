@@ -277,5 +277,26 @@ sys.exit(host_run.call('t', [], {sock!r}))
             subprocess.run(command, check=True, timeout=10)
 
 
+class ServeForever(unittest.TestCase):
+    def test_closing_the_listener_stops_the_loop_quietly(self):
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            listener = host_run.listen(str(Path(tmp) / "s"))
+            errors = []
+
+            def serve():
+                try:
+                    host_run.Server(str(Path(tmp) / "s"), str(Path(tmp) / "none")).serve_forever(listener)
+                except BaseException as e:  # noqa: BLE001
+                    errors.append(e)
+
+            thread = threading.Thread(target=serve, daemon=True)
+            thread.start()
+            time.sleep(0.1)
+            listener.close()
+            thread.join(3)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(errors, [])
+
+
 if __name__ == "__main__":
     unittest.main()
