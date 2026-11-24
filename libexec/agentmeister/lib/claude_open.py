@@ -155,13 +155,43 @@ def trusted(path):
         d = parent
 
 
-def trust(path):
-    """То же, что ответ «Yes, I trust this folder» в окне Claude Code."""
-    with open(CLAUDE_JSON) as f:
-        data = json.load(f)
-    data.setdefault("projects", {}).setdefault(os.path.abspath(path), {})["hasTrustDialogAccepted"] = True
-    import claude_settings
-    claude_settings.save_atomic(data, CLAUDE_JSON)
+def file_state(path):
+    st = os.stat(path)
+    return st.st_ino, st.st_size, st.st_mtime_ns
+
+
+def trust(path, attempts=5):
+    """То же, что ответ «Yes, I trust this folder» в окне Claude Code.
+    ~/.claude.json всё время переписывают живые Claude Code: читаем прямо перед записью, пишем во временный файл
+    рядом и подменяем его, только если файл за это время не менялся, иначе читаем заново."""
+    target = os.path.realpath(CLAUDE_JSON)  # файл может быть ссылкой из dotfiles
+    key = os.path.abspath(path)
+    for _ in range(attempts):
+        before = file_state(target)
+        with open(target) as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("в файле не объект JSON")
+        projects = data.setdefault("projects", {})
+        if not isinstance(projects, dict):
+            raise ValueError("projects в файле не объект JSON")
+        entry = projects.get(key) if isinstance(projects.get(key), dict) else {}
+        entry["hasTrustDialogAccepted"] = True
+        projects[key] = entry
+        tmp = f"{target}.{os.getpid()}.mnrh-tmp"
+        try:
+            with open(tmp, "w") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+            os.chmod(tmp, os.stat(target).st_mode & 0o7777)
+            if file_state(target) == before:
+                os.replace(tmp, target)
+                return
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        time.sleep(0.05)
+    raise OSError(f"{tilde(CLAUDE_JSON)} всё время меняется, попробуй ещё раз")
 
 
 def terminal():
