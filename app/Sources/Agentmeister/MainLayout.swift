@@ -34,6 +34,8 @@ struct CardsLayout<Main: View>: View {
                             .frame(width: Self.railWidth)
                     }
                 }
+                // список прокручивается под шапкой и режимами, но за рамку карточки не выходит
+                .clipShape(.windowCard)
                 .glassEffect(.regular, in: .windowCard)
                 if showSidebar {
                     ResizeHandle(width: $sidebarWidth, range: 200...380, sign: 1)
@@ -234,9 +236,8 @@ struct SidebarRail: View {
     }
 
     var body: some View {
-        VStack(spacing: 10) {
-            Color.clear.frame(height: 40).frame(maxWidth: .infinity).background(WindowDragArea())
-            ScrollView {
+        // проекты прокручиваются во всю высоту рельсы, под место светофора и под закрепленный внизу host-run
+        ScrollView {
                 VStack(spacing: 8) {
                     ForEach(backend.state.projects) { project in
                         let s = state(project)
@@ -288,8 +289,14 @@ struct SidebarRail: View {
                     }
                 }
                 .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
+            .scrollEdgeEffectStyle(.soft, for: .vertical)
+            .safeAreaBar(edge: .top, spacing: 0) {
+                Color.clear.frame(height: 40).frame(maxWidth: .infinity).background(WindowDragArea())
+            }
+            .safeAreaBar(edge: .bottom, spacing: 0) {
             if let h = backend.state.hostRun {
                 // исполнитель host-run: значок терминала и точка состояния, клик открывает его настройки
                 SettingsLink {
@@ -311,9 +318,13 @@ struct SidebarRail: View {
                 .help(h.running ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
                                 : l.t("host-run не запущен", "host-run isn't running"))
                 .accessibilityLabel(h.running ? l.t("host-run работает", "host-run running") : l.t("host-run не запущен", "host-run isn't running"))
-                .padding(.bottom, 12)
+                // закрепленный значок на своем стекле, как режимы в развернутой панели
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .glassEffect(.regular, in: .windowCard)
+                .padding([.horizontal, .bottom], 8)
             }
-        }
+            }
         .frame(maxHeight: .infinity)
     }
 }
