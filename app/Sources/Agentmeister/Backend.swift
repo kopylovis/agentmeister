@@ -219,6 +219,10 @@ final class Backend: ObservableObject {
     @Published private(set) var lastError: String?
     /// Выход proxy сменился сам, пока шли сессии. Баннер вкладки показывает это, пока его не скроют.
     @Published var exitChange: (from: String, to: String)?
+    /// mihomo не отвечает два опроса подряд. Одна неудача бывает и у живого mihomo, когда Mac занят
+    /// (например, сразу после запуска приложения), и не стоит красного баннера.
+    @Published var proxyDown = false
+    private var proxyMisses = 0
     /// Первый ответ app-state пришел (или не пришел, но попытка была). После него можно восстанавливать вкладки.
     @Published private(set) var ready = false
     private var liveTimer: Timer?
@@ -307,6 +311,8 @@ final class Backend: ObservableObject {
                             state.sessions = (state.sessions + codex).sorted { $0.mtime > $1.mtime }
                         }
                         self.state = state
+                        self.proxyMisses = state.proxy?.running == false ? self.proxyMisses + 1 : 0
+                        if self.proxyDown != (self.proxyMisses >= 2) { self.proxyDown = self.proxyMisses >= 2 }
                         if let from = previous?.exit, let to = self.state.proxy?.exit, from != to,
                            previous?.running == true, self.state.proxy?.running == true {
                             self.exitChange = (from, to)
