@@ -137,7 +137,7 @@ struct MainHeader: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .help(l.newSession + ", ⌘N")
+                .shortcutHelp(l.newSession, .newSession)
                 Button {
                     withAnimation(.snappy(duration: 0.25)) { ui.showInspector.toggle() }
                 } label: {
@@ -147,7 +147,7 @@ struct MainHeader: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .help(l.t("Показать или скрыть панель сессии", "Show or hide the session panel") + ", ⌥⌘I")
+                .shortcutHelp(l.t("Показать или скрыть панель сессии", "Show or hide the session panel"), .inspector)
                 .accessibilityLabel(l.t("Показать или скрыть панель сессии", "Show or hide the session panel"))
             }
             .padding(3)
@@ -198,7 +198,7 @@ struct SidebarToggle: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(l.t("Свернуть или развернуть проекты", "Collapse or expand projects") + ", ⌃⌘S")
+        .shortcutHelp(l.t("Свернуть или развернуть проекты", "Collapse or expand projects"), .sidebar)
         .accessibilityLabel(l.t("Свернуть или развернуть проекты", "Collapse or expand projects"))
     }
 }

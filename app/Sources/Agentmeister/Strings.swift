@@ -19,7 +19,11 @@ struct L {
     var resume: String { t("Продолжить", "Resume") }
     var inspector: String { t("Панель сессии", "Session panel") }
     var noTabs: String { t("Нет открытых вкладок", "No open tabs") }
-    var noTabsHint: String { t("Выбери проект или сессию слева, или нажми ⌘N.", "Pick a project or a session on the left, or press ⌘N.") }
+    /// Подсказка пустого окна с текущим сочетанием новой сессии, без него, если сочетание убрали.
+    func noTabsHint(_ newSessionKey: String) -> String {
+        newSessionKey.isEmpty ? t("Выбери проект или сессию слева.", "Pick a project or a session on the left.")
+            : t("Выбери проект или сессию слева, или нажми \(newSessionKey).", "Pick a project or a session on the left, or press \(newSessionKey).")
+    }
     var proxy: String { "proxy" }
     var direct: String { t("напрямую", "direct") }
     var viaProxy: String { t("Через proxy", "Via proxy") }
