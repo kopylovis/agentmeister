@@ -164,12 +164,36 @@ class AppTab(unittest.TestCase):
         self.front("00000000-0000-0000-0000-000000000000", True)
         self.assertFalse(claude_notify.watching(claude_notify.APP_BUNDLE, tty))
 
+    SID = "a812d4fa-e535-463a-8369-f1433fa25652"
+
     def test_click_leaves_a_focus_request_and_opens_the_url(self):
-        with mock.patch.object(claude_notify.subprocess, "run") as run:
+        with mock.patch.object(claude_notify.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
             self.assertEqual(claude_notify.focus("app:" + self.TAB, claude_notify.APP_BUNDLE), 0)
         with open(claude_notify.APP_FOCUS) as f:
-            self.assertEqual(json.load(f)["tab"], self.TAB)
+            request = json.load(f)
+        self.assertEqual(request["tab"], self.TAB)
+        self.assertNotIn("session", request)
         self.assertEqual(run.call_args.args[0], ["open", f"agentmeister://focus?tab={self.TAB}"])
+
+    def test_click_carries_the_session_id(self):
+        with mock.patch.object(claude_notify.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            claude_notify.focus("app:" + self.TAB, claude_notify.APP_BUNDLE, self.SID)
+        with open(claude_notify.APP_FOCUS) as f:
+            self.assertEqual(json.load(f)["session"], self.SID)
+        self.assertEqual(run.call_args_list[0].args[0],
+                         ["open", f"agentmeister://focus?tab={self.TAB}&session={self.SID}"])
+        self.assertEqual(run.call_count, 1)
+        # кривой id сессии не попадает ни в ссылку, ни в запрос
+        with mock.patch.object(claude_notify.subprocess, "run", return_value=mock.Mock(returncode=0)) as run:
+            claude_notify.focus("app:" + self.TAB, claude_notify.APP_BUNDLE, "x&tab=evil")
+        self.assertEqual(run.call_args.args[0], ["open", f"agentmeister://focus?tab={self.TAB}"])
+
+    def test_click_opens_the_app_by_bundle_when_the_url_fails(self):
+        with mock.patch.object(claude_notify.subprocess, "run",
+                               side_effect=[mock.Mock(returncode=1), mock.Mock(returncode=0)]) as run:
+            self.assertEqual(claude_notify.focus("app:" + self.TAB, claude_notify.APP_BUNDLE, self.SID), 0)
+        self.assertEqual(run.call_args_list[1].args[0], ["open", "-b", claude_notify.APP_BUNDLE])
+        self.assertTrue(os.path.exists(claude_notify.APP_FOCUS))
 
     def test_bad_tab_in_click_is_ignored(self):
         with mock.patch.object(claude_notify.subprocess, "run") as run:

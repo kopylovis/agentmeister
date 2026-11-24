@@ -286,17 +286,26 @@ def app_front():
     return str(front.get("tab") or "").lower() if isinstance(front, dict) and front.get("active") else ""
 
 
-def focus_app(tab):
+def focus_app(tab, sid=""):
     """Клик по уведомлению из вкладки Agentmeister: запрос в файл, который приложение забирает само, и ссылка
-    agentmeister://, которая выводит окно вперед, если приложение собрано в .app."""
+    agentmeister://, которая выводит окно вперед, если приложение собрано в .app. Id сессии нужен, когда вкладки
+    с этим id уже нет: приложение найдет вкладку с той же сессией или продолжит ее в новой."""
     if not UUID_RE.match(tab):
         return 1
+    sid = sid if UUID_RE.match(sid or "") else ""
+    request = {"tab": tab, "at": time.time()}
+    if sid:
+        request["session"] = sid
     try:
         os.makedirs(APP_DIR, exist_ok=True)
-        write_json(APP_FOCUS, {"tab": tab, "at": time.time()})
+        write_json(APP_FOCUS, request)
     except OSError:
         pass
-    subprocess.run(["open", f"agentmeister://focus?tab={tab}"], capture_output=True)
+    url = f"agentmeister://focus?tab={tab}" + (f"&session={sid}" if sid else "")
+    if subprocess.run(["open", url], capture_output=True).returncode != 0:
+        # ссылка работает, только если LaunchServices знает Agentmeister.app; иначе хотя бы выводим приложение,
+        # а запрос оно заберет из focus.json
+        subprocess.run(["open", "-b", APP_BUNDLE], capture_output=True)
     return 0
 
 
@@ -313,9 +322,9 @@ def watching(bundle, tty):
     return osascript(SELECTED[term]) == tty
 
 
-def focus(tty, bundle):
+def focus(tty, bundle, sid=""):
     if tty.startswith("app:"):
-        return focus_app(tty[4:])
+        return focus_app(tty[4:], sid)
     if tty.startswith("iterm:"):
         if GUID_RE.match(tty[6:]) and osascript(FOCUS_ITERM_ID, tty[6:]) == "ok":
             return 0
@@ -520,6 +529,8 @@ def hook(codex=False):
         if ensure_app(background=True):
             cm = cm_path()
             click = f"{shlex.quote(cm)} focus {shlex.quote(tty)} {shlex.quote(bundle)}" if cm and tty and bundle else None
+            if click and tab:
+                click += f" {shlex.quote(sid)}"
             result = post(f"{project}: {head}", title, body, sid, click)
         else:
             result = fallback_post(f"{project}: {head}", title, body)
@@ -642,7 +653,8 @@ def main():
     if cmd == "build-app":  # фоновая сборка из хука
         return 0 if ensure_app() else 1
     if cmd == "focus":
-        return focus(args[1] if len(args) > 1 else "", args[2] if len(args) > 2 else "")
+        return focus(args[1] if len(args) > 1 else "", args[2] if len(args) > 2 else "",
+                     args[3] if len(args) > 3 else "")
     rest = args[1:]
     if not rest or rest[0] in ("status",):
         status()
