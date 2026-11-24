@@ -25,9 +25,23 @@ def isolate_codex(case):
     return tmp.name
 
 
+def isolate_agents(case, keep=()):
+    """collect() без настоящих ~/.claude.json, ~/.claude/settings.json, ~/.codex и сокета host-run: части,
+    которые их читают, подменены. keep оставляет настоящими те, что тест проверяет сам."""
+    parts = {"signed_in": {"signedIn": False, "plan": None}, "retention_days": 30, "agent_model": None,
+             "host_run_summary": None}
+    for name, value in parts.items():
+        if name in keep:
+            continue
+        patcher = patch.object(app_state, name, return_value=value)
+        patcher.start()
+        case.addCleanup(patcher.stop)
+
+
 class AppState(unittest.TestCase):
     def setUp(self):
         isolate_codex(self)
+        isolate_agents(self)
 
     def test_broken_part_keeps_the_rest(self):
         with patch.object(app_state, "projects", return_value=[{"name": "kcalm", "path": "/w/kcalm"}]), \
@@ -87,6 +101,8 @@ class AppState(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=os.path.join(home, ".config"),
                        MNRH_PROJECTS=os.path.join(home, "Developer"))
+            for name in ("CLAUDE_CONFIG_DIR", "MNRH_CLAUDE_HOME"):  # иначе прочтет настоящие файлы Claude Code
+                env.pop(name, None)
             os.makedirs(os.path.join(home, "Developer", "kcalm"))
             out = subprocess.run([os.path.join(ROOT, "bin", "agentmeister"), "app-state"], capture_output=True,
                                  text=True, env=env, timeout=60, stdin=subprocess.DEVNULL)
@@ -191,7 +207,9 @@ class SettingsAndDoctor(unittest.TestCase):
 
     def test_settings_report_a_broken_part_and_keep_the_rest(self):
         import claude_guard
+        import host_run
         with patch.object(app_state, "agent_info", return_value={"installed": False, "path": None, "version": None}), \
+             patch.object(host_run, "ping", return_value=None), patch.object(host_run, "load", return_value={}), \
              patch.object(app_state, "proxy", side_effect=RuntimeError("no proxy")), \
              patch.object(app_state, "modes", return_value={"guard": True}), \
              patch.object(claude_guard, "skipped", return_value={"destructive"}):
@@ -223,6 +241,7 @@ class SignedIn(unittest.TestCase):
 class Models(unittest.TestCase):
     def setUp(self):
         isolate_codex(self)
+        isolate_agents(self, keep=("agent_model",))
 
     def test_collect_reports_the_model_of_each_agent(self):
         with tempfile.TemporaryDirectory() as home:
@@ -251,6 +270,7 @@ class CodexSessions(unittest.TestCase):
 
     def setUp(self):
         self.tmp = isolate_codex(self)
+        isolate_agents(self)
         self.home = os.environ["CODEX_HOME"]
         self.project = os.path.join(self.tmp, "app")
         os.makedirs(self.project)
