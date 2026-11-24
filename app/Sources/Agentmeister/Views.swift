@@ -917,7 +917,7 @@ struct TabInspector: View {
                 .padding(.horizontal, 4)
 
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 9) {
-                    row(l.agent, tab.spec.utility != nil ? "agentmeister" : tab.spec.agent == .codex ? "Codex" : "Claude Code")
+                    row(l.agent, agentTitle)
                     GridRow {
                         Text(l.route).foregroundStyle(Ink.faint).frame(width: 76, alignment: .leading)
                         if tab.spec.proxied {
@@ -1026,6 +1026,14 @@ struct TabInspector: View {
                 try? await Task.sleep(for: .seconds(60))
             }
         }
+    }
+
+    /// "Claude Code, opus high" как в макете: модель из флагов вкладки, иначе из настроек агента.
+    private var agentTitle: String {
+        guard tab.spec.utility == nil else { return "agentmeister" }
+        let name = tab.spec.agent == .codex ? "Codex" : "Claude Code"
+        let model = tab.spec.modelFlag ?? (backend.state.models?[tab.spec.agent.rawValue] ?? nil)
+        return model.map { name + ", " + $0 } ?? name
     }
 
     private func markDone(_ n: Int) {

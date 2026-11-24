@@ -55,6 +55,16 @@ struct LaunchSpec: Hashable {
 }
 
 extension LaunchSpec {
+    /// Модель из флагов запуска (--model opus, у Codex еще -m). Флаг сильнее настроек агента.
+    var modelFlag: String? {
+        let flags = AgentPrefs.flags(agent) + extraFlags
+        for (i, flag) in flags.enumerated() {
+            if flag.hasPrefix("--model=") { return String(flag.dropFirst(8)) }
+            if (flag == "--model" || (agent == .codex && flag == "-m")), i + 1 < flags.count { return flags[i + 1] }
+        }
+        return nil
+    }
+
     /// Продолжить сессию в ее собственной папке: claude --resume ищет сессию по cwd, а сессия могла начаться
     /// в подпапке проекта.
     static func resume(_ id: String, cwd: String?, project: AppState.Project) -> LaunchSpec {
