@@ -64,8 +64,10 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
     }
 
     /// Окружение как у вкладки терминала, только без следов того, откуда запустили спайк.
-    /// TERM_PROGRAM=Agentmeister даст promptsill кликабельные ссылки, MNRH_ICONS=images включит картинки
-    /// OSC 1337 в меню agentmeister, хотя menu.py пока узнает только iTerm2 и WezTerm.
+    /// Claude Code не знает TERM_PROGRAM=Agentmeister и без FORCE_HYPERLINK вырезает ссылки OSC 8
+    /// из строки promptsill (та же проверка, что в пакете supports-hyperlinks).
+    /// Картинки OSC 1337 в меню agentmeister SwiftTerm сразу стирает: любой текст в строке убирает все ее
+    /// картинки, а меню пишет название пункта сразу после иконки. Поэтому меню показывает emoji.
     static func environment() -> [String] {
         var env = ProcessInfo.processInfo.environment
         let drop = ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ITERM_SESSION_ID", "ITERM_PROFILE",
@@ -79,7 +81,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable, LocalProc
         env["COLORTERM"] = "truecolor"
         env["TERM_PROGRAM"] = "Agentmeister"
         env["TERM_PROGRAM_VERSION"] = "spike"
-        env["MNRH_ICONS"] = "images"
+        env["MNRH_ICONS"] = "emoji"
+        env["FORCE_HYPERLINK"] = "1"
         if env["LANG"] == nil { env["LANG"] = "ru_RU.UTF-8" }
         return env.map { "\($0.key)=\($0.value)" }.sorted()
     }
