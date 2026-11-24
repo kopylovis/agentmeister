@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Network
 import SwiftUI
 import WebKit
@@ -17,6 +18,7 @@ final class ProxyBrowser {
 
     private var window: NSWindow?
     private var model: BrowserModel?
+    private var titleWatch: AnyCancellable?
 
     /// Отдельное постоянное хранилище: куки входа живут между запусками и не смешиваются с другими WKWebView.
     private static let storeId = UUID(uuidString: "5E3C1B2A-7D4F-4C61-9B0E-A6E1D2F3C4B5")!
@@ -42,6 +44,10 @@ final class ProxyBrowser {
         if window.frame.origin == .zero { window.center() }
         self.model = model
         self.window = window
+        let fallback = L(lang).t("Браузер через proxy", "Proxy browser")
+        window.title = fallback
+        // NSHostingView в своем NSWindow не берет navigationTitle, заголовок для меню Window ставим сами
+        titleWatch = model.$title.sink { [weak window] title in window?.title = title.isEmpty ? fallback : title }
         model.load(url)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
