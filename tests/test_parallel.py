@@ -297,6 +297,33 @@ class ParallelPr(unittest.TestCase):
         self.assertFalse(bad, text)
         self.assertEqual(len(self.merges()), 1)
 
+    def test_drop_refuses_work_without_force(self):
+        path = self.task()
+        with open(os.path.join(path, "wip.txt"), "w") as f:
+            f.write("wip\n")
+        text, bad = p.finish("fix", "drop", self.root)
+        self.assertTrue(bad, text)
+        self.assertIn("незакоммичено файлов 1", text)
+        self.assertIn("коммитов не влито в main: 1", text)
+        self.assertTrue(os.path.isdir(path))
+        text, bad = p.handle("parallel_finish", {"branch": "fix", "action": "drop", "project": self.root})
+        self.assertTrue(bad, text)
+        self.assertTrue(os.path.isdir(path))
+        text, bad = p.handle("parallel_finish", {"branch": "fix", "action": "drop", "project": self.root,
+                                                 "force": True})
+        self.assertFalse(bad, text)
+        self.assertFalse(os.path.exists(path))
+        self.assertEqual(sh(self.root, "branch", "--list", "parallel/fix"), "")
+
+    def test_drop_empty_task_needs_no_force(self):
+        path = os.path.join(p.worktree_root(self.root), "parallel-empty")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        sh(self.root, "worktree", "add", "-q", "-b", "parallel/empty", path, "HEAD")
+        sh(self.root, "config", "branch.parallel/empty.mnrhBase", "main")
+        text, bad = p.finish("empty", "drop", self.root)
+        self.assertFalse(bad, text)
+        self.assertFalse(os.path.exists(path))
+
 
 class Start(unittest.TestCase):
     """start без окна: open_claude и поиск текущей сессии подменены."""

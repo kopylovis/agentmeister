@@ -541,7 +541,7 @@ Worktree agentmeister по-прежнему делает сам, а не чер�
 ```
 agentmeister parallel list            ветки, коммиты, работает ли там Claude
 agentmeister parallel merge <ветка>   влить в исходную ветку (без пуша), убрать worktree
-agentmeister parallel drop <ветка>    выбросить
+agentmeister parallel drop <ветка>    выбросить (с незакоммиченным или невлитыми коммитами — только с --force)
 agentmeister parallel pr <ветка>      пуш, PR, ждать CI, слить PR, убрать worktree
 ```
 
