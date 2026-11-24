@@ -116,7 +116,7 @@ struct AppState: Decodable {
     }
 
     var version = ""
-    var lang = "ru"
+    var lang = "en"
     var projectsDir = ""
     var projects: [Project] = []
     var sessions: [Session] = []
