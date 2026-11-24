@@ -40,6 +40,8 @@ struct LaunchSpec: Hashable {
         // флаги после -- agentmeister передает самому агенту
         var agentArgs: [String] = resumeId == nil ? extraFlags : []
         if remoteControl && agent == .claude { agentArgs += ["--remote-control", projectName] }
+        // флаги запуска по умолчанию из настроек агента
+        agentArgs = AgentPrefs.flags(agent) + agentArgs
         if let id = resumeId, agent == .claude {
             args += ["--", "--resume", id] + agentArgs
         } else {
@@ -63,6 +65,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Сессия Claude Code в этой вкладке и ее статус из реестра Claude Code (waiting, busy, idle).
     @Published var sessionId: String?
     @Published var status: String?
+    /// В терминале прозвенел звонок, пока вкладка не была выбрана. Сбрасывается при выборе.
+    @Published var rang = false
     /// Вызывается, когда процесс вкладки завершился. Мастер по нему перечитывает состояние.
     var onExit: (() -> Void)?
     /// Подсказка ⌘R после выхода. В мастере ее нет: там перезапуск этой клавишей не работает.
@@ -81,8 +85,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         super.init()
         view.tab = self
         view.processDelegate = self
-        view.font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        view.optionAsMetaKey = true
+        TerminalPrefs.apply(to: view)
+        view.changeScrollback(TerminalPrefs.scrollback)
         start()
     }
 
@@ -418,6 +422,14 @@ final class Workspace: ObservableObject {
         selected = tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)].id
     }
 
+    /// Соседняя вкладка по кругу: 1 следующая, -1 предыдущая.
+    func selectNeighbor(_ step: Int) {
+        guard !tabs.isEmpty else { return }
+        let index = tabs.firstIndex { $0.id == selected } ?? 0
+        selected = tabs[(index + step + tabs.count) % tabs.count].id
+        current?.rang = false
+    }
+
     func select(number: Int) {
         guard number >= 1, number <= tabs.count else { return }
         selected = tabs[number - 1].id
@@ -504,6 +516,19 @@ enum BrowserSettings {
 /// во встроенном браузере. Во вкладке входа так всегда, пока включен браузер для агента, иначе по настройке.
 final class AppTerminalView: LocalProcessTerminalView {
     weak var tab: TerminalTab?
+
+    /// Звонок: по настройке подсветить вкладку, проиграть звук или ничего.
+    nonisolated override func bell(source: Terminal) {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                switch TerminalPrefs.bell {
+                case "sound": NSSound.beep()
+                case "tab": self?.tab?.rang = true
+                default: break
+                }
+            }
+        }
+    }
 
     override func requestOpenLink(source: TerminalView, request: TerminalLinkRequest) {
         if let spec = tab?.spec, spec.proxied,
