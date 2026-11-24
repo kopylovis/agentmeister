@@ -303,6 +303,11 @@ struct SessionRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: 4)
+                if workspace.liveElsewhere.contains(session.id) {
+                    Image(systemName: "macwindow.on.rectangle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Text(status.map { l.statusTitle($0) } ?? l.ago(session.mtime))
                     .font(.caption)
                     .foregroundStyle(status == "waiting" ? Color.orange : Color.secondary)
@@ -365,6 +370,7 @@ struct TabChip: View {
     @EnvironmentObject var backend: Backend
     @ObservedObject var tab: TerminalTab
     let selected: Bool
+    @State private var hover = false
 
     var l: L { L(backend.state.lang) }
 
@@ -384,7 +390,18 @@ struct TabChip: View {
                 Text(tab.spec.direct ? l.direct : l.proxy)
                     .font(.caption)
                     .foregroundStyle(tab.spec.direct ? Color.orange : Color.teal)
-                if tab.status == "waiting" {
+                if hover {
+                    Button {
+                        workspace.close(tab.id)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .frame(width: 16, height: 16)
+                            .background(Circle().fill(Color.primary.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                    .help(l.closeTab + ", ⌘W")
+                } else if tab.status == "waiting" {
                     Circle().fill(Color.orange).frame(width: 7, height: 7)
                 } else if !tab.running {
                     Image(systemName: "stop.circle").foregroundStyle(.secondary)
@@ -394,6 +411,7 @@ struct TabChip: View {
             .frame(height: 30)
         }
         .buttonStyle(.plain)
+        .onHover { hover = $0 }
         .glassEffect(selected ? .regular.tint(.accentColor.opacity(0.25)).interactive() : .regular.interactive(), in: .capsule)
         .contextMenu {
             Button(l.restart) { tab.restart() }
@@ -509,18 +527,32 @@ struct TabInspector: View {
 
     var l: L { L(backend.state.lang) }
 
+    /// Строка без переноса: панель узкая, и длинный путь лучше сократить посередине, чем ломать на две строки.
+    private func row(_ title: String, _ value: String, truncate: Text.TruncationMode = .tail) -> some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .layoutPriority(1)
+            Spacer(minLength: 8)
+            Text(value)
+                .lineLimit(1)
+                .truncationMode(truncate)
+                .foregroundStyle(.secondary)
+                .help(value)
+        }
+    }
+
     var body: some View {
         let saved = backend.state.sessions.first { $0.id == tab.sessionId }
         Form {
             Section {
                 Text(saved?.title.isEmpty == false ? saved!.title : tab.title)
                     .font(.headline)
-                LabeledContent(l.agent, value: tab.spec.agent == .codex ? "Codex" : "Claude Code")
-                LabeledContent(l.route, value: tab.spec.direct ? l.directly : l.viaProxy + " · sandbox-exec")
-                LabeledContent(l.status, value: tab.running ? l.statusTitle(tab.status) : l.exited)
-                LabeledContent(l.folder, value: tilde(tab.spec.projectPath))
+                row(l.agent, tab.spec.agent == .codex ? "Codex" : "Claude Code")
+                row(l.route, tab.spec.direct ? l.directly : l.viaProxy)
+                row(l.status, tab.running ? l.statusTitle(tab.status) : l.exited)
+                row(l.folder, tilde(tab.spec.projectPath), truncate: .head)
                 if let branch = saved?.branch, !branch.isEmpty {
-                    LabeledContent("git", value: branch)
+                    row("git", branch)
                 }
                 if let sid = tab.sessionId {
                     LabeledContent(l.sessionId) {
