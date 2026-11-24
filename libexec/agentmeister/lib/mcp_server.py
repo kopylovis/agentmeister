@@ -1,11 +1,15 @@
 """MCP-сервер agentmeister: agentmeister mcp."""
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
+import threading
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CM, MNRH, tilde  # noqa: E402
+from mnrhlib import CM, HOME, MNRH, tilde  # noqa: E402
 from claude_proc import RestartError, current_sid  # noqa: E402
 from claude_restart import restart, slim_current  # noqa: E402
 import claude_mac  # noqa: E402
@@ -111,6 +115,71 @@ def schema_args(tool, a):
     return {k: v for k, v in a.items() if k in allowed}
 
 
+# parallel_finish pr ждёт CI до трёх часов. Его работа идёт в отдельном процессе: он переживёт и таймаут вызова
+# в Claude Code, и перезапуск этого сервера. Если за FINISH_WAIT секунд он не закончил, отвечаем сразу,
+# а итог придёт уведомлением macOS и останется в логе.
+FINISH_WAIT = 40
+FINISH_LOGS = os.path.join(HOME, "Library", "Logs", "agentmeister-parallel")
+FINISH_LIB = os.path.dirname(os.path.abspath(__file__))
+DETACHED = []
+FINISH_RUNNER = r"""
+import json, os, subprocess, sys
+lib, args, cwd, base = sys.argv[1:5]
+sys.path.insert(0, lib)
+try:
+    import claude_parallel
+    text, bad = claude_parallel.handle("parallel_finish", json.loads(args), cwd)
+except Exception as e:
+    text, bad = "Не получилось: %r" % (e,), True
+print(text, flush=True)
+with open(base + ".json.tmp", "w") as f:
+    json.dump({"text": text, "error": bool(bad)}, f, ensure_ascii=False)
+os.replace(base + ".json.tmp", base + ".json")
+if os.path.exists(base + ".detached"):
+    title = "agentmeister: PR " + ("не слит" if bad else "готов")
+    try:
+        subprocess.run(["osascript", "-e", "on run argv", "-e",
+                        "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run",
+                        title, text[-400:]], capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        pass
+"""
+
+
+def finish_result(base):
+    try:
+        with open(base + ".json") as f:
+            r = json.load(f)
+        return str(r.get("text") or ""), bool(r.get("error"))
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def parallel_finish(a):
+    if a.get("action") != "pr":
+        return claude_parallel.handle("parallel_finish", a, os.getcwd())
+    os.makedirs(FINISH_LOGS, exist_ok=True)
+    branch = re.sub(r"[^\w.-]+", "_", str(a.get("branch") or "")) or "branch"
+    base = os.path.join(FINISH_LOGS, f"{time.strftime('%Y%m%d-%H%M%S')}-{branch}-{os.getpid()}")
+    with open(base + ".log", "w") as log:
+        proc = subprocess.Popen([sys.executable, "-c", FINISH_RUNNER, FINISH_LIB, json.dumps(a), os.getcwd(), base],
+                                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                start_new_session=True)
+    deadline = time.monotonic() + FINISH_WAIT
+    while proc.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.2)
+    if proc.poll() is None:
+        open(base + ".detached", "w").close()
+        DETACHED.append(proc)  # процесс живёт дальше сам; ссылка, чтобы Popen не ругался при сборке мусора
+    if proc.poll() is not None:
+        result = finish_result(base)
+        if result:
+            return result
+        return f"Фоновый parallel_finish завершился без результата, лог: {tilde(base + '.log')}", True
+    return (f"PR для {a.get('branch')} в работе: процесс {proc.pid} ждёт CI и сливает в фоне. Когда закончит, "
+            f"придёт уведомление macOS; итог будет в {tilde(base + '.log')}. Ждать ответа здесь не нужно."), False
+
+
 HANDLERS = {
     "restart": lambda a: call_restart("restart", a),
     "forget": lambda a: call_restart("forget", a),
@@ -132,7 +201,7 @@ HANDLERS = {
     "release_notes_write": lambda a: release_notes.handle("release_notes_write", a, os.getcwd()),
     "parallel_task": lambda a: claude_parallel.handle("parallel_task", a, os.getcwd(), CM),
     "parallel_list": lambda a: claude_parallel.handle("parallel_list", a, os.getcwd()),
-    "parallel_finish": lambda a: claude_parallel.handle("parallel_finish", a, os.getcwd()),
+    "parallel_finish": parallel_finish,
     "window_screenshot": lambda a: window_shot.handle(a),
     "ask_project": lambda a: claude_ask.ask(a.get("project"), a.get("question"), a.get("model")),
 }
@@ -211,9 +280,28 @@ def lines_from(fd, carry=b""):
 
 
 def mcp():
+    out_lock = threading.Lock()
+    calls = []  # потоки tools/call, которые ещё работают
+
     def send(msg):
-        sys.stdout.write(json.dumps(msg, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
+        data = json.dumps(msg, ensure_ascii=False) + "\n"
+        with out_lock:
+            try:
+                sys.stdout.write(data)
+                sys.stdout.flush()
+            except (OSError, ValueError):  # Claude Code уже закрыл канал
+                pass
+
+    def call(rid, handler, args):
+        try:
+            result = handler(args)
+        except Exception as e:
+            result = (f"Не получилось: {e!r}", True)
+        if isinstance(result, dict):
+            send({"jsonrpc": "2.0", "id": rid, "result": result})
+            return
+        text, err = result
+        send({"jsonrpc": "2.0", "id": rid, "result": {"content": [{"type": "text", "text": text}], "isError": err}})
 
     visible_tools = {tool["name"] for tool in tools()}
     carry = b""
@@ -231,8 +319,10 @@ def mcp():
     stamp = code_stamp()
 
     for raw, rest in lines_from(sys.stdin.fileno(), carry):
+        calls[:] = [t for t in calls if t.is_alive()]
         now = code_stamp()
-        if now != stamp or now is None or installed_elsewhere():
+        # пока вызов работает, перезапуск оборвал бы его без ответа: старый код дослужит до следующего запроса
+        if not calls and (now != stamp or now is None or installed_elsewhere()):
             reload(raw + b"\n" + rest)
         try:
             req = json.loads(raw.decode("utf-8", "replace"))
@@ -259,15 +349,11 @@ def mcp():
                 send({"jsonrpc": "2.0", "id": rid, "error": {"code": -32602, "message": "нет такого инструмента"}})
                 continue
             args = params.get("arguments")
-            try:
-                result = handler(args if isinstance(args, dict) else {})
-            except Exception as e:
-                result = (f"Не получилось: {e!r}", True)
-            if isinstance(result, dict):
-                send({"jsonrpc": "2.0", "id": rid, "result": result})
-                continue
-            text, err = result
-            send({"jsonrpc": "2.0", "id": rid, "result": {"content": [{"type": "text", "text": text}], "isError": err}})
+            # каждый вызов в своём потоке: долгий инструмент не держит остальные
+            t = threading.Thread(target=call, args=(rid, handler, args if isinstance(args, dict) else {}),
+                                 name=f"mcp-{name}")
+            t.start()
+            calls.append(t)
         elif method == "ping":
             send({"jsonrpc": "2.0", "id": rid, "result": {}})
         else:
