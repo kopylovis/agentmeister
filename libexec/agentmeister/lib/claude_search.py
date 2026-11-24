@@ -70,7 +70,8 @@ def tool_line(block):
 def error_text(block):
     c = block.get("content")
     if isinstance(c, list):
-        c = "\n".join(b.get("text", "") for b in c if isinstance(b, dict) and b.get("type") == "text")
+        c = "\n".join(b["text"] for b in c if isinstance(b, dict) and b.get("type") == "text"
+                      and isinstance(b.get("text"), str))
     if not isinstance(c, str):
         return ""
     c = c.replace("<tool_use_error>", "").replace("</tool_use_error>", "").strip()
@@ -108,7 +109,7 @@ def extract(o):
         for b in content:
             if not isinstance(b, dict):
                 continue
-            if b.get("type") == "text" and (b.get("text") or "").strip():
+            if b.get("type") == "text" and isinstance(b.get("text"), str) and b["text"].strip():
                 out.append(("claude", b["text"].strip()))
             elif b.get("type") == "tool_use":
                 out.append(("tool", tool_line(b)))
@@ -119,9 +120,13 @@ def load_index(sid):
     try:
         with open(index_path(sid), encoding="utf-8") as f:
             data = json.load(f)
-        return data if data.get("v") == VERSION else None
     except (OSError, ValueError):
         return None
+    # битый или чужой файл индекса: строим заново, а не падаем на всем поиске
+    if not isinstance(data, dict) or data.get("v") != VERSION or not isinstance(data.get("msgs"), list) \
+            or not isinstance(data.get("offset"), int) or isinstance(data.get("offset"), bool):
+        return None
+    return data
 
 
 def save_index(sid, data):
@@ -140,38 +145,44 @@ def update(sid, path):
                 "custom": None, "ai": None, "prompt": None, "first": None, "last": None, "msgs": []}
     if data["offset"] == st.st_size:
         return data
+    start = pos = data["offset"]
+    # построчно: хвост сессии бывает в сотни мегабайт (скриншоты), целиком в память его не читаем
     with open(path, "rb") as f:
-        f.seek(data["offset"])
-        chunk = f.read(st.st_size - data["offset"])
-    end = chunk.rfind(b"\n") + 1
-    for raw in chunk[:end].split(b"\n"):
-        if not raw.strip():
-            continue
-        try:
-            o = json.loads(raw.decode("utf-8", "replace"))
-        except ValueError:
-            continue
-        if not isinstance(o, dict):
-            continue
-        kind = o.get("type")
-        if kind == "custom-title" and o.get("customTitle"):
-            data["custom"] = o["customTitle"]
-        elif kind == "ai-title" and o.get("aiTitle"):
-            data["ai"] = o["aiTitle"]
-        elif kind == "last-prompt" and o.get("lastPrompt"):
-            data["prompt"] = o["lastPrompt"]
-        if data["cwd"] is None and o.get("cwd"):
-            data["cwd"] = o["cwd"]
-        ts = o.get("timestamp") if isinstance(o.get("timestamp"), str) else None
-        for role, text in extract(o):
-            data["msgs"].append([role, ts, text])
-            if ts:
-                data["first"] = data["first"] or ts
-                data["last"] = ts
-    data["offset"] += end
-    if end:
+        f.seek(pos)
+        while pos < st.st_size:
+            raw = f.readline()
+            if not raw.endswith(b"\n"):
+                break  # строку еще дописывают
+            pos += len(raw)
+            index_line(data, raw)
+    data["offset"] = pos
+    if pos != start:
         save_index(sid, data)
     return data
+
+
+def index_line(data, raw):
+    if not raw.strip():
+        return
+    try:
+        o = json.loads(raw.decode("utf-8", "replace"))
+    except ValueError:
+        return
+    if not isinstance(o, dict):
+        return
+    kind = o.get("type")
+    for k, field, key in (("custom-title", "customTitle", "custom"), ("ai-title", "aiTitle", "ai"),
+                          ("last-prompt", "lastPrompt", "prompt")):
+        if kind == k and isinstance(o.get(field), str) and o[field]:
+            data[key] = o[field]
+    if data["cwd"] is None and isinstance(o.get("cwd"), str) and o["cwd"]:
+        data["cwd"] = o["cwd"]
+    ts = o.get("timestamp") if isinstance(o.get("timestamp"), str) else None
+    for role, text in extract(o):
+        data["msgs"].append([role, ts, text])
+        if ts:
+            data["first"] = data["first"] or ts
+            data["last"] = ts
 
 
 def refresh():
