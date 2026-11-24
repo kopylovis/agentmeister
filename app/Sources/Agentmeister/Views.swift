@@ -54,6 +54,9 @@ struct MainView: View {
             NewSessionSheet(initialProject: ui.newSessionProject)
         }
         .onReceive(backend.$state) { state in workspace.sync(with: state.live) }
+        .onChange(of: backend.ready) {
+            if backend.ready { workspace.restore(live: backend.state.live, projects: backend.state.projects, sessions: backend.state.sessions) }
+        }
         .frame(minWidth: 900, minHeight: 560)
     }
 
