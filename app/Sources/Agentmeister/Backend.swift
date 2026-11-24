@@ -134,7 +134,11 @@ struct AppState: Decodable {
     struct HostRun: Decodable, Hashable {
         let running: Bool
         let commands: Int
+        let log: String?
     }
+
+    /// Выполнен ли вход в агентов, по их собственным файлам.
+    var signedIn: [String: Bool]?
     var errors: [String: String] = [:]
 
     init() {}
@@ -191,6 +195,8 @@ struct SessionPreview: Decodable {
 final class Backend: ObservableObject {
     @Published private(set) var state = AppState()
     @Published private(set) var lastError: String?
+    /// Выход proxy сменился сам, пока шли сессии. Баннер вкладки показывает это, пока его не скроют.
+    @Published var exitChange: (from: String, to: String)?
     /// Первый ответ app-state пришел (или не пришел, но попытка была). После него можно восстанавливать вкладки.
     @Published private(set) var ready = false
     private var liveTimer: Timer?
@@ -272,7 +278,12 @@ final class Backend: ObservableObject {
                 switch result {
                 case .success(let data):
                     do {
+                        let previous = self.state.proxy
                         self.state = try JSONDecoder().decode(AppState.self, from: data)
+                        if let from = previous?.exit, let to = self.state.proxy?.exit, from != to,
+                           previous?.running == true, self.state.proxy?.running == true {
+                            self.exitChange = (from, to)
+                        }
                         self.lastError = nil
                         ProxyBrowser.shared.port = self.state.proxy?.port ?? 17890
                         ProxyBrowser.shared.lang = self.state.lang
