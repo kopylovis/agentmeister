@@ -238,7 +238,24 @@ def agent_info(binary):
     except (OSError, subprocess.TimeoutExpired):
         out = []
     version = next((w for w in out if w[:1].isdigit()), None)
-    return {"installed": True, "path": path, "version": version}
+    return {"installed": True, "path": path, "version": version, **signed_in(binary)}
+
+
+def signed_in(binary):
+    """Выполнен ли вход, по файлам самих агентов. Сами токены не читаются и никуда не идут."""
+    home = os.path.expanduser("~")
+    try:
+        if binary == "claude":
+            with open(os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or home, ".claude.json")) as f:
+                account = json.load(f).get("oauthAccount") or {}
+            return {"signedIn": bool(account), "plan": account.get("billingType")}
+        if binary == "codex":
+            with open(os.path.join(os.environ.get("CODEX_HOME") or os.path.join(home, ".codex"), "auth.json")) as f:
+                auth = json.load(f)
+            return {"signedIn": bool(auth.get("tokens") or auth.get("OPENAI_API_KEY")), "plan": auth.get("auth_mode")}
+    except (OSError, ValueError, AttributeError):
+        pass
+    return {"signedIn": False, "plan": None}
 
 
 def settings():

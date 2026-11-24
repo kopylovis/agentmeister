@@ -61,6 +61,8 @@ struct SettingsData: Decodable {
         let installed: Bool
         let path: String?
         let version: String?
+        let signedIn: Bool?
+        let plan: String?
     }
 
     let notify: Notify?
