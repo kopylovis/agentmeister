@@ -697,6 +697,86 @@ class Framed(unittest.TestCase):
         self.assertEqual(code, 3)
         self.assertEqual(out.plain(), "Я\n�")
 
+    def framed(self, child, keys=b"", size=(20, 70)):
+        """run_framed на pty вместо окна: keys набираются в окне, ответ (код, Output)."""
+        import fcntl
+        import struct
+        master, slave = os.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", size[0], size[1], 0, 0))
+        screen = menu.Screen()
+        screen.fd, screen.saved = slave, termios.tcgetattr(slave)  # как Screen.open: обычный режим до cbreak
+        tty.setcbreak(slave)
+        reader = threading.Thread(target=Ask.drain, args=(master,), daemon=True)
+        reader.start()
+        # нажатия, когда программа уже запущена: до этого окно в режиме меню и съело бы Ctrl+C
+        typist = threading.Timer(0.5, os.write, (master, keys))
+        if keys:
+            typist.start()
+        lib = os.path.dirname(menu.__file__)
+        try:
+            return menu.run_framed(screen, [sys.executable, "-c", f"import sys; sys.path.insert(0, {lib!r})\n" + child],
+                                   "t")
+        finally:
+            typist.cancel()
+            screen.fd = None
+            os.close(slave)
+            reader.join(2)
+            os.close(master)
+
+    def test_long_answer_is_echoed_into_the_frame(self):
+        # эхо ввода приходит из pty рамки и переносится внутри рамки, а не уходит за правую линию
+        answer = "x" * 90 + "яя\x7fz"
+        code, out = self.framed("a = input('Answer: '); print(len(a), a[-3:])", (answer + "\r").encode())
+        self.assertEqual(code, 0, out.plain())
+        self.assertEqual(out.lines[0], "Answer: " + "x" * 90 + "яz")
+        self.assertEqual(out.lines[1], "92 xяz")
+        screen = menu.Screen()
+        with patch.object(menu, "screen_size", return_value=(14, 60)), patch.object(menu, "write_all") as write:
+            menu.draw_output(screen, out, "t", running=True)
+        rows = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", write.call_args.args[1]).split("\r\n")
+        self.assertTrue(all(menu.width(row) <= 60 for row in rows), rows)
+        self.assertTrue(rows[3].startswith("  │ xxx"), rows[3])
+
+    def test_frame_pty_is_the_controlling_terminal(self):
+        child = ("import os, menu; fd = os.open('/dev/tty', os.O_RDWR)\n"
+                 "print(menu.frame_pty(), os.ttyname(0) == os.environ['MNRH_FRAME_PTY'], os.getsid(0) == os.getpid())")
+        code, out = self.framed(child)
+        self.assertEqual((code, out.lines[0]), (0, "True True True"), out.plain())
+
+    def test_ctrl_c_reaches_the_program_through_the_pty(self):
+        code, out = self.framed("import time; print('go', flush=True); time.sleep(10)", b"\x03")
+        self.assertEqual(code, 130, out.plain())
+
+    def test_menu_in_frame_gets_the_whole_window(self):
+        child = ("import os, tty, menu; fd = os.open('/dev/tty', os.O_RDWR); tty.setcbreak(fd)\n"
+                 "os.write(fd, b'hidden-before ')\n"
+                 "menu.claim_screen(fd); size = os.get_terminal_size(fd)\n"
+                 "os.write(fd, b'drawn directly'); print(menu.REDRAW, end='', flush=True)\n"
+                 "print(size.lines, size.columns, ''.join(menu.PENDING))")
+        code, out = self.framed(child, size=(20, 70))
+        self.assertEqual(code, 0)
+        self.assertNotIn("drawn directly", out.plain())  # нарисовано в окне, мимо рамки
+        self.assertEqual(out.lines[-2], "hidden-before 20 70 ")
+
+    def test_marks_split_across_reads(self):
+        marks = menu.Marks()
+        data = ("a" + menu.MENU + "menu" + menu.REDRAW + "b").encode()
+        got = []
+        for k in range(0, len(data), 5):
+            got += marks.feed(data[k:k + 5])
+        got += marks.flush()
+        kinds, text = [k for k, _ in got if k != "text"], b"".join(c for k, c in got if k == "text")
+        self.assertEqual(kinds, ["menu", "redraw"])
+        self.assertEqual(text, b"amenub")
+        self.assertEqual(menu.Marks().feed(b"x\x1b"), [("text", b"x")])
+
+    def test_cursor_moves_to_next_row_when_the_line_is_full(self):
+        out = menu.Output()
+        out.feed("y" * 53)  # ширина текста в рамке окна 60
+        with patch.object(menu, "screen_size", return_value=(14, 60)), patch.object(menu, "write_all") as write:
+            menu.draw_output(menu.Screen(), out, "t", running=True)
+        self.assertTrue(write.call_args.args[1].endswith("\x1b[4;5H" + menu.SHOW))
+
     def test_questions_go_to_the_frame(self):
         # в рамке вопрос choice пишется в stdout, иначе его сотрет перерисовка рамки
         saved, isatty = menu.IN_FRAME, os.isatty
