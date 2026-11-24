@@ -46,6 +46,10 @@ elif cmd == ["pr", "checks"]:
 elif cmd == ["pr", "merge"]:
     bare, head = os.environ["FAKE_GH_BARE"], read("head") or json.loads(read("open.json"))[0]["head"]
     git = ["git", "--git-dir", bare]
+    want = arg("--match-head-commit")
+    if want and subprocess.run(git + ["rev-parse", "refs/heads/" + head], capture_output=True, text=True).stdout.strip() != want:
+        sys.stderr.write("head branch was modified\n")
+        sys.exit(1)
     subprocess.run(git + ["update-ref", "refs/heads/main", "refs/heads/" + head], check=True)
     subprocess.run(git + ["update-ref", "-d", "refs/heads/" + head], check=True)
 else:
@@ -82,8 +86,8 @@ class ParallelPr(unittest.TestCase):
         self.claude_home = p.CLAUDE_HOME
         p.CLAUDE_HOME = os.path.join(self.tmp, "claude")
         os.makedirs(os.path.join(p.CLAUDE_HOME, "sessions"))
-        self.waits = p.CHECKS_APPEAR, p.CHECKS_APPEAR_ACTIONS
-        p.CHECKS_APPEAR = p.CHECKS_APPEAR_ACTIONS = 0
+        self.waits = p.CHECKS_APPEAR, p.CHECKS_APPEAR_ACTIONS, p.CHECKS_APPEAR_PR
+        p.CHECKS_APPEAR = p.CHECKS_APPEAR_ACTIONS = p.CHECKS_APPEAR_PR = 0
 
         subprocess.run(["git", "init", "-q", "--bare", "-b", "main", self.bare], check=True)
         os.makedirs(self.dev)
@@ -99,7 +103,7 @@ class ParallelPr(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.env)
         p.CLAUDE_HOME = self.claude_home
-        p.CHECKS_APPEAR, p.CHECKS_APPEAR_ACTIONS = self.waits
+        p.CHECKS_APPEAR, p.CHECKS_APPEAR_ACTIONS, p.CHECKS_APPEAR_PR = self.waits
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def commit(self, cwd, name, text):
@@ -229,6 +233,69 @@ class ParallelPr(unittest.TestCase):
         self.assertFalse(bad, text)
         self.assertIn("Открыл PR", text)
         self.assertEqual(self.merges(), [])
+
+    def test_merge_is_pinned_to_the_pushed_commit(self):
+        path = self.task()
+        head = sh(path, "rev-parse", "HEAD")
+        text, bad = self.run_pr()
+        self.assertFalse(bad, text)
+        merge = self.merges()[0]
+        self.assertEqual(merge[merge.index("--match-head-commit") + 1], head)
+
+    def during_ci(self, change):
+        real = p.pr_checks
+
+        def checks(repo, num, path, log):
+            change(path)
+            return True, True, ""
+        p.pr_checks = checks
+        self.addCleanup(setattr, p, "pr_checks", real)
+
+    def test_commit_made_during_ci_keeps_worktree_and_branch(self):
+        path = self.task()
+        self.during_ci(lambda path: self.commit(path, "late.txt", "late\n"))
+        text, bad = self.run_pr()
+        self.assertFalse(bad, text)
+        self.assertEqual(len(self.merges()), 1)
+        self.assertIn("оставил", text)
+        self.assertIn("коммиты, которых нет в PR", text)
+        self.assertTrue(os.path.isfile(os.path.join(path, "late.txt")))
+        self.assertTrue(sh(self.root, "branch", "--list", "parallel/fix"))
+
+    def test_dirty_or_reopened_worktree_after_ci_is_kept(self):
+        path = self.task()
+
+        def change(path):
+            with open(os.path.join(path, "wip.txt"), "w") as f:
+                f.write("wip\n")
+            with open(os.path.join(p.CLAUDE_HOME, "sessions", "1.json"), "w") as f:
+                json.dump({"cwd": path, "pid": os.getpid()}, f)
+        self.during_ci(change)
+        text, bad = self.run_pr()
+        self.assertFalse(bad, text)
+        self.assertIn("незакоммичено файлов: 1", text)
+        self.assertIn("снова работает Claude", text)
+        self.assertTrue(os.path.isfile(os.path.join(path, "wip.txt")))
+
+    def workflow(self, path, text):
+        os.makedirs(os.path.join(path, ".github", "workflows"))
+        self.commit(path, ".github/workflows/ci.yml", text)
+
+    def test_pull_request_workflow_without_checks_is_not_merged(self):
+        path = self.task()
+        self.workflow(path, "# runs on push only? no:\non:\n  pull_request:\n    branches: [main]\njobs: {}\n")
+        text, bad = self.run_pr()
+        self.assertTrue(bad, text)
+        self.assertIn("ci.yml", text)
+        self.assertEqual(self.merges(), [])
+        self.assertTrue(os.path.isdir(path))
+
+    def test_push_only_workflow_without_checks_merges(self):
+        path = self.task()
+        self.workflow(path, "on:\n  push:\n    branches: [main]  # not pull_request\njobs: {}\n")
+        text, bad = self.run_pr()
+        self.assertFalse(bad, text)
+        self.assertEqual(len(self.merges()), 1)
 
 
 class Start(unittest.TestCase):
