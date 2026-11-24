@@ -32,7 +32,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import BAD, HOME, OK, WARN, paint, tilde  # noqa: E402
+from mnrhlib import BAD, HOME, OK, WARN, paint, tilde, tr  # noqa: E402
 
 CONF_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "mnrh", "host-run")
 COMMANDS = os.path.join(CONF_DIR, "commands.json")
@@ -348,22 +348,61 @@ def describe(rule):
     return f"{command_line(rule)}{tail} в {rule.get('cwd')}"
 
 
-def dialog_text(change):
-    def block(rule):
-        args = "можно дописывать" if rule.get("args") is True else "нельзя"
-        return (f"Папка      {rule.get('cwd')}\n"
-                f"Команда    {command_line(rule)}\n"
-                f"Аргументы  {args}")
+def entry_code(name, rule):
+    """Запись списка в виде JSON, как в commands.json."""
+    lines = [f"  {json.dumps(key, ensure_ascii=False)}: {json.dumps(value, ensure_ascii=False)}"
+             for key, value in rule.items()]
+    return json.dumps(name, ensure_ascii=False) + ": {\n" + ",\n".join(lines) + "\n}"
 
-    where = f"Список {tilde(COMMANDS)}. Команда из него выполняется вне песочницы, с прямой сетью."
+
+def dialog(change):
+    """Строки окна подтверждения на языке agentmeister."""
+    name = change.name
+    sandbox = tr("Команда пойдет вне песочницы, с прямой сетью.",
+                 "The command runs outside the sandbox with direct network access.")
     if change.op == "remove":
-        return f"Сессия Claude просит удалить команду {change.name} из белого списка host-run.", \
-            f"Имя        {change.name}\n{block(change.old)}"
-    if change.old is not None:
-        return f"Сессия Claude просит заменить команду {change.name} в белом списке host-run. {where}", \
-            f"Имя        {change.name}\n\nСейчас\n{block(change.old)}\n\nСтанет\n{block(change.new)}"
-    return f"Сессия Claude просит добавить команду в белый список host-run. {where}", \
-        f"Имя        {change.name}\n{block(change.new)}"
+        title = tr("удалить команду", "remove a command")
+        heading = tr(f"Сессия просит удалить команду {name} из host-run",
+                     f"A session wants to remove the host-run command {name}")
+        text = tr("Если разрешишь, сессии через proxy больше не смогут ее запускать.",
+                  "Once allowed, proxied sessions can no longer run it.")
+        code = entry_code(name, change.old)
+    elif change.old is not None:
+        title = tr("заменить команду", "replace a command")
+        heading = tr(f"Сессия просит заменить команду {name} в host-run",
+                     f"A session wants to replace the host-run command {name}")
+        text = sandbox + tr(" Если разрешишь, любая сессия через proxy будет запускать новый вариант.",
+                            " Once allowed, any proxied session runs the new version.")
+        code = (tr("// сейчас", "// now") + "\n" + entry_code(name, change.old) + "\n\n"
+                + tr("// станет", "// becomes") + "\n" + entry_code(name, change.new))
+    else:
+        title = tr("добавить команду", "add a command")
+        heading = tr("Сессия просит новую команду для host-run", "A session wants a new host-run command")
+        text = sandbox + tr(" Если разрешишь, ее сможет запускать любая сессия через proxy.",
+                            " Once allowed, any proxied session can run it.")
+        code = entry_code(name, change.new)
+    if change.op != "remove" and change.new.get("args") is True:
+        text += tr(" Сессия сможет дописывать к ней свои аргументы.", " Sessions can append their own arguments to it.")
+    return {
+        "title": f"agentmeister host-run: {title}",
+        "heading": heading,
+        "context": tr(f"host-run · белый список {tilde(COMMANDS)}", f"host-run · allowlist {tilde(COMMANDS)}"),
+        "text": text,
+        "code": code,
+        "note": tr("Кнопка срабатывает только от клика мышью или трекпадом, агент ее не нажмет",
+                   "Only a real mouse or trackpad click works here, the agent can't press it"),
+        "deny": tr("Отказать", "Deny"),
+        "allow": tr("Разрешить", "Allow"),
+        "expiry": tr("Без ответа через {left} считается отказом", "No answer in {left} counts as deny"),
+    }
+
+
+def dialog_args(change):
+    """Аргументы окна подтверждения. {left} в --expiry окно меняет на обратный отсчет."""
+    args = []
+    for key, value in dialog(change).items():
+        args += [f"--{key}", value]
+    return args + ["--timeout", str(CONFIRM_TIMEOUT)]
 
 
 def write_list(path, data):
@@ -450,11 +489,8 @@ ANSWERS = {"deny": "отказ в окне", "closed": "окно закрыли"
 
 def ask_human(conn, change):
     """Показать окно и дождаться ответа: allow, deny, closed, timeout или gone, если клиент отключился."""
-    text, detail = dialog_text(change)
-    title = {"add": "добавить команду", "remove": "удалить команду"}[change.op]
     try:
-        child = subprocess.Popen([confirm_helper(), "--title", f"agentmeister host-run: {title}", "--text", text,
-                                  "--detail", detail, "--timeout", str(CONFIRM_TIMEOUT)],
+        child = subprocess.Popen([confirm_helper(), *dialog_args(change)],
                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  start_new_session=True, env=command_env())
     except OSError as e:

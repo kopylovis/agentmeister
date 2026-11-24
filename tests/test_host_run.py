@@ -224,10 +224,17 @@ class EditList(unittest.TestCase):
         self.assertEqual(self.commands.stat().st_mode & 0o777, 0o600)
         self.assertIn("hello", host_run.load(self.commands))
         self.assertEqual(len(self.asked), 1)
-        text, detail = host_run.dialog_text(self.asked[0])
-        self.assertIn("добавить", text)
-        self.assertIn("echo 'hello world'", detail)
-        self.assertIn("нельзя", detail)
+        with patch("mnrhlib.lang", return_value="ru"):
+            args = host_run.dialog_args(self.asked[0])
+        shown = dict(zip(args[::2], args[1::2]))
+        self.assertEqual(shown["--title"], "agentmeister host-run: добавить команду")
+        self.assertEqual(shown["--heading"], "Сессия просит новую команду для host-run")
+        self.assertEqual(shown["--code"], '"hello": {\n  "cwd": %s,\n  "run": ["echo", "hello world"]\n}'
+                         % json.dumps(host_run.tilde(str(self.project))))
+        self.assertNotIn("аргументы", shown["--text"])
+        self.assertEqual((shown["--allow"], shown["--deny"]), ("Разрешить", "Отказать"))
+        self.assertIn("{left}", shown["--expiry"])
+        self.assertEqual(shown["--timeout"], str(host_run.CONFIRM_TIMEOUT))
         self.assertEqual([p.name for p in self.commands.parent.iterdir()], ["commands.json"])
 
     def test_add_creates_the_list(self):
@@ -261,12 +268,35 @@ class EditList(unittest.TestCase):
         code, out, _ = self.edit("add", ["keep", "--cwd", str(self.project), "--run", "make", "lint", "--replace"])
         self.assertEqual(code, 0)
         self.assertIn("заменена", out)
-        _, detail = host_run.dialog_text(self.asked[0])
-        self.assertIn("Сейчас", detail)
-        self.assertIn("make test", detail)
-        self.assertIn("make lint", detail)
+        with patch("mnrhlib.lang", return_value="ru"):
+            code = dict(zip(*[iter(host_run.dialog_args(self.asked[0]))] * 2))["--code"]
+        now, becomes = code.split("// станет")
+        self.assertIn("// сейчас", now)
+        self.assertIn('["make", "test"]', now)
+        self.assertIn('"note": "чужое поле остается"', now)
+        self.assertIn('["make", "lint"]', becomes)
         self.assertEqual(self.rules()["keep"]["run"], ["make", "lint"])
         self.assertEqual(list(self.rules()), ["keep", "fire"])
+
+    def test_dialog_follows_the_language(self):
+        self.edit("add", ["one", "--args", "--cwd", str(self.project), "--run", "true"])
+        self.edit("remove", ["fire"])
+        add, remove = self.asked
+        with patch("mnrhlib.lang", return_value="en"):
+            shown = dict(zip(*[iter(host_run.dialog_args(add))] * 2))
+            gone = dict(zip(*[iter(host_run.dialog_args(remove))] * 2))
+        self.assertEqual(shown["--heading"], "A session wants a new host-run command")
+        self.assertTrue(shown["--text"].startswith("The command runs outside the sandbox with direct network access. "
+                                                   "Once allowed, any proxied session can run it."))
+        self.assertIn("append their own arguments", shown["--text"])
+        self.assertIn('"args": true', shown["--code"])
+        self.assertEqual((shown["--allow"], shown["--deny"]), ("Allow", "Deny"))
+        self.assertEqual(shown["--expiry"], "No answer in {left} counts as deny")
+        self.assertIn("mouse or trackpad", shown["--note"])
+        self.assertIn("allowlist", shown["--context"])
+        self.assertEqual(gone["--title"], "agentmeister host-run: remove a command")
+        self.assertIn("fire", gone["--heading"])
+        self.assertIn('["fastlane", "upload"]', gone["--code"])
 
     def test_same_entry_needs_no_window(self):
         self.commands.write_text(json.dumps({"commands": {
