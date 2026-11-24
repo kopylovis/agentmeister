@@ -32,8 +32,12 @@ struct TabAlert: View {
         if !tab.running, let code = tab.exitCode, code != 0, tab.spec.utility == nil {
             items.append(Item(id: "exit-\(code)-\(tab.startedAt.timeIntervalSince1970)", tone: .red, icon: "exclamationmark.triangle",
                               title: l.t("\(agentName) завершился с кодом \(code)", "\(agentName) exited with code \(code)"),
-                              body: tab.spec.agent == .codex
-                                  ? l.t("Перезапуск откроет новую сессию Codex с тем же маршрутом.", "Restart opens a new Codex session with the same route.")
+                              body: tab.spec.agent == .codex && tab.sessionId == nil
+                                  ? l.t("Тред Codex еще не сохранился. Перезапуск откроет новую сессию Codex с тем же маршрутом.",
+                                        "The Codex thread wasn't saved yet. Restart opens a new Codex session with the same route.")
+                                  : tab.spec.agent == .codex
+                                  ? l.t("Тред Codex сохранен. Перезапуск продолжит его с тем же маршрутом.",
+                                        "The Codex thread is saved. Restart continues it with the same route.")
                                   : l.t("Переписка сохранена. Перезапуск откроет ту же сессию с тем же маршрутом.",
                                         "The conversation is saved. Restart opens the same session with the same route."),
                               primary: (l.restart, { tab.restart() }),
