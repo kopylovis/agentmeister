@@ -59,7 +59,7 @@ struct MainView: View {
 
     private var subtitle: String {
         let waiting = workspace.tabs.filter { $0.status == "waiting" }.count
-        let count = l.t("вкладок \(workspace.tabs.count)", "\(workspace.tabs.count) tabs")
+        let count = l.tabs(workspace.tabs.count)
         return waiting > 0 ? count + " · " + l.t("ждут \(waiting)", "\(waiting) waiting") : count
     }
 
