@@ -799,7 +799,9 @@ struct InfoBar: View {
     var l: L { L(backend.state.lang) }
 
     var body: some View {
-        let branch = backend.state.sessions.first { $0.id == tab.sessionId }?.branch ?? ""
+        // ветка папки сейчас, из .git/HEAD; ветка из истории сессии осталась бы той, на которой она началась
+        let branch = GitHead.branch(at: tab.spec.projectPath)
+            ?? backend.state.sessions.first { $0.id == tab.sessionId }?.branch ?? ""
         let port = backend.state.proxy?.port ?? 17890
         HStack(spacing: 8) {
             Chip(mono: true) { Text(tilde(tab.spec.projectPath)).lineLimit(1).truncationMode(.head) }
