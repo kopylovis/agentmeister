@@ -61,7 +61,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Окружение вкладки. TERM_PROGRAM=Agentmeister, FORCE_HYPERLINK оставляет ссылки OSC 8 в строке promptsill
     /// (Claude Code иначе вырезает их для незнакомого терминала). Картинки OSC 1337 в меню agentmeister
     /// SwiftTerm стирает, как только в строку пишется текст, поэтому меню показывает emoji.
-    static func environment() -> [String] {
+    static func environment(tab: UUID) -> [String] {
         var env = LoginEnvironment.shared
         let drop = ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ITERM_SESSION_ID", "ITERM_PROFILE",
                     "LC_TERMINAL", "LC_TERMINAL_VERSION", "COLORFGBG", "TMUX", "STY",
@@ -76,6 +76,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         env["TERM_PROGRAM"] = "Agentmeister"
         env["MNRH_ICONS"] = "emoji"
         env["FORCE_HYPERLINK"] = "1"
+        // хук уведомлений узнает по нему вкладку: клик открывает ее, а если она впереди, уведомления нет
+        env["AGENTMEISTER_TAB"] = tab.uuidString.lowercased()
         if let job = LoginEnvironment.restartJob {
             // тот же признак, что ставит restart.zsh: claude_restart пишет задание для хука, а не ищет вкладку iTerm2
             env["MNRH_RESTART_HOOK"] = "2"
@@ -108,7 +110,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         running = true
         status = nil
         let args = ["-l", "-c", Self.shellScript, LoginEnvironment.agentmeister] + spec.arguments
-        view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(), execName: "-zsh")
+        view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(tab: id), execName: "-zsh")
     }
 
     /// Перезапуск продолжает ту же сессию, если ее id уже известен.
@@ -289,6 +291,42 @@ final class Workspace: ObservableObject {
                 tab.status = nil
             }
         }
+    }
+
+    // MARK: Уведомления
+
+    static let appDir = (NSHomeDirectory() as NSString).appendingPathComponent(".cache/mnrh/app")
+    static let frontFile = (appDir as NSString).appendingPathComponent("front.json")
+    static let focusFile = (appDir as NSString).appendingPathComponent("focus.json")
+
+    /// Записать, какая вкладка выбрана и активно ли окно. Хук уведомлений не шлет уведомление о вкладке,
+    /// на которую ты и так смотришь.
+    func writeFront(active: Bool) {
+        let front: [String: Any] = ["tab": current?.id.uuidString.lowercased() ?? "", "active": active,
+                                    "at": Date().timeIntervalSince1970]
+        try? FileManager.default.createDirectory(atPath: Self.appDir, withIntermediateDirectories: true)
+        if let data = try? JSONSerialization.data(withJSONObject: front) {
+            try? data.write(to: URL(fileURLWithPath: Self.frontFile), options: .atomic)
+        }
+    }
+
+    /// Открыть вкладку по id из клика по уведомлению. true, если такая вкладка есть.
+    @discardableResult
+    func focus(tab: String) -> Bool {
+        guard let target = tabs.first(where: { $0.id.uuidString.lowercased() == tab.lowercased() }) else { return false }
+        selected = target.id
+        NSApp.activate()
+        return true
+    }
+
+    /// Забрать запрос фокуса, который оставил клик по уведомлению. Старше минуты запрос уже не нужен.
+    func takeFocusRequest() {
+        guard let data = FileManager.default.contents(atPath: Self.focusFile) else { return }
+        try? FileManager.default.removeItem(atPath: Self.focusFile)
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tab = obj["tab"] as? String else { return }
+        if let at = obj["at"] as? Double, Date().timeIntervalSince1970 - at > 60 { return }
+        focus(tab: tab)
     }
 
     func terminateAll() {
