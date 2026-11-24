@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import (CLAUDE_HOME, HOME, LEGACY_CALL, OK, PROMPTSILL_HINT, WARN, promptsill_path, tilde,  # noqa: E402
+from mnrhlib import (CLAUDE_HOME, HOME, LEGACY_CALL, OK, PROMPTSILL_HINT, WARN, promptsill_path, tilde, tr,  # noqa: E402
                      write_json)
 import claude_settings  # noqa: E402
 
@@ -165,21 +165,29 @@ def proxy_step(country="", only=""):
     import claude_proxy
     if claude_proxy.configured():
         want = claude_proxy.setting("country")
-        print(f"{OK} прокси уже настроен" + (f", выход должен быть в {want}" if want else "")
-              + " (проверить: agentmeister proxy test)")
+        print(f"{OK} " + tr("прокси уже настроен", "the proxy is already set up")
+              + (tr(f", выход должен быть в {want}", f", the exit must be in {want}") if want else "")
+              + tr(" (проверить: agentmeister proxy test)", " (check: agentmeister proxy test)"))
         if country and country.upper() != want.upper():
-            print(f"{WARN} --country {country.upper()} не применил, прокси уже настроен. "
-                  f"Поменять: agentmeister proxy setup --country {country.upper()}")
+            print(f"{WARN} " + tr(f"--country {country.upper()} не применил, прокси уже настроен. "
+                                  f"Поменять: agentmeister proxy setup --country {country.upper()}",
+                                  f"--country {country.upper()} not applied, the proxy is already set up. "
+                                  f"Change it: agentmeister proxy setup --country {country.upper()}"))
         return "done"
     if not sys.stdin.isatty():
-        print(f"{WARN} прокси не настроен, не терминал. Настроить: agentmeister proxy setup --country KZ")
+        print(f"{WARN} " + tr("прокси не настроен, не терминал. Настроить: agentmeister proxy setup --country KZ",
+                              "the proxy isn't set up and this isn't a terminal. Set it up: agentmeister proxy setup --country KZ"))
         return None
-    print("Сессии с флагом -x подключаются через сервер из твоей подписки 3x-ui.")
-    if ask("Настроить прокси сейчас?", [("yes", "Да", "yд"), ("no", "Пропустить", "nн")]) != "yes":
-        print(f"{WARN} прокси пропущен. Настроить потом: agentmeister proxy setup")
+    print(tr("Сессии с флагом -x подключаются через сервер из твоей подписки 3x-ui.",
+             "Sessions with -x connect through a server from your 3x-ui subscription."))
+    if ask(tr("Настроить прокси сейчас?", "Set up the proxy now?"),
+           [("yes", tr("Да", "Yes"), "yд"), ("no", tr("Пропустить", "Skip"), "nн")]) != "yes":
+        print(f"{WARN} " + tr("прокси пропущен. Настроить потом: agentmeister proxy setup",
+                              "proxy skipped. Set it up later: agentmeister proxy setup"))
         return "skipped"
     if not country:
-        country = input("Страна выхода, которую проверять при запуске, например KZ (Enter, не проверять): ").strip()
+        country = input(tr("Страна выхода, которую проверять при запуске, например KZ (Enter, не проверять): ",
+                           "Exit country to check at start, e.g. KZ (Enter to skip the check): ")).strip()
     code = claude_proxy.setup((["--country", country] if country else []) + (["--only", only] if only else []))
     return "done" if code == 0 else "failed"
 
@@ -187,25 +195,31 @@ def proxy_step(country="", only=""):
 def promptsill_step():
     """Шаг setup про promptsill. Возвращает "done", "skipped" или None (не поставлен и не спрашивали)."""
     if promptsill_path():
-        print(f"{OK} строка состояния promptsill уже стоит")
+        print(f"{OK} " + tr("строка состояния promptsill уже стоит", "the promptsill status line is already installed"))
         return "done"
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
-        print(f"{WARN} строки состояния promptsill нет, не терминал. Поставить: {PROMPTSILL_HINT}")
+        print(f"{WARN} " + tr(f"строки состояния promptsill нет, не терминал. Поставить: {PROMPTSILL_HINT}",
+                              f"no promptsill status line and this isn't a terminal. Install: {PROMPTSILL_HINT}"))
         return None
-    print("promptsill: строка состояния Claude Code с темпом лимитов, контекстом, dev-серверами, портами и памятью.")
-    if ask("Поставить promptsill?", [("yes", "Да", "yд"), ("no", "Пропустить", "nн")]) != "yes":
-        print(f"{WARN} promptsill пропущен. Поставить потом: {PROMPTSILL_HINT}, затем agentmeister setup")
+    print(tr("promptsill: строка состояния Claude Code с темпом лимитов, контекстом, dev-серверами, портами и памятью.",
+             "promptsill: a Claude Code status line with limit pace, context, dev servers, ports and memory."))
+    if ask(tr("Поставить promptsill?", "Install promptsill?"),
+           [("yes", tr("Да", "Yes"), "yд"), ("no", tr("Пропустить", "Skip"), "nн")]) != "yes":
+        print(f"{WARN} " + tr(f"promptsill пропущен. Поставить потом: {PROMPTSILL_HINT}, затем agentmeister setup",
+                              f"promptsill skipped. Install later: {PROMPTSILL_HINT}, then agentmeister setup"))
         return "skipped"
     brew = shutil.which("brew") or next((p for p in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
                                          if os.access(p, os.X_OK)), None)
     if not brew:
-        print(f"{WARN} нет Homebrew. Поставь его с https://brew.sh, потом {PROMPTSILL_HINT}")
+        print(f"{WARN} " + tr(f"нет Homebrew. Поставь его с https://brew.sh, потом {PROMPTSILL_HINT}",
+                              f"Homebrew is missing. Install it from https://brew.sh, then {PROMPTSILL_HINT}"))
         return "failed"
     r = subprocess.run([brew, "install", "kopylovis/tap/promptsill"])
     if r.returncode != 0 or not promptsill_path():
-        print(f"{WARN} promptsill не поставился. Попробуй сам: {PROMPTSILL_HINT}")
+        print(f"{WARN} " + tr(f"promptsill не поставился. Попробуй сам: {PROMPTSILL_HINT}",
+                              f"promptsill didn't install. Try it yourself: {PROMPTSILL_HINT}"))
         return "failed"
-    print(f"{OK} promptsill поставлен")
+    print(f"{OK} " + tr("promptsill поставлен", "promptsill installed"))
     return "done"
 
 
@@ -214,13 +228,15 @@ def promptsill_statusline():
     try:
         settings = claude_settings.load()
     except ValueError:
-        print(f"{WARN} {tilde(claude_settings.PATH)} не читается как JSON, statusLine не трогаю. "
-              "Поставь сам: promptsill install")
+        print(f"{WARN} " + tr(f"{tilde(claude_settings.PATH)} не читается как JSON, statusLine не трогаю. "
+                              "Поставь сам: promptsill install",
+                              f"{tilde(claude_settings.PATH)} isn't valid JSON, leaving statusLine alone. "
+                              "Install it yourself: promptsill install"))
         return
     promptsill = promptsill_path()
     if promptsill and claude_settings.ensure_statusline(settings, promptsill):
         claude_settings.save_atomic(settings)
-        print(f"{OK} строка состояния → statusLine (promptsill)")
+        print(f"{OK} " + tr("строка состояния → statusLine (promptsill)", "status line → statusLine (promptsill)"))
 
 
 def check():
