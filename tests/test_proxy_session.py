@@ -266,6 +266,18 @@ class InsideSession(unittest.TestCase):
         with patch.object(claude_proxy.os, "makedirs", side_effect=PermissionError):
             self.assertEqual(claude_proxy.remember("vps"), 1)
 
+    def test_pid_without_ps_falls_back_to_a_liveness_check(self):
+        # в песочнице ps не запускается (PermissionError): status и start не должны падать
+        with tempfile.TemporaryDirectory() as tmp:
+            pidfile = Path(tmp) / "mihomo.pid"
+            pidfile.write_text(f"{os.getpid()}\n")
+            with patch.object(claude_proxy, "PIDFILE", str(pidfile)), \
+                    patch.object(claude_proxy.subprocess, "run", side_effect=PermissionError("denied")) as run:
+                self.assertEqual(claude_proxy.read_pid(), os.getpid())
+                with patch.object(claude_proxy, "alive", return_value=False):
+                    self.assertIsNone(claude_proxy.read_pid())
+            self.assertEqual(run.call_args.args[0][0], "ps")
+
     def test_status_shows_the_server_from_launch(self):
         with tempfile.TemporaryDirectory() as tmp:
             exit_file = Path(tmp) / "exit.json"
