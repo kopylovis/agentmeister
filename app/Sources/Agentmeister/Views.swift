@@ -58,6 +58,7 @@ struct MainView: View {
             if backend.ready { workspace.restore(live: backend.state.live, projects: backend.state.projects, sessions: backend.state.sessions) }
         }
         .frame(minWidth: 900, minHeight: 560)
+        .modifier(ReopenWindows())
     }
 
     private var subtitle: String {
@@ -70,6 +71,9 @@ struct MainView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             ProxyBadge()
+        }
+        ToolbarItem(placement: .primaryAction) {
+            LibraryToolbarButton(title: l.t("Сессии", "Sessions"))
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
@@ -89,6 +93,20 @@ struct MainView: View {
             }
             .help(l.inspector + ", ⌥⌘I")
         }
+    }
+}
+
+struct LibraryToolbarButton: View {
+    @Environment(\.openWindow) private var openWindow
+    let title: String
+
+    var body: some View {
+        Button {
+            openWindow(id: "library")
+        } label: {
+            Label(title, systemImage: "books.vertical")
+        }
+        .help(title + ", ⇧⌘O")
     }
 }
 

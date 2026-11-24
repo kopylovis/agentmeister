@@ -25,6 +25,13 @@ struct AgentmeisterApp: App {
                 .environmentObject(workspace)
                 .environmentObject(ui)
         }
+        Window(L(backend.state.lang).t("Сессии", "Sessions"), id: "library") {
+            LibraryView()
+                .environmentObject(backend)
+                .environmentObject(workspace)
+                .environmentObject(ui)
+        }
+        .defaultSize(width: 1180, height: 720)
         .commands {
             let l = L(backend.state.lang)
             CommandGroup(replacing: .newItem) {
@@ -50,6 +57,9 @@ struct AgentmeisterApp: App {
                 Button(l.restart) { workspace.current?.restart() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .disabled(workspace.current == nil)
+            }
+            CommandGroup(after: .windowList) {
+                OpenLibraryButton(title: l.t("Сессии", "Sessions"))
             }
             CommandGroup(after: .sidebar) {
                 Button(l.inspector) { ui.showInspector.toggle() }

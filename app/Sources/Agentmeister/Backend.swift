@@ -88,6 +88,48 @@ struct AppState: Decodable {
     }
 }
 
+struct SearchResults: Decodable {
+    struct Hit: Decodable, Hashable {
+        let at: Int
+        let role: String
+        let time: Double?
+        let snippet: String
+    }
+
+    struct Result: Decodable, Hashable, Identifiable {
+        let id: String
+        let title: String
+        let home: String
+        let last: Double?
+        let count: Int
+        let hits: [Hit]
+    }
+
+    let query: String
+    let exact: Bool
+    let scanned: Int
+    let results: [Result]
+}
+
+struct SessionPreview: Decodable {
+    struct Message: Decodable, Hashable, Identifiable {
+        let at: Int
+        let role: String
+        let time: Double?
+        let text: String
+        var id: Int { at }
+    }
+
+    let id: String?
+    let title: String?
+    let home: String?
+    let total: Int?
+    let first: Double?
+    let last: Double?
+    let messages: [Message]?
+    let error: String?
+}
+
 /// Раз в несколько секунд спрашивает agentmeister app-state и раздает результат окнам.
 @MainActor
 final class Backend: ObservableObject {
@@ -134,6 +176,33 @@ final class Backend: ObservableObject {
             _ = Self.run([name, on ? "on" : "off"])
             await MainActor.run { self.refresh() }
         }
+    }
+
+    /// Поиск по всем сессиям: agentmeister app-state search.
+    func search(_ query: String) async -> SearchResults? {
+        await Self.json(["app-state", "search", query])
+    }
+
+    /// Последние сообщения сессии для превью: agentmeister app-state read.
+    func read(_ id: String) async -> SessionPreview? {
+        await Self.json(["app-state", "read", id])
+    }
+
+    /// Команда agentmeister без JSON, например sessions rm <id> -y. После нее состояние перечитывается.
+    func perform(_ args: [String]) async -> Bool {
+        let ok = await Task.detached(priority: .userInitiated) {
+            if case .success = Self.run(args) { return true }
+            return false
+        }.value
+        refresh()
+        return ok
+    }
+
+    nonisolated static func json<T: Decodable>(_ args: [String]) async -> T? {
+        await Task.detached(priority: .userInitiated) {
+            guard case .success(let data) = run(args) else { return nil }
+            return try? JSONDecoder().decode(T.self, from: data)
+        }.value
     }
 
     nonisolated static func run(_ args: [String]) -> Result<Data, Error> {
