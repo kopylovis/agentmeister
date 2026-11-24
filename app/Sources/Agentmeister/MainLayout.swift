@@ -291,10 +291,9 @@ struct SidebarRail: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.never)
-            // сверху и снизу плотное размытие, как под заголовком Projects в развернутой панели
-            .scrollEdgeEffectStyle(.hard, for: .vertical)
             .safeAreaBar(edge: .top, spacing: 0) {
                 Color.clear.frame(height: 40).frame(maxWidth: .infinity).background(WindowDragArea())
+                    .blurBar(edge: .top)
             }
             .safeAreaBar(edge: .bottom, spacing: 0) {
             if let h = backend.state.hostRun {
@@ -325,6 +324,7 @@ struct SidebarRail: View {
                 .overlay(alignment: .top) {
                     Rectangle().fill(Ink.hairline).frame(height: 1).padding(.horizontal, 12)
                 }
+                .blurBar(edge: .bottom)
             }
             }
         .frame(maxHeight: .infinity)
