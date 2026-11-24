@@ -108,5 +108,33 @@ class Revive(unittest.TestCase):
         start.assert_called_with(strict=False)
 
 
+class WatcherPid(unittest.TestCase):
+    def alive(self, pid_text):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "watch.pid")
+            with open(path, "w") as f:
+                f.write(pid_text)
+            with patch.object(p, "WATCH_PID", path):
+                return p.watcher_alive()
+
+    def ps(self, command):
+        return patch.object(p.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, command, ""))
+
+    def test_a_stale_pid_of_another_process_is_not_the_watcher(self):
+        with self.ps("/Applications/Safari.app/Contents/MacOS/Safari\n"):
+            self.assertFalse(self.alive(str(os.getpid())))
+        with self.ps("/usr/bin/python3 /opt/other/claude_proxy.py run\n"):
+            self.assertFalse(self.alive(str(os.getpid())))
+        self.assertFalse(self.alive("garbage"))
+        self.assertFalse(self.alive("0"))
+
+    def test_the_real_watcher_is_recognized(self):
+        command = f"/usr/bin/python3 {p.__file__} watch\n"
+        with self.ps(command):
+            self.assertTrue(self.alive(str(os.getpid())))
+        with patch.object(p.subprocess, "run", side_effect=PermissionError):
+            self.assertTrue(self.alive(str(os.getpid())))  # ps не дали: как раньше, верим живому pid
+
+
 if __name__ == "__main__":
     unittest.main()
