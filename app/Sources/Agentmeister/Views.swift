@@ -386,7 +386,14 @@ struct ProjectRow: View {
             Spacer()
             if hover {
                 Button {
-                    workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path))
+                    if AgentPrefs.defaultAgent == "ask" {
+                        ui.newSessionProject = project.path
+                        ui.showNewSession = true
+                    } else {
+                        workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path,
+                                                  agent: AgentPrefs.defaultAgent == "codex" ? .codex : .claude,
+                                                  direct: backend.state.proxy?.defaultRoute == "direct"))
+                    }
                 } label: {
                     Image(systemName: "plus")
                 }
@@ -540,6 +547,7 @@ struct TabChip: View {
     var body: some View {
         Button {
             workspace.selected = tab.id
+            tab.rang = false
         } label: {
             HStack(spacing: 8) {
                 AgentBadge(agent: tab.spec.utility == nil ? tab.spec.agent : nil)
@@ -566,6 +574,8 @@ struct TabChip: View {
                 } else if tab.status == "waiting" {
                     GlowDot(color: Ink.amberDot, size: 8)
                         .accessibilityLabel(l.t("ждет ответа", "waiting for you"))
+                } else if tab.rang && !selected {
+                    Image(systemName: "bell.fill").font(.system(size: 9)).foregroundStyle(Ink.amber)
                 } else if !tab.running {
                     Image(systemName: "stop.circle").font(.system(size: 11)).foregroundStyle(Ink.faint)
                 }
@@ -763,7 +773,7 @@ struct TerminalHost: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        let dark = context.environment.colorScheme == .dark
+        let dark = context.environment.colorScheme == .dark || TerminalPrefs.alwaysDark
         let background = dark ? NSColor(hex: 0x08090B) : NSColor.white
         container.layer?.backgroundColor = background.cgColor
         guard let term = tab?.view else {
@@ -1051,6 +1061,8 @@ struct NewSessionSheet: View {
         .frame(width: 560)
         .onAppear {
             projectPath = initialProject ?? backend.state.projects.first?.path ?? ""
+            if AgentPrefs.defaultAgent == "codex" { agent = .codex }
+            direct = backend.state.proxy?.defaultRoute == "direct"
             if ui.newSessionParallel { mode = .parallel }
             ui.newSessionParallel = false
         }
@@ -1131,3 +1143,4 @@ struct SegmentedCapsule<T: Hashable>: View {
         .background(Capsule().fill(Ink.chip))
     }
 }
+
