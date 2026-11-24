@@ -57,6 +57,48 @@ class Rules(unittest.TestCase):
         self.assertEqual(env, {"PATH": "/bin"})
 
 
+class TrustedRead(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(dir="/tmp")  # /tmp — системная ссылка root, ее можно
+        self.addCleanup(self.tmp.cleanup)
+        self.conf = Path(self.tmp.name) / "conf"
+        self.conf.mkdir()
+        self.path = self.conf / "commands.json"
+        write_commands(self.path, {"t": {"cwd": self.tmp.name, "run": ["true"]}})
+        self.path.chmod(0o600)
+
+    def test_reads_a_private_file(self):
+        self.assertIn("t", host_run.load(self.path))
+
+    def test_refuses_a_symlinked_parent(self):
+        link = Path(self.tmp.name) / "link"
+        link.symlink_to(self.conf)
+        with self.assertRaisesRegex(host_run.RuleError, "ссылка"):
+            host_run.load(link / "commands.json")
+
+    def test_refuses_a_symlinked_file(self):
+        link = self.conf / "other.json"
+        link.symlink_to(self.path)
+        with self.assertRaises(host_run.RuleError):
+            host_run.load(link)
+
+    def test_refuses_writable_by_others(self):
+        self.path.chmod(0o620)
+        with self.assertRaisesRegex(host_run.RuleError, "chmod 600"):
+            host_run.load(self.path)
+        self.path.chmod(0o600)
+        self.conf.chmod(0o777)
+        try:
+            with self.assertRaisesRegex(host_run.RuleError, "другие"):
+                host_run.load(self.path)
+        finally:
+            self.conf.chmod(0o700)
+
+    def test_missing_file_is_an_empty_list(self):
+        self.assertEqual(host_run.load(self.conf / "none.json"), {})
+        self.assertEqual(host_run.load(Path(self.tmp.name) / "none" / "commands.json"), {})
+
+
 class Roundtrip(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(dir="/tmp")
@@ -133,11 +175,26 @@ class Profile(unittest.TestCase):
         self.assertIn(f"HOST_RUN_STATE={os.path.realpath(host_run.STATE)}", command)
         self.assertIn('(deny file-write* (subpath (param "HOST_RUN_CONF"))', command[command.index("-p") + 1])
 
+    def test_claude_profile_protects_parents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real = os.path.realpath(tmp)
+            with patch.multiple(host_run, CONF_DIR=f"{real}/a/b/host-run", STATE=f"{real}/s/host-run"):
+                command = claude_proxy.session_command(17890, ["true"], claude=True)
+                parents = host_run.protected_parents()
+        params = {a.split("=", 1)[1] for a in command if a.startswith("HOST_RUN_UP")}
+        for path in (f"{real}/a/b", f"{real}/a", real, f"{real}/s", os.path.dirname(real)):
+            self.assertIn(path, params)
+        self.assertNotIn("/", params)
+        self.assertEqual(len(params), len(parents))
+        profile = command[command.index("-p") + 1]
+        self.assertIn(f'(literal (param "HOST_RUN_UP{len(parents) - 1}"))', profile)
+        self.assertNotIn(f'HOST_RUN_UP{len(parents)}"', profile)
+
     @unittest.skipUnless(sys.platform == "darwin" and host_run.nested_sandbox_ok(), "requires the macOS sandbox")
     def test_sandboxed_session_reaches_socket_but_cannot_write(self):
         with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
-            conf, state = Path(tmp) / "conf", Path(tmp) / "state"
-            conf.mkdir()
+            conf, state = Path(tmp) / "up" / "conf", Path(tmp) / "state"
+            conf.mkdir(parents=True)
             state.mkdir()
             sock = str(state / "s")
             listener = host_run.listen(sock)
@@ -156,6 +213,14 @@ for path in ({str(conf / 'commands.json')!r}, {str(state / 'x')!r}):
         pass
     else:
         sys.exit('wrote ' + path)
+import os
+try:
+    os.rename({str(Path(tmp) / 'up')!r}, {str(Path(tmp) / 'moved')!r})
+except PermissionError:
+    pass
+else:
+    sys.exit('renamed a parent of the list')
+open({str(Path(tmp) / 'other')!r}, 'w').close()  # рядом писать можно
 sys.exit(host_run.call('t', [], {sock!r}))
 """
             with patch.multiple(host_run, CONF_DIR=str(conf), STATE=str(state)):
