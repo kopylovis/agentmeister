@@ -58,6 +58,22 @@ def encode(path):
     return f"{e[:MAX_DIR]}-{cc_hash(path)}"
 
 
+def old_encode(path):
+    """Имя, которое давал agentmeister sessions mv до PR #157: по знакам Python (эмодзи в один "-"), без обрезки."""
+    return re.sub(r"[^A-Za-z0-9]", "-", path)
+
+
+def misnamed_home(name, sessions):
+    """Путь проекта, если папку name назвал старый mv и Claude Code ее не видит: все сессии в ней записали cwd,
+    у которых старое имя равно name, а имя Claude Code другое и одно на всех. Иначе None."""
+    cwds = {s["started_in"] for s in sessions if s["started_in"]}
+    if not cwds or any(old_encode(c) != name or encode(c) == name for c in cwds):
+        return None
+    if len({encode(c) for c in cwds}) != 1:
+        return None
+    return sorted(cwds)[0]
+
+
 def _subdirs(base):
     try:
         entries = sorted(os.listdir(base), key=len, reverse=True)

@@ -222,6 +222,168 @@ class ProjectDirs(unittest.TestCase):
         self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
 
 
+MISNAMED = """
+    import json, os
+    from unittest.mock import patch
+    import claude_sessions as c, session_store as s
+    home = os.environ["HOME"]
+    A, B = "11111111-2222-3333-4444-555555555555", "22222222-2222-3333-4444-555555555555"
+    def session(pdir, sid, cwd, text="hi"):
+        os.makedirs(pdir, exist_ok=True)
+        with open(os.path.join(pdir, sid + ".jsonl"), "w") as f:
+            f.write(json.dumps({"type": "user", "cwd": cwd, "message": {"content": text}}) + "\\n")
+            f.write(json.dumps({"type": "assistant", "message": {"content": "ok"}}) + "\\n")
+    def put(path, text):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "w").write(text)
+    def tree(d):
+        return {os.path.relpath(os.path.join(r, n), d): open(os.path.join(r, n)).read()
+                for r, _, ns in os.walk(d) for n in ns}
+    def misnamed(cwd):
+        os.makedirs(cwd, exist_ok=True)
+        old = os.path.join(s.PROJECTS, s.old_encode(cwd))
+        new = os.path.join(s.PROJECTS, s.encode(cwd))
+        assert old != new
+        session(old, A, cwd)
+        put(os.path.join(old, A, "subagents", "a.jsonl"), "{}\\n")
+        put(os.path.join(old, "memory", "MEMORY.md"), "mine")
+        return old, new
+    def plan(old):
+        name = os.path.basename(old)
+        ss = [x for x in s.load() if x["pdir"] == old]
+        return old, s.misnamed_home(name, ss), ss, c.tree_snapshot(old)
+"""
+
+
+def with_misnamed(code):
+    return in_sandbox(textwrap.dedent(MISNAMED) + textwrap.dedent(code))
+
+
+class Misnamed(unittest.TestCase):
+    def test_long_path_moves_whole_folder(self):
+        r, _ = with_misnamed("""
+            cwd = os.path.join(home, "x" * (230 - len(home)))  # over 200, but within the 255 a file name can hold
+            old, new = misnamed(cwd)
+            assert len(os.path.basename(old)) > 200 and s.decode(os.path.basename(old)) == cwd
+            c.clean(True)
+            assert not os.path.exists(old)
+            assert tree(new) == {A + ".jsonl": tree(new)[A + ".jsonl"], A + "/subagents/a.jsonl": "{}\\n",
+                                 "memory/MEMORY.md": "mine"}, tree(new)
+            assert s.by_id(A)[0]["pdir"] == new
+            print("ok")
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("Claude Code", r.stdout)
+        self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
+
+    def test_emoji_path_and_ambiguous_folder(self):
+        r, _ = with_misnamed("""
+            cwd = os.path.join(home, "a😀b")
+            old, new = misnamed(cwd)
+            assert os.path.basename(new).endswith("-a--b") and os.path.basename(old).endswith("-a-b")
+            c.clean(True)
+            assert not os.path.exists(old) and os.path.isfile(os.path.join(new, A + ".jsonl"))
+            # the old name is also the right name for "a-b": a folder with a session from there stays
+            os.makedirs(os.path.join(home, "a-b"))
+            session(old, B, os.path.join(home, "a-b"))
+            session(old, A, cwd)
+            before = tree(old)
+            c.clean(True)
+            assert tree(old) == before
+            print("ok")
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
+
+    def test_merges_into_existing_folder(self):
+        r, _ = with_misnamed("""
+            cwd = os.path.join(home, "a😀b")
+            old, new = misnamed(cwd)
+            session(new, B, cwd)
+            put(os.path.join(new, "memory", "other.md"), "theirs")
+            c.clean(True)
+            assert not os.path.exists(old)
+            got = tree(new)
+            assert sorted(got) == sorted([A + ".jsonl", B + ".jsonl", A + "/subagents/a.jsonl", "memory/MEMORY.md",
+                                          "memory/other.md"]), got
+            assert got["memory/MEMORY.md"] == "mine" and got["memory/other.md"] == "theirs"
+            assert {x["id"] for x in s.load() if x["pdir"] == new} == {A, B}
+            print("ok")
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
+
+    def test_name_clash_keeps_both(self):
+        r, _ = with_misnamed("""
+            cwd = os.path.join(home, "a😀b")
+            old, new = misnamed(cwd)
+            session(new, A, cwd, text="their copy")
+            put(os.path.join(new, "memory", "MEMORY.md"), "theirs")
+            put(os.path.join(new, "memory", "MEMORY.migrated.md"), "earlier")
+            status, clashes = c.migrate_misnamed(*plan(old))
+            assert status == "moved", status
+            got = tree(new)
+            assert "their copy" in got[A + ".jsonl"] and "their copy" not in got[A + ".migrated.jsonl"]
+            assert got["memory/MEMORY.md"] == "theirs" and got["memory/MEMORY.migrated.md"] == "earlier"
+            assert got["memory/MEMORY.migrated-2.md"] == "mine"
+            assert got[A + "/subagents/a.jsonl"] == "{}\\n"
+            assert sorted(clashes) == [(A + ".jsonl", A + ".migrated.jsonl"),
+                                       ("memory/MEMORY.md", "memory/MEMORY.migrated-2.md")], clashes
+            assert not os.path.exists(old)
+            print("ok")
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
+
+    def test_running_session_is_refused(self):
+        r, _ = with_misnamed("""
+            cwd = os.path.join(home, "a😀b")
+            old, new = misnamed(cwd)
+            planned = plan(old)
+            registry = os.path.join(s.CLAUDE, "sessions")
+            os.makedirs(registry)
+            json.dump({"pid": os.getpid(), "sessionId": A}, open(os.path.join(registry, "1.json"), "w"))
+            before = tree(old)
+            assert c.migrate_misnamed(*planned) == ("busy", [])
+            c.clean(True)
+            assert tree(old) == before and not os.path.exists(new)
+            print("ok")
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertTrue(any(w in r.stdout for w in ("skipped", "пропускаю")), r.stdout)
+        self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
+
+    def test_failure_rolls_back(self):
+        r, _ = with_misnamed("""
+            cwd = os.path.join(home, "a😀b")
+            old, new = misnamed(cwd)
+            session(new, B, cwd)
+            put(os.path.join(new, "memory", "other.md"), "theirs")
+            before_old, before_new = tree(old), tree(new)
+            rename = c.rename_with_flags
+            def fail_memory(src, dst, flags):
+                if dst.endswith("MEMORY.md"):
+                    raise OSError("disk full")
+                rename(src, dst, flags)
+            with patch.object(c, "rename_with_flags", side_effect=fail_memory):
+                try:
+                    c.migrate_misnamed(*plan(old))
+                except OSError:
+                    pass
+                else:
+                    raise AssertionError("failure was swallowed")
+            assert tree(old) == before_old and tree(new) == before_new, (tree(old), tree(new))
+            # a folder changed after planning is left alone
+            planned = plan(old)
+            put(os.path.join(old, "late.txt"), "new")
+            assert c.migrate_misnamed(*planned) == ("changed", [])
+            assert os.path.isfile(os.path.join(old, A + ".jsonl"))
+            print("ok")
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
+
+
 class Lookup(unittest.TestCase):
     def test_by_id_matches_load(self):
         r, _ = with_sessions("""
