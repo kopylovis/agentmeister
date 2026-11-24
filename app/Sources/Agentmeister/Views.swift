@@ -216,8 +216,7 @@ struct Sidebar: View {
                 .frame(height: 40)
                 .frame(maxWidth: .infinity)
                 .background(WindowDragArea())
-            CollapsibleHeader(title: l.projects, open: $projectsOpen,
-                              summary: l.t("открыто \(workspace.tabs.filter(\.running).count)", "\(workspace.tabs.filter(\.running).count) open"))
+            CollapsibleHeader(title: l.projects, open: $projectsOpen, summary: openSummary, alwaysShowSummary: true)
                 .padding(.horizontal, 18)
                 .padding(.bottom, 4)
             if projectsOpen {
@@ -235,6 +234,21 @@ struct Sidebar: View {
         }
         .onAppear { expandOpenProjects() }
         .onChange(of: workspace.selected) { expandOpenProjects() }
+    }
+
+    /// "3 open, 1 waiting": вкладки этого окна и сессии из реестра Claude Code, открытые где угодно, в iTerm2
+    /// тоже. Реестр знает и наши вкладки, поэтому вкладка с известной сессией считается один раз.
+    /// В раскрытой группе ноль не показываем.
+    private var openSummary: String {
+        let tabs = workspace.tabs.filter { $0.running && $0.spec.utility == nil }
+        let mine = Set(tabs.compactMap(\.sessionId))
+        let others = backend.state.live.filter { $0.sessionId.map { !mine.contains($0) } ?? true }
+        let open = tabs.count + others.count
+        let waiting = tabs.filter { $0.status == "waiting" }.count + others.filter { $0.status == "waiting" }.count
+        if open == 0 && projectsOpen { return "" }
+        var text = l.t("открыто \(open)", "\(open) open")
+        if waiting > 0 { text += l.t(waiting == 1 ? ", ждет 1" : ", ждут \(waiting)", ", \(waiting) waiting") }
+        return text
     }
 
     private var projectList: some View {
@@ -352,6 +366,8 @@ struct CollapsibleHeader: View {
     let title: String
     @Binding var open: Bool
     var summary = ""
+    /// Сводка и в раскрытой группе: у проектов она говорит то, чего не видно в списке, сколько сессий открыто.
+    var alwaysShowSummary = false
 
     var body: some View {
         Button {
@@ -364,7 +380,7 @@ struct CollapsibleHeader: View {
                     .foregroundStyle(Ink.faint)
                     .rotationEffect(.degrees(open ? 90 : 0))
                 Spacer()
-                if !open && !summary.isEmpty {
+                if (!open || alwaysShowSummary) && !summary.isEmpty {
                     Text(summary).font(.system(size: 11)).foregroundStyle(Ink.faint).lineLimit(1)
                 }
             }
