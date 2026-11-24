@@ -19,7 +19,7 @@ HOME = ("\x1b[H", "\x1bOH", "\x1b[1~")
 END = ("\x1b[F", "\x1bOF", "\x1b[4~")
 DIGIT_PAUSE = 0.8
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-KEY = re.compile(r"\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Za-z]|[\x00-\x1f\x7f]|[^\x00-\x1f\x7f]+")
+KEY = re.compile(r"\x1b\[[0-9;]*[A-Za-z~]|\x1bO[A-Za-z]|[\x00-\x1f\x7f]|[^\x00-\x1f\x7f]")
 FROM_RU = str.maketrans("йцукенгшщзхъфывапролджэячсмитьбю", "qwertyuiop[]asdfghjkl;'zxcvbnm,.")
 
 
@@ -34,12 +34,14 @@ class Quit(Cancel):
 # нажатия, пришедшие одной пачкой после Enter или Esc: их получит следующее меню на том же экране
 PENDING = []
 UNFINISHED = re.compile(rb"\x1b(\[[0-9;]*|O)?$")
+# сколько ждать остаток стрелки после \x1b: по ssh куски приходят с задержкой, а 50 мс превращали стрелку в Esc
+ESC_WAIT = 0.12
 
 
 def read_keys(fd):
     """Прочитать нажатия. Стрелка (\x1bOB) может прийти в два чтения: без дочитывания меню увидело бы Esc и букву."""
     data = os.read(fd, 64)
-    while UNFINISHED.search(data) and select.select([fd], [], [], 0.05)[0]:
+    while UNFINISHED.search(data) and select.select([fd], [], [], ESC_WAIT)[0]:
         more = os.read(fd, 64)
         if not more:
             break
@@ -48,7 +50,7 @@ def read_keys(fd):
         try:
             return data.decode("utf-8")
         except UnicodeDecodeError as error:
-            if error.reason != "unexpected end of data" or not select.select([fd], [], [], 0.05)[0]:
+            if error.reason != "unexpected end of data" or not select.select([fd], [], [], ESC_WAIT)[0]:
                 return data.decode("utf-8", "replace")
             extra = os.read(fd, 1)
             if not extra:
@@ -57,7 +59,8 @@ def read_keys(fd):
 
 
 def split_keys(data):
-    """Быстрые нажатия приходят одним чтением: «\x1b[B\x1b[B» это две стрелки вниз, а не неизвестная клавиша."""
+    """Быстрые нажатия приходят одним чтением: «\x1b[B\x1b[B» это две стрелки вниз, а не неизвестная клавиша,
+    «qq» или два пробела это два нажатия, а не одно непонятное."""
     return KEY.findall(data) or [data]
 
 
@@ -156,7 +159,13 @@ class Menu:
     def view(self):
         q = self.query.lower()
         en = q.translate(FROM_RU)  # набрали в русской раскладке: «ыыр» -> «ssh»
-        hit = {i for i in self.pick_able if q in self.items[i][0].lower() or en in self.items[i][0].lower()}
+
+        def hits(texts):
+            return {i for i, text in texts.items() if q in text or en in text}
+        # сначала ищется видимый текст: иначе «ss» находит каждую строку с «--harness» в ключе. Ключ (команда,
+        # id сессии) ищется, только если в видимом тексте совпадений нет
+        hit = (hits({i: ANSI.sub("", self.items[i][1]).lower() for i in self.pick_able})
+               or hits({i: self.items[i][0].lower() for i in self.pick_able}))
         out, header = [], None
         for i, (key, _) in enumerate(self.items):
             if key is None:
@@ -1028,7 +1037,8 @@ def draw_output(screen, out, title, running, code=0, back=0, elapsed=None):
     if running:
         # курсор на последней строке вывода: там программа спросит и там будет эхо ввода
         row = 3 + max(0, len(shown) - 1)
-        col = 4 + min(w - 3, width(shown[-1]) if shown else 0)
+        # текст строки начинается с 5-й колонки (два пробела, «│», пробел); дальше w + 1 курсору уже рамка
+        col = 5 + min(w - 4, width(shown[-1]) if shown else 0)
         text += f"\x1b[{row};{col}H" + SHOW
     write_all(screen.fd, with_icons(text))
 
@@ -1060,7 +1070,7 @@ def show_output(screen, out, title, code):
                 back = min(back + 1, max(0, total - page))
             elif key in DOWN:
                 back = max(0, back - 1)
-            elif key in ("\x1b[5~", " b"):
+            elif key in ("\x1b[5~", "b", "B", "и", "И"):
                 back = min(back + page, max(0, total - page))
             elif key in ("\x1b[6~", " "):
                 back = max(0, back - page)
