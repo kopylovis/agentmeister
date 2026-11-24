@@ -31,6 +31,8 @@ struct LibraryView: View {
     @AppStorage("librarySelection") private var storedSelection = ""
     @State private var selection: String?
     @State private var preview: SessionPreview?
+    /// Для какой выбранной сессии прочитано preview.
+    @State private var previewFor: String?
     @State private var confirmDelete = false
     @State private var renaming = false
     /// all, claude или codex: переключатель над списком.
@@ -66,11 +68,26 @@ struct LibraryView: View {
         }
     }
 
+    /// Агент из переключателя над списком, nil для всех.
+    private var agentKind: LaunchSpec.Agent? { LaunchSpec.Agent(rawValue: agentFilter) }
+    /// Сессии выбранного агента: по ним считаются цифры слева, как и строки списка.
+    private var agentSessions: [AppState.Session] {
+        agentKind.map { agent in backend.state.sessions.filter { $0.kind == agent } } ?? backend.state.sessions
+    }
+
+    /// Проекты, где есть сессии любого агента, и число сессий выбранного агента.
     private var projectsWithSessions: [(AppState.Project, Int)] {
         backend.state.projects.compactMap { p in
-            let n = backend.state.sessions(in: p).count
-            return n > 0 ? (p, n) : nil
+            guard !backend.state.sessions(in: p).isEmpty else { return nil }
+            return (p, backend.state.sessions(in: p, agent: agentKind).count)
         }
+    }
+
+    /// Превью выбранной сессии и ее id. Пока превью новой не прочиталось, старое не показываем:
+    /// продолжить, переименовать или удалить ушло бы не той сессии.
+    private var shown: (preview: SessionPreview, id: String)? {
+        guard let preview, preview.id != nil, let id = selection, previewFor == id else { return nil }
+        return (preview, id)
     }
 
     var body: some View {
@@ -79,7 +96,7 @@ struct LibraryView: View {
                 List(selection: $filter) {
                     Section {
                         Label(l.t("Все проекты", "All projects"), systemImage: "tray.full")
-                            .badge(backend.state.sessions.count)
+                            .badge(agentSessions.count)
                             .tag(nil as String?)
                         ForEach(projectsWithSessions, id: \.0.path) { project, count in
                             Label(project.name, systemImage: "folder")
@@ -89,10 +106,10 @@ struct LibraryView: View {
                     } header: { SectionCaption(text: l.projects) }
                     Section {
                         Label(l.t("Открытые сейчас", "Open now"), systemImage: "dot.radiowaves.left.and.right")
-                            .badge(backend.state.sessions.filter { liveIds.contains($0.id) }.count)
+                            .badge(agentSessions.filter { liveIds.contains($0.id) }.count)
                             .tag("!open" as String?)
                         Label(l.t("Проекта больше нет", "Project folder gone"), systemImage: "folder.badge.questionmark")
-                            .badge(goneIds.count)
+                            .badge(agentSessions.filter { $0.cwdExists == false }.count)
                             .tag("!gone" as String?)
                     } header: { SectionCaption(text: l.t("Показать", "Show")) }
                 }
@@ -111,8 +128,10 @@ struct LibraryView: View {
                     TextField(l.t("Слова из переписки, любой проект", "Words from any conversation, any project"), text: $query)
                         .textFieldStyle(.plain)
                         .accessibilityLabel(l.t("Поиск по всем сессиям", "Search all sessions"))
-                    if let found, !query.isEmpty {
-                        Text(l.t("найдено \(found.results.count)", "\(found.results.count) found"))
+                    if found != nil, !query.isEmpty {
+                        // строки списка: Claude Code по переписке, Codex по названию, с фильтрами
+                        let n = rows.count
+                        Text(l.t("найдено \(n)", "\(n) found"))
                             .font(.system(size: 11)).foregroundStyle(Ink.faint)
                     } else if searching {
                         ProgressView().controlSize(.small)
@@ -121,18 +140,20 @@ struct LibraryView: View {
                 .padding(.horizontal, 14)
                 .frame(height: 40)
                 .glassEffect(.regular, in: .capsule)
-                HStack {
-                    Text(filterTitle).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                    Spacer()
-                    SegmentedCapsule(selection: $agentFilter, options: [("all", l.t("Все", "All"), nil),
-                                                                        ("claude", "Claude Code", nil), ("codex", "Codex", nil)])
-                        .font(.system(size: 12))
-                        .frame(width: 250)
-                        .accessibilityLabel(l.agent)
-                    UtilityButton(title: l.t("Очистить лишние", "Clean up"), args: ["sessions", "clean"])
-                        .controlSize(.small)
-                        .help(l.t("Битые ссылки, сессии без ответа, папки удаленных проектов. Сначала покажет список.",
-                                  "Broken links, sessions without a reply, folders of deleted projects. Shows the list first."))
+                // в узкой колонке название не сжимается до "…": переключатель и кнопка уходят на строку ниже
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        listTitle
+                        Spacer(minLength: 8)
+                        listControls
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        listTitle
+                        HStack {
+                            listControls
+                            Spacer(minLength: 0)
+                        }
+                    }
                 }
                 List(rows, selection: $selection) { row in
                     LibraryRowView(row: row, query: query, open: liveIds.contains(row.id))
@@ -154,7 +175,7 @@ struct LibraryView: View {
             .padding(.top, 8)
             .navigationSplitViewColumnWidth(min: 380, ideal: 480, max: 680)
         } detail: {
-            if let preview, let id = preview.id {
+            if case let (preview, id)? = shown {
                 PreviewView(preview: preview, sessionId: id, size: backend.state.sessions.first { $0.id == id }?.size,
                             onMoveToClaude: { moveToClaude(id) },
                             onResume: { resume(awake: $0) }, onDelete: { confirmDelete = true },
@@ -185,13 +206,31 @@ struct LibraryView: View {
                      "The transcript, its file history and its lines in history.jsonl are removed. This can't be undone."))
         }
         .sheet(isPresented: $renaming) {
-            if let id = preview?.id {
-                RenameSessionSheet(id: id, current: preview?.title ?? "") { Task { await loadPreview(); backend.refresh() } }
+            if case let (preview, id)? = shown {
+                RenameSessionSheet(id: id, current: preview.title ?? "") { Task { await loadPreview(); backend.refresh() } }
             }
         }
         .frame(minWidth: 1000, minHeight: 580)
         .onAppear { WindowMemory.set("library", open: true) }
         .onDisappear { WindowMemory.set("library", open: false) }
+    }
+
+    private var listTitle: some View {
+        Text(filterTitle).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+    }
+
+    private var listControls: some View {
+        HStack {
+            SegmentedCapsule(selection: $agentFilter, options: [("all", l.t("Все", "All"), nil),
+                                                                ("claude", "Claude Code", nil), ("codex", "Codex", nil)])
+                .font(.system(size: 12))
+                .frame(width: 250)
+                .accessibilityLabel(l.agent)
+            UtilityButton(title: l.t("Очистить лишние", "Clean up"), args: ["sessions", "clean"])
+                .controlSize(.small)
+                .help(l.t("Битые ссылки, сессии без ответа, папки удаленных проектов. Сначала покажет список.",
+                          "Broken links, sessions without a reply, folders of deleted projects. Shows the list first."))
+        }
     }
 
     private var filterTitle: String {
@@ -216,9 +255,13 @@ struct LibraryView: View {
 
     private func loadPreview() async {
         preview = nil
+        previewFor = nil
         storedSelection = selection ?? ""
         guard let id = selection else { return }
         let result = await backend.read(id)
+        // выбрали другую сессию, пока это превью читалось: оно уже не нужно
+        guard !Task.isCancelled, selection == id else { return }
+        previewFor = id
         if result?.id == nil, let codex = backend.state.sessions.first(where: { $0.id == id && $0.kind == .codex }) {
             // тред не прочитался: превью без сообщений, продолжить его все равно можно
             preview = SessionPreview(id: id, title: codex.title, home: codex.cwd, total: nil, first: nil, last: nil,
@@ -229,12 +272,12 @@ struct LibraryView: View {
     }
 
     private func resume(awake: Bool) {
-        guard let id = preview?.id else { return }
-        let home = preview?.home ?? ""
+        guard case let (preview, id)? = shown else { return }
+        let home = preview.home ?? ""
         let project = backend.state.projects.first { home == $0.path || home.hasPrefix($0.path + "/") }
         let path = project?.path ?? home
         let name = project?.name ?? (home as NSString).lastPathComponent
-        let agent: LaunchSpec.Agent = preview?.agent == "codex" ? .codex : .claude
+        let agent: LaunchSpec.Agent = preview.agent == "codex" ? .codex : .claude
         var spec = project.map { LaunchSpec.resume(id, cwd: home, project: $0, agent: agent) }
             ?? LaunchSpec(projectName: name, projectPath: path, agent: agent, resumeId: id)
         spec.awake = awake
@@ -244,7 +287,8 @@ struct LibraryView: View {
 
     /// Новая вкладка Claude Code в проекте треда Codex с его контекстом: /import-codex <id>.
     private func moveToClaude(_ id: String) {
-        let home = preview?.home ?? ""
+        guard case let (preview, shownId)? = shown, shownId == id else { return }
+        let home = preview.home ?? ""
         let project = backend.state.projects.first { home == $0.path || home.hasPrefix($0.path + "/") }
         var spec = LaunchSpec(projectName: project?.name ?? (home as NSString).lastPathComponent, projectPath: project?.path ?? home,
                               direct: backend.state.proxy?.defaultRoute == "direct")
@@ -254,7 +298,7 @@ struct LibraryView: View {
     }
 
     private func delete() {
-        guard let id = preview?.id else { return }
+        guard let id = shown?.id else { return }
         Task {
             if await backend.perform(["sessions", "rm", id, "-y"]) {
                 selection = nil
@@ -266,7 +310,7 @@ struct LibraryView: View {
 
     /// Перенести в другую папку: agentmeister sessions mv переписывает cwd внутри сессии.
     private func move() {
-        guard let id = preview?.id else { return }
+        guard let id = shown?.id else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -279,7 +323,7 @@ struct LibraryView: View {
     }
 
     private func slim() {
-        guard let id = preview?.id else { return }
+        guard let id = shown?.id else { return }
         Task {
             _ = await backend.perform(["sessions", "slim", id, "-y"])
             await loadPreview()
