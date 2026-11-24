@@ -9,6 +9,7 @@ typealias Color = SwiftUI.Color
 @MainActor
 final class UIState: ObservableObject {
     @Published var showNewSession = false
+    @Published var showPalette = false
     @Published var showInspector = true
     @Published var newSessionProject: String?
 }
@@ -52,6 +53,16 @@ struct MainView: View {
         .toolbar { toolbar }
         .sheet(isPresented: $ui.showNewSession) {
             NewSessionSheet(initialProject: ui.newSessionProject)
+        }
+        .sheet(isPresented: $ui.showPalette) {
+            PaletteView()
+        }
+        .alert(l.t("Сессия уже открыта в другом окне", "The session is already open in another window"),
+               isPresented: Binding(get: { workspace.notice != nil }, set: { if !$0 { workspace.notice = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(l.t("Она идет в iTerm2, Terminal или другом окне Agentmeister. Второй Claude на той же переписке перемешал бы ответы. Закрой ее там и открой здесь.",
+                     "It runs in iTerm2, Terminal or another Agentmeister window. A second Claude on the same transcript would mix up the replies. Close it there and open it here."))
         }
         .onReceive(backend.$state) { state in workspace.sync(with: state.live) }
         .onChange(of: backend.ready) {
