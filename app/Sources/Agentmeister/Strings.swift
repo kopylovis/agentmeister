@@ -77,12 +77,30 @@ struct L {
     }
 
     func tabs(_ n: Int) -> String { count(n, "вкладка", "вкладки", "вкладок", "tab", "tabs") }
+    func commands(_ n: Int) -> String { count(n, "команда", "команды", "команд", "command", "commands") }
+
+    var slim: String { t("Сжать", "Slim") }
+    var rename: String { t("Переименовать", "Rename") }
+    var forget: String { t("Забыть", "Forget") }
+    var slimming: String { t("Сжимаю сессию и продолжаю ее…", "Slimming the session, then resuming it…") }
+    var forgetting: String { t("Удаляю сессию без следа и открываю чистую…", "Deleting the session without a trace, opening a clean one…") }
+
+    /// Короткое состояние для строки сессии в боковой панели: "ждет", "идет".
+    func shortStatus(_ status: String?) -> String {
+        switch status {
+        case "waiting": return t("ждет", "waiting")
+        case "busy": return t("идет", "running")
+        case "idle": return t("открыта", "open")
+        default: return starting
+        }
+    }
 
     func ago(_ time: Double) -> String {
         let s = max(0, Date().timeIntervalSince1970 - time)
         if s < 60 { return t("сейчас", "now") }
         if s < 3600 { return t("\(Int(s / 60)) мин", "\(Int(s / 60)) min") }
         if s < 86400 { return t("\(Int(s / 3600)) ч", "\(Int(s / 3600)) h") }
+        if s < 172800 { return t("вчера", "yesterday") }
         return t("\(Int(s / 86400)) дн", "\(Int(s / 86400)) d")
     }
 }

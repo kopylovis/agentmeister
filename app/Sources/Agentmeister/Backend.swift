@@ -113,6 +113,8 @@ struct AppState: Decodable {
         let `protocol`: String?
         let sessions: Int?
         let port: Int?
+        let ip: String?
+        let node: String?
     }
 
     var version = ""
@@ -125,6 +127,13 @@ struct AppState: Decodable {
     var live: [Live] = []
     var proxy: Proxy?
     var modes: [String: Bool] = [:]
+    /// Работает ли исполнитель host-run и сколько команд в белом списке.
+    var hostRun: HostRun?
+
+    struct HostRun: Decodable, Hashable {
+        let running: Bool
+        let commands: Int
+    }
     var errors: [String: String] = [:]
 
     init() {}

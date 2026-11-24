@@ -13,6 +13,8 @@ final class UIState: ObservableObject {
     @Published var showOnboarding = false
     @Published var showInspector = true
     @Published var newSessionProject: String?
+    /// Вкладка, сессию которой переименовывают.
+    @Published var renaming: TerminalTab?
 }
 
 func tilde(_ path: String) -> String {
@@ -41,15 +43,15 @@ struct MainView: View {
     var body: some View {
         NavigationSplitView {
             Sidebar()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 360)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 360)
         } detail: {
             DetailView()
                 .inspector(isPresented: $ui.showInspector) {
                     InspectorView()
-                        .inspectorColumnWidth(min: 240, ideal: 290, max: 380)
+                        .inspectorColumnWidth(min: 260, ideal: 290, max: 380)
                 }
         }
-        .navigationTitle(workspace.current?.title ?? "Agentmeister")
+        .navigationTitle("Agentmeister")
         .navigationSubtitle(subtitle)
         .toolbar { toolbar }
         .sheet(isPresented: $ui.showNewSession) {
@@ -60,6 +62,9 @@ struct MainView: View {
         }
         .sheet(isPresented: $ui.showOnboarding) {
             OnboardingView()
+        }
+        .sheet(item: $ui.renaming) { tab in
+            RenameSheet(tab: tab)
         }
         .alert(l.t("Сессия уже открыта в другом окне", "The session is already open in another window"),
                isPresented: Binding(get: { workspace.notice != nil }, set: { if !$0 { workspace.notice = nil } })) {
@@ -105,58 +110,70 @@ struct MainView: View {
         }
     }
 
+    /// "4 вкладки, 1 ждет ответа" / "4 tabs, 1 waiting for you", как в макете.
     private var subtitle: String {
         let waiting = workspace.tabs.filter { $0.status == "waiting" }.count
         let count = l.tabs(workspace.tabs.count)
-        return waiting > 0 ? count + " · " + l.t("ждут \(waiting)", "\(waiting) waiting") : count
+        return waiting > 0 ? count + ", " + l.t("\(waiting) ждет ответа", "\(waiting) waiting for you") : count
     }
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
-            ProxyBadge()
+            HStack(spacing: 10) {
+                SearchCapsule()
+                ProxyBadge()
+            }
         }
-        ToolbarItem(placement: .primaryAction) {
-            LibraryToolbarButton(title: l.t("Сессии", "Sessions"))
-        }
-        ToolbarItem(placement: .primaryAction) {
-            UsageToolbarButton(title: l.t("Статистика", "Usage"))
-        }
-        ToolbarItem(placement: .primaryAction) {
+        .sharedBackgroundVisibility(.hidden)
+        ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 ui.newSessionProject = workspace.current?.spec.projectPath
                 ui.showNewSession = true
             } label: {
                 Label(l.newSession, systemImage: "plus")
+                    .labelStyle(.titleAndIcon)
             }
             .buttonStyle(.glassProminent)
             .help(l.newSession + ", ⌘N")
-        }
-        ToolbarItem(placement: .primaryAction) {
             Button {
                 ui.showInspector.toggle()
             } label: {
                 Label(l.inspector, systemImage: "sidebar.right")
             }
-            .help(l.inspector + ", ⌥⌘I")
+            .help(l.t("Показать или скрыть панель сессии", "Show or hide the session panel") + ", ⌥⌘I")
         }
     }
 }
 
-struct LibraryToolbarButton: View {
-    @Environment(\.openWindow) private var openWindow
-    let title: String
+/// Поле "Поиск ⌘K" в тулбаре. Открывает палитру команд, где ищутся вкладки, сессии и действия.
+struct SearchCapsule: View {
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var ui: UIState
+    var l: L { L(backend.state.lang) }
 
     var body: some View {
         Button {
-            openWindow(id: "library")
+            ui.showPalette = true
         } label: {
-            Label(title, systemImage: "books.vertical")
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").font(.system(size: 13))
+                Text(l.t("Поиск   ⌘K", "Search   ⌘K"))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Ink.muted)
+            .padding(.horizontal, 14)
+            .frame(width: 240, height: 34)
+            .contentShape(Capsule())
         }
-        .help(title + ", ⇧⌘O")
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .accessibilityLabel(l.t("Поиск по сессиям", "Search sessions"))
+        .help(l.t("Палитра команд, ⌘K", "Command palette, ⌘K"))
     }
 }
 
+/// Значок proxy в тулбаре: бирюзовая стеклянная капсула со страной и протоколом выхода, "KZ · vless".
 struct ProxyBadge: View {
     @EnvironmentObject var backend: Backend
     var l: L { L(backend.state.lang) }
@@ -164,25 +181,29 @@ struct ProxyBadge: View {
     var body: some View {
         let proxy = backend.state.proxy
         let text: String
-        let color: Color
+        let live: Bool
         if proxy == nil && backend.lastError != nil {
             text = l.t("нет данных", "no data")
-            color = .orange
+            live = false
         } else if proxy?.configured != true {
             text = l.proxyOff
-            color = .secondary
+            live = false
         } else if proxy?.running == true {
             text = [proxy?.exit, proxy?.protocol].compactMap { $0 }.joined(separator: " · ")
-            color = .teal
+            live = true
         } else {
             text = l.proxyIdle
-            color = .secondary
+            live = false
         }
-        return Label(text.isEmpty ? "proxy" : text, systemImage: "shield.lefthalf.filled")
-            .labelStyle(.titleAndIcon)
-            .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .help(backend.lastError ?? "mihomo")
+        return HStack(spacing: 7) {
+            Image(systemName: "shield").font(.system(size: 12, weight: .medium))
+            Text(text.isEmpty ? "proxy" : text).fontWeight(.medium)
+        }
+        .foregroundStyle(live ? Ink.teal : Ink.muted)
+        .padding(.horizontal, 14)
+        .frame(height: 34)
+        .glassEffect(live ? .regular.tint(Ink.tealDot.opacity(0.22)) : .regular, in: .capsule)
+        .help(backend.lastError ?? [proxy?.node, proxy?.ip].compactMap { $0 }.joined(separator: " · "))
     }
 }
 
@@ -197,41 +218,38 @@ struct Sidebar: View {
     var l: L { L(backend.state.lang) }
 
     var body: some View {
+        VStack(spacing: 0) {
+            projectList
+            SidebarFooter()
+        }
+        .onAppear { expandOpenProjects() }
+        .onChange(of: workspace.selected) { expandOpenProjects() }
+    }
+
+    private var projectList: some View {
         List {
-            Section(l.projects) {
+            Section {
                 ForEach(backend.state.projects) { project in
                     DisclosureGroup(isExpanded: binding(for: project)) {
                         ForEach(backend.state.sessions(in: project).prefix(6)) { session in
                             SessionRow(session: session, project: project)
                         }
                     } label: {
-                        ProjectRow(project: project)
+                        ProjectRow(project: project, open: expanded.contains(project.path))
                     }
                 }
-            }
-            if !backend.state.modes.isEmpty {
-                Section(l.modes) {
-                    ForEach(backend.state.modes.keys.sorted().filter { $0 != "alias" }, id: \.self) { key in
-                        Toggle(l.modeTitle(key), isOn: Binding(
-                            get: { backend.state.modes[key] ?? false },
-                            set: { backend.setMode(key, on: $0) }
-                        ))
-                        .toggleStyle(.switch)
-                        .controlSize(.mini)
-                    }
-                }
+            } header: {
+                SectionCaption(text: l.projects)
             }
             if let error = backend.lastError {
                 Section {
                     Label(error, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(Ink.amber)
                         .font(.caption)
                 }
             }
         }
         .listStyle(.sidebar)
-        .onAppear { expandOpenProjects() }
-        .onChange(of: workspace.selected) { expandOpenProjects() }
     }
 
     private func binding(for project: AppState.Project) -> Binding<Bool> {
@@ -244,28 +262,126 @@ struct Sidebar: View {
     }
 }
 
+/// Низ боковой панели: режимы капсулами и состояние host-run.
+struct SidebarFooter: View {
+    @EnvironmentObject var backend: Backend
+
+    var l: L { L(backend.state.lang) }
+
+    /// Порядок из макета. Режимы, которых нет в ответе app-state, не показываются.
+    private static let order = ["humanize", "guard", "notify", "buildlog", "lid"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionCaption(text: l.modes)
+            FlowLayout(spacing: 6) {
+                ForEach(Self.order.filter { backend.state.modes[$0] != nil }, id: \.self) { key in
+                    let on = backend.state.modes[key] ?? false
+                    Button {
+                        backend.setMode(key, on: !on)
+                    } label: {
+                        Text(key)
+                            .font(.system(size: 12))
+                            .foregroundStyle(on ? Ink.modeOn : Ink.muted)
+                            .padding(.horizontal, 12)
+                            .frame(height: 28)
+                            .background(Capsule().fill(on ? Ink.modeOnBg : Ink.modeOffBg))
+                            .overlay(Capsule().strokeBorder(on ? Ink.modeOnBorder : Ink.modeOffBorder))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help(l.modeTitle(key))
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }
+            if let h = backend.state.hostRun {
+                HStack(spacing: 8) {
+                    GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
+                    Text(h.running
+                         ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
+                         : l.t("host-run не запущен", "host-run isn't running"))
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(Ink.muted)
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.top, 12)
+        .padding(.bottom, 14)
+    }
+}
+
+/// Раскладка в строку с переносом, как flex-wrap в макете.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.last.map { $0.y + $0.height } ?? 0
+        return CGSize(width: proposal.width ?? rows.map(\.width).max() ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = arrange(width: bounds.width, subviews: subviews)
+        for row in rows {
+            var x = bounds.minX
+            for index in row.items {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: bounds.minY + row.y), proposal: ProposedViewSize(size))
+                x += size.width + spacing
+            }
+        }
+    }
+
+    private struct Row { var items: [Int] = []; var y: CGFloat = 0; var width: CGFloat = 0; var height: CGFloat = 0 }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = []
+        var row = Row()
+        for (index, view) in subviews.enumerated() {
+            let size = view.sizeThatFits(.unspecified)
+            if !row.items.isEmpty && row.width + spacing + size.width > width {
+                rows.append(row)
+                row = Row(y: row.y + row.height + spacing)
+            }
+            row.width += (row.items.isEmpty ? 0 : spacing) + size.width
+            row.height = max(row.height, size.height)
+            row.items.append(index)
+        }
+        if !row.items.isEmpty { rows.append(row) }
+        return rows
+    }
+}
+
 struct ProjectRow: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var ui: UIState
     let project: AppState.Project
+    let open: Bool
     @State private var hover = false
 
     var l: L { L(backend.state.lang) }
 
     var body: some View {
-        let waiting = workspace.tabs.filter { $0.spec.projectPath == project.path && $0.status == "waiting" }.count
-        HStack(spacing: 6) {
+        let tabs = workspace.tabs.filter { $0.spec.projectPath == project.path && $0.running }
+        let liveHere = backend.state.live.filter { live in
+            guard let cwd = live.cwd else { return false }
+            return cwd == project.path || cwd.hasPrefix(project.path + "/")
+        }
+        // вкладки этого окна и сессии в других окнах, без двойного счета
+        let count = max(tabs.count, liveHere.count)
+        let waiting = tabs.contains { $0.status == "waiting" } || liveHere.contains { $0.status == "waiting" }
+        HStack(spacing: 8) {
             Image(systemName: "folder")
-                .foregroundStyle(.secondary)
+                .font(.system(size: 13))
+                .foregroundStyle(Ink.muted)
             Text(project.name)
+                .fontWeight(.medium)
                 .lineLimit(1)
             Spacer()
-            if waiting > 0 {
-                Text(l.t("\(waiting) ждет", "\(waiting) waiting"))
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
             if hover {
                 Button {
                     workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path))
@@ -274,9 +390,15 @@ struct ProjectRow: View {
                 }
                 .buttonStyle(.borderless)
                 .help(l.t("Новая сессия Claude Code через proxy", "New Claude Code session via proxy"))
+            } else if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(waiting ? Ink.amber : Ink.faint)
             }
         }
+        .frame(minHeight: 28)
         .onHover { hover = $0 }
+        .listRowBackground(open ? RoundedRectangle(cornerRadius: 10).fill(Ink.openBg).padding(.horizontal, 10) : nil)
         .contextMenu {
             Button(l.t("Новая сессия через proxy", "New session via proxy")) {
                 workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path))
@@ -310,29 +432,32 @@ struct SessionRow: View {
         let tab = workspace.tabs.first { $0.sessionId == session.id && $0.running }
         let live = backend.state.live.first { $0.sessionId == session.id }
         let status = tab?.status ?? live?.status
+        let current = tab != nil && tab?.id == workspace.selected
+        let dot: Color = status == "waiting" ? Ink.amberDot : status != nil ? Ink.tealDot : Ink.savedDot
         Button {
             workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path, resumeId: session.id))
         } label: {
             HStack(spacing: 8) {
-                Circle()
-                    .fill(status == nil ? Color.secondary.opacity(0.35) : statusColor(status))
-                    .frame(width: 7, height: 7)
+                GlowDot(color: dot, glow: status != nil)
                 Text(session.title.isEmpty ? l.untitled : session.title)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .foregroundStyle(current ? Ink.strong : Ink.text2)
                 Spacer(minLength: 4)
-                if workspace.liveElsewhere.contains(session.id) {
+                if live != nil && tab == nil {
                     Image(systemName: "macwindow.on.rectangle")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Ink.faint)
                 }
-                Text(status.map { l.statusTitle($0) } ?? l.ago(session.mtime))
-                    .font(.caption)
-                    .foregroundStyle(status == "waiting" ? Color.orange : Color.secondary)
+                Text(status.map { l.shortStatus($0) } ?? l.ago(session.mtime))
+                    .font(.system(size: 11))
+                    .foregroundStyle(status == "waiting" ? Ink.amber : Ink.faint)
             }
+            .frame(minHeight: 26)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowBackground(current ? RoundedRectangle(cornerRadius: 10).fill(Ink.thumb).padding(.horizontal, 10) : nil)
         .help(live != nil && tab == nil
               ? l.t("Открыта в другом окне", "Open in another window")
               : l.t("Продолжить в новой вкладке", "Resume in a new tab"))
@@ -351,13 +476,13 @@ struct DetailView: View {
         if workspace.tabs.isEmpty {
             ContentUnavailableView(l.noTabs, systemImage: "terminal", description: Text(l.noTabsHint))
         } else {
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 TabStrip()
                 if let tab = workspace.current {
                     InfoBar(tab: tab)
                 }
                 TerminalHost(tab: workspace.current)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
             .padding(.horizontal, 10)
             .padding(.bottom, 10)
@@ -365,27 +490,45 @@ struct DetailView: View {
     }
 }
 
+/// Полоса вкладок: одна стеклянная капсула, выбранная вкладка светлее, в конце "+".
 struct TabStrip: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var backend: Backend
+    @EnvironmentObject var ui: UIState
+
+    var l: L { L(backend.state.lang) }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            GlassEffectContainer(spacing: 6) {
-                HStack(spacing: 6) {
+        HStack(spacing: 2) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 2) {
                     ForEach(workspace.tabs) { tab in
                         TabChip(tab: tab, selected: tab.id == workspace.selected)
                     }
                 }
-                .padding(4)
             }
+            Button {
+                if !workspace.newTab() { ui.showNewSession = true }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Ink.text2)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(l.newTab + ", ⌘T")
+            .accessibilityLabel(l.newTab)
         }
+        .padding(4)
+        .glassEffect(.regular, in: .rect(cornerRadius: 20))
     }
 }
 
 struct TabChip: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var backend: Backend
+    @EnvironmentObject var ui: UIState
     @ObservedObject var tab: TerminalTab
     let selected: Bool
     @State private var hover = false
@@ -396,62 +539,136 @@ struct TabChip: View {
         Button {
             workspace.selected = tab.id
         } label: {
-            HStack(spacing: 7) {
-                Group {
-                    if tab.spec.utility != nil {
-                        Image(systemName: "terminal").font(.system(size: 9, weight: .bold))
-                    } else {
-                        Text(tab.spec.agent == .codex ? "X" : "C").font(.system(size: 10, weight: .bold, design: .monospaced))
-                    }
-                }
-                .frame(width: 18, height: 18)
-                .background(Circle().fill((tab.spec.utility != nil ? Color.secondary : tab.spec.agent == .codex ? Color.blue : Color.orange).opacity(0.22)))
+            HStack(spacing: 8) {
+                AgentBadge(agent: tab.spec.utility == nil ? tab.spec.agent : nil)
                 Text(tab.title)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .frame(maxWidth: 200, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if tab.spec.proxied || tab.spec.utility == nil {
                     Text(tab.spec.proxied ? l.proxy : l.direct)
-                        .font(.caption)
-                        .foregroundStyle(tab.spec.proxied ? Color.teal : Color.orange)
+                        .font(.system(size: 11))
+                        .foregroundStyle(tab.spec.proxied ? Ink.teal : Ink.direct)
                 }
                 if hover {
                     Button {
                         workspace.close(tab.id)
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.system(size: 8, weight: .bold))
                             .frame(width: 16, height: 16)
-                            .background(Circle().fill(Color.primary.opacity(0.12)))
+                            .background(Circle().fill(Ink.chip))
                     }
                     .buttonStyle(.plain)
                     .help(l.closeTab + ", ⌘W")
                 } else if tab.status == "waiting" {
-                    Circle().fill(Color.orange).frame(width: 7, height: 7)
+                    GlowDot(color: Ink.amberDot, size: 8)
+                        .accessibilityLabel(l.t("ждет ответа", "waiting for you"))
                 } else if !tab.running {
-                    Image(systemName: "stop.circle").foregroundStyle(.secondary)
+                    Image(systemName: "stop.circle").font(.system(size: 11)).foregroundStyle(Ink.faint)
                 }
             }
+            .font(.system(size: 12))
+            .foregroundStyle(selected ? Ink.strong : Ink.muted)
             .padding(.horizontal, 12)
-            .frame(height: 30)
+            .frame(minWidth: 150, maxWidth: 230, minHeight: 32, maxHeight: 32)
+            .background(Capsule().fill(selected ? Ink.thumb : .clear).shadow(color: .black.opacity(selected ? 0.25 : 0), radius: 4, y: 2))
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
-        .glassEffect(selected ? .regular.tint(.accentColor.opacity(0.25)).interactive() : .regular.interactive(), in: .capsule)
-        .contextMenu {
-            Button(l.restart) { tab.restart() }
-            Button(l.closeTab) { workspace.close(tab.id) }
-            if let sid = tab.sessionId {
-                Divider()
-                Button(l.t("Скопировать id сессии", "Copy session id")) {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(sid, forType: .string)
-                }
-            }
-        }
+        .contextMenu { TabMenu(tab: tab) }
     }
 }
 
+/// Действия вкладки из макета: в меню по правому клику и в палитре.
+struct TabMenu: View {
+    @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var ui: UIState
+    @ObservedObject var tab: TerminalTab
+
+    var l: L { L(backend.state.lang) }
+
+    var body: some View {
+        let claude = tab.spec.utility == nil && tab.spec.agent == .claude
+        Button(l.restart) { tab.restart() }
+            .keyboardShortcut("r", modifiers: .command)
+        if claude && tab.sessionId != nil {
+            Button(l.slim) { tab.slim(note: l.slimming) }
+            Button(l.rename + "…") { ui.renaming = tab }
+        }
+        if tab.spec.utility == nil {
+            Button {
+                tab.switchRoute()
+            } label: {
+                Text(tab.spec.proxied ? l.t("Перейти напрямую", "Switch to direct") : l.t("Перейти на proxy", "Switch to proxy"))
+                Text(l.t("перезапуск той же сессии", "restarts the same session"))
+            }
+        }
+        if let sid = tab.sessionId {
+            Button(l.t("Скопировать id сессии", "Copy session id")) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(sid, forType: .string)
+            }
+        }
+        if claude {
+            Divider()
+            Button(role: .destructive) {
+                tab.forget(note: l.forgetting)
+            } label: {
+                Text(l.forget)
+                Text(l.t("удалить без следа", "delete without a trace"))
+            }
+        }
+        Divider()
+        Button(l.closeTab) { workspace.close(tab.id) }
+            .keyboardShortcut("w", modifiers: .command)
+    }
+}
+
+/// Переименование сессии вкладки, как /rename.
+struct RenameSheet: View {
+    @EnvironmentObject var backend: Backend
+    @Environment(\.dismiss) private var dismiss
+    let tab: TerminalTab
+    @State private var title = ""
+
+    var l: L { L(backend.state.lang) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(l.t("Переименовать сессию", "Rename the session")).font(.title3.weight(.semibold))
+            TextField(l.t("Название", "Title"), text: $title)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(save)
+            HStack {
+                Spacer()
+                Button(l.cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(l.rename, action: save)
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 420)
+        .onAppear {
+            title = backend.state.sessions.first { $0.id == tab.sessionId }?.title ?? tab.title
+        }
+    }
+
+    private func save() {
+        let clean = title.trimmingCharacters(in: .whitespaces)
+        guard !clean.isEmpty else { return }
+        tab.rename(clean)
+        dismiss()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { backend.refresh() }
+    }
+}
+
+/// Строка над терминалом: папка, ветка, песочница, Remote Control, "не спать" и смена маршрута.
 struct InfoBar: View {
     @EnvironmentObject var backend: Backend
     @ObservedObject var tab: TerminalTab
@@ -459,31 +676,73 @@ struct InfoBar: View {
     var l: L { L(backend.state.lang) }
 
     var body: some View {
+        let branch = backend.state.sessions.first { $0.id == tab.sessionId }?.branch ?? ""
+        let port = backend.state.proxy?.port ?? 17890
         HStack(spacing: 8) {
-            Text(tilde(tab.spec.projectPath))
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(.secondary)
-            let route = tab.spec.proxied ? l.proxy + " · sandbox-exec" : tab.spec.utility != nil ? l.t("команда agentmeister", "agentmeister command") : l.direct
-            let tint: Color = tab.spec.proxied ? .teal : tab.spec.utility != nil ? .secondary : .orange
-            Text(route)
-                .font(.caption)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(tint.opacity(0.15)))
-                .foregroundStyle(tint)
-            if tab.running {
-                Text(l.statusTitle(tab.status))
-                    .font(.caption)
-                    .foregroundStyle(tab.status == "waiting" ? Color.orange : Color.secondary)
-            } else {
-                Text(l.exited + (tab.exitCode.map { ", \($0)" } ?? ""))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Chip(mono: true) { Text(tilde(tab.spec.projectPath)).lineLimit(1).truncationMode(.head) }
+                .layoutPriority(2)
+            if !branch.isEmpty {
+                Chip(mono: true) { Text(branch).lineLimit(1) }
+                    .layoutPriority(1)
             }
-            Spacer()
-            Button(l.restart) { tab.restart() }
-                .buttonStyle(.glass)
-                .controlSize(.small)
+            if tab.spec.utility != nil {
+                Chip(foreground: Ink.muted) {
+                    Text(tab.spec.proxied ? l.t("proxy run, сеть через 127.0.0.1:\(port)", "proxy run, network via 127.0.0.1:\(port)")
+                                          : l.t("команда agentmeister", "agentmeister command"))
+                }
+            } else if tab.spec.proxied {
+                Chip(background: Ink.tealChip, foreground: Ink.teal) {
+                    Text(tab.spec.agent == .codex
+                         ? l.t("строгий профиль, сеть только через mihomo", "strict profile, network only through mihomo")
+                         : l.t("sandbox-exec, сеть через 127.0.0.1:\(port)", "sandbox-exec, network via 127.0.0.1:\(port)"))
+                }
+            } else {
+                Chip(foreground: Ink.direct) { Text(l.t("напрямую, без sandbox-exec", "direct, no sandbox-exec")) }
+            }
+            if tab.spec.remoteControl && tab.spec.agent == .claude {
+                Chip {
+                    Image(systemName: "iphone").font(.system(size: 11))
+                    Text("Remote Control")
+                }
+                .help(l.t("Сессия подключена к Remote Control, вопросы приходят в приложение Claude на телефоне",
+                          "Connected to Remote Control, questions go to the Claude app on your phone"))
+            }
+            if tab.spec.utility == nil {
+                Button {
+                    tab.setAwake(!tab.spec.awake)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "timer").font(.system(size: 11))
+                        Text(l.t("Не спать", "Stay awake"))
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(tab.spec.awake ? Ink.modeOn : Ink.muted)
+                    .padding(.horizontal, 12)
+                    .frame(height: 26)
+                    .background(Capsule().fill(tab.spec.awake ? Ink.modeOnBg : .clear))
+                    .overlay(Capsule().strokeBorder(tab.spec.awake ? Ink.modeOnBorder : Ink.buttonBorder))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(l.t("Mac не уснет, пока идет эта сессия", "The Mac stays awake while this session runs"))
+                .accessibilityAddTraits(tab.spec.awake ? .isSelected : [])
+            }
+            if !tab.running {
+                Text(l.exited + (tab.exitCode.map { ", \($0)" } ?? ""))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.faint)
+            }
+            Spacer(minLength: 0)
+            if tab.spec.utility == nil {
+                Button(tab.spec.proxied ? l.t("Перезапустить напрямую", "Restart without proxy")
+                                        : l.t("Перезапустить через proxy", "Restart via proxy")) { tab.switchRoute() }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+            } else {
+                Button(l.restart) { tab.restart() }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+            }
         }
         .padding(.horizontal, 4)
     }
@@ -503,7 +762,7 @@ struct TerminalHost: NSViewRepresentable {
 
     func updateNSView(_ container: NSView, context: Context) {
         let dark = context.environment.colorScheme == .dark
-        let background = dark ? NSColor(red: 0.063, green: 0.067, blue: 0.078, alpha: 1) : NSColor.white
+        let background = dark ? NSColor(hex: 0x08090B) : NSColor.white
         container.layer?.backgroundColor = background.cgColor
         guard let term = tab?.view else {
             container.subviews.forEach { $0.removeFromSuperview() }
@@ -511,8 +770,7 @@ struct TerminalHost: NSViewRepresentable {
         }
         if term.nativeBackgroundColor != background {
             term.nativeBackgroundColor = background
-            term.nativeForegroundColor = dark ? NSColor(red: 0.85, green: 0.86, blue: 0.88, alpha: 1)
-                                              : NSColor(red: 0.14, green: 0.15, blue: 0.17, alpha: 1)
+            term.nativeForegroundColor = dark ? NSColor(hex: 0xD9DBE1) : NSColor(hex: 0x24262B)
             term.caretColor = dark ? .white : .black
         }
         if term.superview !== container {
@@ -520,9 +778,9 @@ struct TerminalHost: NSViewRepresentable {
             term.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(term)
             NSLayoutConstraint.activate([
-                term.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
-                term.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
-                term.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+                term.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+                term.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+                term.topAnchor.constraint(equalTo: container.topAnchor, constant: 14),
                 term.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
             ])
         }
@@ -547,6 +805,7 @@ struct InspectorView: View {
     }
 }
 
+/// Панель сессии по макету: заголовок, карточка с агентом и маршрутом, кнопки, host-run.
 struct TabInspector: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
@@ -554,49 +813,100 @@ struct TabInspector: View {
 
     var l: L { L(backend.state.lang) }
 
-    /// Строка без переноса: панель узкая, и длинный путь лучше сократить посередине, чем ломать на две строки.
-    private func row(_ title: String, _ value: String, truncate: Text.TruncationMode = .tail) -> some View {
-        HStack(spacing: 12) {
-            Text(title)
-                .layoutPriority(1)
-            Spacer(minLength: 8)
-            Text(value)
-                .lineLimit(1)
-                .truncationMode(truncate)
-                .foregroundStyle(.secondary)
-                .help(value)
+    var body: some View {
+        let saved = backend.state.sessions.first { $0.id == tab.sessionId }
+        let proxy = backend.state.proxy
+        let claude = tab.spec.utility == nil && tab.spec.agent == .claude
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    SectionCaption(text: l.t("Сессия", "Session"))
+                    Text(saved?.title.isEmpty == false ? saved!.title : tab.title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .lineLimit(3)
+                }
+                .padding(.horizontal, 4)
+
+                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 9) {
+                    row(l.agent, tab.spec.utility != nil ? "agentmeister" : tab.spec.agent == .codex ? "Codex" : "Claude Code")
+                    GridRow {
+                        Text(l.route).foregroundStyle(Ink.faint).frame(width: 76, alignment: .leading)
+                        if tab.spec.proxied {
+                            Text(["proxy " + (proxy?.exit ?? ""), [proxy?.protocol, proxy?.ip].compactMap { $0 }.joined(separator: " ")]
+                                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: ", "))
+                                .foregroundStyle(Ink.teal)
+                        } else {
+                            Text(l.directly).foregroundStyle(Ink.direct)
+                        }
+                    }
+                    row(l.t("Песочница", "Sandbox"), tab.spec.proxied ? "sandbox-exec" : l.t("нет", "none"))
+                    if let branch = saved?.branch, !branch.isEmpty {
+                        row(l.t("Ветка", "Branch"), branch, mono: true)
+                    }
+                    GridRow {
+                        Text(l.t("Активна", "Active")).foregroundStyle(Ink.faint).frame(width: 76, alignment: .leading)
+                        if tab.running {
+                            TimelineView(.periodic(from: .now, by: 30)) { context in
+                                Text(l.duration(context.date.timeIntervalSince(tab.startedAt)))
+                            }
+                        } else {
+                            Text(l.exited + (tab.exitCode.map { ", \($0)" } ?? ""))
+                        }
+                    }
+                }
+                .font(.system(size: 12))
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
+
+                FlowLayout(spacing: 6) {
+                    CapsuleButton(title: l.restart) { tab.restart() }
+                    if claude && tab.sessionId != nil {
+                        CapsuleButton(title: l.slim) { tab.slim(note: l.slimming) }
+                    }
+                    if tab.spec.utility == nil {
+                        CapsuleButton(title: l.t("С чистого листа", "Fresh start")) { tab.fresh() }
+                    }
+                    if claude {
+                        CapsuleButton(title: l.forget, destructive: true) { tab.forget(note: l.forgetting) }
+                    }
+                }
+                .padding(.horizontal, 2)
+
+                if let h = backend.state.hostRun {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SectionCaption(text: "host-run")
+                        HStack(spacing: 8) {
+                            GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
+                            Text(h.running ? l.t("исполнитель работает", "the runner is running") : l.t("исполнитель не запущен", "the runner isn't running"))
+                                .foregroundStyle(h.running ? Ink.teal : Ink.amber)
+                        }
+                        Text(l.commands(h.commands) + l.t(" в белом списке", " in the allowlist"))
+                            .foregroundStyle(Ink.muted)
+                        SettingsLink {
+                            Text(l.t("Весь белый список", "Full allowlist")).foregroundStyle(Ink.link)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .font(.system(size: 12))
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 16)
         }
     }
 
-    var body: some View {
-        let saved = backend.state.sessions.first { $0.id == tab.sessionId }
-        Form {
-            Section {
-                Text(saved?.title.isEmpty == false ? saved!.title : tab.title)
-                    .font(.headline)
-                row(l.agent, tab.spec.utility != nil ? "agentmeister" : tab.spec.agent == .codex ? "Codex" : "Claude Code")
-                row(l.route, tab.spec.proxied ? l.viaProxy : l.directly)
-                row(l.status, tab.running ? l.statusTitle(tab.status) : l.exited)
-                row(l.folder, tilde(tab.spec.projectPath), truncate: .head)
-                if let branch = saved?.branch, !branch.isEmpty {
-                    row("git", branch)
-                }
-                if let sid = tab.sessionId {
-                    LabeledContent(l.sessionId) {
-                        Text(String(sid.prefix(8)))
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                }
-            }
-            Section {
-                HStack {
-                    Button(l.restart) { tab.restart() }
-                    Button(l.closeTab) { workspace.close(tab.id) }
-                }
-            }
+    private func row(_ title: String, _ value: String, mono: Bool = false) -> some View {
+        GridRow {
+            Text(title).foregroundStyle(Ink.faint).frame(width: 76, alignment: .leading)
+            Text(value)
+                .font(mono ? .system(size: 12, design: .monospaced) : .system(size: 12))
+                .lineLimit(2)
+                .textSelection(.enabled)
         }
-        .formStyle(.grouped)
     }
 }
 
