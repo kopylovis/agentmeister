@@ -98,6 +98,32 @@ class Destructive(unittest.TestCase):
         "time git clean -fdx",
         "echo ok; git reset --hard",
         "echo a & rm -rf ~/x",
+        # скобки, группы и ключевые слова оболочки перед командой
+        "(rm -rf ~/Documents/old)",
+        "{ rm -rf ~/x; }",
+        "if true; then rm -rf ~/x; fi",
+        "if git reset --hard; then echo; fi",
+        "for f in a; do rm -rf ~/x; done",
+        "while true; do git push -f; done",
+        "if false; then :; else rm -rf ~/x; fi",
+        "! git push -f",
+        "f() { git reset --hard; }",
+        "(cd sub && git clean -fdx)",
+        # подстановки команд, в том числе в кавычках и вложенные
+        "echo $(git reset --hard)",
+        'echo "$(git reset --hard)"',
+        "echo `git push -f`",
+        "x=$(git clean -fd)",
+        "echo `echo \\`git reset --hard\\``",
+        'echo "$(echo "$(rm -rf ~/x)")"',
+        "cat <(git reset --hard)",
+        # неизвестная переменная: если она пуста, удалится корень или домашняя папка
+        'rm -rf "$UNSET"/',
+        "rm -rf $DIR/*",
+        "rm -rf ~/$X",
+        "rm -rf ${X}/usr",
+        "rm -rf $1/",
+        "rm -rf ./$X",
         'bash -c "echo a && bash -c \'git push -f\'"',
     ]
     PASS = [
@@ -140,6 +166,19 @@ class Destructive(unittest.TestCase):
         "ls | xargs rm -rf",
         "./gradlew clean build",
         "grep -rn 'git reset --hard' .",
+        "echo '$(git reset --hard)'",
+        "echo \"\\$(git reset --hard)\"",
+        "echo $((1 + 2))",
+        "echo \"a)\" && ls",
+        "(cd sub && ls)",
+        "if [ -d build ]; then rm -rf build; fi",
+        'rm -rf "$(pwd)/build"',
+        "rm -rf build/$X",
+        "rm -rf ${X:-/tmp}/y",
+        "rm -rf ${X:?}/",
+        'while read f; do rm -rf "$f"; done',
+        "for d in a b; do rm -rf build/$d; done",
+        "echo $(ls) `date`",
     ]
 
     def setUp(self):
@@ -176,6 +215,16 @@ class Destructive(unittest.TestCase):
         self.assertEqual(found[0], "destructive")
         self.assertIn("проекта нет", found[1])
 
+    def test_secrets_in_substitutions(self):
+        for cmd in ("x=`cat .env`", 'echo "$(cat .env)"', "echo $(cat ~/.ssh/id_ed25519)", "diff <(cat .env) a"):
+            self.assertEqual(self.rule(cmd, skip=()), "secrets-read", cmd)
+        self.assertIsNone(self.rule("echo '$(cat .env)'", skip=()))
+
+    def test_unknown_variable_reason(self):
+        found = g.check("Bash", {"command": "rm -rf $DIR/*"}, self.root, {"secrets-delete"})
+        self.assertIn("$DIR/*", found[1])
+        self.assertIn("корень диска", found[1])
+
     def test_skip(self):
         self.assertEqual(self.rule("rm -rf ~/.ssh", skip=()), "secrets-delete")
         found = g.check("Bash", {"command": "rm -rf ~/.ssh"}, self.root, skip={"secrets-delete"})
@@ -201,6 +250,25 @@ class Parsing(unittest.TestCase):
         self.assertEqual(g.strip_env(["A=1", "env", "B=2", "nohup", "git", "push"]), ["git", "push"])
         self.assertEqual(g.strip_env(["xargs", "-n", "1", "-I{}", "rm", "{}"]), ["rm", "{}"])
         self.assertEqual(g.strip_env(["timeout", "-s", "KILL", "5", "make"]), ["make"])
+
+    def test_parentheses_split_commands(self):
+        self.assertEqual(g.split_pipelines("(a; b) && { c; }"), [["a"], ["b"], ["{ c"], ["}"]])
+        self.assertEqual(g.split_pipelines('echo $(a; b) "$(c | d)" `e; f`'),
+                         [['echo $(a; b) "$(c | d)" `e; f`']])
+        self.assertEqual(g.strip_env(["then", "!", "{", "A=1", "rm", "x"]), ["rm", "x"])
+
+    def test_substitutions(self):
+        texts = [t for _, _, t in g.substitutions('a $(b "$(c)") "x `d`" \'$(no)\' \\$(no) <(e) # $(no)')]
+        self.assertEqual(texts, ['b "$(c)"', "d", "e"])
+
+    def test_resolve_unknown_as_empty(self):
+        env = {"HOME": "/h"}
+        self.assertIsNone(g.resolve("$X/", "/p", env))
+        self.assertEqual(g.resolve("$X/", "/p", env, empty=True), "/")
+        self.assertEqual(g.resolve("${X:-/tmp}/y", "/p", env, empty=True), "/tmp/y")
+        self.assertIsNone(g.resolve("${X:?}/", "/p", env, empty=True))
+        self.assertIsNone(g.resolve("$X", "/p", env, empty=True))
+        self.assertEqual(g.resolve("$HOME/a", "/p", env), "/h/a")
 
     def test_nested_scripts(self):
         self.assertEqual(g.shell_script(["bash", "-lc", "x y"]), "x y")

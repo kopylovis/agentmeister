@@ -93,9 +93,82 @@ def is_secret(path):
     return False
 
 
+def subst_end(cmd, i):
+    """cmd[i] начинает подстановку: `…`, $(…), <(…) или >(…). -> (конец текста команды, конец подстановки)"""
+    n = len(cmd)
+    if cmd[i] == "`":
+        j = i + 1
+        while j < n and cmd[j] != "`":
+            j += 2 if cmd[j] == "\\" else 1
+        return min(j, n), min(j + 1, n)
+    j, depth, quote = i + 2, 1, None
+    while j < n:
+        c = cmd[j]
+        if quote == "'":
+            if c == "'":
+                quote = None
+        elif c == "\\":
+            j += 1
+        elif c == "`" or cmd[j:j + 2] == "$(":
+            j = subst_end(cmd, j)[1]
+            continue
+        elif quote == '"':
+            if c == '"':
+                quote = None
+        elif c in "'\"":
+            quote = c
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return j, j + 1
+        j += 1
+    return n, n
+
+
+def starts_subst(cmd, i, quote):
+    """Начинается ли в cmd[i] подстановка команды; <(…) и >(…) бывают только вне кавычек."""
+    two = cmd[i:i + 2]
+    return cmd[i] == "`" or two == "$(" or (quote is None and two in ("<(", ">("))
+
+
+def substitutions(cmd):
+    """[(начало, конец, текст команды)] для `…`, $(…), <(…) и >(…) верхнего уровня, в том числе внутри "…"."""
+    out, quote, i, n = [], None, 0, len(cmd)
+    while i < n:
+        c = cmd[i]
+        if quote == "'":
+            if c == "'":
+                quote = None
+            i += 1
+        elif c == "\\":
+            i += 2
+        elif starts_subst(cmd, i, quote):
+            inner, end = subst_end(cmd, i)
+            text = cmd[i + (1 if c == "`" else 2):inner]
+            if c == "`":  # внутри `…` \` — это вложенная подстановка, \\ и \$ — обычные символы
+                text = re.sub(r"\\([`$\\])", r"\1", text)
+            out.append((i, end, text))
+            i = end
+        elif quote == '"':
+            if c == '"':
+                quote = None
+            i += 1
+        elif c in "'\"":
+            quote = c
+            i += 1
+        elif c == "#" and (i == 0 or cmd[i - 1].isspace()):
+            while i < n and cmd[i] != "\n":
+                i += 1
+        else:
+            i += 1
+    return out
+
+
 def split_pipelines(cmd):
-    """Команды через ;, &&, ||, & и перевод строки, каждая — список стадий конвейера через |.
-    Разделители в кавычках, после \\ и в комментарии # не считаются."""
+    """Команды через ;, &&, ||, &, (, ) и перевод строки, каждая — список стадий конвейера через |.
+    Разделители в кавычках, после \\, в комментарии # и внутри $(…) и `…` не считаются."""
     commands, stages, cur = [], [], []
     quote, i, n = None, 0, len(cmd)
 
@@ -113,7 +186,11 @@ def split_pipelines(cmd):
 
     while i < n:
         c, two = cmd[i], cmd[i:i + 2]
-        if quote:
+        if quote != "'" and starts_subst(cmd, i, quote):
+            end = subst_end(cmd, i)[1]
+            cur.append(cmd[i:end])
+            i = end
+        elif quote:
             cur.append(c)
             if c == quote:
                 quote = None
@@ -134,7 +211,7 @@ def split_pipelines(cmd):
         elif two in ("&&", "||"):
             end_command()
             i += 2
-        elif c in ";\n":
+        elif c in ";\n()":
             end_command()
             i += 1
         elif c == "|" and not (cur and cur[-1] == ">"):
@@ -169,11 +246,16 @@ WRAPPERS = {"sudo": {"-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U", "-T"}
             "timeout": {"-s", "-k"}}
 
 
+# Слова оболочки перед командой: if rm …; then rm …; fi, { rm …; }, ! rm …
+KEYWORDS = {"!", "{", "}", "if", "then", "elif", "else", "while", "until", "do", "noglob", "nocorrect",
+            "builtin", "coproc"}
+
+
 def strip_env(ws):
     ws = list(ws)
     while True:
         i = 0
-        while i < len(ws) and ASSIGN.match(ws[i]):
+        while i < len(ws) and (ASSIGN.match(ws[i]) or ws[i] in KEYWORDS):
             i += 1
         ws = ws[i:]
         name = os.path.basename(ws[0]) if ws else ""
@@ -190,12 +272,38 @@ def strip_env(ws):
             ws = ws[1:]
 
 
-def resolve(path, cwd, env):
+# $X, ${X}, ${X:-по умолчанию}, ${X:?ошибка}, ${X:+иначе}; дальше прочие ${…} и $1, $@, $?…
+VAR = re.compile(r"\$\{([A-Za-z_]\w*)(?:(:?[-=?+])([^}]*))?\}|\$([A-Za-z_]\w*)|\$\{[^}]*\}|\$[0-9@*#?$!-]")
+# Чем заменить подстановку команды в слове: сама команда проверяется отдельно, а в слове остается
+# неизвестная переменная; $(pwd) — это текущая папка
+CMD_SUB = "${__agentmeister_cmd__}"
+PWD_SUB = re.compile(r"^(?:\$\(\s*pwd\s*\)|`\s*pwd\s*`)$")
+
+
+class Unset(Exception):
+    pass
+
+
+def resolve(path, cwd, env, empty=False):
+    """Абсолютный путь после подстановки известных переменных; None, если в пути остались неизвестные.
+    empty: неизвестные переменные считаются пустыми (или берут значение по умолчанию); тогда None, если путь
+    пуст или оболочка не выполнит команду (${X:?})."""
     def sub(m):
-        name = m.group(1) or m.group(2)
-        return env.get(name, m.group(0))
-    path = re.sub(r"\$\{([A-Za-z_]\w*)(?::[?-][^}]*)?\}|\$([A-Za-z_]\w*)", sub, path)
-    if "$" in path or "`" in path:
+        name, op, word = m.group(1) or m.group(4), m.group(2) or "", m.group(3) or ""
+        if name in env:
+            return word if op.endswith("+") else env[name]
+        if not empty:
+            return m.group(0)
+        if op.endswith(("-", "=")):
+            return word
+        if op.endswith("?"):
+            raise Unset()
+        return ""
+    try:
+        path = VAR.sub(sub, path)
+    except Unset:
+        return None
+    if "$" in path or "`" in path or (empty and not path.strip()):
         return None
     path = os.path.expanduser(path)
     return os.path.normpath(os.path.join(cwd, path))
@@ -257,13 +365,18 @@ def check_secret_delete(ws, cwd, env):
     for t in ws[1:]:
         if t.startswith("-"):
             continue
-        p = resolve(t, cwd, env)
-        if p is None:
-            continue
+        p, unknown = resolve(t, cwd, env), False
+        if p is None:  # неизвестная переменная: путь, каким он станет, если она пуста
+            p, unknown = resolve(t, cwd, env, empty=True), True
+            if p is None:
+                continue
         found = holds_secrets(p)
         if found:
             what = (f"папка с ключами {found}" if found.endswith("/") else "это секрет" if found == tilde(p)
                     else f"там секрет: {found}")
+            if unknown:
+                return "secrets-delete", (f"{exe} {t}: значение переменной неизвестно, а если она пуста, это "
+                                          f"{exe} {tilde(p)} — {what}, восстановить не получится")
             return "secrets-delete", f"{exe} {tilde(p)} — {what}, восстановить не получится"
     return None
 
@@ -419,9 +532,12 @@ def check_rm(ws, cwd, env, root):
     if not (short_flags(args) & {"r", "R"} or "--recursive" in args):
         return None
     for t in positional(args):
-        p = resolve(t, cwd, env)
+        p, unknown = resolve(t, cwd, env), False
         if p is None:
-            continue
+            # rm -rf "$DIR"/ с пустой $DIR удалит /: проверяем путь, каким он станет без неизвестных переменных
+            p, unknown = resolve(t, cwd, env, empty=True), True
+            if p is None:
+                continue
         while os.path.basename(p) in ("*", ".*"):
             p = os.path.dirname(p)
         if p == "/":
@@ -437,6 +553,9 @@ def check_rm(ws, cwd, env, root):
         else:
             what = f"проекта нет, Claude запущен в {tilde(root)}" if within(HOME, root) else \
                 f"это вне проекта {tilde(root)}"
+        if unknown:
+            return (f"rm -r {t}: значение переменной неизвестно, а если она пуста, это rm -r {tilde(p)} — {what}, "
+                    f"восстановить не получится")
         return f"rm -r {tilde(p)} — {what}, восстановить не получится"
     return None
 
@@ -473,7 +592,14 @@ def scan_bash(cmd, cwd, env, root, depth=0):
     for stages in split_pipelines(cmd):
         fetched = False
         for seg in stages:
-            raw = words(seg)
+            # $(…) и `…` выполняются раньше самой команды; в её словах вместо них неизвестная переменная
+            masked, last = [], 0
+            for start, end, inner in substitutions(seg):
+                if depth < 5:
+                    yield from scan_bash(inner, cwd, dict(env), root, depth + 1)
+                masked += [seg[last:start], "$PWD" if PWD_SUB.match(seg[start:end]) else CMD_SUB]
+                last = end
+            raw = words("".join(masked) + seg[last:])
             for w in raw:
                 m2 = re.match(r"^([A-Za-z_]\w*)=(.*)$", w)
                 if not m2:
@@ -491,7 +617,7 @@ def scan_bash(cmd, cwd, env, root, depth=0):
             if ws[0] == "cd" and len(ws) > 1:
                 nxt = resolve(ws[1], cwd, env)
                 if nxt:
-                    cwd = nxt
+                    cwd = env["PWD"] = nxt
                 continue
             for found in (check_secret_delete(ws, cwd, env), check_secrets_cmd(ws, seg)):
                 if found:
