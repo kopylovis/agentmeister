@@ -338,3 +338,31 @@ struct BackdropBlur: NSViewRepresentable {
     func makeNSView(context: Context) -> BlurView { BlurView(radius: radius) }
     func updateNSView(_ view: BlurView, context: Context) {}
 }
+
+/// Текущая ветка git для папки: ищет .git вверх по дереву (в worktree это файл со ссылкой gitdir) и читает HEAD.
+/// Без git nil, при отсоединенном HEAD короткий хеш.
+enum GitHead {
+    static func branch(at path: String) -> String? {
+        var dir = URL(fileURLWithPath: path)
+        let fm = FileManager.default
+        while dir.path != "/" {
+            let dotGit = dir.appendingPathComponent(".git")
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: dotGit.path, isDirectory: &isDir) {
+                var gitDir = dotGit
+                if !isDir.boolValue {
+                    guard let link = try? String(contentsOf: dotGit, encoding: .utf8),
+                          let line = link.split(separator: "\n").first, line.hasPrefix("gitdir: ") else { return nil }
+                    let target = String(line.dropFirst("gitdir: ".count)).trimmingCharacters(in: .whitespaces)
+                    gitDir = target.hasPrefix("/") ? URL(fileURLWithPath: target) : dir.appendingPathComponent(target)
+                }
+                guard let head = try? String(contentsOf: gitDir.appendingPathComponent("HEAD"), encoding: .utf8)
+                    .trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+                if head.hasPrefix("ref: refs/heads/") { return String(head.dropFirst("ref: refs/heads/".count)) }
+                return head.isEmpty ? nil : String(head.prefix(7))
+            }
+            dir.deleteLastPathComponent()
+        }
+        return nil
+    }
+}
