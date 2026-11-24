@@ -50,8 +50,11 @@ struct TerminalHost: NSViewRepresentable {
     let session: TerminalSession?
 
     func makeNSView(context: Context) -> NSView {
+        // Без обрезки SwiftTerm дорисовывал символ за левым краем, поверх полосы вкладок
         let container = NSView()
         container.wantsLayer = true
+        container.layer?.masksToBounds = true
+        container.layer?.backgroundColor = NSColor.black.cgColor
         return container
     }
 
@@ -65,10 +68,10 @@ struct TerminalHost: NSViewRepresentable {
             term.translatesAutoresizingMaskIntoConstraints = false
             container.addSubview(term)
             NSLayoutConstraint.activate([
-                term.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                term.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-                term.topAnchor.constraint(equalTo: container.topAnchor),
-                term.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                term.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8),
+                term.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+                term.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
+                term.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4),
             ])
         }
         DispatchQueue.main.async { term.window?.makeFirstResponder(term) }
