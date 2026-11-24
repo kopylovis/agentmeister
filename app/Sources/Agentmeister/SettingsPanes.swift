@@ -489,10 +489,12 @@ struct AgentsPane: View {
                 .frame(maxWidth: 460)
         }
         if let data {
+            // карточки одной высоты: каждая тянется до самой высокой
             HStack(alignment: .top, spacing: 16) {
                 AgentCard(agent: .claude, info: data.claude, l: l, reload: reload)
                 AgentCard(agent: .codex, info: data.codex, l: l, reload: reload)
             }
+            .fixedSize(horizontal: false, vertical: true)
         } else {
             ProgressView()
         }
@@ -526,31 +528,8 @@ struct AgentCard: View {
     private var proxyReady: Bool { backend.state.proxy?.configured == true }
 
     var body: some View {
-        GlassSection {
-            HStack(spacing: 12) {
-                AgentBadge(agent: agent, size: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(name + (info?.version.map { " " + $0 } ?? "")).font(.system(size: 15, weight: .semibold))
-                    if info?.installed == true {
-                        Text(update ?? (agent == .claude ? l.t("Обновляется при перезапуске", "Updates on restart")
-                                                         : l.t("Обновляется через Homebrew", "Updates through Homebrew")))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Ink.teal)
-                    } else {
-                        Text(l.t("Не найден", "Not found")).font(.system(size: 12)).foregroundStyle(Ink.amber)
-                    }
-                }
-                Spacer()
-                if info?.installed == true {
-                    Button {
-                        checkUpdate()
-                    } label: {
-                        if checking { ProgressView().controlSize(.small) } else { Text(agent == .claude ? l.t("Обновить через proxy", "Update via proxy") : l.t("Проверить обновление", "Check for update")) }
-                    }
-                    .disabled(checking)
-                    .fixedSize()
-                }
-            }
+        VStack(alignment: .leading, spacing: 14) {
+            header
             if let info, info.installed {
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
                     gridRow(l.t("Путь", "Path"), tilde(info.path ?? ""), mono: true)
@@ -570,26 +549,83 @@ struct AgentCard: View {
                         .onSubmit { UserDefaults.standard.set(flags, forKey: AgentPrefs.flagsKey(agent)) }
                         .onChange(of: flags) { UserDefaults.standard.set(flags, forKey: AgentPrefs.flagsKey(agent)) }
                 }
-                FlowLayout(spacing: 8) {
-                    Button(info.signedIn == true ? l.t("Сменить аккаунт", "Switch account") : l.t("Войти", "Sign in")) { signingIn = agent }
-                        .buttonStyle(.glass)
-                    UtilityButton(title: agent == .claude ? l.t("Хуки, MCP и slash-команды", "Hooks, MCP and slash commands")
-                                                          : l.t("Хуки, навык и MCP", "Hooks, skill and MCP"),
-                                  args: agent == .claude ? ["setup"] : ["--harness", "codex", "setup"])
+                Spacer(minLength: 0)
+                // все кнопки внизу одинаковой ширины; не влезают в ряд, встают столбиком (у обеих карточек одинаково)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { buttons(info) }
+                    VStack(spacing: 8) { buttons(info) }
                 }
             } else {
-                HStack {
-                    UtilityButton(title: l.t("Установить", "Install"), args: ["--harness", agent.rawValue, "install"])
-                        .buttonStyle(.glassProminent)
-                    Spacer()
-                }
+                Spacer(minLength: 0)
+                UtilityButton(title: l.t("Установить", "Install"), args: ["--harness", agent.rawValue, "install"], expand: true)
             }
         }
-        .frame(maxWidth: .infinity)
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .glassEffect(.regular, in: .rect(cornerRadius: 20))
         .onAppear { flags = UserDefaults.standard.string(forKey: AgentPrefs.flagsKey(agent)) ?? "" }
         .sheet(item: $signingIn, onDismiss: { Task { await reload() } }) { agent in
             AuthDialog(agent: agent)
         }
+    }
+
+    /// Шапка одной высоты у обеих карточек: иконка агента, имя и версия в строку, под ними способ обновления.
+    private var header: some View {
+        HStack(spacing: 12) {
+            AgentBadge(agent: agent, size: 40)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(name).font(.system(size: 15, weight: .semibold))
+                    if let version = info?.version {
+                        Text(version).font(.system(size: 12, design: .monospaced)).foregroundStyle(Ink.muted)
+                    }
+                }
+                .lineLimit(1)
+                Group {
+                    if info?.installed == true {
+                        Text(update ?? (agent == .claude ? l.t("Обновляется при перезапуске", "Updates on restart")
+                                                         : l.t("Обновляется через Homebrew", "Updates through Homebrew")))
+                            .foregroundStyle(Ink.teal)
+                    } else {
+                        Text(l.t("Не найден", "Not found")).foregroundStyle(Ink.amber)
+                    }
+                }
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(update ?? "")
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(height: 40)
+    }
+
+    @ViewBuilder
+    private func buttons(_ info: SettingsData.Agent) -> some View {
+        Button {
+            checkUpdate()
+        } label: {
+            ZStack {
+                Text(agent == .claude ? l.t("Обновить", "Update") : l.t("Проверить обновление", "Check update")).opacity(checking ? 0 : 1)
+                if checking { ProgressView().controlSize(.small) }
+            }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
+        .disabled(checking)
+        .help(agent == .claude ? l.t("claude update через proxy", "claude update through the proxy")
+                               : l.t("brew outdated codex, ничего не ставит", "brew outdated codex, installs nothing"))
+        Button {
+            signingIn = agent
+        } label: {
+            Text(info.signedIn == true ? l.t("Сменить аккаунт", "Switch account") : l.t("Войти", "Sign in"))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.glass)
+        UtilityButton(title: l.t("Хуки и MCP", "Hooks and MCP"),
+                      args: agent == .claude ? ["setup"] : ["--harness", "codex", "setup"], expand: true)
     }
 
     private func gridRow(_ title: String, _ value: String, mono: Bool = false) -> some View {

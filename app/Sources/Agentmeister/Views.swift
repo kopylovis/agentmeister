@@ -589,7 +589,7 @@ struct DetailView: View {
                         .id(tab.id)
                 }
                 TerminalHost(tab: workspace.current)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .clipShape(.windowCard)
             }
         }
     }
