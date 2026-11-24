@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "libexec/agentmeister/lib"))
 import claude_open
+import host_run
 
 
 class OpenTerminal(unittest.TestCase):
@@ -40,10 +41,73 @@ class OpenTerminal(unittest.TestCase):
 
     def test_permission_failure_returns_manual_tab_command(self):
         denied = subprocess.CompletedProcess([], 1, "", "A privilege violation occurred. (-10004)")
-        (text, error), cmd = self.launch("iTerm.app", denied)
+        with patch.object(host_run, "send_op", return_value=125) as send:
+            (text, error), cmd = self.launch("iTerm.app", denied)
+        send.assert_called_once()
         self.assertTrue(error)
         self.assertIn("⌘T", text)
         self.assertIn(cmd[-2], text)
+
+    def test_permission_failure_opens_the_tab_through_host_run(self):
+        denied = subprocess.CompletedProcess([], 1, "", "A privilege violation occurred. (-10004)")
+        prompt = 'первая строка\nвторая "в кавычках" и \'одинарных\''
+
+        def send(request, out, err):
+            out.write("Открыл новую вкладку iTerm2 (/dev/ttys009)\n".encode())
+            return 0
+
+        with patch.object(host_run, "send_op", side_effect=send) as sent:
+            (text, error), _ = self.launch("iTerm.app", denied, remote_control=True, prompt=prompt)
+        self.assertFalse(error)
+        self.assertIn("/dev/ttys009", text)
+        argv = sent.call_args.args[0]["argv"]
+        self.assertEqual(argv[:4], ["/tmp/project", "-k", "-x", "--new"])
+        self.assertEqual(argv[-3:], ["--remote-control", "project", prompt])
+
+    def test_direct_session_does_not_use_host_run(self):
+        denied = subprocess.CompletedProcess([], 1, "", "A privilege violation occurred. (-10004)")
+        with patch.dict(os.environ, {}, clear=False), patch.object(host_run, "send_op") as send:
+            os.environ.pop("MNRH_PROXY", None)
+            args = {"path": "/tmp/project", "remote_control": False}
+            with patch.dict(os.environ, TERM_PROGRAM="iTerm.app"), \
+                    patch.object(claude_open, "trusted", return_value=True), \
+                    patch.object(claude_open, "project_dirs", return_value=("/tmp", [])), \
+                    patch.object(claude_open.subprocess, "run", return_value=denied):
+                text, error = claude_open.open_claude(args, "agentmeister")
+        send.assert_not_called()
+        self.assertTrue(error)
+        self.assertIn("⌘T", text)
+
+
+class ShellLine(unittest.TestCase):
+    WORDS = ["plain", "two words", "it's", 'say "hi"', "строка 1\nстрока 2", "tab\there", "back\\slash\n",
+             "$HOME `date` $(id) !! *", "\x01\x7f\x85 конец", "emoji 🙂\r\nend", "\\x41'\n'", ""]
+
+    def roundtrip(self, shell):
+        line = claude_open.shell_line(self.WORDS)
+        self.assertNotIn("\n", line)
+        self.assertNotIn("\r", line)
+        out = subprocess.run([shell, "-c", "printf '%s\\0' " + line], capture_output=True, check=True).stdout
+        self.assertEqual(out.decode().split("\0")[:-1], self.WORDS)
+
+    def test_zsh(self):
+        self.roundtrip("/bin/zsh")
+
+    def test_bash(self):
+        self.roundtrip("/bin/bash")
+
+
+class HostOpenCommand(unittest.TestCase):
+    def test_defaults_and_flags(self):
+        cmd = claude_open.host_open_command(["kcalm"])
+        self.assertEqual(cmd[1:], ["open", "kcalm", "-k", "-x", "--new"])
+        cmd = claude_open.host_open_command(["kcalm", "-n", "-i", "--new", "--", "--continue", "-d"])
+        self.assertEqual(cmd[1:], ["open", "kcalm", "-n", "-x", "--new", "-i", "--", "--continue", "-d"])
+
+    def test_refuses(self):
+        for argv in ([], ["--", "x"], ["kcalm", "-d"], ["kcalm", "--direct"], ["kcalm", "--bogus"], ["a", "b"]):
+            with self.subTest(argv=argv), self.assertRaises(ValueError):
+                claude_open.host_open_command(argv)
 
 
 class Trust(unittest.TestCase):

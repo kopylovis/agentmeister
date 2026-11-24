@@ -619,7 +619,10 @@ zsh hook. The built-in one stays available as `/update`.
   with `agentmeister <project> -k|-n`. Use `placement: window` for a separate iTerm2 window. You can pass a first prompt and `--continue`. Remote Control
   (`/rc`) is on from the start (`--remote-control <project>`; turn it off with `remote_control: false`). The reply
   contains the tab or window, tty, pid and the claude.ai/code link to the session, so you can continue from your phone
-  or a browser. If Claude Code doesn't trust the folder yet (no `hasTrustDialogAccepted` for it or a parent in
+  or a browser. In a proxied session iTerm2 rejects Apple Events from the sandbox (`-10004`), so `open_claude` asks the
+  host-run runner to open the tab, and gives you the command for ⌘T only if the runner isn't running. The same path is
+  available as `agentmeister host-run open <project> [-k|-n] -- [claude args]`; it always adds `-x` and `--new` and
+  refuses `-d`. A first prompt with line breaks and quotes is typed as a single `$'...'` word. If Claude Code doesn't trust the folder yet (no `hasTrustDialogAccepted` for it or a parent in
   `~/.claude.json`), no window opens: the "Do you trust the files in this folder?" prompt can't be answered over
   Remote Control, and the session would wait forever. Claude asks you in the chat and, if you agree, calls again
   with `trust: true`, which sets the flag before launch. Worktrees from `/parallel` inherit trust from their
