@@ -340,6 +340,7 @@ struct CommandButton: View {
 struct GeneralPane: View {
     @EnvironmentObject var backend: Backend
     @AppStorage(Appearance.key) private var appearance = Appearance.system.rawValue
+    @AppStorage(MenuBarPrefs.showKey) private var showMenuBar = true
 
     var l: L { L(backend.state.lang) }
 
@@ -358,6 +359,17 @@ struct GeneralPane: View {
         GlassSection {
             Text(l.t("Оформление", "Appearance")).font(.system(size: 13, weight: .semibold))
             AppearancePicker(selection: $appearance, l: l)
+        }
+        GlassSection {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(l.t("Показывать в строке меню", "Show in menu bar")).font(.system(size: 13, weight: .semibold))
+                    Note(text: l.t("Значок показывает, работает ли агент или ждет ответа. В панели открытые сессии, proxy, host-run и новая сессия.",
+                                   "The icon shows whether an agent is working or waiting for you. Its panel lists open sessions, proxy, host-run and starts a new session."))
+                }
+                Spacer()
+                HeaderSwitch(label: l.t("Показывать в строке меню", "Show in menu bar"), on: showMenuBar) { showMenuBar = $0 }
+            }
         }
     }
 }
