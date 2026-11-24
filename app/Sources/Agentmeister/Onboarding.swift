@@ -161,8 +161,8 @@ struct OnboardingView: View {
     private var signInStep: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(l.t("Вход в агентов", "Sign in to the agents")).font(.title2.weight(.semibold))
-            Text(l.t("Каждый агент хранит свой вход. Вход открывается служебной вкладкой через proxy: агент получает токен через mihomo, страница входа открывается в браузере.",
-                     "Each agent keeps its own sign-in. It runs in a utility tab through the proxy: the agent gets its token through mihomo, the sign-in page opens in the browser."))
+            Text(l.t("Каждый агент хранит свой вход. Вход идет служебной вкладкой через proxy: агент получает токен через mihomo, а страница входа открывается во встроенном браузере через тот же mihomo.",
+                     "Each agent keeps its own sign-in. It runs in a utility tab through the proxy: the agent gets its token through mihomo, and the sign-in page opens in the built-in browser through the same mihomo."))
                 .foregroundStyle(.secondary)
             signInCard("Claude Code", data?.claude, args: ["proxy", "run", "--claude", "--", "claude", "auth", "login"])
             signInCard("Codex", data?.codex, args: ["proxy", "run", "--claude", "--", "codex", "login"])

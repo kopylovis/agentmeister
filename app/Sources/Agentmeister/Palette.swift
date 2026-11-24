@@ -59,6 +59,10 @@ struct PaletteView: View {
             (l.t("Сессии", "Sessions"), "⇧⌘O", "books.vertical", { openWindow(id: "library") }),
             (l.t("Статистика", "Usage"), "⇧⌘U", "chart.bar.xaxis", { openWindow(id: "usage") }),
             (l.inspector, "⌥⌘I", "sidebar.right", { ui.showInspector.toggle() }),
+            (l.t("Браузер через proxy", "Proxy browser"), "", "safari", {
+                ProxyBrowser.shared.port = backend.state.proxy?.port ?? 17890
+                ProxyBrowser.shared.open(URL(string: "https://1.1.1.1/cdn-cgi/trace")!)
+            }),
             (l.t("К вкладке, которая ждет", "Jump to the waiting tab"), "⌘J", "bell", {
                 if let tab = workspace.tabs.first(where: { $0.status == "waiting" }) { workspace.selected = tab.id }
             }),
