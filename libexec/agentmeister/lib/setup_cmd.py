@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CLAUDE_HOME, CM, HOME, PROMPTSILL_HINT, ROOT, STATUS_CMD, is_hook, promptsill_path, tilde  # noqa: E402
+from mnrhlib import CLAUDE_HOME, CM, HOME, PROMPTSILL_HINT, ROOT, STATUS_CMD, is_hook, promptsill_path, tilde, tr  # noqa: E402
 from claude_proc import CLAUDE_BIN  # noqa: E402
 import claude_settings  # noqa: E402
 from mcp_server import MCP_NAME, READ_ONLY, tools  # noqa: E402
@@ -58,13 +58,14 @@ def install_restart_hook():
     line = f'[ -f "{hook}" ] && source "{hook}"\n'
     lines = zshrc_lines()
     if line in lines:
-        print(f"✓ хук перезапуска уже в {tilde(ZSHRC)}")
+        print("✓ " + tr(f"хук перезапуска уже в {tilde(ZSHRC)}", f"restart hook already in {tilde(ZSHRC)}"))
         return
     lines = [l for l in lines if not is_zsh_hook(l)]
     if lines and not lines[-1].endswith("\n"):
         lines[-1] += "\n"
     write_zshrc(lines + [line])
-    print(f"✓ хук перезапуска → {tilde(ZSHRC)} (работает в новых вкладках терминала)")
+    print("✓ " + tr(f"хук перезапуска → {tilde(ZSHRC)} (работает в новых вкладках терминала)",
+                    f"restart hook → {tilde(ZSHRC)} (works in new terminal tabs)"))
 
 
 def rename_rule(rule, names):
@@ -81,7 +82,8 @@ def notice_hook(install, rename_rules=()):
     try:
         settings = claude_settings.load()
     except ValueError as e:
-        print(f"✗ {tilde(SETTINGS)} не читается как JSON ({e}), хуки Claude Code не трогаю")
+        print("✗ " + tr(f"{tilde(SETTINGS)} не читается как JSON ({e}), хуки Claude Code не трогаю",
+                        f"{tilde(SETTINGS)} isn't valid JSON ({e}), leaving the Claude Code hooks alone"))
         return
     claude_settings.ensure_hooks(settings, install)
     retention = claude_settings.ensure_retention(settings, install)
@@ -91,11 +93,13 @@ def notice_hook(install, rename_rules=()):
     promptsill = promptsill_path()
     # без promptsill заглушка statusline остается, но уже agentmeister, а не mnrh claude
     claude_settings.ensure_statusline(settings, promptsill, install)
-    status_note = ("! строка состояния: у тебя уже своя statusLine, не трогаю" if line and not ours else
-                   "✓ строка состояния: promptsill уже стоит в statusLine" if "promptsill" in command else
-                   "✓ строка состояния → statusLine (promptsill)" if promptsill else
-                   f"! строка состояния теперь отдельная программа promptsill: {PROMPTSILL_HINT}, "
-                   "потом снова agentmeister setup")
+    status_note = (tr("! строка состояния: у тебя уже своя statusLine, не трогаю",
+                      "! status line: you already have your own statusLine, leaving it") if line and not ours else
+                   tr("✓ строка состояния: promptsill уже стоит в statusLine",
+                      "✓ status line: promptsill is already the statusLine") if "promptsill" in command else
+                   tr("✓ строка состояния → statusLine (promptsill)", "✓ status line → statusLine (promptsill)") if promptsill else
+                   tr(f"! строка состояния теперь отдельная программа promptsill: {PROMPTSILL_HINT}, потом снова agentmeister setup",
+                      f"! the status line is now a separate program, promptsill: {PROMPTSILL_HINT}, then agentmeister setup again"))
     allow_rules = [f"mcp__{MCP_NAME}__{name}" for name in READ_ONLY]
     # разрешения старого MCP-сервера mnrh тоже убираем: инструменты теперь у agentmeister
     old_rules = {f"mcp__{server}__{name}" for server in rename_rules for name in READ_ONLY + ["mac_status", "free_memory"]}
@@ -114,22 +118,37 @@ def notice_hook(install, rename_rules=()):
         settings.pop("permissions")
     claude_settings.save_atomic(settings)
     if install:
-        print(f"✓ сообщения после /restart и /forget, удаление пустых сессий → хуки SessionStart и SessionEnd "
-              f"в {tilde(SETTINGS)}")
+        print("✓ " + tr(f"сообщения после /restart и /forget, удаление пустых сессий → хуки SessionStart и SessionEnd "
+                        f"в {tilde(SETTINGS)}",
+                        f"messages after /restart and /forget, removal of empty sessions → SessionStart and SessionEnd hooks "
+                        f"in {tilde(SETTINGS)}"))
         print(status_note)
-        print("✓ guard: вопрос перед чтением и удалением ключей и перед необратимыми командами (reset --hard, "
-              "push --force, rm -r вне проекта…) → хук PreToolUse (agentmeister guard)")
-        print("✓ длинный вывод сборок и тестов: Claude видит выжимку, полный лог в ~/.cache/mnrh/logs, в iTerm2 "
-              "идущая сборка подписана во вкладке → хуки PreToolUse, PostToolUse и PostToolUseFailure "
-              "(agentmeister buildlog)")
-        print("✓ уведомления, когда Claude ждёт тебя → хуки UserPromptSubmit, Stop и Notification "
-              "(agentmeister notify -h)")
-        print("✓ humanize → хуки SessionStart, UserPromptSubmit и Stop. Включить через /humanize "
-              "или agentmeister humanize on")
-        print(f"✓ без вопроса о разрешении: {', '.join(READ_ONLY)} (они только читают)")
+        print("✓ " + tr("guard: вопрос перед чтением и удалением ключей и перед необратимыми командами (reset --hard, "
+                        "push --force, rm -r вне проекта…) → хук PreToolUse (agentmeister guard)",
+                        "guard: a question before reading or deleting keys and before irreversible commands (reset --hard, "
+                        "push --force, rm -r outside the project…) → PreToolUse hook (agentmeister guard)"))
+        print("✓ " + tr("длинный вывод сборок и тестов: Claude видит выжимку, полный лог в ~/.cache/mnrh/logs, в iTerm2 "
+                        "идущая сборка подписана во вкладке → хуки PreToolUse, PostToolUse и PostToolUseFailure "
+                        "(agentmeister buildlog)",
+                        "long build and test output: Claude sees a digest, the full log goes to ~/.cache/mnrh/logs, in iTerm2 "
+                        "a running build is labeled in the tab → PreToolUse, PostToolUse and PostToolUseFailure hooks "
+                        "(agentmeister buildlog)"))
+        print("✓ " + tr("уведомления, когда Claude ждёт тебя → хуки UserPromptSubmit, Stop и Notification "
+                        "(agentmeister notify -h)",
+                        "notifications when Claude is waiting for you → UserPromptSubmit, Stop and Notification hooks "
+                        "(agentmeister notify -h)"))
+        print("✓ " + tr("humanize → хуки SessionStart, UserPromptSubmit и Stop. Включить через /humanize "
+                        "или agentmeister humanize on",
+                        "humanize → SessionStart, UserPromptSubmit and Stop hooks. Turn it on with /humanize "
+                        "or agentmeister humanize on"))
+        print("✓ " + tr(f"без вопроса о разрешении: {', '.join(READ_ONLY)} (они только читают)",
+                        f"allowed without asking: {', '.join(READ_ONLY)} (they only read)"))
         days = settings.get("cleanupPeriodDays")
-        print(f"✓ переписки хранятся {claude_settings.RETENTION_DAYS} дней вместо 30 → cleanupPeriodDays"
-              if retention else f"✓ переписки хранятся {days} дней (cleanupPeriodDays, твое значение)")
+        print("✓ " + (tr(f"переписки хранятся {claude_settings.RETENTION_DAYS} дней вместо 30 → cleanupPeriodDays",
+                         f"transcripts are kept {claude_settings.RETENTION_DAYS} days instead of 30 → cleanupPeriodDays")
+                      if retention else
+                      tr(f"переписки хранятся {days} дней (cleanupPeriodDays, твое значение)",
+                         f"transcripts are kept {days} days (cleanupPeriodDays, your value)")))
 
 
 SETUP_USAGE = f"""agentmeister setup [--country KZ] [--only <имя>]
@@ -267,9 +286,11 @@ def setup(args):
     import claude_notify
     notify_ready = claude_notify.ensure_app()
     if notify_ready:
-        print(f"✓ приложение уведомлений → {tilde(claude_notify.AGENT.app)} (agentmeister notify test)")
+        print("✓ " + tr(f"приложение уведомлений → {tilde(claude_notify.AGENT.app)} (agentmeister notify test)",
+                        f"notification app → {tilde(claude_notify.AGENT.app)} (agentmeister notify test)"))
     else:
-        print("✗ не собрал приложение уведомлений: нужен swiftc (xcode-select --install)")
+        print("✗ " + tr("не собрал приложение уведомлений: нужен swiftc (xcode-select --install)",
+                        "couldn't build the notification app: swiftc is needed (xcode-select --install)"))
     proxy = claude_setup.proxy_step(opts["country"], opts["only"])
     results = {"proxy": proxy, "promptsill": promptsill, "notify-app": "done" if notify_ready else "failed"}
     done, skipped = claude_setup.current()
@@ -285,8 +306,12 @@ def setup(args):
             skipped.add(step)
     claude_setup.write(done, skipped, legacy_declined=False)
     if not shutil.which("agentmeister"):
-        print(f"! agentmeister нет в PATH, а /restart, /todo и другие команды вызывают его по имени. "
-              f"Поставь его: brew install kopylovis/tap/agentmeister или make install в {tilde(ROOT)}")
-    print("Настройки Claude Code подхватятся при запуске новой сессии или перезапуске открытой.")
-    print(f"Для Codex запусти {CODEX_SETUP}, затем подтверди хуки через /hooks.")
+        print("! " + tr(f"agentmeister нет в PATH, а /restart, /todo и другие команды вызывают его по имени. "
+                        f"Поставь его: brew install kopylovis/tap/agentmeister или make install в {tilde(ROOT)}",
+                        f"agentmeister isn't in PATH, and /restart, /todo and other commands call it by name. "
+                        f"Install it: brew install kopylovis/tap/agentmeister or make install in {tilde(ROOT)}"))
+    print(tr("Настройки Claude Code подхватятся при запуске новой сессии или перезапуске открытой.",
+             "Claude Code picks up the settings in a new session or after restarting an open one."))
+    print(tr(f"Для Codex запусти {CODEX_SETUP}, затем подтверди хуки через /hooks.",
+             f"For Codex run {CODEX_SETUP}, then approve the hooks with /hooks."))
     return 1 if "failed" in results.values() else 0
