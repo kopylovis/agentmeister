@@ -60,21 +60,14 @@ struct AgentmeisterApp: App {
                 }
                 .keyboardShortcut("n")
                 Button(l.newTab) {
-                    if let spec = workspace.current?.spec {
-                        var fresh = spec
-                        fresh.resumeId = nil
-                        fresh.firstPrompt = ""
-                        workspace.open(fresh)
-                    } else {
-                        ui.showNewSession = true
-                    }
+                    if !workspace.newTab() { ui.showNewSession = true }
                 }
                 .keyboardShortcut("t")
                 Button(l.closeTab) { workspace.close(workspace.selected) }
                     .keyboardShortcut("w")
                     .disabled(workspace.current == nil)
                 Button(l.restart) { workspace.current?.restart() }
-                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .keyboardShortcut("r", modifiers: .command)
                     .disabled(workspace.current == nil)
             }
             CommandGroup(after: .windowList) {

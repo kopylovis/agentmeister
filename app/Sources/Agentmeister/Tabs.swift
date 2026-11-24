@@ -16,6 +16,10 @@ struct LaunchSpec: Hashable {
     /// Служебная вкладка: agentmeister с этими аргументами вместо агента (proxy setup, lid setup и т. п.).
     /// Такие вкладки не восстанавливаются после перезапуска.
     var utility: [String]?
+    /// Claude Code с --remote-control: вопросы сессии приходят в приложение Claude на телефоне.
+    var remoteControl = false
+    /// Не давать Mac уснуть, пока идет сессия. Держит caffeinate, который запускает само приложение.
+    var awake = false
 
     /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
     var proxied: Bool {
@@ -31,12 +35,16 @@ struct LaunchSpec: Hashable {
         if let utility { return utility }
         var args = agent == .codex ? ["--harness", "codex"] : []
         args += [projectPath, "-n", direct ? "-d" : "-x"]
+        // флаги после -- agentmeister передает самому агенту
+        var agentArgs: [String] = []
+        if remoteControl && agent == .claude { agentArgs += ["--remote-control", projectName] }
         if let id = resumeId, agent == .claude {
-            args += ["--", "--resume", id]
+            args += ["--", "--resume", id] + agentArgs
         } else {
             args.append("--new")
             let prompt = firstPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !prompt.isEmpty { args += ["--", prompt] }
+            if !prompt.isEmpty { agentArgs.append(prompt) }
+            if !agentArgs.isEmpty { args += ["--"] + agentArgs }
         }
         return args
     }
@@ -55,8 +63,12 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     @Published var status: String?
     /// Вызывается, когда процесс вкладки завершился. Мастер по нему перечитывает состояние.
     var onExit: (() -> Void)?
-    /// Подсказка ⌘⇧R после выхода. В мастере ее нет: там перезапуск этой клавишей не работает.
+    /// Подсказка ⌘R после выхода. В мастере ее нет: там перезапуск этой клавишей не работает.
     var exitHint = true
+    /// Когда запущен процесс вкладки. Панель сессии показывает, сколько она активна.
+    @Published var startedAt = Date()
+    /// caffeinate -w для режима "не спать". Живет, пока жив процесс вкладки.
+    private var caffeinate: Process?
     let view: AppTerminalView
 
     init(spec: LaunchSpec) {
@@ -128,8 +140,72 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         exitCode = nil
         running = true
         status = nil
+        startedAt = Date()
         let args = ["-l", "-c", Self.shellScript, LoginEnvironment.agentmeister] + spec.arguments
         view.startProcess(executable: "/bin/zsh", args: args, environment: Self.environment(tab: id, spec: spec), execName: "-zsh")
+        updateAwake()
+    }
+
+    /// Включить или выключить "не спать" прямо в идущей сессии, без перезапуска.
+    func setAwake(_ on: Bool) {
+        spec.awake = on
+        updateAwake()
+    }
+
+    private func updateAwake() {
+        caffeinate?.terminate()
+        caffeinate = nil
+        guard spec.awake, running, shellPid > 0 else { return }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
+        task.arguments = ["-i", "-w", String(shellPid)]
+        if (try? task.run()) != nil { caffeinate = task }
+    }
+
+    /// Та же сессия, другой маршрут: через proxy или напрямую.
+    func switchRoute() {
+        spec.direct.toggle()
+        restart()
+    }
+
+    /// Команда agentmeister над сессией этой вкладки, когда агент уже остановлен, потом продолжение.
+    /// Пока команда идет, во вкладке видно, что происходит.
+    private func whileStopped(_ note: String, _ args: [String], then: @escaping @MainActor (Bool) -> Void) {
+        if running { view.terminate() }
+        view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
+        Task.detached(priority: .userInitiated) {
+            try? await Task.sleep(for: .milliseconds(600))  // Claude Code успевает дописать переписку
+            let ok: Bool
+            if case .success = Backend.run(args) { ok = true } else { ok = false }
+            await MainActor.run { then(ok) }
+        }
+    }
+
+    /// Сжать сессию (старые скриншоты и длинные выводы) и продолжить ее, как /slim.
+    func slim(note: String) {
+        guard let sid = sessionId, spec.agent == .claude else { return }
+        whileStopped(note, ["sessions", "slim", sid, "-y"]) { _ in self.restart() }
+    }
+
+    /// Удалить сессию без следа и открыть чистую в той же папке, как /forget.
+    func forget(note: String) {
+        guard let sid = sessionId, spec.agent == .claude else { fresh(); return }
+        whileStopped(note, ["sessions", "rm", sid, "-y"]) { _ in self.fresh() }
+    }
+
+    /// Переименовать сессию, как /rename. Работает и на ходу: Claude Code дописывает название в конец переписки.
+    func rename(_ title: String) {
+        guard let sid = sessionId else { return }
+        Task.detached(priority: .userInitiated) { _ = Backend.run(["sessions", "rename", sid, title]) }
+    }
+
+    /// Новая сессия в той же вкладке. Нынешняя остается в списке сессий.
+    func fresh() {
+        if running { view.terminate() }
+        spec.resumeId = nil
+        spec.firstPrompt = ""
+        sessionId = nil
+        start()
     }
 
     /// Перезапуск продолжает ту же сессию, если ее id уже известен.
@@ -143,6 +219,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     }
 
     func terminate() {
+        caffeinate?.terminate()
+        caffeinate = nil
         if running { view.terminate() }
     }
 
@@ -161,10 +239,12 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
 
     func processTerminated(source: TerminalView, exitCode: Int32?) {
         running = false
+        caffeinate?.terminate()
+        caffeinate = nil
         self.exitCode = exitCode
         status = nil
         let code = exitCode.map(String.init) ?? "?"
-        view.feed(text: "\r\n\u{1b}[2m[exit \(code)" + (exitHint ? ". ⌘⇧R" : "") + "]\u{1b}[0m\r\n")
+        view.feed(text: "\r\n\u{1b}[2m[exit \(code)" + (exitHint ? ". ⌘R" : "") + "]\u{1b}[0m\r\n")
         onExit?()
     }
 }
@@ -208,6 +288,8 @@ final class Workspace: ObservableObject {
         var direct: Bool
         var sessionId: String?
         var selected: Bool
+        var awake: Bool?
+        var remoteControl: Bool?
     }
 
     static var savedTabsURL: URL {
@@ -220,7 +302,8 @@ final class Workspace: ObservableObject {
         guard restored else { return }
         let saved = tabs.filter { $0.spec.utility == nil }.map {
             SavedTab(projectName: $0.spec.projectName, projectPath: $0.spec.projectPath, agent: $0.spec.agent.rawValue,
-                     direct: $0.spec.direct, sessionId: $0.sessionId, selected: $0.id == selected)
+                     direct: $0.spec.direct, sessionId: $0.sessionId, selected: $0.id == selected,
+                     awake: $0.spec.awake, remoteControl: $0.spec.remoteControl)
         }
         let url = Self.savedTabsURL
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -246,6 +329,8 @@ final class Workspace: ObservableObject {
             if let sid = item.sessionId, busy.contains(sid) { continue }
             let agent = LaunchSpec.Agent(rawValue: item.agent) ?? .claude
             var spec = LaunchSpec(projectName: item.projectName, projectPath: item.projectPath, agent: agent, direct: item.direct)
+            spec.awake = item.awake ?? false
+            spec.remoteControl = item.remoteControl ?? false
             if agent == .claude, let sid = item.sessionId, resumable.contains(sid) { spec.resumeId = sid }
             let tab = TerminalTab(spec: spec)
             tabs.append(tab)
@@ -273,6 +358,16 @@ final class Workspace: ObservableObject {
         let tab = TerminalTab(spec: spec)
         tabs.append(tab)
         selected = tab.id
+    }
+
+    /// Новая вкладка в проекте текущей: новая сессия с тем же агентом и маршрутом. Без вкладок ничего не делает.
+    @discardableResult
+    func newTab() -> Bool {
+        guard var spec = current?.spec, spec.utility == nil else { return false }
+        spec.resumeId = nil
+        spec.firstPrompt = ""
+        open(spec)
+        return true
     }
 
     func close(_ id: UUID?) {
