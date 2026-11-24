@@ -1,9 +1,11 @@
+import fcntl
 import io
 import json
 import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -13,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import claude_notify  # noqa: E402
 import claude_proc  # noqa: E402
 import claude_settings  # noqa: E402
+import swiftagent  # noqa: E402
 
 
 class Setting(unittest.TestCase):
@@ -126,6 +129,97 @@ class ClaudeNotify(unittest.TestCase):
                 self.assertEqual(bool(claude_notify.load_state(sid).get("notified")), post.call_count == 2)
             self.assertEqual(post.call_count, 2)
             self.assertIsNone(post.call_args.args[-1])
+
+
+class NotifyBuild(unittest.TestCase):
+    """Сборка приложения: замок, фон из хука, уборка .build-*. swiftc и настоящий ~/Library не трогаются."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.agent = swiftagent.SwiftAgent("notify", "agentmeister Notify", "com.agentmeister.notify",
+                                           app_dir=self.dir)
+        patcher = mock.patch.object(claude_notify, "AGENT", self.agent)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def hold_lock(self):
+        fd = os.open(os.path.join(self.dir, ".notify.build.lock"), os.O_RDWR | os.O_CREAT)
+        self.addCleanup(os.close, fd)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+
+    def test_build_skips_when_another_process_holds_lock(self):
+        self.hold_lock()
+        self.assertTrue(self.agent.building())
+        with mock.patch.object(swiftagent.subprocess, "run") as run:
+            self.assertIsNone(self.agent.build(wait=False))
+        run.assert_not_called()
+
+    def test_build_lock_free_after_use(self):
+        self.assertFalse(self.agent.building())
+        with self.agent.build_lock(wait=False) as got:
+            self.assertTrue(got)
+        self.assertFalse(self.agent.building())
+
+    def test_stale_build_dirs_removed_on_next_build(self):
+        old, fresh = os.path.join(self.dir, ".build-old"), os.path.join(self.dir, ".build-fresh")
+        for d in (old, fresh):
+            os.makedirs(os.path.join(d, "x"))
+        past = time.time() - 2 * swiftagent.STALE_BUILD
+        os.utime(old, (past, past))
+        with mock.patch.object(swiftagent.shutil, "which", return_value=None), \
+                self.assertRaises(SystemExit):
+            self.agent.build()
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.exists(fresh))
+
+    def test_hook_starts_background_build_and_does_not_wait(self):
+        with mock.patch.object(self.agent, "build") as build, \
+                mock.patch.object(claude_notify.shutil, "which", return_value="/usr/bin/swiftc"), \
+                mock.patch.object(claude_notify, "STATE", self.dir), \
+                mock.patch.object(claude_notify.subprocess, "Popen") as popen:
+            self.assertFalse(claude_notify.ensure_app(background=True))
+        build.assert_not_called()
+        args, kwargs = popen.call_args
+        self.assertEqual(args[0][-1], "build-app")
+        self.assertTrue(kwargs["start_new_session"])
+
+    def test_hook_does_not_start_second_build(self):
+        self.hold_lock()
+        with mock.patch.object(claude_notify, "STATE", self.dir), \
+                mock.patch.object(claude_notify.subprocess, "Popen") as popen:
+            self.assertFalse(claude_notify.ensure_app(background=True))
+        popen.assert_not_called()
+        with open(os.path.join(self.dir, "errors.log")) as f:
+            self.assertIn("уже собирается", f.read())
+
+    def test_hook_falls_back_to_osascript_while_building(self):
+        sid = "a812d4fa-e535-463a-8369-f1433fa25652"
+        data = {"session_id": sid, "hook_event_name": "Notification", "notification_type": "agent_needs_input",
+                "message": "Какой вариант?", "cwd": "/work/project"}
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append(args)
+            return mock.Mock(returncode=0, stdout="", stderr="")
+
+        with mock.patch.object(claude_notify, "STATE", self.dir), \
+                mock.patch.object(claude_notify, "enabled", return_value=True), \
+                mock.patch.object(claude_notify, "own_terminal", return_value="/dev/ttys001"), \
+                mock.patch.object(claude_notify, "watching", return_value=False), \
+                mock.patch.object(claude_notify, "session_title", return_value=""), \
+                mock.patch.object(claude_notify, "ensure_app", return_value=False) as ensure, \
+                mock.patch.object(claude_notify, "post") as post, \
+                mock.patch.object(claude_notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(claude_notify.ntfy_alert, "configured", return_value=False), \
+                mock.patch.object(claude_notify.subprocess, "run", side_effect=run), \
+                mock.patch.object(sys, "stdin", io.StringIO(json.dumps(data))):
+            self.assertEqual(claude_notify.hook(), 0)
+            self.assertTrue(claude_notify.load_state(sid).get("notified"))
+        ensure.assert_called_once_with(background=True)
+        post.assert_not_called()
+        self.assertEqual(calls[0][:2], ["osascript", "-e"])
+        self.assertEqual(calls[0][3:6], ["project: Нужен ответ", "", "Какой вариант?"])
 
 
 class CodexNotify(unittest.TestCase):

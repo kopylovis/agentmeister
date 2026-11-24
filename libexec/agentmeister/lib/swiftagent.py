@@ -4,6 +4,8 @@
 share/agentmeister/<name>/main.swift. Собирается в ~/Library/Application Support/agentmeister/<display>.app только при изменении исходника: macOS
 выдаёт разрешения (Универсальный доступ и т. п.) конкретной сборке, и лишняя пересборка их сбросит.
 """
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -19,6 +21,7 @@ from mac_files import RENAME_EXCL, RENAME_SWAP, rename_with_flags
 from mnrhlib import CACHE, HOME, WARN, settings_path
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+STALE_BUILD = 3600  # временная папка .build-* старше часа осталась от убитой сборки
 
 
 class SwiftAgent:
@@ -163,20 +166,75 @@ class SwiftAgent:
         out = os.path.join(resources, "AppIcon.icns")
         return subprocess.run(["iconutil", "-c", "icns", iconset, "-o", out], capture_output=True).returncode == 0
 
-    def build(self):
-        """Собирает, если исходник поменялся. True — собран заново."""
+    def needs_build(self):
+        """Хеш исходников, если приложение надо собрать заново, иначе None."""
         want = self.source_hash()
         try:
             if open(self.stamp).read().strip() == want and os.access(self.bin, os.X_OK) and \
                     os.path.basename(self.app) in os.listdir(os.path.dirname(self.app)):
-                return False
+                return None
         except OSError:
             pass
+        return want
+
+    @contextlib.contextmanager
+    def build_lock(self, wait=True):
+        """Замок на сборку: две сборки сразу (два хука, хук и setup) мешают друг другу.
+        Отдает True, если замок взят; с wait=False — False, когда его держит другой процесс."""
+        parent = os.path.dirname(self.app)
+        os.makedirs(parent, exist_ok=True)
+        fd = os.open(os.path.join(parent, f".{self.name}.build.lock"), os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))
+            except BlockingIOError:
+                yield False
+                return
+            yield True
+        finally:
+            os.close(fd)
+
+    def building(self):
+        """Сейчас собирает другой процесс."""
+        with self.build_lock(wait=False) as got:
+            return not got
+
+    def clean_stale_builds(self):
+        """Убрать папки .build-*, оставшиеся от сборок, которые убили на полпути."""
+        parent = os.path.dirname(self.app)
+        cutoff = time.time() - STALE_BUILD
+        try:
+            names = os.listdir(parent)
+        except OSError:
+            return
+        for name in names:
+            path = os.path.join(parent, name)
+            try:
+                if name.startswith(".build-") and not os.path.islink(path) and os.path.isdir(path) \
+                        and os.path.getmtime(path) < cutoff:
+                    shutil.rmtree(path, ignore_errors=True)
+            except OSError:
+                pass
+
+    def build(self, wait=True):
+        """Собирает, если исходник поменялся. True — собран заново, False — сборка не нужна,
+        None — с wait=False другой процесс как раз собирает."""
+        if not self.needs_build():
+            return False
+        with self.build_lock(wait) as got:
+            if not got:
+                return None
+            return self._build_locked()
+
+    def _build_locked(self):
+        want = self.needs_build()  # пока ждали замок, мог собрать другой процесс
+        if not want:
+            return False
+        self.clean_stale_builds()
         if not shutil.which("swiftc"):
             sys.exit("Нужен компилятор Swift из Xcode Command Line Tools: xcode-select --install")
         print(f"Собираю {self.display}...")
         parent = os.path.dirname(self.app)
-        os.makedirs(parent, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".build-", dir=parent) as tmp:
             app = os.path.join(tmp, os.path.basename(self.app))
             contents = os.path.join(app, "Contents")
