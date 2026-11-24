@@ -233,7 +233,8 @@ class Api(unittest.TestCase):
     def test_wait_for_start_filters_client_side(self):
         calls = []
         batches = [[{"update_id": 1, "callback_query": {"id": "c"}},
-                    {"update_id": 2, "message": {"text": "/start", "chat": {"id": 5, "type": "private"}}}]]
+                    {"update_id": 2, "message": {"text": "/start c0de", "chat": {"id": 5, "type": "private"},
+                                                 "from": {"id": 5}}}]]
 
         def fake(method, tok=None, wait=15, **params):
             calls.append(params)
@@ -241,9 +242,46 @@ class Api(unittest.TestCase):
                 return []
             return batches.pop(0) if batches else []
         with mock.patch.object(telegram, "call", fake):
-            self.assertEqual(telegram.wait_for_start("1:x", seconds=5)["id"], 5)
+            self.assertEqual(telegram.wait_for_start("1:x", "c0de", seconds=5)["id"], 5)
         self.assertEqual(calls[0].get("allowed_updates"), "[]")
         self.assertTrue(all("allowed_updates" not in p for p in calls[1:]))
+
+    def test_wait_for_start_needs_one_time_code(self):
+        def start(uid, text, kind="private", sender=None):
+            return {"update_id": uid, "message": {"text": text, "chat": {"id": uid, "type": kind, "first_name": "Eve",
+                                                                         "username": "eve"},
+                                                  "from": {"id": sender or uid}}}
+        batches = [[start(10, "/start"), start(11, "/start wrong"), start(12, "/start c0de", kind="group"),
+                    start(13, "/start c0de", sender=99), start(14, "/start c0de")]]
+
+        def fake(method, tok=None, wait=15, **params):
+            if "allowed_updates" in params or params.get("timeout") == 0:
+                return []
+            return batches.pop(0) if batches else []
+        out = io.StringIO()
+        with mock.patch.object(telegram, "call", fake), mock.patch("sys.stdout", out):
+            self.assertEqual(telegram.wait_for_start("1:x", "c0de", seconds=5)["id"], 14)
+        self.assertIn("Eve @eve", out.getvalue())
+        with mock.patch.object(telegram, "call", lambda *a, **k: []), \
+                mock.patch.object(telegram.time, "time", side_effect=[0, 0, 10]):
+            self.assertIsNone(telegram.wait_for_start("1:x", "c0de", seconds=5))
+
+    def test_setup_links_with_code_and_saves_only_matching_chat(self):
+        tok = "123456:" + "a" * 35
+        opened, saved = [], {}
+        with mock.patch.object(telegram, "read_token", lambda: tok), \
+                mock.patch.object(telegram, "call", lambda *a, **k: {"username": "bot"}), \
+                mock.patch.object(telegram, "plugin_token", lambda: ""), \
+                mock.patch.object(telegram, "save_token"), \
+                mock.patch.object(telegram.subprocess, "run", lambda args, **k: opened.append(args)), \
+                mock.patch.object(telegram, "wait_for_start",
+                                  lambda t, code: {"id": 7, "first_name": "Me"} if opened[0][1].endswith(
+                                      "?start=" + code) else None), \
+                mock.patch.object(telegram, "write_config", lambda **kw: saved.update(kw)), \
+                mock.patch.object(telegram, "away_after", lambda: 120), \
+                mock.patch("sys.stdout", io.StringIO()):
+            self.assertEqual(telegram.setup(), 0)
+        self.assertEqual(saved["telegram_chat"], "7")
 
     def test_setup_warns_about_plugin_bot(self):
         tok = "123456:" + "a" * 35
