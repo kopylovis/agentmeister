@@ -6,7 +6,6 @@ import re
 import select
 import sys
 import termios
-import textwrap
 import time
 import tty
 import unicodedata
@@ -77,15 +76,19 @@ def write_all(fd, text):
         data = data[os.write(fd, data):]
 
 
-def cells(ch):
-    """Сколько клеток терминала занимает символ: эмодзи и иероглифы две, модификаторы ноль."""
+def cells(ch, after=""):
+    """Сколько клеток терминала занимает символ: эмодзи и иероглифы две, модификаторы ноль. after: следующий
+    символ; узкий символ с VS16 («♻️») iTerm2 рисует эмодзи в две клетки."""
     if unicodedata.combining(ch) or ch in "\u200d\ufe0e\ufe0f":
         return 0
+    if after == "\ufe0f":
+        return 2
     return 2 if unicodedata.east_asian_width(ch) in "WF" else 1
 
 
 def width(text):
-    return sum(cells(ch) for ch in ANSI.sub("", text))
+    text = ANSI.sub("", text)
+    return sum(cells(ch, text[i + 1:i + 2]) for i, ch in enumerate(text))
 
 
 def cut(text, width):
@@ -96,7 +99,7 @@ def cut(text, width):
             out.append(m.group(0))
             i = m.end()
             continue
-        w = cells(text[i])
+        w = cells(text[i], text[i + 1:i + 2])
         if seen + w > width:
             break
         out.append(text[i])
@@ -413,16 +416,99 @@ def box(title, body, w, h, active):
     return lines
 
 
+WORD = re.compile(r"\x1b\[[0-9;]*m| +|[^ \x1b]+|\x1b")
+
+
 def wrap(lines, w):
-    """Длинные строки без цвета переносятся по словам с тем же отступом, цветные обрезаются."""
+    """Перенос по словам по ширине в клетках, цветные строки тоже. Отступ строки повторяется, цвет переходит
+    на следующую строку, слово длиннее строки режется."""
     out = []
     for line in lines:
-        if width(line) <= w or "\x1b[" in line:
-            out.append(line)
-            continue
-        indent = line[:len(line) - len(line.lstrip())]
-        out += textwrap.wrap(line, w, subsequent_indent=indent) or [""]
+        out += [line] if width(line) <= w else wrap_line(line, w)
     return out
+
+
+def wrap_line(line, w):
+    plain = ANSI.sub("", line)
+    indent = " " * (len(plain) - len(plain.lstrip(" ")))
+    if len(indent) * 2 > w:
+        indent = ""
+    out, active, space, started = [], [], "", False
+    cur, seen, empty = indent, len(indent), True
+
+    def newline():
+        nonlocal cur, seen, empty
+        out.append(cur + ("\x1b[0m" if active else ""))
+        cur, seen, empty = indent + "".join(active), len(indent), True
+
+    for tok in WORD.findall(line):
+        if tok.startswith("\x1b"):
+            if ANSI.fullmatch(tok):
+                active = [] if tok in ("\x1b[0m", "\x1b[m") else active + [tok]
+                cur += tok
+            continue
+        if tok.startswith(" "):
+            space = tok if started else ""  # пробелы в начале строки уже стали отступом
+            continue
+        started, size = True, width(tok)
+        if not empty and seen + len(space) + size > w:
+            newline()
+        elif not empty:
+            cur, seen = cur + space, seen + len(space)
+        space = ""
+        while seen + size > w:  # слово длиннее строки
+            part = cut(tok, w - seen) or tok[0]
+            if "/" in part[1:] and len(part) < len(tok):  # путь лучше переносить после «/»
+                part = part[:part.rindex("/") + 1]
+            cur, tok = cur + part, tok[len(part):]
+            size = width(tok)
+            newline()
+        if tok:
+            cur, seen, empty = cur + tok, seen + size, False
+    if not empty or not out:
+        out.append(cur)
+    return out
+
+
+def squeeze(head, tail, h, w):
+    """Уложить описание в h строк. tail (блок фактов) остается целиком. Если места мало, сначала уходят пустые
+    строки, потом конец head, и его последняя строка кончается «…»."""
+    def blank(line):
+        return not ANSI.sub("", line).strip()
+
+    head, tail = list(head), list(tail)
+    for part in (tail, head):  # пустые строки подряд
+        for k in range(len(part) - 1, 0, -1):
+            if len(head) + len(tail) > h and blank(part[k]) and blank(part[k - 1]):
+                del part[k]
+    for part in (head, tail):
+        for k in range(len(part) - 1, -1, -1):
+            if len(head) + len(tail) > h and blank(part[k]):
+                del part[k]
+    if len(head) + len(tail) > h:
+        head = head[:max(0, h - len(tail))]
+        if head:
+            head[-1] = cut(head[-1], w - 2) + " \x1b[2m…\x1b[0m"
+        tail = tail[:h - len(head)]
+    return head + tail
+
+
+def facts(pairs, w, pad=None):
+    """Строки «ключ  значение» с тусклым ключом. Длинное значение (путь, id) переносится под себя, а не под ключ."""
+    pad = pad or max(width(k) for k, _ in pairs) + 3
+    out = []
+    for k, v in pairs:
+        parts = wrap([v], max(10, w - pad))
+        out += [f"\x1b[2m{k}{' ' * (pad - width(k))}\x1b[0m" + parts[0]] + [" " * pad + part for part in parts[1:]]
+    return out
+
+
+class Pinned(list):
+    """Строки описания, последние keep из них (блок фактов) не обрезаются, когда описание не влезает."""
+
+    def __init__(self, lines, keep=0):
+        super().__init__(lines)
+        self.keep = keep
 
 
 SIDE_MIN, SIDE_FORCED_MIN, LIST_MIN = 34, 28, 20
@@ -520,7 +606,9 @@ class Panel(Menu):
         screen = left
         if side:
             text = self.describe(self.sel, rw - 4) if self.sel in self.choices(view) else []
-            right = box(f" {self.heads[1]} ", [" " + line for line in wrap(text, rw - 4)], rw, h, False)
+            keep = min(len(text), getattr(text, "keep", 0))
+            text = squeeze(wrap(text[:len(text) - keep], rw - 4), wrap(text[len(text) - keep:], rw - 4), h - 2, rw - 4)
+            right = box(f" {self.heads[1]} ", [" " + line for line in text], rw, h, False)
             screen = [a + " " + b for a, b in zip(left, right)]
         if self.query:
             hint = tr(f"поиск: {self.query}▏ · Backspace стереть · Esc сбросить",
@@ -859,7 +947,7 @@ def fold(line, size):
             cur += code
             i = m.end()
             continue
-        w = cells(line[i])
+        w = cells(line[i], line[i + 1:i + 2])
         if seen + w > size:
             parts.append(cur + "\x1b[0m")
             cur, seen = "".join(active), 0
