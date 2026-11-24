@@ -187,15 +187,18 @@ struct OnboardingView: View {
                 if let p {
                     status(p.configured, l.t("proxy настроен", "proxy is set up") + (p.exit.map { ", " + l.t("выход ", "exit ") + $0 } ?? ""),
                            l.t("proxy не настроен", "proxy isn't set up"))
-                    HStack {
-                        UtilityButton(title: p.configured ? l.t("Сменить подписку", "Change subscription") : l.t("Настроить proxy", "Set up proxy"),
-                                      args: ["proxy", "setup"])
-                        if p.configured {
-                            UtilityButton(title: l.t("Проверить выход", "Check the exit"), args: ["proxy", "test"])
-                        }
-                    }
                 } else {
                     ProgressView()
+                }
+            }
+            // действия под карточкой, а не в ней: карточка показывает только состояние, как на остальных шагах
+            if let p {
+                HStack {
+                    UtilityButton(title: p.configured ? l.t("Сменить подписку", "Change subscription") : l.t("Настроить proxy", "Set up proxy"),
+                                  args: ["proxy", "setup"])
+                    if p.configured {
+                        UtilityButton(title: l.t("Проверить выход", "Check the exit"), args: ["proxy", "test"])
+                    }
                 }
             }
         }
@@ -256,13 +259,11 @@ struct OnboardingView: View {
             Text(l.t("Все готово", "All set")).font(.title2.weight(.semibold))
             lead(l.t("Проект слева открывает новую сессию через proxy, сессия под проектом продолжается во вкладке. ⌘K ищет вкладки, сессии и действия, ⌘, открывает настройки. Мастер можно открыть снова из меню Help.",
                      "A project on the left opens a new session via the proxy, a session under it resumes in a tab. ⌘K finds tabs, sessions and actions, ⌘, opens Settings. You can reopen this from the Help menu."))
-            card {
-                UtilityButton(title: l.t("Проверить установку (setup)", "Check the install (setup)"), args: ["setup"])
-                Text(l.t("Команды, хуки, MCP-сервер и promptsill. Если что-то не так, это есть и в Настройки → Диагностика.",
-                         "Commands, hooks, the MCP server and promptsill. Settings → Diagnostics shows the same."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            UtilityButton(title: l.t("Проверить установку (setup)", "Check the install (setup)"), args: ["setup"])
+            Text(l.t("Команды, хуки, MCP-сервер и promptsill. То же самое показывает Настройки, раздел Диагностика.",
+                     "Commands, hooks, the MCP server and promptsill. Settings, Diagnostics shows the same."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }
