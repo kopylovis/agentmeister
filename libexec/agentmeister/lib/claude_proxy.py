@@ -609,12 +609,24 @@ def watch():
             pass
 
 
+def is_watcher(pid):
+    """pid из watch.pid — правда наш сторож? После сбоя или перезагрузки номер мог достаться другому процессу.
+    None: ps не запустился, проверить нечем."""
+    try:
+        line = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout
+    except OSError:
+        return None
+    args = line.split()
+    return args[-1:] == ["watch"] and any(os.path.basename(a) == "claude_proxy.py" for a in args[:-1])
+
+
 def watcher_alive():
     try:
         with open(WATCH_PID) as f:
-            return alive(int(f.read().strip()))
+            pid = int(f.read().strip())
     except (OSError, ValueError):
         return False
+    return pid > 0 and alive(pid) and is_watcher(pid) is not False
 
 
 def ensure_watch():
