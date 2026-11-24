@@ -1,11 +1,31 @@
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var hotKey: EventHotKeyRef?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Пока приложение собирается как исполняемый файл без .app, macOS сама не дает ему Dock и меню
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        Appearance.apply(UserDefaults.standard.string(forKey: Appearance.key) ?? "system")
+        registerShowHotKey()
+    }
+
+    /// ⌥Space из любого приложения показывает Agentmeister. Глобальная клавиша через Carbon, без Универсального доступа.
+    private func registerShowHotKey() {
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
+            DispatchQueue.main.async {
+                NSApp.activate()
+                NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true || $0.title == "Agentmeister" }?
+                    .makeKeyAndOrderFront(nil)
+            }
+            return noErr
+        }, 1, &spec, nil, nil)
+        let id = EventHotKeyID(signature: OSType(0x414D5354), id: 1)  // "AMST"
+        RegisterEventHotKey(UInt32(kVK_Space), UInt32(optionKey), id, GetApplicationEventTarget(), 0, &hotKey)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -51,6 +71,7 @@ struct AgentmeisterApp: App {
                 .environmentObject(workspace)
                 .environmentObject(ui)
         }
+        .windowStyle(.hiddenTitleBar)
         .commands {
             let l = L(backend.state.lang)
             CommandGroup(replacing: .newItem) {
@@ -105,6 +126,10 @@ struct AgentmeisterApp: App {
                         .keyboardShortcut(KeyEquivalent(Character(String(n))))
                 }
                 Divider()
+                Button(l.t("Следующая вкладка", "Next tab")) { workspace.selectNeighbor(1) }
+                    .keyboardShortcut(.tab, modifiers: .control)
+                Button(l.t("Предыдущая вкладка", "Previous tab")) { workspace.selectNeighbor(-1) }
+                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
                 Button(l.t("К вкладке, которая ждет", "Jump to the waiting tab")) {
                     if let tab = workspace.tabs.first(where: { $0.status == "waiting" }) { workspace.selected = tab.id }
                 }
