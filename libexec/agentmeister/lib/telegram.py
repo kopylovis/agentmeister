@@ -11,7 +11,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import secret
-from mnrhlib import read_config, write_config
+from mnrhlib import HOME, read_config, tilde, write_config
 
 SERVICE = "mnrh-telegram"
 ACCOUNT = "bot"
@@ -22,6 +22,42 @@ DEFAULT_AWAY = 120
 
 class TelegramError(Exception):
     pass
+
+
+class TelegramConflict(TelegramError):
+    """409: этого бота уже опрашивает другая программа, а Telegram отдает обновления только одной."""
+
+
+CONFLICT = ("этого бота уже опрашивает другая программа (например, плагин Telegram для Claude Code), "
+            "а Telegram отдает обновления только одной. Заведи для agentmeister отдельного бота: "
+            "agentmeister notify telegram setup")
+
+
+def plugin_env():
+    """Файл с токеном плагина Telegram для Claude Code (его channels/telegram/.env)."""
+    base = os.environ.get("TELEGRAM_STATE_DIR") or os.path.join(
+        os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(HOME, ".claude"), "channels", "telegram")
+    return os.path.join(base, ".env")
+
+
+def plugin_token():
+    """Токен бота плагина Telegram, если плагин настроен. Файл только читаем."""
+    try:
+        with open(plugin_env()) as f:
+            for line in f:
+                m = re.match(r"^TELEGRAM_BOT_TOKEN=(.*)$", line.strip())
+                if m:
+                    return m.group(1).strip().strip("\"'")
+    except OSError:
+        pass
+    return ""
+
+
+def shares_plugin_bot(tok=None):
+    """Тот же бот настроен в плагине Telegram для Claude Code: опрашивать его нам нельзя, плагин перестанет
+    получать сообщения (Telegram вернет 409 одному из нас)."""
+    plug = plugin_token()
+    return bool(plug) and plug == (tok or token())
 
 
 def token():
@@ -58,10 +94,14 @@ def call(method, tok=None, wait=15, **params):
         try:
             reply = json.load(e)
         except ValueError:
+            if e.code == 409:
+                raise TelegramConflict(CONFLICT) from None
             raise TelegramError(f"Telegram ответил HTTP {e.code}") from None
     except (urllib.error.URLError, OSError) as e:
         raise TelegramError(f"нет связи с api.telegram.org ({getattr(e, 'reason', e)})") from None
     if not reply.get("ok"):
+        if reply.get("error_code") == 409:
+            raise TelegramConflict(CONFLICT)
         raise TelegramError(reply.get("description") or "Telegram вернул ошибку")
     return reply["result"]
 
@@ -133,11 +173,22 @@ def read_token():
     return ""
 
 
+def reset_updates(tok=None):
+    """Вернуть боту набор обновлений Telegram по умолчанию.
+
+    allowed_updates в getUpdates Telegram запоминает для бота насовсем, и прежние версии оставляли бота
+    только с ["message"] или ["callback_query"]: тогда другая программа на том же боте (плагин Telegram
+    для Claude Code) не получает сообщений. Пустой список и есть умолчание; сам опрос его больше не передает,
+    нужное отбирает сам. timeout=0 без offset ничего не подтверждает."""
+    call("getUpdates", tok, timeout=0, limit=1, allowed_updates="[]")
+
+
 def wait_for_start(tok, seconds=180):
     offset = None
     deadline = time.time() + seconds
+    reset_updates(tok)
     while time.time() < deadline:
-        updates = call("getUpdates", tok, wait=40, offset=offset, timeout=25, allowed_updates='["message"]')
+        updates = call("getUpdates", tok, wait=40, offset=offset, timeout=25)
         for u in updates:
             offset = u["update_id"] + 1
             msg = u.get("message") or {}
@@ -162,6 +213,15 @@ def setup():
     except TelegramError as e:
         print(f"✗ Telegram не принял токен: {e}")
         return 1
+    if shares_plugin_bot(tok):
+        print(f"! Этот же бот настроен в плагине Telegram для Claude Code ({tilde(plugin_env())}).")
+        print("  Telegram отдает обновления только одной программе: agentmeister и плагин будут перебивать")
+        print("  друг друга, кнопки «Разрешить» и «Отклонить» с этим ботом работать не будут.")
+        print("  Лучше заведи для agentmeister отдельного бота в @BotFather.")
+        if not sys.stdin.isatty() or input("Все равно подключить этого бота? [y/N] ").strip().lower() not in (
+                "y", "yes", "д", "да"):
+            print("Не подключил.")
+            return 1
     save_token(tok)
     name = bot.get("username", "")
     print(f"✓ бот @{name}")
@@ -193,7 +253,9 @@ def describe():
         return "Telegram: не подключён — agentmeister notify telegram"
     bot = read_config().get("telegram_bot", "")
     when = "всегда" if mode() == "always" else f"когда ты не за Mac (блокировка или {away_after()} с без ввода)"
-    return f"Telegram: @{bot}, {when}"
+    shared = (". ! Тот же бот, что у плагина Telegram для Claude Code: кнопки разрешений с ним не работают, "
+              "заведи отдельного: agentmeister notify telegram setup") if shares_plugin_bot() else ""
+    return f"Telegram: @{bot}, {when}{shared}"
 
 
 def main(args):

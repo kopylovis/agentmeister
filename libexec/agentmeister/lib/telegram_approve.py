@@ -167,7 +167,9 @@ def poll_once(chat_id, timeout):
     Без offset Telegram отдает все неподтвержденные обновления, поэтому свой offset между запусками не храним:
     после разбора сразу подтверждаем прочитанное. Сохраненный offset мог бы оказаться больше новых номеров
     (после недели тишины Telegram начинает их со случайного числа) и молча съесть нажатия."""
-    updates = telegram.call("getUpdates", wait=timeout + 15, timeout=timeout, allowed_updates='["callback_query"]')
+    reset_updates_once()
+    # allowed_updates не передаем: Telegram запомнил бы его для бота насовсем (см. telegram.reset_updates)
+    updates = telegram.call("getUpdates", wait=timeout + 15, timeout=timeout)
     last = None
     for u in updates:
         last = max(last or 0, u.get("update_id", 0))
@@ -184,7 +186,17 @@ def poll_once(chat_id, timeout):
         with contextlib.suppress(telegram.TelegramError):
             telegram.call("answerCallbackQuery", callback_query_id=cb.get("id"), text=text)
     if last is not None:
-        telegram.call("getUpdates", offset=last + 1, timeout=0, allowed_updates='["callback_query"]')
+        telegram.call("getUpdates", offset=last + 1, timeout=0)
+
+
+def reset_updates_once():
+    """Прежние версии оставили боту allowed_updates=["callback_query"]: один раз вернуть умолчание."""
+    mark = os.path.join(DIR, "updates.reset")
+    if os.path.exists(mark):
+        return
+    telegram.reset_updates()
+    with contextlib.suppress(OSError):
+        open(mark, "w").close()
 
 
 @contextlib.contextmanager
@@ -217,6 +229,10 @@ def wait_answer(rid, chat_id, deadline):
                 try:
                     poll_once(chat_id, int(min(POLL, left - 1)))
                     continue
+                except telegram.TelegramConflict as e:
+                    # бота опрашивает другая программа: не перебивать ее, ответ будет на Mac
+                    log_error(str(e))
+                    return "conflict"
                 except telegram.TelegramError as e:
                     # сеть пропала на минуту: ждем дальше, а не бросаем запрос
                     log_error(str(e))
@@ -234,7 +250,8 @@ def decision(answer):
 
 FINALE = {"allow": "✅ Разрешено", "deny": "❌ Отклонено", "back": "Ты вернулся к Mac — ответь там",
           "timeout": "Время вышло — ответь на Mac", "gone": "Ответ уже не нужен",
-          "error": "Не дождался ответа из-за ошибки — ответь на Mac"}
+          "error": "Не дождался ответа из-за ошибки — ответь на Mac",
+          "conflict": "Этого бота опрашивает другая программа — ответь на Mac"}
 
 
 def finish(msg_id, text, outcome):
@@ -268,7 +285,13 @@ def wanted(payload):
         return False
     if not enabled() or not telegram.chat():
         return False
-    return telegram.away() and bool(telegram.token())
+    if not telegram.away():
+        return False
+    tok = telegram.token()
+    if tok and telegram.shares_plugin_bot(tok):
+        log_error("тот же бот у плагина Telegram для Claude Code, кнопки не шлю: заведи отдельного бота")
+        return False
+    return bool(tok)
 
 
 class Gone(Exception):
@@ -355,6 +378,10 @@ def main(args):
     if value == "on":
         if not telegram.configured():
             print("Сначала подключи бота: agentmeister notify telegram")
+            return 1
+        if telegram.shares_plugin_bot():
+            print("✗ Этот же бот настроен в плагине Telegram для Claude Code: кнопки читали бы его обновления и мешали"
+                  " плагину. Заведи для agentmeister отдельного бота: agentmeister notify telegram setup")
             return 1
         write_config(telegram_approve="on")
         install_hook()
