@@ -438,11 +438,9 @@ struct PreviewView: View {
                 messages
             }
             HStack(spacing: 8) {
-                Button(l.resume) { onResume(false) }
-                    .buttonStyle(.glassProminent)
+                PillButton(title: l.resume, prominent: true) { onResume(false) }
                     .keyboardShortcut(.defaultAction)
-                Button(l.t("Продолжить, не давая Mac уснуть", "Resume and keep the Mac awake")) { onResume(true) }
-                    .buttonStyle(.glass)
+                PillButton(title: l.t("Продолжить, не давая Mac уснуть", "Resume and keep the Mac awake")) { onResume(true) }
             }
             FlowLayout(spacing: 6) {
                 CapsuleButton(title: l.moveToClaude, action: onMoveToClaude)
@@ -497,11 +495,9 @@ struct PreviewView: View {
             header
             messages
             HStack(spacing: 8) {
-                Button(l.resume) { onResume(false) }
-                    .buttonStyle(.glassProminent)
+                PillButton(title: l.resume, prominent: true) { onResume(false) }
                     .keyboardShortcut(.defaultAction)
-                Button(l.t("Продолжить, не давая Mac уснуть", "Resume and keep the Mac awake")) { onResume(true) }
-                    .buttonStyle(.glass)
+                PillButton(title: l.t("Продолжить, не давая Mac уснуть", "Resume and keep the Mac awake")) { onResume(true) }
             }
             FlowLayout(spacing: 6) {
                 CapsuleButton(title: l.rename, action: onRename)
@@ -552,9 +548,8 @@ struct RenameSessionSheet: View {
                 .onSubmit(save)
             HStack {
                 Spacer()
-                Button(l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(l.rename, action: save)
-                    .buttonStyle(.glassProminent)
+                PillButton(title: l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                PillButton(title: l.rename, prominent: true, action: save)
                     .keyboardShortcut(.defaultAction)
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
             }

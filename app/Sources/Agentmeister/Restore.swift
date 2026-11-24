@@ -35,12 +35,11 @@ struct RestoreSheet: View {
             HStack(spacing: 8) {
                 Toggle(l.t("Открывать без вопроса", "Reopen without asking"), isOn: $silently)
                 Spacer()
-                Button(l.t("Не открывать", "Don't open")) { workspace.finishRestore([]) }
+                PillButton(title: l.t("Не открывать", "Don't open")) { workspace.finishRestore([]) }
                     .keyboardShortcut(.cancelAction)
-                Button(l.t("Открыть \(chosen.count)", "Open \(chosen.count)")) {
+                PillButton(title: l.t("Открыть \(chosen.count)", "Open \(chosen.count)"), prominent: true) {
                     workspace.finishRestore(pending.specs.enumerated().filter { chosen.contains($0.offset) }.map(\.element))
                 }
-                .buttonStyle(.glassProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(chosen.isEmpty)
             }
