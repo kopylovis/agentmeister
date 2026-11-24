@@ -76,6 +76,9 @@ struct MainView: View {
             LibraryToolbarButton(title: l.t("Сессии", "Sessions"))
         }
         ToolbarItem(placement: .primaryAction) {
+            UsageToolbarButton(title: l.t("Статистика", "Usage"))
+        }
+        ToolbarItem(placement: .primaryAction) {
             Button {
                 ui.newSessionProject = workspace.current?.spec.projectPath
                 ui.showNewSession = true
