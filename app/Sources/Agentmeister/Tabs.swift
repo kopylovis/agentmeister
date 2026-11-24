@@ -113,6 +113,12 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     @Published var startedAt = Date()
     /// caffeinate -w для режима "не спать". Живет, пока жив процесс вкладки.
     private var caffeinate: Process?
+    /// Вкладку закрыли. Отложенный перезапуск (после claude update, slim или выхода процесса) ее уже не поднимает:
+    /// иначе агент пошел бы в терминале, которого нет ни в одном окне.
+    private var closed = false
+    /// Перезапуск уже идет: ждем выхода агента, claude update или команду sessions. Повторный запрос до нового
+    /// старта ничего не делает, иначе второй claude update убил бы сессию, которую открыл первый.
+    private var restarting = false
     let view: AppTerminalView
 
     init(spec: LaunchSpec, id: UUID? = nil) {
@@ -182,6 +188,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     """
 
     func start() {
+        restarting = false
+        guard !closed else { return }
         exitCode = nil
         running = true
         status = nil
@@ -252,13 +260,14 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
                 .map(String.init).first { $0.first?.isNumber == true }
             let lines = out.split(separator: "\n", omittingEmptySubsequences: true).suffix(3)
             await MainActor.run {
+                guard !self.closed else { return }
                 self.view.feed(text: lines.joined(separator: "\r\n") + (lines.isEmpty ? "" : "\r\n"))
                 if code != 0 {
                     // сессия все равно открывается: старая версия Claude Code работает
                     self.updateFailed = UpdateFailure(at: Date(), code: code, version: version,
                                                       log: out.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
-                self.restart()
+                self.relaunch()
             }
         }
     }
@@ -286,8 +295,10 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
 
     /// Та же сессия, другой маршрут: через proxy или напрямую.
     func switchRoute() {
-        spec.direct.toggle()
-        restart()
+        afterStop {
+            self.spec.direct.toggle()
+            self.relaunch()
+        }
     }
 
     /// Команда agentmeister над сессией этой вкладки, когда агент уже остановлен, потом продолжение.
@@ -299,7 +310,10 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
             Task.detached(priority: .userInitiated) {
                 let ok: Bool
                 if case .success = Backend.run(args) { ok = true } else { ok = false }
-                await MainActor.run { then(ok) }
+                await MainActor.run {
+                    // вкладку закрыли, пока шла команда: продолжать некуда
+                    if self.closed { self.restarting = false } else { then(ok) }
+                }
             }
         }
     }
@@ -309,6 +323,13 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     private var pendingAfterExit: (@MainActor () -> Void)?
 
     private func afterStop(_ action: @escaping @MainActor () -> Void) {
+        guard !closed else { return }
+        if restarting {
+            // агент еще не вышел: повторяем сигнал, а действие остается первым
+            if running, pendingAfterExit != nil { view.terminate() }
+            return
+        }
+        restarting = true
         if running {
             pendingAfterExit = action
             view.terminate()
@@ -320,13 +341,13 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Сжать сессию (старые скриншоты и длинные выводы) и продолжить ее, как /slim.
     func slim(note: String) {
         guard let sid = sessionId, spec.agent == .claude else { return }
-        whileStopped(note, ["sessions", "slim", sid, "-y"]) { _ in self.restart() }
+        whileStopped(note, ["sessions", "slim", sid, "-y"]) { _ in self.relaunch() }
     }
 
     /// Удалить сессию без следа и открыть чистую в той же папке, как /forget.
     func forget(note: String) {
         guard let sid = sessionId, spec.agent == .claude else { fresh(); return }
-        whileStopped(note, ["sessions", "rm", sid, "-y"]) { _ in self.fresh() }
+        whileStopped(note, ["sessions", "rm", sid, "-y"]) { _ in self.startFresh() }
     }
 
     /// Переименовать сессию, как /rename. Работает и на ходу: Claude Code дописывает название в конец переписки.
@@ -337,26 +358,32 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
 
     /// Новая сессия в той же вкладке. Нынешняя остается в списке сессий.
     func fresh() {
-        afterStop {
-            self.spec.resumeId = nil
-            self.spec.firstPrompt = ""
-            self.sessionId = nil
-            self.start()
-        }
+        afterStop { self.startFresh() }
+    }
+
+    private func startFresh() {
+        spec.resumeId = nil
+        spec.firstPrompt = ""
+        sessionId = nil
+        start()
     }
 
     /// Перезапуск продолжает ту же сессию, если ее id уже известен. У Codex так же, по id треда.
     func restart() {
-        afterStop {
-            if let sid = self.sessionId, self.spec.utility == nil {
-                self.spec.resumeId = sid
-                self.spec.firstPrompt = ""
-            }
-            self.start()
+        afterStop { self.relaunch() }
+    }
+
+    /// Запуск той же сессии, когда агент уже остановлен. Последний шаг любого перезапуска.
+    private func relaunch() {
+        if let sid = sessionId, spec.utility == nil {
+            spec.resumeId = sid
+            spec.firstPrompt = ""
         }
+        start()
     }
 
     func terminate() {
+        closed = true
         pendingAfterExit = nil
         caffeinate?.terminate()
         caffeinate = nil
