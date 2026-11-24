@@ -6,14 +6,20 @@
 Сессия просит его выполнить команду по имени. Список команд лежит в папке, куда песочница
 сессии писать не дает, так что добавить в него команду может только человек.
 
+Папки списка и сокета и все папки над ними песочница не дает переименовать или подменить ссылкой,
+а исполнитель читает список, только если на пути к нему нет ссылок пользователя и файл никто, кроме
+владельца, не может менять.
+
 Список защищает от случайного прямого трафика, а не от агента, который поправит скрипт релиза:
-команда выполняет то, что лежит в проекте.
+команда выполняет то, что лежит в проекте. И песочница не граница для кода: сессия может писать
+~/.zshrc, хуки git, настройки Claude и другие файлы, которые потом выполнятся вне нее.
 """
 import fcntl
 import json
 import os
 import signal
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -60,8 +66,7 @@ def load(path=None):
     """Имя команды -> {"cwd", "run", "args"}. Ошибка в файле — RuleError с понятным текстом."""
     path = str(path or COMMANDS)
     try:
-        with open(path) as f:
-            data = json.load(f)
+        data = json.loads(read_trusted(path))
     except FileNotFoundError:
         return {}
     except (OSError, ValueError) as e:
@@ -105,13 +110,78 @@ def command_env(base=None):
     return env
 
 
+MAX_COMMANDS = 1 << 20
+
+
+def read_trusted(path):
+    """Текст списка команд, если подменить его сессия не могла: на пути нет ссылок, кроме системных (их
+    владелец root), папки и файл принадлежат этому пользователю или root, и писать в них больше никто не может.
+    Иначе OSError с причиной. Файла нет: FileNotFoundError."""
+    path = os.path.abspath(path)
+    uid = os.getuid()
+    parts = path.strip("/").split("/")
+    current = ""
+    for part in parts[:-1]:
+        current += "/" + part
+        info = os.lstat(current)
+        if stat.S_ISLNK(info.st_mode):
+            if info.st_uid != 0:
+                raise OSError(f"{tilde(current)} — символическая ссылка, укажи настоящий путь")
+            continue
+        if info.st_uid not in (0, uid):
+            raise OSError(f"папка {tilde(current)} чужая")
+        if info.st_mode & 0o022 and not (info.st_uid == 0 and info.st_mode & stat.S_ISVTX):
+            raise OSError(f"в папку {tilde(current)} могут писать другие")
+    # системные ссылки раскрыты заранее; дальше каждую папку открываем без перехода по ссылкам
+    real = os.path.realpath(os.path.dirname(path))
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in real.strip("/").split("/") if real != "/" else []:
+            nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nxt
+        file_fd = os.open(os.path.basename(path), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+    finally:
+        os.close(fd)
+    with os.fdopen(file_fd, "rb") as f:
+        info = os.fstat(f.fileno())
+        if not stat.S_ISREG(info.st_mode):
+            raise OSError("это не обычный файл")
+        if info.st_uid != uid:
+            raise OSError("файл принадлежит другому пользователю")
+        if info.st_mode & 0o022:
+            raise OSError("в файл могут писать другие, нужно chmod 600")
+        data = f.read(MAX_COMMANDS + 1)
+    if len(data) > MAX_COMMANDS:
+        raise OSError("файл больше мегабайта")
+    return data.decode("utf-8")
+
+
+def protected_parents():
+    """Папки над списком и сокетом: и путь как есть, и после раскрытия ссылок, без корня."""
+    out = []
+    for folder in (CONF_DIR, STATE):
+        for base in (os.path.abspath(folder), os.path.realpath(folder)):
+            parent = os.path.dirname(base)
+            while parent != "/" and parent not in out:
+                out.append(parent)
+                parent = os.path.dirname(parent)
+    return out
+
+
 def sandbox_profile_lines():
-    """Для профиля сессии: список и сокет исполнителя менять нельзя, подключаться к сокету можно."""
-    return ['(deny file-write* (subpath (param "HOST_RUN_CONF")) (subpath (param "HOST_RUN_STATE")))']
+    """Для профиля сессии: список и сокет исполнителя менять нельзя, подключаться к сокету можно. Папки над
+    ними нельзя переименовать, удалить или заменить ссылкой, иначе исполнитель прочитал бы чужой список."""
+    parents = " ".join(f'(literal (param "HOST_RUN_UP{i}"))' for i in range(len(protected_parents())))
+    return ['(deny file-write* (subpath (param "HOST_RUN_CONF")) (subpath (param "HOST_RUN_STATE")))',
+            f"(deny file-write* {parents})"]
 
 
 def sandbox_params():
-    return ["-D", f"HOST_RUN_CONF={os.path.realpath(CONF_DIR)}", "-D", f"HOST_RUN_STATE={os.path.realpath(STATE)}"]
+    params = ["-D", f"HOST_RUN_CONF={os.path.realpath(CONF_DIR)}", "-D", f"HOST_RUN_STATE={os.path.realpath(STATE)}"]
+    for i, parent in enumerate(protected_parents()):
+        params += ["-D", f"HOST_RUN_UP{i}={parent}"]
+    return params
 
 
 # Кадры по сокету: тип (1 байт) и длина (4 байта). o вывод, e сообщение исполнителя, x код выхода, v версия.
