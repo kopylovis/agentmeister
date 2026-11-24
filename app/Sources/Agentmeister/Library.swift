@@ -152,7 +152,7 @@ struct LibraryView: View {
         .navigationTitle(l.t("Сессии", "Sessions"))
         .task(id: query) {
             let q = query.trimmingCharacters(in: .whitespaces)
-            guard !q.isEmpty else { found = nil; return }
+            guard !q.isEmpty else { found = nil; searching = false; return }
             searching = true
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
@@ -211,7 +211,7 @@ struct LibraryView: View {
         let project = backend.state.projects.first { home == $0.path || home.hasPrefix($0.path + "/") }
         let path = project?.path ?? home
         let name = project?.name ?? (home as NSString).lastPathComponent
-        var spec = LaunchSpec(projectName: name, projectPath: path, resumeId: id)
+        var spec = project.map { LaunchSpec.resume(id, cwd: home, project: $0) } ?? LaunchSpec(projectName: name, projectPath: path, resumeId: id)
         spec.awake = awake
         workspace.open(spec)
         openWindow(id: "main")

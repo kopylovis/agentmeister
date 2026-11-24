@@ -23,6 +23,8 @@ final class UIState: ObservableObject {
     @Published var newSessionParallel = false
     /// Путь проекта, чей экран открыт вместо терминала. Nil, когда видны вкладки.
     @Published var projectScreen: String?
+    /// Главное окно сейчас впереди. Команды вкладок (⌘W, ⌘R) работают только тогда.
+    @Published var mainKey = true
     /// Вкладка, сессию которой просят забыть. Пока не nil, окно спрашивает подтверждение.
     @Published var forgetting: TerminalTab?
     /// Вкладка, сессию которой переименовывают.
@@ -56,6 +58,10 @@ struct MainView: View {
         }
         .ignoresSafeArea()
         .background(TrafficLightsInset())
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
+            ui.mainKey = (note.object as? NSWindow)?.identifier?.rawValue.hasPrefix("main") == true
+        }
+        .onChange(of: backend.state.lang) { UserDefaults.standard.set(backend.state.lang, forKey: "lastLang") }
         .sheet(isPresented: $ui.showNewSession) {
             NewSessionSheet(initialProject: ui.newSessionProject)
         }
@@ -502,7 +508,7 @@ struct SessionRow: View {
         let status = tab?.status ?? live?.status
         let current = tab != nil && tab?.id == workspace.selected
         Button {
-            workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path, resumeId: session.id))
+            workspace.open(LaunchSpec.resume(session.id, cwd: session.cwd, project: project))
         } label: {
             HStack(spacing: 8) {
                 SessionDot(status: status, open: status != nil || tab != nil, size: 7)
@@ -1179,7 +1185,10 @@ struct NewSessionSheet: View {
         .padding(24)
         .frame(width: 560)
         .onAppear {
-            projectPath = initialProject ?? backend.state.projects.first?.path ?? ""
+            // путь вкладки может быть worktree или подпапкой: берем проект, в котором он лежит
+            let projects = backend.state.projects
+            projectPath = initialProject.flatMap { p in projects.first { p == $0.path || p.hasPrefix($0.path + "/") }?.path }
+                ?? projects.first?.path ?? ""
             if AgentPrefs.defaultAgent == "codex" { agent = .codex }
             direct = backend.state.proxy?.defaultRoute == "direct"
             if ui.newSessionParallel { mode = .parallel }

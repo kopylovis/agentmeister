@@ -33,6 +33,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    /// Выход останавливает всех агентов. Если кто-то из них сейчас работает, сначала спрашиваем.
+    @MainActor
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let busy = Workspace.main?.tabs.filter { $0.running && $0.status == "busy" }.count ?? 0
+        guard busy > 0 else { return .terminateNow }
+        let l = L(UserDefaults.standard.string(forKey: "lastLang") ?? "en")
+        let alert = NSAlert()
+        alert.messageText = l.t("Закрыть Agentmeister?", "Quit Agentmeister?")
+        alert.informativeText = l.t("Агенты работают во вкладках (\(busy)) и остановятся посреди хода. Переписки сохранятся, вкладки вернутся при следующем запуске.",
+                                    "Agents are working in \(busy) tab(s) and will stop mid-turn. Transcripts are kept and tabs come back next launch.")
+        alert.addButton(withTitle: l.t("Отмена", "Cancel"))
+        alert.addButton(withTitle: l.t("Закрыть", "Quit"))
+        return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         // обычный выход: при следующем запуске вкладки откроются без вопроса
         UserDefaults.standard.set(true, forKey: Workspace.cleanExitKey)
@@ -90,12 +105,14 @@ struct AgentmeisterApp: App {
                     if !workspace.newTab() { ui.showNewSession = true }
                 }
                 .keyboardShortcut("t")
+                // только когда впереди главное окно: в Настройках, Сессиях и других окнах ⌘W закрывает само окно,
+                // а не вкладку с агентом
                 Button(l.closeTab) { workspace.close(workspace.selected) }
                     .keyboardShortcut("w")
-                    .disabled(workspace.current == nil)
+                    .disabled(workspace.current == nil || !ui.mainKey)
                 Button(l.restart) { workspace.current?.restartPreferred(note: l.updating) }
                     .keyboardShortcut("r", modifiers: .command)
-                    .disabled(workspace.current == nil)
+                    .disabled(workspace.current == nil || !ui.mainKey)
                 Divider()
                 Button(l.t("Параллельная задача…", "Parallel task…")) {
                     ui.newSessionProject = workspace.current?.spec.projectPath
