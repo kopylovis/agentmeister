@@ -54,5 +54,53 @@ class AppState(unittest.TestCase):
             self.assertIn(key, state)
 
 
+class SearchAndRead(unittest.TestCase):
+    def setUp(self):
+        # основы слов поиск кладет в свою папку кэша, тесты не должны трогать настоящую
+        import claude_search
+        self.tmp = tempfile.TemporaryDirectory()
+        patcher = patch.object(claude_search, "INDEX", self.tmp.name)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(self.tmp.cleanup)
+
+    def index(self):
+        return {"11111111-2222-3333-4444-555555555555": {
+            "path": "/c/projects/-w-app/11111111-2222-3333-4444-555555555555.jsonl",
+            "ai": "Сборка релиза", "first": "2026-11-20T10:00:00Z", "last": "2026-11-20T11:00:00Z",
+            "msgs": [["user", "2026-11-20T10:00:00Z", "почини сборку релиза"],
+                     ["claude", "2026-11-20T10:05:00Z", "Сборка релиза падала на подписи, поправил fastlane"],
+                     ["tool", "2026-11-20T10:06:00Z", "$ bundle exec fastlane release"]]}}
+
+    def test_empty_query_returns_no_results(self):
+        out = app_state.search("   ")
+        self.assertEqual(out["results"], [])
+
+    def test_search_returns_sessions_with_snippets(self):
+        import claude_search
+        idx = self.index()
+        with patch.object(claude_search, "refresh", return_value=idx), \
+             patch.object(claude_search, "home_of", return_value="/w/app"):
+            out = app_state.search("сборки релиза")
+        self.assertTrue(out["exact"])
+        self.assertEqual(len(out["results"]), 1)
+        r = out["results"][0]
+        self.assertEqual(r["title"], "Сборка релиза")
+        self.assertEqual(r["home"], "/w/app")
+        self.assertGreater(r["last"], 0)
+        self.assertTrue(any("релиза" in h["snippet"] for h in r["hits"]))
+
+    def test_read_returns_last_messages(self):
+        import claude_search
+        with patch.object(claude_search, "refresh", return_value=self.index()), \
+             patch.object(claude_search, "home_of", return_value="/w/app"):
+            out = app_state.read("11111111", tail=2)
+            missing = app_state.read("99999999")
+        self.assertEqual(out["total"], 3)
+        self.assertEqual([m["at"] for m in out["messages"]], [1, 2])
+        self.assertEqual(out["messages"][1]["role"], "tool")
+        self.assertIn("error", missing)
+
+
 if __name__ == "__main__":
     unittest.main()
