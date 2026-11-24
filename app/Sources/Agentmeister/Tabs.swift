@@ -10,7 +10,7 @@ struct LaunchSpec: Hashable {
     var projectPath: String
     var agent: Agent = .claude
     var direct = false
-    /// id сессии Claude Code, которую продолжить. nil значит новая сессия.
+    /// id сессии Claude Code или треда Codex, который продолжить. nil значит новая сессия.
     var resumeId: String?
     var firstPrompt = ""
     /// Служебная вкладка: agentmeister с этими аргументами вместо агента (proxy setup, lid setup и т. п.).
@@ -44,6 +44,9 @@ struct LaunchSpec: Hashable {
         agentArgs = AgentPrefs.flags(agent) + agentArgs
         if let id = resumeId, agent == .claude {
             args += ["--", "--resume", id] + agentArgs
+        } else if let id = resumeId {
+            // как agentmeister --harness codex restart: codex resume -C <папка> <id>, флаги перед id
+            args += ["--", "resume", "-C", projectPath] + agentArgs + [id]
         } else {
             args.append("--new")
             let prompt = firstPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -67,10 +70,15 @@ extension LaunchSpec {
 
     /// Продолжить сессию в ее собственной папке: claude --resume ищет сессию по cwd, а сессия могла начаться
     /// в подпапке проекта.
-    static func resume(_ id: String, cwd: String?, project: AppState.Project) -> LaunchSpec {
+    static func resume(_ id: String, cwd: String?, project: AppState.Project, agent: Agent = .claude) -> LaunchSpec {
         var isDir: ObjCBool = false
         let path = cwd.flatMap { FileManager.default.fileExists(atPath: $0, isDirectory: &isDir) && isDir.boolValue ? $0 : nil } ?? project.path
-        return LaunchSpec(projectName: project.name, projectPath: path, resumeId: id)
+        return LaunchSpec(projectName: project.name, projectPath: path, agent: agent, resumeId: id)
+    }
+
+    /// Продолжить сохраненную сессию любого агента.
+    static func resume(_ session: AppState.Session, project: AppState.Project) -> LaunchSpec {
+        resume(session.id, cwd: session.cwd, project: project, agent: session.kind)
     }
 
     /// Новая сессия в один клик: агент и маршрут по умолчанию из настроек.
@@ -91,7 +99,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     @Published var title: String
     @Published var running = true
     @Published var exitCode: Int32?
-    /// Сессия Claude Code в этой вкладке и ее статус из реестра Claude Code (waiting, busy, idle).
+    /// Сессия Claude Code (или тред Codex) в этой вкладке и ее статус из реестра Claude Code (waiting, busy, idle).
+    /// У Codex статуса нет, а id треда находит Workspace.trackCodexThreads.
     @Published var sessionId: String?
     @Published var status: String?
     /// В терминале прозвенел звонок, пока вкладка не была выбрана. Сбрасывается при выборе.
@@ -336,10 +345,10 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         }
     }
 
-    /// Перезапуск продолжает ту же сессию, если ее id уже известен.
+    /// Перезапуск продолжает ту же сессию, если ее id уже известен. У Codex так же, по id треда.
     func restart() {
         afterStop {
-            if let sid = self.sessionId, self.spec.agent == .claude {
+            if let sid = self.sessionId, self.spec.utility == nil {
                 self.spec.resumeId = sid
                 self.spec.firstPrompt = ""
             }
@@ -505,7 +514,7 @@ final class Workspace: ObservableObject {
             var spec = LaunchSpec(projectName: item.projectName, projectPath: item.projectPath, agent: agent, direct: item.direct)
             spec.awake = item.awake ?? false
             spec.remoteControl = item.remoteControl ?? false
-            if agent == .claude, let sid = item.sessionId, resumable.contains(sid) { spec.resumeId = sid }
+            if let sid = item.sessionId, resumable.contains(sid) { spec.resumeId = sid }
             specs.append((spec, item.selected, item.id.flatMap(UUID.init(uuidString:))))
         }
         let modified = (try? FileManager.default.attributesOfItem(atPath: Self.savedTabsURL.path)[.modificationDate]) as? Date
@@ -604,7 +613,8 @@ final class Workspace: ObservableObject {
             let elsewhere = Set(live.compactMap(\.sessionId)).subtracting(mine)
             if elsewhere != liveElsewhere { liveElsewhere = elsewhere }
         }
-        for tab in tabs where tab.running {
+        // реестр знает только Claude Code: Codex во вкладке мог запустить claude, и тот не сессия вкладки
+        for tab in tabs where tab.running && tab.spec.agent == .claude {
             let root = tab.shellPid
             let match = live.first { record in
                 guard let pid = record.pid else { return false }
@@ -619,6 +629,45 @@ final class Workspace: ObservableObject {
                 if tab.status != match.status { tab.status = match.status }
             } else if tab.status != nil {
                 tab.status = nil
+            }
+        }
+    }
+
+    /// Новая вкладка Claude Code в том же проекте и маршруте с контекстом треда Codex: /import-codex <id>.
+    func moveToClaude(_ tab: TerminalTab) {
+        guard tab.spec.agent == .codex, tab.spec.utility == nil, let sid = tab.sessionId else { return }
+        var spec = LaunchSpec(projectName: tab.spec.projectName, projectPath: tab.spec.projectPath, direct: tab.spec.direct)
+        spec.firstPrompt = "/import-codex " + sid
+        open(spec)
+    }
+
+    private var codexScanAt = Date.distantPast
+    private var codexScanning = false
+
+    /// Узнать тред Codex у вкладок, где его id еще нет: самый ранний новый тред в папке вкладки, начатый после
+    /// ее запуска и не занятый другой вкладкой. Codex заводит rollout с первым запросом, до него продолжать нечего.
+    /// Зовется раз в секунду, а файлы смотрит не чаще раза в 5 секунд и только пока такие вкладки есть.
+    func trackCodexThreads() {
+        let waiting = tabs.filter { $0.running && $0.spec.agent == .codex && $0.spec.utility == nil && $0.sessionId == nil }
+        guard !waiting.isEmpty, !codexScanning, Date().timeIntervalSince(codexScanAt) > 5 else { return }
+        codexScanAt = Date()
+        codexScanning = true
+        let since = waiting.map(\.startedAt).min() ?? Date()
+        Task.detached(priority: .utility) {
+            let threads = CodexThreads.recent(since: since)
+            await MainActor.run {
+                self.codexScanning = false
+                var claimed = Set(self.tabs.filter { $0.spec.agent == .codex }.compactMap(\.sessionId))
+                for tab in waiting.sorted(by: { $0.startedAt < $1.startedAt }) where tab.running && tab.sessionId == nil {
+                    let path = (tab.spec.projectPath as NSString).resolvingSymlinksInPath
+                    guard let thread = threads.first(where: { thread in
+                        !claimed.contains(thread.id) && thread.created >= tab.startedAt.addingTimeInterval(-2)
+                            && (thread.cwd as NSString).resolvingSymlinksInPath == path
+                    }) else { continue }
+                    claimed.insert(thread.id)
+                    tab.sessionId = thread.id
+                }
+                self.save()
             }
         }
     }
@@ -688,6 +737,61 @@ final class Workspace: ObservableObject {
 
     func terminateAll() {
         tabs.forEach { $0.terminate() }
+    }
+}
+
+/// Треды Codex, начатые недавно, прямо из ~/.codex/sessions. Codex не пишет реестр открытых сессий, как Claude
+/// Code, поэтому вкладка узнает свой тред так: новый rollout в ее папке, начатый после запуска вкладки.
+enum CodexThreads {
+    struct Thread {
+        let id: String
+        let cwd: String
+        let created: Date
+    }
+
+    static var home: String {
+        LoginEnvironment.shared["CODEX_HOME"] ?? (NSHomeDirectory() as NSString).appendingPathComponent(".codex")
+    }
+
+    /// Треды с первой строкой session_meta, файлы которых менялись после since. Смотрим только папки дней
+    /// от since до сегодня: Codex раскладывает rollout по sessions/ГГГГ/ММ/ДД.
+    nonisolated static func recent(since: Date) -> [Thread] {
+        let fm = FileManager.default
+        let root = (home as NSString).appendingPathComponent("sessions")
+        let calendar = Calendar.current
+        var day = calendar.startOfDay(for: since.addingTimeInterval(-86400))
+        var out: [Thread] = []
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        while day <= Date() {
+            let c = calendar.dateComponents([.year, .month, .day], from: day)
+            let dir = String(format: "%@/%04d/%02d/%02d", root, c.year ?? 0, c.month ?? 0, c.day ?? 0)
+            for name in (try? fm.contentsOfDirectory(atPath: dir)) ?? [] where name.hasPrefix("rollout-") && name.hasSuffix(".jsonl") {
+                let path = (dir as NSString).appendingPathComponent(name)
+                guard let modified = (try? fm.attributesOfItem(atPath: path)[.modificationDate]) as? Date,
+                      modified >= since.addingTimeInterval(-5),
+                      let thread = firstLine(path, iso: iso) else { continue }
+                out.append(thread)
+            }
+            day = calendar.date(byAdding: .day, value: 1, to: day) ?? Date.distantFuture
+        }
+        return out.sorted { $0.created < $1.created }
+    }
+
+    private nonisolated static func firstLine(_ path: String, iso: ISO8601DateFormatter) -> Thread? {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+        defer { try? handle.close() }
+        // в первой строке лежат и инструкции модели, она бывает в десятки килобайт
+        guard let data = try? handle.read(upToCount: 1 << 20),
+              let end = data.firstIndex(of: UInt8(ascii: "\n")) ?? (data.isEmpty ? nil : data.endIndex),
+              let row = try? JSONSerialization.jsonObject(with: data[..<end]) as? [String: Any],
+              row["type"] as? String == "session_meta",
+              let meta = row["payload"] as? [String: Any],
+              let id = meta["id"] as? String, let cwd = meta["cwd"] as? String,
+              let stamp = meta["timestamp"] as? String, let created = iso.date(from: stamp) else { return nil }
+        // треды субагентов Codex заводит сам, это не разговор вкладки
+        if meta["source"] is [String: Any] || meta["thread_source"] as? String == "subagent" { return nil }
+        return Thread(id: id.lowercased(), cwd: cwd, created: created)
     }
 }
 

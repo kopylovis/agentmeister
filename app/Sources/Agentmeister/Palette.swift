@@ -74,9 +74,10 @@ struct PaletteView: View {
             guard let project else { continue }
             out.append(PaletteItem(id: "s-\(session.id)", group: .sessions,
                                    title: session.title.isEmpty ? l.untitled : session.title,
-                                   detail: project.name + " · " + (workspace.liveElsewhere.contains(session.id)
+                                   detail: (session.kind == .codex ? "Codex · " : "") + project.name + " · "
+                                       + (workspace.liveElsewhere.contains(session.id)
                                        ? l.t("открыта в другом окне", "open in another window") : l.agoLong(session.mtime))) {
-                workspace.open(LaunchSpec.resume(session.id, cwd: session.cwd, project: project))
+                workspace.open(LaunchSpec.resume(session, project: project))
             })
         }
 

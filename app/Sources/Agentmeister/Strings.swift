@@ -79,6 +79,7 @@ struct L {
     func tabs(_ n: Int) -> String { count(n, "вкладка", "вкладки", "вкладок", "tab", "tabs") }
     func commands(_ n: Int) -> String { count(n, "команда", "команды", "команд", "command", "commands") }
 
+    var moveToClaude: String { t("Перенести в Claude Code", "Move to Claude Code") }
     var updating: String { t("Обновляю Claude Code…", "Updating Claude Code…") }
     var slim: String { t("Сжать", "Slim") }
     var rename: String { t("Переименовать", "Rename") }
