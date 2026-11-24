@@ -24,6 +24,7 @@ import urllib.parse
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import secret  # noqa: E402
 from mnrhlib import BAD, HOME, OK, WARN, paint, tilde  # noqa: E402
+import host_run  # noqa: E402
 
 CONF_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "mnrh", "proxy")
 CONFIG = os.path.join(CONF_DIR, "config.yaml")
@@ -548,7 +549,9 @@ def session_command(p, cmd, *, claude=False):
     if not 1 <= p <= 65535:
         raise ValueError(f"Недопустимый порт proxy: {p}")
     if claude:
-        return ["/usr/bin/sandbox-exec", "-p", CLAUDE_PROFILE, "--", *cmd]
+        # Список команд host-run и его сокет сессия видит, но поменять не может.
+        profile = CLAUDE_PROFILE + "\n".join(host_run.sandbox_profile_lines()) + "\n"
+        return ["/usr/bin/sandbox-exec", *host_run.sandbox_params(), "-p", profile, "--", *cmd]
     profile = SESSION_PROFILE.format(port=p)
     params = []
     agent = os.environ.get("SSH_AUTH_SOCK", "")
@@ -607,6 +610,8 @@ def run(cmd, *, claude=False):
             print(f"agentmeister proxy: {e}", file=sys.stderr)
             return 1
         ensure_watch()
+        if claude:
+            host_run.ensure()
         os.makedirs(HOLDERS, exist_ok=True)
         mark = os.path.join(HOLDERS, str(os.getpid()))
         open(mark, "w").close()
