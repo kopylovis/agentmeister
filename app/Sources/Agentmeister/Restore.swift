@@ -21,9 +21,9 @@ struct RestoreSheet: View {
                 .font(.system(size: 17, weight: .semibold))
             Text(pending.reason == .crash
                  ? l.t("Были открыты \(count(n)). Агенты в них остановились вместе с приложением.",
-                       "\(count(n)) were open. Their agents stopped together with the app.")
+                       "\(count(n)) \(n == 1 ? "was" : "were") open. Their agents stopped together with the app.")
                  : l.t("До перезагрузки Mac были открыты \(count(n)). Открыть их снова?",
-                       "\(count(n)) were open before the Mac restarted. Open them again?"))
+                       "\(count(n)) \(n == 1 ? "was" : "were") open before the Mac restarted. Open \(n == 1 ? "it" : "them") again?"))
                 .foregroundStyle(Ink.muted)
             VStack(spacing: 4) {
                 ForEach(Array(pending.specs.enumerated()), id: \.offset) { index, item in

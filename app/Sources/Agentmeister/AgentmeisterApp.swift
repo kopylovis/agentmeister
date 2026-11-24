@@ -10,10 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         Appearance.apply(UserDefaults.standard.string(forKey: Appearance.key) ?? "system")
-        registerShowHotKey()
+        UserDefaults.standard.removeObject(forKey: "hotkey.taken")
+        if UserDefaults.standard.object(forKey: "hotkey.showApp") as? Bool ?? true { registerShowHotKey() }
     }
 
-    /// ⌥Space из любого приложения показывает Agentmeister. Глобальная клавиша через Carbon, без Универсального доступа.
+    /// ⌃⌥Space из любого приложения показывает Agentmeister. ⌥Space не берем: его занимает ChatGPT. Глобальная клавиша через Carbon, без Универсального доступа.
     private func registerShowHotKey() {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
@@ -25,7 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return noErr
         }, 1, &spec, nil, nil)
         let id = EventHotKeyID(signature: OSType(0x414D5354), id: 1)  // "AMST"
-        RegisterEventHotKey(UInt32(kVK_Space), UInt32(optionKey), id, GetApplicationEventTarget(), 0, &hotKey)
+        let status = RegisterEventHotKey(UInt32(kVK_Space), UInt32(optionKey | controlKey), id, GetApplicationEventTarget(), 0, &hotKey)
+        // клавишу уже заняло другое приложение: настройки покажут это вместо молчаливого отказа
+        if status != noErr { UserDefaults.standard.set(true, forKey: "hotkey.taken") }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -53,6 +56,7 @@ struct AgentmeisterApp: App {
                 .environmentObject(workspace)
                 .environmentObject(ui)
         }
+        .windowStyle(.hiddenTitleBar)
         Window(L(backend.state.lang).t("Сессии", "Sessions"), id: "library") {
             LibraryView()
                 .environmentObject(backend)
@@ -116,6 +120,8 @@ struct AgentmeisterApp: App {
                 Divider()
             }
             CommandGroup(after: .sidebar) {
+                Button(l.t("Свернуть или развернуть проекты", "Collapse or expand projects")) { ui.sidebarCollapsed.toggle() }
+                    .keyboardShortcut("s", modifiers: [.command, .control])
                 Button(l.inspector) { ui.showInspector.toggle() }
                     .keyboardShortcut("i", modifiers: [.command, .option])
             }
