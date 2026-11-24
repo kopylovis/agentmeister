@@ -73,6 +73,25 @@ class Menu(unittest.TestCase):
                     if k and k.startswith("mode ")}
             self.assertEqual(len(cols), 1, lang)
 
+    def test_mode_rows_pad_only_to_mode_labels(self):
+        saved = m.ITEMS
+        try:
+            m.ITEMS = [("open", "📂", "Очень длинное название пункта", "A very long item label here", "", ""),
+                       ("mode guard", "🔒", "Режим", "Mode", "", "")]
+            mode = self.plain("en")[1][1]
+        finally:
+            m.ITEMS = saved
+        self.assertEqual(mode, "🔒 Mode  [off]")
+
+    def test_title_shows_versions_when_description_is_hidden(self):
+        mnrhlib.lang = lambda: "en"
+        d = m.Describe.__new__(m.Describe)
+        d.claude, d.codex = "2.1.325", "0.172.0"
+        hidden = ANSI.sub("", m.menu_title(d, "guard: on", False))
+        self.assertIn("Claude Code 2.1.325 · Codex 0.172.0", hidden)
+        self.assertTrue(hidden.endswith("guard: on"))
+        self.assertNotIn("Claude Code", m.menu_title(d, "", True))
+
     def test_description_names_next_command(self):
         mnrhlib.lang = lambda: "en"
         d = m.Describe.__new__(m.Describe)
@@ -154,6 +173,64 @@ class Layout(unittest.TestCase):
         lines = ANSI.sub("", "".join(out)).split("\r\n")
         self.assertIn("x" * 70, lines[2])
         self.assertIn("1  short", lines[3])
+
+    def test_columns_show_description_next_to_the_whole_list(self):
+        self.assertEqual(menu.columns(120, 46, "auto"), (46, 69))
+        self.assertEqual(menu.columns(84, 46, "auto"), (80, 0))  # 33 клетки описанию мало
+        self.assertEqual(menu.columns(85, 46, "auto"), (46, 34))
+        self.assertEqual(menu.columns(120, 46, "off"), (116, 0))
+
+    def test_tab_forces_description_by_narrowing_the_list(self):
+        self.assertEqual(menu.columns(80, 46, "force"), (46, 29))
+        self.assertEqual(menu.columns(70, 46, "force"), (37, 28))
+        self.assertEqual(menu.columns(120, 46, "force"), (46, 69))
+        self.assertEqual(menu.columns(52, 46, "force"), (48, 0))
+        self.assertTrue(menu.can_force(60))
+
+    def frame(self, cols, keys=(), title="title", describe=lambda i, w: ["about"], hint=None):
+        out = []
+
+        class P(menu.Panel):
+            def size(self):
+                return 20, cols
+
+            def write(self, s):
+                out.append(s)
+
+        items = [("a", "x" * 40), ("b", "short")]
+        p = P(0, items, title, 0, describe, ("L" * 90, "R"), hint or menu.tab_hint() + "Esc back")
+        for key in keys:
+            p.handle(key)
+        p.draw()
+        return p, ANSI.sub("", out[-1]).split("\r\n")
+
+    def test_long_list_title_does_not_hide_description(self):
+        p, lines = self.frame(100)
+        self.assertTrue(bool(p.columns(p.size()[1])[1]))
+        self.assertIn("about", lines[2])
+
+    def test_tab_toggles_description_from_what_is_shown(self):
+        p, lines = self.frame(80)
+        self.assertFalse(bool(p.columns(p.size()[1])[1]))
+        self.assertIn("Tab", lines[-1])
+        p, lines = self.frame(80, ["\t"])
+        self.assertTrue(bool(p.columns(p.size()[1])[1]))
+        self.assertIn("about", lines[2])
+        p, _ = self.frame(80, ["\t", "\t"])
+        self.assertFalse(bool(p.columns(p.size()[1])[1]))
+        p, _ = self.frame(120, ["\t"])
+        self.assertFalse(bool(p.columns(p.size()[1])[1]))
+
+    def test_tab_is_not_advertised_without_description(self):
+        _, lines = self.frame(80, describe=None)
+        self.assertNotIn("Tab", lines[-1])
+        self.assertIn("Esc back", lines[-1])
+
+    def test_title_function_knows_whether_description_is_shown(self):
+        _, lines = self.frame(80, title=lambda side: f"side={side}")
+        self.assertIn("side=False", lines[0])
+        _, lines = self.frame(120, title=lambda side: f"side={side}")
+        self.assertIn("side=True", lines[0])
 
     def test_note_markup(self):
         self.assertEqual([ANSI.sub("", x) for x in menu.render_note(r"Name\npath\n# commits\nfix")],

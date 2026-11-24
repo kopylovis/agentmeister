@@ -425,9 +425,37 @@ def wrap(lines, w):
     return out
 
 
+SIDE_MIN, SIDE_FORCED_MIN, LIST_MIN = 34, 28, 20
+
+
+def tab_hint():
+    """Кусок подсказки про Tab. Panel убирает его, когда описанию не хватает места."""
+    return tr("Tab описание · ", "Tab description · ")
+
+
+def columns(cols, need, mode, gap=2):
+    """Ширины списка и описания: (lw, rw), rw 0 значит без описания. need: сколько клеток нужно списку целиком.
+    mode "auto": описание, только если рядом с целым списком ему остается SIDE_MIN клеток; "force" (Tab):
+    описание всегда, когда помещается, список сужается и строки обрезаются; "off": только список."""
+    room = cols - gap * 2 - 1
+    lw = max(SIDE_MIN, need)
+    if mode == "auto" and room - lw >= SIDE_MIN:
+        return lw, room - lw
+    if mode == "force" and can_force(cols, gap):
+        rw = max(SIDE_FORCED_MIN, room - lw)
+        return room - rw, rw
+    return cols - gap * 2, 0
+
+
+def can_force(cols, gap=2):
+    """Поместится ли описание рядом со списком хотя бы в сжатом виде."""
+    return cols - gap * 2 - 1 - LIST_MIN >= SIDE_FORCED_MIN
+
+
 class Panel(Menu):
-    """Меню на весь экран: слева список в рамке, справа описание выбранного пункта. Tab прячет описание.
-    Без describe список один на всю ширину."""
+    """Меню на весь экран: слева список в рамке, справа описание выбранного пункта. Tab прячет описание
+    или показывает его, сузив список. Без describe список один на всю ширину. title: строка или функция
+    title(side), side: видно ли описание; так заголовок может показать то, что не влезло в описание."""
 
     def __init__(self, tty_fd, items, title, default, describe=None, heads=("", ""), hint="", start=1, numbers=False):
         super().__init__(tty_fd, items, title, "", start, default)
@@ -435,7 +463,7 @@ class Panel(Menu):
         self.heads = heads
         self.hint = hint
         self.numbers = numbers
-        self.side = describe is not None
+        self.mode = "auto" if describe is not None else "off"
         self.shape = None
 
     def clear(self):
@@ -474,19 +502,20 @@ class Panel(Menu):
             out[-1] = fit(out[-1], w - 3) + "\x1b[2m ↓\x1b[0m"
         return out
 
+    def columns(self, cols, gap=2):
+        digits = len(str(len(self.pick_able) + self.start - 1)) + 2 if self.numbers else 0
+        # заголовок рамки в need не входит: длинный он обрежется, а описание из-за него пропадать не должно
+        need = max(width(text) + digits + 6 for key, text in self.items if key is not None)
+        return columns(cols, need, self.mode, gap)
+
     def draw(self):
         rows, cols = self.size()
         self.shape = (rows, cols)
         view = self.view()
         gap = 2
         h = max(5, rows - 3)
-        digits = len(str(len(self.pick_able) + self.start - 1)) + 2 if self.numbers else 0
-        need = max([width(text) + digits + 6 for key, text in self.items if key is not None]
-                   + [width(self.heads[0]) + 8])
-        # описание справа только если рядом со списком целиком ему остается хотя бы 34 клетки; иначе список важнее
-        side = self.side and cols - gap * 2 - 1 - max(34, need) >= 34
-        lw = max(34, need) if side else cols - gap * 2
-        rw = cols - gap * 2 - lw - 1
+        lw, rw = self.columns(cols, gap)
+        side = rw > 0
         left = box(f" › {self.heads[0]} ", self.body(view, lw - 2, h - 2), lw, h, True)
         screen = left
         if side:
@@ -503,15 +532,18 @@ class Panel(Menu):
                       f"{total} · Space mark · a all · Enter go on · Esc cancel")
         else:
             hint = self.hint
+            if self.describe is None or not can_force(cols, gap):
+                hint = hint.replace(tab_hint(), "")
+        title = self.title(side) if callable(self.title) else self.title
         pad = " " * gap
-        lines = ([pad + cut(self.title, cols - gap)] + [pad + line for line in screen]
+        lines = ([pad + cut(title, cols - gap)] + [pad + line for line in screen]
                  + [pad + f"\x1b[2m{cut(hint, cols - gap * 2)}\x1b[0m"])
         self.write(with_icons("\x1b[H" + "\x1b[K\r\n".join(lines) + "\x1b[K\x1b[J"))
 
     def handle(self, key):
         if key == "\t":
             if self.describe is not None:
-                self.side = not self.side
+                self.mode = "off" if self.columns(self.size()[1])[1] else "force"
             return False
         return super().handle(key)
 
@@ -648,7 +680,7 @@ class Screen:
             return None
         self.open()
         back = back or tr("назад", "back")
-        tab = tr("Tab описание · ", "Tab description · ") if describe else ""
+        tab = tab_hint() if describe else ""
         hint = (tr(f"↑↓ выбрать · Enter · цифра или буквы, быстрый переход · {tab}Esc {back}",
                    f"↑↓ move · Enter · a number or letters to jump · {tab}Esc {back}") if numbers else
                 tr(f"↑↓ выбрать · Enter · буквы ищут · {tab}Esc {back}",
