@@ -2,6 +2,7 @@
 """agentmeister sessions: список, меню, продолжить, перенести, удалить, уборка; slim — в session_slim."""
 from contextlib import ExitStack
 import itertools
+import json
 import os
 import shutil
 import stat
@@ -25,6 +26,7 @@ def usage():
     print("agentmeister sessions resume <id> [-n] продолжить в её папке (по умолчанию через caffeinate, -n обычная)")
     print("agentmeister sessions mv <id> <папка>  перенести в другую папку: путь, имя проекта из папки проектов или root")
     print("agentmeister sessions rm <id>... [-y]  удалить вместе с историей запросов этой сессии")
+    print("agentmeister sessions rename <id> <название>  переименовать, как /rename в Claude Code")
     print("agentmeister sessions clean [-y]       битые ссылки, сессии без единого ответа, папки удалённых проектов,")
     print("                                      папки с неверным именем от старого mv")
     print("agentmeister sessions search <слова>   поиск по всем сессиям; -p <проект>, -d <дней>, -r error — по ошибкам")
@@ -640,6 +642,29 @@ def session_list(cwd):
     return items, describe, tr(f"Сессии в {name}", f"Sessions in {name}") + note, ss
 
 
+def rename(s, title):
+    """Новое название, как его пишет /rename в Claude Code: строка custom-title в конце переписки. Если рядом
+    лежит custom-title.json, он важнее строки в переписке, поэтому он тоже получает новое название."""
+    title = " ".join(title.split())
+    if not title:
+        sys.exit("agentmeister sessions: название пустое")
+    if s.get("link"):
+        sys.exit("agentmeister sessions: это ссылка на чужую переписку, переименуй оригинал")
+    with open(s["path"], "a", encoding="utf-8") as f:
+        f.write(json.dumps({"type": "custom-title", "customTitle": title, "sessionId": s["id"]}, ensure_ascii=False) + "\n")
+    extra = os.path.join(s["extra"], "custom-title.json") if s.get("extra") else None
+    if extra and os.path.exists(extra):
+        try:
+            with open(extra) as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            data = {}
+        data["customTitle"] = title
+        with open(extra, "w") as f:
+            json.dump(data, f, ensure_ascii=False)
+    print(tr(f"Переименовал: {title}", f"Renamed: {title}"))
+
+
 def choose_session(cwd):
     found = session_list(cwd)
     if not found:
@@ -678,6 +703,8 @@ def main():
         resume(find(load(), args[1]), mode)
     elif cmd == "mv" and len(args) == 3:
         move(find(load(), args[1]), resolve_dest(args[2]))
+    elif cmd == "rename" and len(args) >= 3:
+        rename(find(load(), args[1]), " ".join(args[2:]))
     elif cmd == "rm" and len(args) >= 2:
         ss = load()
         targets = [find(ss, a) for a in args[1:]]
