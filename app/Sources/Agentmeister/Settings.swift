@@ -101,6 +101,9 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
+            Tab(l.t("Основные", "General"), systemImage: "gearshape") {
+                GeneralPane()
+            }
             Tab(l.t("Proxy", "Proxy"), systemImage: "shield.lefthalf.filled") {
                 ProxyPane(data: data, reload: reload)
             }
@@ -169,6 +172,36 @@ struct CommandButton: View {
             if busy { ProgressView().controlSize(.small) } else { Text(title) }
         }
         .disabled(busy)
+    }
+}
+
+/// Язык интерфейса. Тот же, что у CLI: agentmeister lang пишет его в ~/.config/mnrh/config.
+struct GeneralPane: View {
+    @EnvironmentObject var backend: Backend
+
+    var l: L { L(backend.state.lang) }
+
+    var body: some View {
+        Form {
+            Section {
+                Picker(l.t("Язык", "Language"), selection: Binding(
+                    get: { backend.state.langSetting ?? "auto" },
+                    set: { value in
+                        Task { _ = await backend.perform(["lang", value]) }
+                    }
+                )) {
+                    Text(l.t("Как в macOS", "Same as macOS")).tag("auto")
+                    Text("English").tag("en")
+                    Text("Русский").tag("ru")
+                }
+            } footer: {
+                Text(l.t("Язык общий для приложения и agentmeister в терминале, это agentmeister lang. Как в macOS значит русский, только если он стоит первым в системе, иначе английский.",
+                         "The app and agentmeister in a terminal share it, same as agentmeister lang. Same as macOS means Russian only when it comes first in System Settings, English otherwise."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 
