@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "libexec/agentmeister/lib"))
+import claude_open
 import claude_proxy
 import host_run
 
@@ -145,7 +146,7 @@ class Roundtrip(unittest.TestCase):
         self.assertEqual(info["pid"], os.getpid())
         self.assertEqual(info["jobs"], 0)
         self.assertEqual(info["code"], host_run.CODE)
-        self.assertEqual(info["ops"], ["add", "remove"])
+        self.assertEqual(info["ops"], ["add", "remove", "open"])
 
     def test_client_gone_stops_command(self):
         conn = socket.socket(socket.AF_UNIX)
@@ -205,7 +206,7 @@ class EditList(unittest.TestCase):
     def edit(self, op, argv):
         out, err = io.BytesIO(), io.StringIO()
         request = host_run.parse_add(argv) if op == "add" else host_run.parse_remove(argv)
-        code = host_run.edit(request, self.sock, out, err)
+        code = host_run.send_op(request, self.sock, out, err)
         return code, out.getvalue().decode(), err.getvalue()
 
     def rules(self):
@@ -315,7 +316,7 @@ class EditList(unittest.TestCase):
     def test_old_runner_is_not_asked(self):
         err = io.StringIO()
         with patch.object(host_run, "ping", return_value={"version": "1.17.0", "pid": 1, "jobs": 0}):
-            code = host_run.edit(host_run.parse_remove(["fire"]), self.sock, io.BytesIO(), err)
+            code = host_run.send_op(host_run.parse_remove(["fire"]), self.sock, io.BytesIO(), err)
         self.assertEqual(code, 125)
         self.assertIn("не умеет remove", err.getvalue())
         self.assertIn("fire", self.rules())
@@ -329,6 +330,45 @@ class EditList(unittest.TestCase):
         for argv in ([], ["--cwd", "x"], ["n", "--run", "x"], ["n", "--cwd", "/x"], ["n", "--bogus"]):
             with self.subTest(argv=argv), self.assertRaises(host_run.RuleError):
                 host_run.parse_add(argv)
+
+
+class OpenTab(unittest.TestCase):
+    """host-run open: исполнитель получает первый запрос целиком и открывает вкладку сам."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(dir="/tmp")
+        self.addCleanup(self.tmp.cleanup)
+        self.sock = str(Path(self.tmp.name) / "s")
+        listener = host_run.listen(self.sock)
+        self.addCleanup(listener.close)
+        threading.Thread(target=host_run.Server(self.sock, str(Path(self.tmp.name) / "none")).serve_forever,
+                         args=(listener,), daemon=True).start()
+
+    def open(self, argv, result=("Открыл новую вкладку iTerm2", False)):
+        out, err = io.BytesIO(), io.StringIO()
+        with patch.object(claude_open, "open_tab", return_value=result) as tab:
+            code = host_run.send_op({"op": "open", "argv": argv}, self.sock, out, err)
+        return code, out.getvalue().decode(), err.getvalue(), tab
+
+    def test_prompt_reaches_the_runner_whole(self):
+        prompt = 'строка 1\nстрока "2" с \'кавычками\'\n\t$HOME `date` \\ конец'
+        code, out, _, tab = self.open(["tossling", "--", "--remote-control", "tossling", prompt])
+        self.assertEqual(code, 0)
+        self.assertIn("Открыл", out)
+        cmd = tab.call_args.args[0]
+        self.assertEqual(cmd[1:], ["open", "tossling", "-k", "-x", "--new", "--", "--remote-control", "tossling",
+                                   prompt])
+
+    def test_direct_is_refused(self):
+        code, _, err, tab = self.open(["tossling", "-d", "--", "hi"])
+        self.assertEqual(code, 2)
+        self.assertIn("-d", err)
+        tab.assert_not_called()
+
+    def test_failure_is_reported(self):
+        code, out, err, _ = self.open(["tossling"], ("iTerm2 не открыл вкладку (нет окна).", True))
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("не открыл", err)
 
 
 class Restart(unittest.TestCase):

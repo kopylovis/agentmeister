@@ -45,9 +45,10 @@ VERSION_FILE = os.path.join(ROOT, "VERSION")
 CONFIRM_SRC = os.path.join(ROOT, "share", "agentmeister", "confirm", "main.swift")
 CONFIRM_DIR = os.path.join(STATE, "confirm")  # сборка окна там, куда сессия писать не может
 CONFIRM_TIMEOUT = 120
-RESERVED = ("list", "status", "serve", "stop", "help", "-h", "--help", "add", "remove")
+RESERVED = ("list", "status", "serve", "stop", "help", "-h", "--help", "add", "remove", "open")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
-OPS = ("add", "remove")
+EDITS = ("add", "remove")
+OPS = (*EDITS, "open")
 # Переменные proxy сессии: команда из списка ходит в сеть напрямую, как в обычном терминале.
 PROXY_VARS = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "all_proxy",
               "no_proxy", "MNRH_PROXY", "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL")
@@ -66,12 +67,16 @@ class RuleError(Exception):
 
 
 def code_hash():
-    """Хеш этого файла: исполнитель перезапускается, когда код поменялся, даже без новой версии."""
-    try:
-        with open(os.path.abspath(__file__), "rb") as f:
-            return hashlib.sha256(f.read()).hexdigest()[:16]
-    except OSError:
-        return "?"
+    """Хеш кода исполнителя: он перезапускается, когда код поменялся, даже без новой версии."""
+    h = hashlib.sha256()
+    here = os.path.dirname(os.path.abspath(__file__))
+    for name in ("host_run.py", "claude_open.py", "mnrhlib.py"):
+        try:
+            with open(os.path.join(here, name), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            h.update(b"?")
+    return h.hexdigest()[:16]
 
 
 CODE = code_hash()
@@ -298,7 +303,7 @@ def read_list(path):
 def plan_change(request, path):
     """Что поменять в списке по запросу add или remove. Ошибки запроса и дубль имени: RuleError."""
     op, entry = request.get("op"), request.get("command")
-    if op not in OPS or not isinstance(entry, dict):
+    if op not in EDITS or not isinstance(entry, dict):
         raise RuleError("плохой запрос")
     name = entry.get("name")
     if not isinstance(name, str) or not NAME.fullmatch(name) or name in RESERVED:
@@ -509,7 +514,10 @@ class Server:
                 send_frame(conn, b"v", json.dumps({"version": version(), "pid": os.getpid(), "jobs": self.jobs,
                                                    "code": CODE, "ops": list(OPS)}).encode())
                 return
-            if request.get("op") in OPS:
+            if request.get("op") == "open":
+                self.open(conn, request)
+                return
+            if request.get("op") in EDITS:
                 self.change(conn, request)
                 return
             try:
@@ -552,6 +560,30 @@ class Server:
         try:
             send_frame(conn, b"o", text.encode())
             send_frame(conn, b"x", b"0")
+        except OSError:
+            pass
+
+    def open(self, conn, request):
+        """Вкладка iTerm2 с новой сессией через proxy: из песочницы iTerm2 Apple Events не принимает."""
+        import claude_open
+        argv = request.get("argv")
+        try:
+            if not (isinstance(argv, list) and all(isinstance(a, str) for a in argv)):
+                raise ValueError("нужен список аргументов")
+            cmd = claude_open.host_open_command(argv)
+        except ValueError as e:
+            send_frame(conn, b"e", str(e).encode())
+            send_frame(conn, b"x", b"2")
+            return
+        log(f"open {cmd[2]}")
+        try:
+            text, failed = claude_open.open_tab(cmd)
+        except Exception as e:  # noqa: BLE001 — сессия должна получить ответ, а не оборванное соединение
+            text, failed = f"вкладка не открылась: {e}", True
+        log(f"open {cmd[2]}: {'failed' if failed else 'ok'}")
+        try:
+            send_frame(conn, b"o" if not failed else b"e", text.encode() + (b"\n" if not failed else b""))
+            send_frame(conn, b"x", b"1" if failed else b"0")
         except OSError:
             pass
 
@@ -832,8 +864,8 @@ def parse_remove(argv):
     return {"op": "remove", "command": {"name": argv[0]}}
 
 
-def edit(request, path=SOCK, out=None, err=None):
-    """Отправить add или remove. Старый исполнитель такие запросы не знает, его надо перезапустить."""
+def send_op(request, path=SOCK, out=None, err=None):
+    """Отправить add, remove или open. Старый исполнитель их не знает, его надо перезапустить: тогда 125."""
     err = err or sys.stderr
     info = ping(path)
     if info is None:
@@ -844,8 +876,15 @@ def edit(request, path=SOCK, out=None, err=None):
               "с новой сессией через proxy, или в обычном терминале выполни "
               "agentmeister host-run stop; (agentmeister host-run serve &)", file=err)
         return 125
-    print(f"agentmeister host-run: жду подтверждения в окне на маке (до {CONFIRM_TIMEOUT // 60} мин)", file=err)
+    if request["op"] in EDITS:
+        print(f"agentmeister host-run: жду подтверждения в окне на маке (до {CONFIRM_TIMEOUT // 60} мин)", file=err)
     return exchange(request, path, out, err)
+
+
+OPEN_USAGE = """agentmeister host-run open <проект> [-k | -n] [-i] -- [аргументы claude]
+
+Открыть вкладку в текущем окне iTerm2 и запустить в ней agentmeister open <проект> -k -x --new -- [аргументы].
+Вкладку открывает исполнитель вне песочницы. Сессия идет через proxy, флаг -d не принимается."""
 
 
 def show_list():
@@ -888,6 +927,8 @@ USAGE = f"""agentmeister host-run <имя> [аргументы]   выполни
 agentmeister host-run add <имя> --cwd <папка> --run <программа> [аргументы...] [--args] [--replace]
                                             попросить добавить команду в список
 agentmeister host-run remove <имя>          попросить удалить команду из списка
+agentmeister host-run open <проект> [флаги agentmeister open] -- [аргументы claude]
+                                            новая сессия во вкладке iTerm2, через proxy
 agentmeister host-run list                  команды из списка
 agentmeister host-run status                работает ли исполнитель
 agentmeister host-run serve                 запустить исполнитель (в обычном терминале)
@@ -904,6 +945,11 @@ add и remove меняют список через исполнитель. Он 
 в конец команды, --replace заменяет команду с тем же именем, и тогда в окне видно старую и новую.
 Остальные записи файла сохраняются. Пример:
   agentmeister host-run add tossling-ios --cwd ~/Developer/tossling-mobile --run bundle exec fastlane ios_beta
+
+open открывает вкладку в текущем окне iTerm2 и запускает там agentmeister open <проект> -k -x --new
+с аргументами claude после --. Из песочницы iTerm2 вкладку не откроет, поэтому это делает исполнитель.
+Сессия всегда идет через proxy, -d не принимается. Пример:
+  agentmeister host-run open tossling -- --remote-control tossling "первый запрос"
 
 Файл можно вести и руками в обычном терминале:
 {EXAMPLE}
@@ -923,14 +969,20 @@ def main(argv):
         return serve()
     if cmd == "stop":
         return stop()
-    if cmd in OPS:
+    if cmd == "open":
+        if not argv[1:] or argv[1] in ("-h", "--help"):
+            print(OPEN_USAGE)
+            return 0 if argv[1:] else 2
+        signal.signal(signal.SIGINT, lambda *_: sys.exit(130))
+        return send_op({"op": "open", "argv": argv[1:]})
+    if cmd in EDITS:
         try:
             request = parse_add(argv[1:]) if cmd == "add" else parse_remove(argv[1:])
         except RuleError as e:
             print(f"agentmeister host-run: {e}", file=sys.stderr)
             return 2
         signal.signal(signal.SIGINT, lambda *_: sys.exit(130))
-        return edit(request)
+        return send_op(request)
     signal.signal(signal.SIGINT, lambda *_: sys.exit(130))
     return call(cmd, argv[1:])
 
