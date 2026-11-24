@@ -144,6 +144,8 @@ class Roundtrip(unittest.TestCase):
         info = host_run.ping(self.sock)
         self.assertEqual(info["pid"], os.getpid())
         self.assertEqual(info["jobs"], 0)
+        self.assertEqual(info["code"], host_run.CODE)
+        self.assertEqual(info["ops"], ["add", "remove"])
 
     def test_client_gone_stops_command(self):
         conn = socket.socket(socket.AF_UNIX)
@@ -166,6 +168,167 @@ class Roundtrip(unittest.TestCase):
         err = io.StringIO()
         self.assertEqual(host_run.call("echo", [], str(Path(self.tmp.name) / "none"), io.BytesIO(), err), 125)
         self.assertIn("не запущен", err.getvalue())
+
+
+class EditList(unittest.TestCase):
+    """add и remove: окно подменено, проверяется, что и когда пишется в список."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(dir="/tmp")
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.sock = str(self.dir / "s")
+        self.commands = self.dir / "conf" / "commands.json"
+        self.commands.parent.mkdir()
+        self.project = self.dir / "project"
+        self.project.mkdir()
+        self.commands.write_text(json.dumps({"commands": {
+            "keep": {"cwd": str(self.project), "run": ["make", "test"], "note": "чужое поле остается"},
+            "fire": {"cwd": str(self.project), "run": ["fastlane", "upload"], "args": True},
+        }}, indent=4))
+        self.commands.chmod(0o600)
+        listener = host_run.listen(self.sock)
+        self.addCleanup(listener.close)
+        threading.Thread(target=host_run.Server(self.sock, str(self.commands)).serve_forever, args=(listener,),
+                         daemon=True).start()
+        self.answer = "allow"
+        self.asked = []
+
+        def ask(conn, change):
+            self.asked.append(change)
+            return self.answer
+
+        patcher = patch.object(host_run, "ask_human", side_effect=ask)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def edit(self, op, argv):
+        out, err = io.BytesIO(), io.StringIO()
+        request = host_run.parse_add(argv) if op == "add" else host_run.parse_remove(argv)
+        code = host_run.edit(request, self.sock, out, err)
+        return code, out.getvalue().decode(), err.getvalue()
+
+    def rules(self):
+        return json.loads(self.commands.read_text())["commands"]
+
+    def test_add_keeps_the_other_entries(self):
+        before = self.rules()
+        code, out, _ = self.edit("add", ["hello", "--cwd", str(self.project), "--run", "echo", "hello world"])
+        self.assertEqual(code, 0)
+        self.assertIn("hello добавлена", out)
+        rules = self.rules()
+        self.assertEqual(rules["hello"], {"cwd": host_run.tilde(str(self.project)), "run": ["echo", "hello world"]})
+        self.assertEqual({k: v for k, v in rules.items() if k != "hello"}, before)
+        self.assertEqual(list(rules), ["keep", "fire", "hello"])
+        self.assertEqual(self.commands.stat().st_mode & 0o777, 0o600)
+        self.assertIn("hello", host_run.load(self.commands))
+        self.assertEqual(len(self.asked), 1)
+        text, detail = host_run.dialog_text(self.asked[0])
+        self.assertIn("добавить", text)
+        self.assertIn("echo 'hello world'", detail)
+        self.assertIn("нельзя", detail)
+        self.assertEqual([p.name for p in self.commands.parent.iterdir()], ["commands.json"])
+
+    def test_add_creates_the_list(self):
+        self.commands.unlink()
+        self.commands.parent.rmdir()
+        code, _, _ = self.edit("add", ["one", "--args", "--cwd", str(self.project), "--run", "true"])
+        self.assertEqual(code, 0)
+        self.assertEqual(self.rules(), {"one": {"cwd": host_run.tilde(str(self.project)), "run": ["true"],
+                                                "args": True}})
+        self.assertEqual(self.commands.parent.stat().st_mode & 0o777, 0o700)
+
+    def test_refusal_leaves_the_file(self):
+        before = self.commands.read_bytes()
+        for answer, reason in (("deny", "отказ"), ("closed", "закрыли"), ("timeout", "нет ответа")):
+            with self.subTest(answer=answer):
+                self.answer = answer
+                code, out, err = self.edit("add", ["hello", "--cwd", str(self.project), "--run", "true"])
+                self.assertEqual((code, out), (1, ""))
+                self.assertIn("hello не добавлена", err)
+                self.assertIn(reason, err)
+                self.assertEqual(self.commands.read_bytes(), before)
+
+    def test_existing_name_needs_replace(self):
+        before = self.commands.read_bytes()
+        code, _, err = self.edit("add", ["keep", "--cwd", str(self.project), "--run", "make", "lint"])
+        self.assertEqual(code, 2)
+        self.assertIn("--replace", err)
+        self.assertEqual(self.asked, [])
+        self.assertEqual(self.commands.read_bytes(), before)
+
+        code, out, _ = self.edit("add", ["keep", "--cwd", str(self.project), "--run", "make", "lint", "--replace"])
+        self.assertEqual(code, 0)
+        self.assertIn("заменена", out)
+        _, detail = host_run.dialog_text(self.asked[0])
+        self.assertIn("Сейчас", detail)
+        self.assertIn("make test", detail)
+        self.assertIn("make lint", detail)
+        self.assertEqual(self.rules()["keep"]["run"], ["make", "lint"])
+        self.assertEqual(list(self.rules()), ["keep", "fire"])
+
+    def test_same_entry_needs_no_window(self):
+        self.commands.write_text(json.dumps({"commands": {
+            "same": {"cwd": host_run.tilde(str(self.project)), "run": ["true"]}}}))
+        code, out, _ = self.edit("add", ["same", "--cwd", str(self.project), "--run", "true"])
+        self.assertEqual((code, self.asked), (0, []))
+        self.assertIn("том же виде", out)
+
+    def test_remove(self):
+        code, out, _ = self.edit("remove", ["fire"])
+        self.assertEqual(code, 0)
+        self.assertIn("удалена", out)
+        self.assertEqual(list(self.rules()), ["keep"])
+        self.assertEqual(self.rules()["keep"]["note"], "чужое поле остается")
+        code, _, err = self.edit("remove", ["fire"])
+        self.assertEqual(code, 2)
+        self.assertIn("нет в списке", err)
+
+    def test_refused_remove_keeps_the_entry(self):
+        self.answer = "deny"
+        code, _, err = self.edit("remove", ["fire"])
+        self.assertEqual(code, 1)
+        self.assertIn("fire не удалена", err)
+        self.assertIn("fire", self.rules())
+
+    def test_bad_requests(self):
+        cases = (["list", "--cwd", str(self.project), "--run", "x"],
+                 ["bad name", "--cwd", str(self.project), "--run", "x"],
+                 ["x", "--cwd", str(self.dir / "none"), "--run", "x"])
+        for argv in cases:
+            with self.subTest(argv=argv):
+                code, _, _ = self.edit("add", argv)
+                self.assertEqual(code, 2)
+        self.assertEqual(self.asked, [])
+
+    def test_list_changed_while_the_window_was_open(self):
+        def ask(conn, change):
+            self.commands.write_text(json.dumps({"commands": {}}))
+            return "allow"
+
+        with patch.object(host_run, "ask_human", side_effect=ask):
+            code, _, err = self.edit("add", ["hello", "--cwd", str(self.project), "--run", "true"])
+        self.assertEqual(code, 2)
+        self.assertIn("поменялся", err)
+        self.assertEqual(self.rules(), {})
+
+    def test_old_runner_is_not_asked(self):
+        err = io.StringIO()
+        with patch.object(host_run, "ping", return_value={"version": "1.17.0", "pid": 1, "jobs": 0}):
+            code = host_run.edit(host_run.parse_remove(["fire"]), self.sock, io.BytesIO(), err)
+        self.assertEqual(code, 125)
+        self.assertIn("не умеет remove", err.getvalue())
+        self.assertIn("fire", self.rules())
+
+    def test_parse_add(self):
+        with patch("os.getcwd", return_value="/work"):
+            request = host_run.parse_add(["n", "--cwd", "sub", "--run", "a", "--flag", "b", "--args", "--replace"])
+        self.assertEqual(request, {"op": "add", "replace": True,
+                                   "command": {"name": "n", "cwd": "/work/sub", "run": ["a", "--flag", "b"],
+                                               "args": True}})
+        for argv in ([], ["--cwd", "x"], ["n", "--run", "x"], ["n", "--cwd", "/x"], ["n", "--bogus"]):
+            with self.subTest(argv=argv), self.assertRaises(host_run.RuleError):
+                host_run.parse_add(argv)
 
 
 class Restart(unittest.TestCase):

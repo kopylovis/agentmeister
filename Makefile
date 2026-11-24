@@ -36,6 +36,8 @@ test:
 	@printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | ./bin/agentmeister mcp | grep -q open_claude
 	@./bin/agentmeister deps status -h >/dev/null
 	@swiftc -typecheck -swift-version 5 share/agentmeister/notify/main.swift
+	@swiftc -typecheck -swift-version 5 share/agentmeister/confirm/main.swift
+	@./bin/agentmeister host-run -h | grep -q "host-run add"
 	@./bin/agentmeister notify -h | grep -q telegram
 	@./bin/agentmeister deps -h >/dev/null
 	@./bin/agentmeister notify -h | grep -q "notify phone"
