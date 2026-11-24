@@ -321,7 +321,9 @@ def entry(path, running=None, home=_DECODE, meta=True):
     }
 
 
-def load():
+def load(meta=True):
+    """Все сессии, новые первыми. meta=False не читает переписки: без заголовка, ветки и answered,
+    зато быстро. Так app_state берет их из своего кэша и читает только изменившиеся."""
     running = running_ids()
     out = []
     try:
@@ -337,7 +339,7 @@ def load():
             path = os.path.join(pdir, f)
             if not f.endswith(".jsonl") or not UUID.match(f[:-6]) or not os.path.exists(path):
                 continue
-            out.append(entry(path, running, home))
+            out.append(entry(path, running, home, meta=meta))
     out.sort(key=lambda s: s["mtime"], reverse=True)
     return out
 

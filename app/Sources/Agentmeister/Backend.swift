@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Окружение входа пользователя. Приложение запускают из Finder или Dock, а там PATH короткий и без Homebrew.
@@ -137,13 +138,72 @@ final class Backend: ObservableObject {
     @Published private(set) var lastError: String?
     /// Первый ответ app-state пришел (или не пришел, но попытка была). После него можно восстанавливать вкладки.
     @Published private(set) var ready = false
-    private var timer: Timer?
+    private var liveTimer: Timer?
+    private var fullTimer: Timer?
     private var loading = false
+    private var pendingRefresh: Task<Void, Never>?
+    private var activation: NSObjectProtocol?
 
+    /// Опрос в два темпа. Статусы открытых сессий меняются часто, а читаются дешево: это несколько маленьких
+    /// файлов ~/.claude/sessions/<pid>.json, их приложение читает само раз в 2 секунды. Полный app-state
+    /// (Python, проекты, сессии, proxy, режимы) идет при запуске, когда окно становится активным, раз в минуту
+    /// и после смены статуса какой-то сессии: тогда ее переписка и заголовок могли измениться.
     init() {
         refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+        liveTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pollLive() }
+        }
+        fullTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
+        }
+        activation = NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                                                            object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.refreshSoon() }
+        }
+    }
+
+    /// Полный app-state через секунду. Несколько поводов подряд дают один запуск.
+    func refreshSoon() {
+        pendingRefresh?.cancel()
+        pendingRefresh = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self.refresh()
+        }
+    }
+
+    private func pollLive() {
+        Task.detached(priority: .utility) {
+            let live = Self.readLive()
+            await MainActor.run {
+                let before = Dictionary(self.state.live.compactMap { r in r.sessionId.map { ($0, r.status ?? "") } },
+                                        uniquingKeysWith: { a, _ in a })
+                let after = Dictionary(live.compactMap { r in r.sessionId.map { ($0, r.status ?? "") } },
+                                       uniquingKeysWith: { a, _ in a })
+                guard before != after || self.state.live.map(\.pid) != live.map(\.pid) else { return }
+                self.state.live = live
+                self.refreshSoon()
+            }
+        }
+    }
+
+    /// Открытые сессии из реестра Claude Code, у которых жив процесс. То же, что claude_live.live() в CLI.
+    nonisolated static func readLive() -> [AppState.Live] {
+        let env = LoginEnvironment.shared
+        let home = env["CLAUDE_CONFIG_DIR"] ?? (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
+        let dir = (home as NSString).appendingPathComponent("sessions")
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return [] }
+        var out: [AppState.Live] = []
+        for name in names where name.hasSuffix(".json") {
+            guard let data = FileManager.default.contents(atPath: (dir as NSString).appendingPathComponent(name)),
+                  let record = try? JSONDecoder().decode(AppState.Live.self, from: data),
+                  let pid = record.pid, pid > 0 else { continue }
+            if kill(pid, 0) != 0 && errno != EPERM { continue }
+            out.append(record)
+        }
+        return out.sorted { a, b in
+            if (a.status == "waiting") != (b.status == "waiting") { return a.status == "waiting" }
+            return (a.sessionId ?? "") < (b.sessionId ?? "")
         }
     }
 
