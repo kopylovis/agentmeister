@@ -87,6 +87,7 @@ struct ProjectView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
+            ProjectIconView(path: path, size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 Text(project?.name ?? (path as NSString).lastPathComponent).font(.system(size: 24, weight: .semibold))
                 Text([tilde(path), data?.git?.branch, data?.git.map { $0.dirty == 0 ? l.t("без изменений", "clean") : "±\($0.dirty)" }]

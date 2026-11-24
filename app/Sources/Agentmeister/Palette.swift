@@ -107,7 +107,7 @@ struct PaletteView: View {
             if claude {
                 out.append(PaletteItem(id: "a-forget", group: .thisSession, title: l.forget,
                                        detail: l.t("удалить без следа и открыть чистую", "delete without a trace and open a clean one")) {
-                    tab.forget(note: l.forgetting)
+                    ui.forgetting = tab
                 })
             }
         }
