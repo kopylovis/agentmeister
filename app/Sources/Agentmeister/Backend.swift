@@ -115,6 +115,7 @@ struct AppState: Decodable {
         let port: Int?
         let ip: String?
         let node: String?
+        let defaultRoute: String?
     }
 
     var version = ""
