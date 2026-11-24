@@ -68,6 +68,10 @@ struct MainView: View {
         .sheet(item: $ui.renaming) { tab in
             RenameSheet(tab: tab)
         }
+        .sheet(isPresented: Binding(get: { workspace.pendingRestore != nil },
+                                    set: { if !$0, workspace.pendingRestore != nil { workspace.finishRestore([]) } })) {
+            if let pending = workspace.pendingRestore { RestoreSheet(pending: pending) }
+        }
         .alert(l.t("Сессия уже открыта в другом окне", "The session is already open in another window"),
                isPresented: Binding(get: { workspace.notice != nil }, set: { if !$0 { workspace.notice = nil } })) {
             Button("OK", role: .cancel) {}
