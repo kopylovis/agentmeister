@@ -229,9 +229,6 @@ struct Sidebar: View {
             if projectsOpen {
                 projectList
                     .scrollContentBackground(.hidden)
-                    // под светофором и заголовком плотное размытие, у режимов внизу свое стекло
-                    .scrollEdgeEffectStyle(.hard, for: .top)
-                    .scrollEdgeEffectStyle(.soft, for: .bottom)
             } else {
                 Color.clear
             }
@@ -248,6 +245,8 @@ struct Sidebar: View {
                     .padding(.horizontal, 18)
                     .padding(.bottom, 4)
             }
+            // строки под светофором и заголовком размыты
+            .blurBar(edge: .top)
         }
         .safeAreaBar(edge: .bottom, spacing: 0) { SidebarFooter() }
         .onAppear { expandOpenProjects() }
