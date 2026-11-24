@@ -53,6 +53,10 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Сессия Claude Code в этой вкладке и ее статус из реестра Claude Code (waiting, busy, idle).
     @Published var sessionId: String?
     @Published var status: String?
+    /// Вызывается, когда процесс вкладки завершился. Мастер по нему перечитывает состояние.
+    var onExit: (() -> Void)?
+    /// Подсказка ⌘⇧R после выхода. В мастере ее нет: там перезапуск этой клавишей не работает.
+    var exitHint = true
     let view: AppTerminalView
 
     init(spec: LaunchSpec) {
@@ -160,7 +164,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         self.exitCode = exitCode
         status = nil
         let code = exitCode.map(String.init) ?? "?"
-        view.feed(text: "\r\n\u{1b}[2m[exit \(code). ⌘⇧R]\u{1b}[0m\r\n")
+        view.feed(text: "\r\n\u{1b}[2m[exit \(code)" + (exitHint ? ". ⌘⇧R" : "") + "]\u{1b}[0m\r\n")
+        onExit?()
     }
 }
 

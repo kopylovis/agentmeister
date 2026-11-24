@@ -5,7 +5,7 @@ extension SettingsData.Agent {
 }
 
 /// Мастер первого запуска: агенты, proxy, вход, режимы, разрешения. Сам почти ничего не делает, а показывает
-/// состояние из app-state settings и открывает служебные вкладки с теми же командами, что в CLI. Вход в агентов
+/// состояние из app-state settings и запускает те же команды, что в CLI, в своем терминале под шагами. Вход в агентов
 /// идет через agentmeister proxy run, так что токены агенты получают через proxy.
 struct OnboardingView: View {
     @EnvironmentObject var backend: Backend
@@ -14,6 +14,8 @@ struct OnboardingView: View {
     @AppStorage("onboardingDone") private var done = false
     @State private var step = 0
     @State private var data: SettingsData?
+    /// Команда, запущенная кнопкой мастера. Ее терминал виден прямо в мастере.
+    @State private var console: TerminalTab?
 
     var l: L { L(backend.state.lang) }
 
@@ -55,16 +57,25 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(l.t("Шаг \(step + 1) из \(steps.count)", "Step \(step + 1) of \(steps.count)"))
                     .font(.caption).foregroundStyle(.secondary)
-                Group {
-                    switch step {
-                    case 0: agentsStep
-                    case 1: proxyStep
-                    case 2: signInStep
-                    case 3: modesStep
-                    default: doneStep
+                // лист не выше главного окна: пока открыт терминал, шаг прокручивается над ним
+                ScrollView {
+                    Group {
+                        switch step {
+                        case 0: agentsStep
+                        case 1: proxyStep
+                        case 2: signInStep
+                        case 3: modesStep
+                        default: doneStep
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: .infinity)
+                if let console {
+                    ConsolePanel(tab: console, l: l) { close() }
+                        .frame(height: 230)
+                }
                 HStack {
                     if step < steps.count - 1 {
                         Button(l.t("Пропустить мастер", "Skip setup")) { finish() }
@@ -79,18 +90,41 @@ struct OnboardingView: View {
                         if step == steps.count - 1 { finish() } else { step += 1 }
                     }
                     .buttonStyle(.glassProminent)
-                    .keyboardShortcut(.defaultAction)
+                    // пока виден терминал, Return нужен ему, а не кнопке
+                    .keyboardShortcut(console == nil ? .defaultAction : nil)
                 }
             }
             .padding(22)
         }
         .frame(width: 820, height: 540)
+        .environment(\.utilityRunner) { args in run(args) }
         .task { await reload() }
+        .onDisappear { console?.terminate() }
+    }
+
+    /// Запустить команду agentmeister в терминале мастера. Предыдущая, если еще идет, останавливается.
+    private func run(_ args: [String]) {
+        console?.onExit = nil
+        console?.terminate()
+        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
+        spec.utility = args
+        let tab = TerminalTab(spec: spec)
+        tab.exitHint = false
+        tab.onExit = { Task { await reload() } }
+        console = tab
+    }
+
+    private func close() {
+        console?.onExit = nil
+        console?.terminate()
+        console = nil
+        Task { await reload() }
     }
 
     private func reload() async { data = await backend.settings() }
 
     private func finish() {
+        close()
         done = true
         dismiss()
     }
@@ -161,8 +195,8 @@ struct OnboardingView: View {
     private var signInStep: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(l.t("Вход в агентов", "Sign in to the agents")).font(.title2.weight(.semibold))
-            Text(l.t("Каждый агент хранит свой вход. Вход идет служебной вкладкой через proxy: агент получает токен через mihomo, а страница входа открывается во встроенном браузере через тот же mihomo.",
-                     "Each agent keeps its own sign-in. It runs in a utility tab through the proxy: the agent gets its token through mihomo, and the sign-in page opens in the built-in browser through the same mihomo."))
+            Text(l.t("Каждый агент хранит свой вход. Команда входа идет здесь же, через proxy: агент получает токен через mihomo, а страница входа открывается во встроенном браузере через тот же mihomo.",
+                     "Each agent keeps its own sign-in. The sign-in command runs right here through the proxy: the agent gets its token through mihomo, and the sign-in page opens in the built-in browser through the same mihomo."))
                 .foregroundStyle(.secondary)
             signInCard("Claude Code", data?.claude, args: ["proxy", "run", "--claude", "--", "claude", "auth", "login"])
             signInCard("Codex", data?.codex, args: ["proxy", "run", "--claude", "--", "codex", "login"])
@@ -219,5 +253,37 @@ struct OnboardingView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+/// Терминал команды внутри мастера: заголовок с командой и состоянием, кнопка закрыть.
+struct ConsolePanel: View {
+    @ObservedObject var tab: TerminalTab
+    let l: L
+    let close: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "terminal")
+                Text(tab.title).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.middle)
+                Spacer()
+                if tab.running {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Text(tab.exitCode == 0 ? l.t("готово", "done") : l.t("код \(tab.exitCode.map(String.init) ?? "?")", "exit \(tab.exitCode.map(String.init) ?? "?")"))
+                        .font(.caption)
+                        .foregroundStyle(tab.exitCode == 0 ? Color.teal : Color.orange)
+                }
+                Button(action: close) { Image(systemName: "xmark") }
+                    .buttonStyle(.borderless)
+                    .help(tab.running ? l.t("Остановить и закрыть", "Stop and close") : l.t("Закрыть", "Close"))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            TerminalHost(tab: tab)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.1)))
     }
 }
