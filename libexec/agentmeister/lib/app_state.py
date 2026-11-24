@@ -5,6 +5,8 @@
 (ждет, работает, свободна), состояние proxy и режимов. Каждая часть собирается отдельно: если одна упала,
 остальные приходят как обычно, а в errors остается причина.
 """
+import collections
+import glob
 import json
 import os
 import re
@@ -123,24 +125,33 @@ def codex_text(content):
 
 def codex_item(line):
     """Строка rollout: что это (user, codex, tool или None), текст и время. Разбираем только завершенные элементы
-    (event_msg item_completed) и сообщения response_item, остальное пропускаем, не читая JSON."""
+    (event_msg item_completed) и сообщения response_item, остальное пропускаем, не читая JSON.
+    Строку не того вида пропускаем: одна битая строка не должна прятать весь тред или все треды."""
     if '"item_completed"' not in line and ('"response_item"' not in line or '"message"' not in line):
         return None, "", None
     try:
-        row = json.loads(line)
-        p = row.get("payload") or {}
-    except (ValueError, AttributeError):
+        return codex_row(json.loads(line))
+    except (ValueError, AttributeError, TypeError):
         return None, "", None
+
+
+def codex_row(row):
+    if not isinstance(row, dict) or not isinstance(row.get("payload"), dict):
+        return None, "", None
+    p = row["payload"]
     ts = row.get("timestamp")
     if row.get("type") == "event_msg" and p.get("type") == "item_completed":
-        item = p.get("item") or {}
+        item = p.get("item")
+        if not isinstance(item, dict):
+            return None, "", None
         kind = item.get("type")
         if kind == "UserMessage":
             return "user", codex_text(item.get("content")), ts
         if kind == "AgentMessage":
             return "codex", codex_text(item.get("content")), ts
         if kind == "CommandExecution":
-            parsed = [c.get("cmd") for c in item.get("parsed_cmd") or [] if isinstance(c, dict) and isinstance(c.get("cmd"), str)]
+            cmds = item.get("parsed_cmd") if isinstance(item.get("parsed_cmd"), list) else []
+            parsed = [c.get("cmd") for c in cmds if isinstance(c, dict) and isinstance(c.get("cmd"), str)]
             command = item.get("command")
             text = " && ".join(parsed) or (" ".join(command) if isinstance(command, list) else str(command or ""))
             return "tool", "$ " + text, ts
@@ -240,26 +251,58 @@ def codex_sessions(cache_path=None):
     return out[:SESSION_LIMIT]
 
 
-def codex_read(sid, tail=12, chars=700):
-    """Последние сообщения треда Codex для превью, как read для Claude Code. None, если такого треда нет."""
-    found = next((s for s in codex_sessions() if s["id"] == sid), None)
-    if not found:
+def codex_rollout(sid):
+    """Файл треда Codex по id, прямо по имени: sessions/ГГГГ/ММ/ДД/rollout-<время>-<id>.jsonl. Так читается
+    и тред старше тех, что попали в список, и не нужно разбирать все треды ради одного."""
+    if not mnrhlib.UUID_RE.match(sid or ""):
         return None
-    msgs, raw = [], []
-    with open(found["path"], encoding="utf-8", errors="replace") as f:
-        for line in f:
-            role, text, ts = codex_item(line)
-            if not role or not text:
-                continue
-            # в старых rollout нет item_completed, там берем сами сообщения модели
-            (raw if role.endswith("-raw") else msgs).append((role.replace("-raw", ""), ts, text))
-    msgs = msgs or raw
-    start = max(0, len(msgs) - tail)
-    return {"id": sid, "agent": "codex", "title": found["title"], "home": found["cwd"], "total": len(msgs),
-            "first": epoch(msgs[0][1]) if msgs else None, "last": epoch(msgs[-1][1]) if msgs else None,
+    pattern = os.path.join(glob.escape(codex_home()), "sessions", "*", "*", "*", f"rollout-*-{sid}.jsonl")
+    found = []
+    for path in glob.glob(pattern):
+        try:
+            found.append((os.path.getmtime(path), path))
+        except OSError:
+            continue
+    return max(found)[1] if found else None
+
+
+def codex_read(sid, tail=12, chars=700):
+    """Последние сообщения треда Codex для превью, как read для Claude Code. None, если такого треда нет.
+    В памяти держим только хвост: переписка бывает в десятки мегабайт."""
+    path = codex_rollout(sid)
+    if not path:
+        return None
+    try:
+        meta = codex_meta(path)
+    except OSError:
+        return None
+    if meta["id"] != sid:
+        return None
+    tail = max(0, tail)
+    # в старых rollout нет item_completed, там берем сами сообщения модели
+    parts = {kind: {"tail": collections.deque(maxlen=tail), "total": 0, "first": None} for kind in ("item", "raw")}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                role, text, ts = codex_item(line)
+                if not role or not text:
+                    continue
+                part = parts["raw" if role.endswith("-raw") else "item"]
+                if not part["total"]:
+                    part["first"] = ts
+                part["total"] += 1
+                part["tail"].append((role.replace("-raw", ""), ts, text))
+    except OSError:
+        return None
+    part = parts["item"] if parts["item"]["total"] else parts["raw"]
+    msgs, total = list(part["tail"]), part["total"]
+    start = total - len(msgs)
+    return {"id": sid, "agent": "codex", "title": codex_names(codex_home()).get(sid) or meta["title"],
+            "home": meta["cwd"], "total": total,
+            "first": epoch(part["first"]) if total else None, "last": epoch(msgs[-1][1]) if msgs else None,
             "messages": [{"at": i, "role": role, "time": epoch(ts),
                           "text": text if len(text) <= chars else text[:chars] + "…"}
-                         for i, (role, ts, text) in enumerate(msgs[start:], start)]}
+                         for i, (role, ts, text) in enumerate(msgs, start)]}
 
 
 def live():
@@ -273,6 +316,7 @@ def proxy():
     import claude_proxy
     configured = claude_proxy.configured()
     p = claude_proxy.port() if configured else None
+    # read_pid спрашивает ps, из песочницы proxy-сессии ps не запустить: тогда он сам проверяет, жив ли процесс
     pid = claude_proxy.read_pid() if configured else None
     running = bool(pid and claude_proxy.listening(p))
     try:
@@ -281,10 +325,7 @@ def proxy():
     except (OSError, ValueError):
         info = {}
     loc = info.get("loc")
-    try:
-        held = len(claude_proxy.holders()) if configured else 0
-    except OSError:  # holders спрашивает ps, а из песочницы proxy-сессии ps не запустить
-        held = None
+    held = len(claude_proxy.holders()) if configured else 0
     return {"configured": configured, "running": running, "port": p,
             "exit": loc.upper() if isinstance(loc, str) and len(loc) == 2 else None,
             "protocol": info.get("proto") if isinstance(info.get("proto"), str) else None,
@@ -383,9 +424,15 @@ def search(query, limit=30):
     return {"query": query, "exact": r.exact, "scanned": len(r.scope), "results": results}
 
 
+def codex_like(ref):
+    """Id треда Codex: полный UUID версии 7 (время в начале id). Claude Code дает сессиям UUID версии 4."""
+    return bool(mnrhlib.UUID_RE.match(ref or "")) and ref[14] == "7"
+
+
 def read(ref, tail=12, chars=700):
-    """Последние сообщения сессии для превью в библиотеке. Полный id треда Codex читается из его rollout."""
-    if mnrhlib.UUID_RE.match(ref or ""):
+    """Последние сообщения сессии для превью в библиотеке. Полный id треда Codex читается из его rollout:
+    сразу, если id похож на Codex, иначе только когда среди сессий Claude Code такого нет."""
+    if codex_like(ref):
         codex = codex_read(ref, tail, chars)
         if codex:
             return codex
@@ -393,7 +440,8 @@ def read(ref, tail=12, chars=700):
     idx = claude_search.refresh()
     sid, err = claude_search.resolve(ref, idx)
     if err:
-        return {"error": err}
+        codex = codex_read(ref, tail, chars) if mnrhlib.UUID_RE.match(ref or "") and not codex_like(ref) else None
+        return codex or {"error": err}
     data = idx[sid]
     msgs = data["msgs"]
     start = max(0, len(msgs) - tail)
