@@ -126,6 +126,77 @@ def with_sessions(code):
     return in_sandbox(textwrap.dedent(SESSIONS) + textwrap.dedent(code))
 
 
+class ProjectDirs(unittest.TestCase):
+    def test_encode_matches_claude_code(self):
+        r, _ = in_sandbox("""
+            import session_store as s
+            print(s.encode("/Users/x/my.proj"), s.encode("/Users/x/a😀b"))
+            print(s.encode("/a/" + "b" * 250)[-8:], s.encode("/p" + "9" * 300)[-7:], len(s.encode("/" + "z" * 199)))
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # значения посчитаны функцией из бинарника Claude Code 2.1.325
+        self.assertEqual(r.stdout.split(), ["-Users-x-my-proj", "-Users-x-a--b", "b-hvza71", "-eemjkv", "200"])
+
+    def test_long_paths_decode_move_and_survive_clean(self):
+        r, _ = with_sessions("""
+            import claude_sessions as c, session_store as s
+            deep = os.path.join(home, *["папка-с-длинным-именем-%d" % i for i in range(8)])
+            tail = os.path.join(home, "x" * 230)
+            below = os.path.join(home, "y" * 120, "z" * 120, "app")
+            for p in (deep, tail, below):
+                os.makedirs(p)
+                name = s.encode(p)
+                assert len(name) > 200 and s.decode(name) == p, (p, name, s.decode(name))
+            session = s.by_id(ids["real"])[0]
+            c.move(session, deep)
+            moved = s.by_id(ids["real"])[0]
+            assert os.path.basename(moved["pdir"]) == s.encode(deep) and moved["cwd"] == deep, moved
+            os.makedirs(os.path.join(moved["pdir"], "memory"))
+            open(os.path.join(moved["pdir"], "memory", "MEMORY.md"), "w").write("notes")
+            c.clean(True)
+            assert os.path.exists(os.path.join(moved["pdir"], "memory", "MEMORY.md"))
+            assert os.path.exists(moved["path"])
+            print("ok")
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
+
+    def test_clean_needs_a_record_of_the_gone_path_and_keeps_memory(self):
+        r, _ = with_sessions("""
+            import shutil, claude_sessions as c, session_store as s
+            projects = s.PROJECTS
+            def project(cwd, record_cwd, memory=True):
+                pdir = os.path.join(projects, s.encode(cwd))
+                os.makedirs(os.path.join(pdir, "memory") if memory else pdir)
+                if memory:
+                    open(os.path.join(pdir, "memory", "MEMORY.md"), "w").write("notes")
+                sid = "%08d-2222-3333-4444-555555555555" % len(os.listdir(projects))
+                if record_cwd is not False:
+                    line = {"type": "user", "message": {"content": "hi"}}
+                    if record_cwd:
+                        line["cwd"] = record_cwd
+                    with open(os.path.join(pdir, sid + ".jsonl"), "w") as f:
+                        f.write(json.dumps(line) + "\\n")
+                        f.write(json.dumps({"type": "assistant", "message": {"content": "ok"}}) + "\\n")
+                return pdir, sid
+            gone, gone_sid = project(os.path.join(home, "gone"), os.path.join(home, "gone"))
+            plain, _ = project(os.path.join(home, "gone2"), os.path.join(home, "gone2"), memory=False)
+            only_memory, _ = project(os.path.join(home, "gone3"), False)
+            no_cwd, no_cwd_sid = project(os.path.join(home, "gone4"), None)
+            other, other_sid = project(os.path.join(home, "gone5"), os.path.join(home, "elsewhere"))
+            c.clean(True)
+            assert not os.path.exists(os.path.join(gone, gone_sid + ".jsonl"))
+            assert os.listdir(gone) == ["memory"], os.listdir(gone)
+            assert not os.path.exists(plain)
+            assert os.path.exists(os.path.join(only_memory, "memory", "MEMORY.md"))
+            assert os.path.exists(os.path.join(no_cwd, no_cwd_sid + ".jsonl"))
+            assert os.path.exists(os.path.join(other, other_sid + ".jsonl"))
+            print("ok")
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
+
+
 class Lookup(unittest.TestCase):
     def test_by_id_matches_load(self):
         r, _ = with_sessions("""
@@ -308,7 +379,7 @@ class Lookup(unittest.TestCase):
             assert (memory / "new.md").is_file()
             os.rmdir(proj)
             c.clean(True)
-            assert not os.path.exists(pdir)
+            assert os.listdir(pdir) == ["memory"] and (memory / "new.md").is_file()
         """)
         self.assertEqual(r.returncode, 0, r.stderr)
 
