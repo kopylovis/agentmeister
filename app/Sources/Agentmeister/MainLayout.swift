@@ -288,9 +288,27 @@ struct SidebarRail: View {
             }
             .scrollIndicators(.never)
             if let h = backend.state.hostRun {
-                GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
-                    .help(h.running ? l.t("host-run работает", "host-run running") : l.t("host-run не запущен", "host-run isn't running"))
-                    .padding(.bottom, 12)
+                // исполнитель host-run: значок терминала и точка состояния, клик открывает его настройки
+                SettingsLink {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Ink.text2)
+                        .frame(width: 32, height: 32)
+                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Ink.chip))
+                        .overlay(alignment: .bottomTrailing) {
+                            Circle().fill(h.running ? SessionDot.idle : Ink.amberDot)
+                                .frame(width: 8, height: 8)
+                                .padding(2)
+                                .background(Circle().fill(Color(nsColor: .windowBackgroundColor)))
+                                .offset(x: 2, y: 2)
+                        }
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
+                .help(h.running ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
+                                : l.t("host-run не запущен", "host-run isn't running"))
+                .accessibilityLabel(h.running ? l.t("host-run работает", "host-run running") : l.t("host-run не запущен", "host-run isn't running"))
+                .padding(.bottom, 12)
             }
         }
         .frame(maxHeight: .infinity)
