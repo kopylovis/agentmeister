@@ -235,21 +235,27 @@ struct Sidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // кнопка в одну строку со светофором: его центр в 8 точках от верха карточки
             HStack {
                 Spacer()
                 SidebarToggle()
             }
-            .frame(height: 30)
+            .frame(height: 16)
             .padding(.horizontal, 10)
-            .padding(.top, 8)
+            .padding(.bottom, 12)
             .background(WindowDragArea())
             CollapsibleHeader(title: l.projects, open: $projectsOpen,
                               summary: l.t("открыто \(workspace.tabs.filter(\.running).count)", "\(workspace.tabs.filter(\.running).count) open"))
                 .padding(.horizontal, 18)
                 .padding(.bottom, 4)
             if projectsOpen {
+                // список в своей рамке: прокрутка обрезается по ней и не наезжает на режимы
                 projectList
                     .scrollContentBackground(.hidden)
+                    .background(Ink.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Ink.hairline))
+                    .padding(.horizontal, 10)
             } else {
                 Spacer(minLength: 0)
             }
