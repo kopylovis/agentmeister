@@ -1,5 +1,8 @@
 # Спайк SwiftTerm
 
+Спайк закончен, цель AgentmeisterSpike заменило приложение Agentmeister (README.md рядом). Ниже то, что
+проверяли и что вышло.
+
 Окно SwiftUI с вкладками на [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm). В каждой вкладке
 `agentmeister <проект> -n -x` запускает агента так же, как во вкладке iTerm2, вместе с mihomo и sandbox-exec.
 Задача спайка в том, чтобы понять, выдержит ли SwiftTerm Claude Code и Codex в ежедневной работе, прежде чем

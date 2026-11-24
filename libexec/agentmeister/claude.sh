@@ -67,6 +67,7 @@ help() {
   agentmeister --harness claude install   установить Claude Code с claude.ai
   agentmeister setup               команды, хуки, MCP-сервер, хук zsh, прокси, promptsill (setup -h)
   agentmeister doctor              проверить установку
+  agentmeister app-state           состояние для десктопного Agentmeister в JSON
   agentmeister alias               короткое имя am; on, off
   agentmeister --version           версия
 
@@ -87,6 +88,7 @@ case "${1:-}" in
   codex-context) shift; exec /usr/bin/python3 "$LIB/codex_context.py" "$@" ;;
   brief) exec /usr/bin/python3 "$(dirname "$MENU")/claude_brief.py" "$@" ;;
   ps) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" ps "$@" ;;
+  app-state) shift; exec /usr/bin/python3 "$LIB/app_state.py" "$@" ;;
   restore) exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" "$@" ;;
   doctor) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_doctor.py" "$@" ;;
   lid) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_lid.py" "$@" ;;
