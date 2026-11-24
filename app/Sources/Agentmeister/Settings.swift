@@ -161,7 +161,7 @@ struct SettingsView: View {
             .padding(.top, 44)
             .frame(width: 210)
             .frame(maxHeight: .infinity)
-            .glassEffect(.regular, in: .rect(cornerRadius: 18))
+            .glassEffect(.regular, in: .windowCard)
             .padding(8)
             .accessibilityLabel(l.t("Разделы настроек", "Settings sections"))
 
@@ -286,21 +286,29 @@ struct UtilityButton: View {
     @Environment(\.utilityRunner) private var runner
     let title: String
     let args: [String]
+    /// Растянуть кнопку на всю доступную ширину (ряд одинаковых кнопок внизу карточки).
+    var expand = false
 
     var body: some View {
-        Button(title) {
-            if let runner {
-                runner(args)
-                return
-            }
-            let home = NSHomeDirectory()
-            var spec = LaunchSpec(projectName: "agentmeister", projectPath: home)
-            spec.utility = args
-            workspace.open(spec)
-            openWindow(id: "main")
+        Button {
+            run()
+        } label: {
+            Text(title).lineLimit(1).frame(maxWidth: expand ? .infinity : nil)
         }
         .help("agentmeister " + args.joined(separator: " "))
         .buttonStyle(.glass)
+    }
+
+    private func run() {
+        if let runner {
+            runner(args)
+            return
+        }
+        let home = NSHomeDirectory()
+        var spec = LaunchSpec(projectName: "agentmeister", projectPath: home)
+        spec.utility = args
+        workspace.open(spec)
+        openWindow(id: "main")
     }
 }
 
