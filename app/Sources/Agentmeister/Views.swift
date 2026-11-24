@@ -247,9 +247,7 @@ struct Sidebar: View {
     /// тоже. Реестр знает и наши вкладки, поэтому вкладка с известной сессией считается один раз.
     /// В раскрытой группе ноль не показываем.
     private var openSummary: String {
-        let tabs = workspace.tabs.filter { $0.running && $0.spec.utility == nil }
-        let mine = Set(tabs.compactMap(\.sessionId))
-        let others = backend.state.live.filter { $0.sessionId.map { !mine.contains($0) } ?? true }
+        let (tabs, others) = workspace.openSessions(backend.state)
         let open = tabs.count + others.count
         let waiting = tabs.filter { $0.status == "waiting" }.count + others.filter { $0.status == "waiting" }.count
         if open == 0 && projectsOpen { return "" }
@@ -286,7 +284,8 @@ struct Sidebar: View {
     }
 
     private func expandOpenProjects() {
-        if let path = workspace.current?.spec.projectPath { expanded.insert(path) }
+        // продолжение открывается в папке сессии, это бывает подпапка проекта
+        if let path = workspace.current?.spec.projectPath { expanded.insert(backend.state.project(containing: path)?.path ?? path) }
     }
 }
 
@@ -453,14 +452,10 @@ struct ProjectRow: View {
     var l: L { L(backend.state.lang) }
 
     var body: some View {
-        let tabs = workspace.tabs.filter { $0.spec.projectPath == project.path && $0.running }
-        let liveHere = backend.state.live.filter { live in
-            guard let cwd = live.cwd else { return false }
-            return cwd == project.path || cwd.hasPrefix(project.path + "/")
-        }
         // вкладки этого окна и сессии в других окнах, без двойного счета
-        let count = max(tabs.count, liveHere.count)
-        let waiting = tabs.contains { $0.status == "waiting" } || liveHere.contains { $0.status == "waiting" }
+        let (tabs, others) = workspace.openSessions(in: project, state: backend.state)
+        let count = tabs.count + others.count
+        let waiting = tabs.contains { $0.status == "waiting" } || others.contains { $0.status == "waiting" }
         HStack(spacing: 8) {
             ProjectIconView(path: project.path, size: 18)
             Text(project.name)
@@ -1132,9 +1127,13 @@ struct NewSessionSheet: View {
         return tab.sessionId
     }
 
+    private var project: AppState.Project? { backend.state.projects.first { $0.path == projectPath } }
+    /// Последняя сессия выбранного агента в проекте: ее продолжает "Продолжить последнюю".
+    private var lastSession: AppState.Session? { project.flatMap { backend.state.sessions(in: $0, agent: agent).first } }
+
     var body: some View {
-        let project = backend.state.projects.first { $0.path == projectPath }
-        let last = project.flatMap { backend.state.sessions(in: $0, agent: agent).first }
+        let project = self.project
+        let last = lastSession
         let exit = backend.state.proxy?.exit
         VStack(alignment: .leading, spacing: 18) {
             Text(l.newSession).font(.system(size: 17, weight: .semibold))
@@ -1234,7 +1233,8 @@ struct NewSessionSheet: View {
                 }
                 .keyboardShortcut(.return, modifiers: .command)
                 .buttonStyle(.glassProminent)
-                .disabled(project == nil || busy || (mode == .parallel && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                .disabled(project == nil || busy || (mode == .resume && last == nil)
+                          || (mode == .parallel && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             }
         }
         .padding(24)
@@ -1249,7 +1249,16 @@ struct NewSessionSheet: View {
             if ui.newSessionParallel { mode = .parallel }
             ui.newSessionParallel = false
         }
-        .onChange(of: agent) { if agent == .codex && mode == .parallel { mode = .new } }
+        .onChange(of: agent) {
+            if agent == .codex && mode == .parallel { mode = .new }
+            resetResumeIfNothingToContinue()
+        }
+        .onChange(of: projectPath) { resetResumeIfNothingToContinue() }
+    }
+
+    /// У этого агента в этом проекте продолжать нечего: выбор возвращается к новой сессии.
+    private func resetResumeIfNothingToContinue() {
+        if mode == .resume && lastSession == nil { mode = .new }
     }
 
     private func open(project: AppState.Project?, last: AppState.Session?) {
