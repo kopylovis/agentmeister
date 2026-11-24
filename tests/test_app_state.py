@@ -338,6 +338,51 @@ class CodexSessions(unittest.TestCase):
         self.assertEqual([(m["role"], m["text"]) for m in out["messages"]], [("tool", "$ make test"), ("codex", "Все прошло")])
         self.assertEqual(out["home"], self.project)
 
+    def test_malformed_lines_are_skipped(self):
+        bad = ['{"type":"event_msg","payload":"item_completed"}', '["item_completed"]',
+               '{"type":"event_msg","payload":{"type":"item_completed","item":"x"}}',
+               '{"type":"response_item","payload":["message"]}', '{"item_completed": ']
+        path = self.rollout(self.SID, [self.done("UserMessage", "запусти тесты")])
+        with open(path, "a") as f:
+            for line in bad:
+                f.write(line + "\n")
+            f.write(json.dumps(self.done("CommandExecution", "", command=["make", "test"], parsed_cmd=5)) + "\n")
+            f.write(json.dumps(self.done("AgentMessage", "Все прошло")) + "\n")
+        # раньше первая же такая строка роняла разбор, и список тредов Codex приходил пустым
+        self.assertEqual([s["id"] for s in app_state.codex_sessions()], [self.SID])
+        out = app_state.read(self.SID, tail=5)
+        self.assertEqual([(m["role"], m["text"]) for m in out["messages"]],
+                         [("user", "запусти тесты"), ("tool", "$ make test"), ("codex", "Все прошло")])
+
+    def test_old_thread_outside_the_list_is_still_readable(self):
+        old = "01a20d90-2222-7593-b017-582ceb5058cb"
+        path = self.rollout(old, [self.done("UserMessage", "старый вопрос"), self.done("AgentMessage", "старый ответ")],
+                            day="2025/01/02")
+        os.utime(path, (1, 1))
+        self.rollout(self.SID, [self.done("UserMessage", "новый"), self.done("AgentMessage", "да")])
+        with patch.object(app_state, "SESSION_LIMIT", 1):
+            self.assertEqual([s["id"] for s in app_state.codex_sessions()], [self.SID])
+            with patch.object(app_state, "codex_sessions", side_effect=AssertionError("full scan")):
+                out = app_state.read(old, tail=1)
+        self.assertEqual((out["agent"], out["title"], out["total"]), ("codex", "старый вопрос", 2))
+        self.assertEqual([(m["at"], m["text"]) for m in out["messages"]], [(1, "старый ответ")])
+
+    def test_claude_id_is_read_from_claude_sessions_first(self):
+        import claude_search
+        sid = "11111111-2222-4333-8444-555555555555"
+        idx = {sid: {"path": "/c/x.jsonl", "ai": "Claude", "first": None, "last": None,
+                     "msgs": [["user", "2026-11-20T10:00:00Z", "привет"]]}}
+        with patch.object(claude_search, "refresh", return_value=idx), \
+             patch.object(claude_search, "home_of", return_value="/w/app"), \
+             patch.object(app_state, "codex_read", side_effect=AssertionError("codex first")):
+            self.assertEqual(app_state.read(sid)["total"], 1)
+        # v4 id, которого нет среди сессий Claude Code, все равно ищется среди тредов Codex
+        other = "01a20d90-3333-4593-b017-582ceb5058cb"
+        self.rollout(other, [self.done("UserMessage", "вопрос"), self.done("AgentMessage", "ответ")])
+        with patch.object(claude_search, "refresh", return_value=idx):
+            self.assertEqual(app_state.read(other)["agent"], "codex")
+            self.assertIn("error", app_state.read("01a20d90-4444-4593-b017-582ceb5058cb"))
+
 
 class Lang(unittest.TestCase):
     def test_set_and_auto(self):
