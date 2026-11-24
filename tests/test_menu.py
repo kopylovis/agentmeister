@@ -213,8 +213,33 @@ class Layout(unittest.TestCase):
 
     def test_split_keys(self):
         self.assertEqual(menu.split_keys("\x1b[B\x1b[B"), ["\x1b[B", "\x1b[B"])
-        self.assertEqual(menu.split_keys("ssh\r"), ["ssh", "\r"])
+        self.assertEqual(menu.split_keys("ssh\r"), ["s", "s", "h", "\r"])
         self.assertEqual(menu.split_keys("\x1b"), ["\x1b"])
+        self.assertEqual(menu.split_keys("qq  "), ["q", "q", " ", " "])
+        self.assertEqual(menu.split_keys("я\x1bOB"), ["я", "\x1bOB"])
+
+    def test_two_spaces_in_one_read_mark_two_rows(self):
+        picker = menu.Menu(0, [("a", "a"), ("b", "b"), ("c", "c")], "", "", 1, 0)
+        picker.marks = set()
+        picker.handle_batch(menu.split_keys("  "))
+        self.assertEqual(picker.marks, {0, 1})
+        self.assertEqual(picker.query, "")
+
+    def test_search_looks_at_visible_text_first(self):
+        items = [("--harness claude status", "Claude Code status"), ("--harness codex install", "Install Codex"),
+                 ("sessions", "Saved sessions"), ("doctor", "Check the install")]
+        picker = menu.Menu(0, items, "", "", 1, 0)
+        for ch in "ss":
+            picker.handle(ch)
+        self.assertEqual(picker.choices(), [2])
+        picker.query = ""
+        for ch in "doctor":
+            picker.handle(ch)
+        self.assertEqual(picker.choices(), [3])  # в видимом тексте нет, находит ключ
+        picker.query = ""
+        for ch in "ыуыы":  # «sess» в русской раскладке
+            picker.handle(ch)
+        self.assertEqual(picker.choices(), [2])
 
     def test_panel_lines_have_equal_width(self):
         items = [(None, "Group"), ("a", "📂 Open"), ("b", "\x1b[32m[on]\x1b[0m flag")]
@@ -509,6 +534,34 @@ class Framed(unittest.TestCase):
         self.assertIn("Enter  Back to menu", rows[-3])
         self.assertIn("q  Quit", rows[-3])
         self.assertIn("╰", rows[-2])
+
+    def test_cursor_stands_right_after_the_prompt(self):
+        out = menu.Output()
+        out.feed("Path: ")
+        screen = menu.Screen()
+        with patch.object(menu, "screen_size", return_value=(14, 60)), patch.object(menu, "write_all") as write:
+            menu.draw_output(screen, out, "t", running=True)
+        frame = write.call_args.args[1]
+        self.assertIn("\x1b[3;11H", frame)  # «  │ Path: » занимает 10 колонок
+        out.feed("x" * 80)
+        with patch.object(menu, "screen_size", return_value=(14, 60)), patch.object(menu, "write_all") as write:
+            menu.draw_output(screen, out, "t", running=True)
+        col = int(re.findall(r"\x1b\[\d+;(\d+)H", write.call_args.args[1])[-1])
+        self.assertLessEqual(col, 57)  # правая линия рамки в 58-й колонке
+
+    def test_output_scroll_keys_in_one_read(self):
+        out = menu.Output()
+        out.feed("\n".join(f"line {i}" for i in range(100)) + "\n")
+        screen = menu.Screen()
+        seen = []
+
+        def draw(screen, out, title, running, code=0, back=0, elapsed=None):
+            seen.append(back)
+        with patch.object(menu, "screen_size", return_value=(14, 60)), patch.object(menu, "draw_output", draw), \
+                patch.object(menu.select, "select", return_value=([1], [], [])), \
+                patch.object(menu, "read_keys", side_effect=["bb", "qq"]):
+            self.assertFalse(menu.show_output(screen, out, "t", 0))
+        self.assertEqual(seen, [0, 16])
 
     def test_output_keeps_colors_and_handles_carriage_return(self):
         out = menu.Output()
