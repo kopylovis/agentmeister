@@ -584,7 +584,8 @@ struct AgentCard: View {
                 Group {
                     if info?.installed == true {
                         Text(update ?? (agent == .claude ? l.t("Обновляется при перезапуске", "Updates on restart")
-                                                         : l.t("Обновляется через Homebrew", "Updates through Homebrew")))
+                                                         : info?.installedVia == "homebrew" ? l.t("Обновляется через Homebrew", "Updates through Homebrew")
+                                                         : l.t("Обновляется командой codex update", "Updates with codex update")))
                             .foregroundStyle(Ink.teal)
                     } else {
                         Text(l.t("Не найден", "Not found")).foregroundStyle(Ink.amber)
@@ -606,7 +607,7 @@ struct AgentCard: View {
             checkUpdate()
         } label: {
             ZStack {
-                Text(agent == .claude ? l.t("Обновить", "Update") : l.t("Проверить обновление", "Check update")).opacity(checking ? 0 : 1)
+                Text(l.t("Обновить", "Update")).opacity(checking ? 0 : 1)
                 if checking { ProgressView().controlSize(.small) }
             }
             .lineLimit(1)
@@ -614,8 +615,9 @@ struct AgentCard: View {
         }
         .buttonStyle(.glass)
         .disabled(checking)
-        .help(agent == .claude ? l.t("claude update через proxy", "claude update through the proxy")
-                               : l.t("brew outdated codex, ничего не ставит", "brew outdated codex, installs nothing"))
+        .help(info.installedVia == "homebrew"
+              ? l.t("brew upgrade через proxy, агент стоит из Homebrew", "brew upgrade through the proxy, the agent is from Homebrew")
+              : l.t("\(agent == .codex ? "codex" : "claude") update через proxy", "\(agent == .codex ? "codex" : "claude") update through the proxy"))
         Button {
             signingIn = agent
         } label: {
@@ -636,16 +638,11 @@ struct AgentCard: View {
         }
     }
 
-    /// Claude Code обновляется через proxy (claude update ставит новую версию сразу), у Codex смотрим brew
-    /// outdated, ничего не ставя.
+    /// Обновление тем способом, каким агент установлен (agentmeister agent-update), через proxy, если он настроен.
+    /// Последняя строка вывода говорит, с какой версии на какую или что версия последняя.
     private func checkUpdate() {
         checking = true
-        if agent == .codex && info?.installedVia != "homebrew" {
-            update = l.t("Codex стоит не из Homebrew, обновляй тем же способом", "Codex isn't from Homebrew, update it the way you installed it")
-            checking = false
-            return
-        }
-        let command = agent == .claude ? TerminalTab.updateCommand(direct: !proxyReady) : "brew outdated --cask --greedy --quiet codex 2>/dev/null"
+        let command = TerminalTab.updateCommand(direct: !proxyReady, agent: agent)
         Task.detached {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -660,12 +657,7 @@ struct AgentCard: View {
             task.waitUntilExit()
             await MainActor.run {
                 checking = false
-                if agent == .codex {
-                    update = out.isEmpty ? l.t("Последняя версия в Homebrew", "Up to date in Homebrew")
-                                         : l.t("Есть обновление: brew upgrade codex", "Update available: brew upgrade codex")
-                } else {
-                    update = out.isEmpty ? l.t("Последняя версия", "Up to date") : out
-                }
+                update = out.split(separator: "\n").last.map(String.init) ?? l.t("Команда ничего не вывела", "The command printed nothing")
                 Task { await reload() }
             }
         }

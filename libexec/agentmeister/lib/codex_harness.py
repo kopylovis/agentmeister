@@ -238,7 +238,7 @@ def restart(codex, argv):
         return 0
 
     if options.update:
-        update = [codex, "update"]
+        update = [LOCAL_CLI, "agent-update", "codex"]  # brew upgrade или codex update, по способу установки
         if proxy:
             update = [LOCAL_CLI, "proxy", "run", "--", *update]
         subprocess.run(update, check=True)

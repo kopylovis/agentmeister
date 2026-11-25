@@ -464,7 +464,7 @@ def cli(args, forget=False, fresh=False):
             print("agentmeister forget --dry-run   только показать, что будет сделано")
         else:
             print("agentmeister restart            изнутри Claude Code: закрыть его и открыть эту же сессию в той же вкладке")
-            print("                               перед запуском выполняется claude update")
+            print("                               перед запуском обновляется Claude Code (claude update или brew upgrade)")
             print("agentmeister restart --no-update  без обновления")
             print("agentmeister restart --dry-run    только показать, что будет сделано")
         print()

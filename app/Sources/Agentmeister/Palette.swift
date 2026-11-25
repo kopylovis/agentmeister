@@ -93,7 +93,7 @@ struct PaletteView: View {
         if let tab {
             out.append(PaletteItem(id: "a-restart", group: .thisSession,
                                    title: claude && TerminalTab.restartUpdates ? l.t("Перезапустить с обновлением", "Restart with update") : l.restart,
-                                   detail: claude && TerminalTab.restartUpdates ? "claude update" : "", shortcut: keys.label(.restart)) {
+                                   detail: claude && TerminalTab.restartUpdates ? "agent-update" : "", shortcut: keys.label(.restart)) {
                 tab.restartPreferred(note: l.updating)
             })
             if claude && tab.sessionId != nil {
