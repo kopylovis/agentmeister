@@ -209,6 +209,8 @@ struct AppState: Decodable {
     /// Что выбрано в ~/.config/mnrh/config: ru, en или auto (язык macOS).
     var langSetting: String?
     var projectsDir = ""
+    /// Все папки с проектами, первая главная. Nil в старом ответе app-state.
+    var projectsDirs: [String]?
     var projects: [Project] = []
     var sessions: [Session] = []
     /// Треды Codex. app-state отдает их отдельно, Backend сливает их в sessions.

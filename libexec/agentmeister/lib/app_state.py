@@ -30,7 +30,8 @@ def version():
 
 def projects():
     import open_flow
-    return [{"name": os.path.basename(p), "path": p} for p in open_flow.project_dirs()]
+    dirs = open_flow.project_dirs()
+    return [{"name": mnrhlib.project_label(p, dirs), "path": p} for p in dirs]
 
 
 META_CACHE = os.path.join(mnrhlib.CACHE, "app-state", "sessions.json")
@@ -367,6 +368,7 @@ def host_run_summary():
 
 def collect():
     state = {"version": version(), "lang": mnrhlib.lang(), "langSetting": lang_setting(), "projectsDir": mnrhlib.projects_dir(),
+             "projectsDirs": mnrhlib.projects_dirs(),
              "generatedAt": time.time(), "errors": {}}
     for name, part, empty in (("projects", projects, []), ("sessions", sessions, []), ("live", live, []),
                               ("proxy", proxy, None), ("modes", modes, {}), ("hostRun", host_run_summary, None),
@@ -763,22 +765,61 @@ def set_lang(value):
     return 0
 
 
-def set_projects_dir(value):
-    """agentmeister projects-dir <папка>|default. Проекты это подпапки с git, default возвращает ~/Developer."""
-    if value in ("default", "auto"):
+def write_projects_dirs(dirs):
+    """Записать список папок проектов; ровно ~/Developer по умолчанию убирает строку из config."""
+    if dirs == [mnrhlib.DEFAULT_DEV]:
         mnrhlib.write_config(projects=None)
     else:
-        path = os.path.abspath(os.path.expanduser(value))
-        if not os.path.isdir(path):
-            print(mnrhlib.tr(f"папки {mnrhlib.tilde(path)} нет", f"no folder {mnrhlib.tilde(path)}"), file=sys.stderr)
-            return 2
-        mnrhlib.write_config(projects=mnrhlib.tilde(path))
-    path = os.path.abspath(os.path.expanduser(os.environ.get("MNRH_PROJECTS") or mnrhlib.read_config().get("projects")
-                                              or mnrhlib.DEFAULT_DEV))
-    count = sum(os.path.isdir(os.path.join(path, d, ".git")) for d in os.listdir(path)) if os.path.isdir(path) else 0
-    print(mnrhlib.tr(f"папка проектов: {mnrhlib.tilde(path)}, проектов с git: {count}",
-                     f"projects folder: {mnrhlib.tilde(path)}, git projects: {count}"))
+        mnrhlib.write_config(projects=":".join(mnrhlib.tilde(d) for d in dirs))
+
+
+def check_projects_folder(path):
+    """Папка с проектами, а не сам проект. -> текст ошибки или None."""
+    if not os.path.isdir(path):
+        return mnrhlib.tr(f"папки {mnrhlib.tilde(path)} нет", f"no folder {mnrhlib.tilde(path)}")
+    if os.path.exists(os.path.join(path, ".git")):
+        parent = mnrhlib.tilde(os.path.dirname(path))
+        return mnrhlib.tr(f"{mnrhlib.tilde(path)} сам проект, а нужна папка, в которой лежат проекты, например {parent}",
+                          f"{mnrhlib.tilde(path)} is a project itself, pick the folder that holds projects, for example {parent}")
+    if ":" in path:
+        return mnrhlib.tr("в пути папки не должно быть двоеточия", "the folder path can't contain a colon")
+    return None
+
+
+def show_projects_dirs():
+    for d in mnrhlib.projects_dirs():
+        count = sum(os.path.isdir(os.path.join(d, n, ".git")) for n in os.listdir(d)) if os.path.isdir(d) else 0
+        print(mnrhlib.tr(f"{mnrhlib.tilde(d)}  проектов с git: {count}", f"{mnrhlib.tilde(d)}  git projects: {count}"))
     return 0
+
+
+def set_projects_dir(args):
+    """agentmeister projects-dir [add|remove] <папка> или default. Это папки, в которых лежат проекты, а не проекты:
+    проектами считаются их подпапки. Без add/remove папка заменяет весь список."""
+    usage = "agentmeister projects-dir [add|remove] <папка> | default"
+    op = args[0] if args[0] in ("add", "remove") else "set"
+    value = args[1] if op != "set" and len(args) > 1 else args[0] if op == "set" else None
+    if not value:
+        print(usage, file=sys.stderr)
+        return 2
+    dirs = mnrhlib.projects_dirs()
+    if op == "set" and value in ("default", "auto"):
+        write_projects_dirs([mnrhlib.DEFAULT_DEV])
+        return show_projects_dirs()
+    path = os.path.abspath(os.path.expanduser(value))
+    if op == "remove":
+        if path not in dirs:
+            print(mnrhlib.tr(f"{mnrhlib.tilde(path)} нет в списке", f"{mnrhlib.tilde(path)} isn't in the list"), file=sys.stderr)
+            return 2
+        rest = [d for d in dirs if d != path]
+        write_projects_dirs(rest or [mnrhlib.DEFAULT_DEV])
+        return show_projects_dirs()
+    error = check_projects_folder(path)
+    if error:
+        print(error, file=sys.stderr)
+        return 2
+    write_projects_dirs([path] if op == "set" else dirs + ([] if path in dirs else [path]))
+    return show_projects_dirs()
 
 
 def main(argv):
@@ -790,7 +831,7 @@ def main(argv):
                          "agentmeister app-state settings        что показывает окно настроек\n"
                          "agentmeister app-state doctor          проверки agentmeister doctor\n"
                          "agentmeister app-state lang [ru|en|auto]  язык интерфейса\n"
-                         "agentmeister app-state projects-dir <папка>|default  папка с проектами",
+                         "agentmeister app-state projects-dir [add|remove] <папка>|default  папки с проектами",
                          "agentmeister app-state                state for the Agentmeister desktop app as JSON\n"
                          "agentmeister app-state search <words>  search all sessions\n"
                          "agentmeister app-state read <id>       latest messages of a session\n"
@@ -798,13 +839,10 @@ def main(argv):
                          "agentmeister app-state settings        what the settings window shows\n"
                          "agentmeister app-state doctor          agentmeister doctor checks\n"
                          "agentmeister app-state lang [ru|en|auto]  interface language\n"
-                         "agentmeister app-state projects-dir <folder>|default  the projects folder"))
+                         "agentmeister app-state projects-dir [add|remove] <folder>|default  folders that hold projects"))
         return 0
     if argv and argv[0] == "projects-dir":
-        if len(argv) == 1:
-            print(mnrhlib.tilde(mnrhlib.projects_dir()))
-            return 0
-        return set_projects_dir(argv[1])
+        return show_projects_dirs() if len(argv) == 1 else set_projects_dir(argv[1:])
     if argv and argv[0] == "lang":
         if len(argv) == 1:
             print(f"{mnrhlib.lang()} ({lang_setting()})")

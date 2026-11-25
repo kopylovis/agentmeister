@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import Quit, Screen  # noqa: E402
-from mnrhlib import HOME, projects_dir, tilde, tr  # noqa: E402
+from mnrhlib import HOME, project_label, projects_dirs, tilde, tr  # noqa: E402
 
 SKIP = object()
 
@@ -26,15 +26,21 @@ def bold(text):
 
 
 def project_dirs(dev=None):
-    """Папки проектов без скрытых папок и ссылок на соседний проект."""
-    dev = dev or projects_dir()
-    try:
-        with os.scandir(dev) as entries:
-            folders = [e for e in entries if not e.name.startswith(".") and e.is_dir()]
-    except OSError:
-        return []
+    """Проекты из всех папок проектов (или из одной dev) без скрытых папок и ссылок на соседний проект.
+    Одноименные проекты из разных папок остаются оба, подпись их различает (mnrhlib.project_label)."""
+    folders, seen = [], set()
+    for root in ([dev] if dev else projects_dirs()):
+        try:
+            with os.scandir(root) as entries:
+                found = [e for e in entries if not e.name.startswith(".") and e.is_dir()]
+        except OSError:
+            continue
+        for e in found:
+            if e.path not in seen:
+                seen.add(e.path)
+                folders.append(e)
     real_folders = {os.path.realpath(e.path) for e in folders if not e.is_symlink()}
-    return [e.path for e in sorted(folders, key=lambda e: e.name.lower())
+    return [e.path for e in sorted(folders, key=lambda e: (e.name.lower(), e.path))
             if not e.is_symlink() or os.path.realpath(e.path) not in real_folders]
 
 
@@ -55,16 +61,18 @@ class Projects:
     """Список проектов. git спрашивается один раз за весь проход и параллельно: 20 проектов это 40 вызовов."""
 
     def __init__(self):
-        self.dev = projects_dir()
-        self.dirs = project_dirs(self.dev)
+        self.dev = ", ".join(tilde(d) for d in projects_dirs())
+        self.dirs = project_dirs()
         with ThreadPoolExecutor(max_workers=8) as pool:
             self.info = list(pool.map(git_info, self.dirs))
-        wide = max([10] + [len(os.path.basename(d)) for d in self.dirs])
+        wide = max([10] + [len(project_label(d, self.dirs)) for d in self.dirs])
         self.items = [("~", tr("🏠 ~ (домашний каталог)", "🏠 ~ (home folder)"))]
         for d, (branch, log) in zip(self.dirs, self.info):
-            name = os.path.basename(d)
+            name = project_label(d, self.dirs)
             last = log[0][0] if log else ""
-            self.items.append((name, f"📁 {name:<{wide}}  {(branch or '-')[:18]:<18}  {last}"))
+            # одноименный проект из другой папки выбирается по пути, имя тут не однозначно
+            key = os.path.basename(d) if name == os.path.basename(d) else d
+            self.items.append((key, f"📁 {name:<{wide}}  {(branch or '-')[:18]:<18}  {last}"))
 
     def describe(self, i, w):
         if i == 0:
@@ -84,7 +92,7 @@ class Projects:
     def pick(self, screen, current):
         default = 1 if current is None else (0 if current == HOME else
                                              (self.dirs.index(current) + 1 if current in self.dirs else 1))
-        i = screen.pick(self.items, title=tr(f"Проекты в {tilde(self.dev)}", f"Projects in {tilde(self.dev)}"), default=default,
+        i = screen.pick(self.items, title=tr(f"Проекты в {self.dev}", f"Projects in {self.dev}"), default=default,
                         describe=self.describe, start=0)
         if i is None:
             return None

@@ -218,19 +218,62 @@ def write_config(**values):
             f.write(f"{key}={value}\n")
 
 
+def projects_dirs():
+    """Папки с проектами (категории, а не сами проекты): projects=<путь>[:<путь>...] в config или MNRH_PROJECTS,
+    через двоеточие, как PATH. По умолчанию ~/Developer. Первая главная: в ней лежат worktree параллельных задач."""
+    raw = os.environ.get("MNRH_PROJECTS") or read_config().get("projects") or DEFAULT_DEV
+    out = []
+    for part in raw.split(":"):
+        part = part.strip()
+        if part:
+            path = os.path.abspath(os.path.expanduser(part))
+            if path not in out:
+                out.append(path)
+    return out or [DEFAULT_DEV]
+
+
 def projects_dir():
-    path = os.environ.get("MNRH_PROJECTS") or read_config().get("projects") or DEFAULT_DEV
-    return os.path.abspath(os.path.expanduser(path))
+    return projects_dirs()[0]
 
 
 DEV = projects_dir()
+DEVS = projects_dirs()
+
+
+def project_name(cwd):
+    """Имя проекта, если cwd лежит прямо в одной из папок проектов, иначе None."""
+    for dev in DEVS:
+        if cwd.startswith(dev + "/") and "/" not in cwd[len(dev) + 1:]:
+            return cwd[len(dev) + 1:]
+    return None
+
+
+def project_folders():
+    """Подпапки всех папок проектов без скрытых, по имени. Одноименные проекты из разных папок остаются оба,
+    одна и та же папка, попавшая в список дважды (вложенные папки проектов, ссылки), только раз."""
+    seen, out = set(), []
+    for dev in DEVS:
+        try:
+            names = sorted(d for d in os.listdir(dev) if not d.startswith(".") and os.path.isdir(os.path.join(dev, d)))
+        except OSError:
+            continue
+        for name in names:
+            path = os.path.join(dev, name)
+            if os.path.realpath(path) not in seen:
+                seen.add(os.path.realpath(path))
+                out.append(path)
+    return sorted(out, key=lambda p: (os.path.basename(p).lower(), p))
+
+
+def project_label(path, folders=None):
+    """Имя проекта для списков; если такое имя есть и в другой папке проектов, к нему дописана папка: backend · Work."""
+    name = os.path.basename(path)
+    others = [p for p in (folders if folders is not None else project_folders()) if os.path.basename(p) == name]
+    return f"{name} · {os.path.basename(os.path.dirname(path))}" if len(others) > 1 else name
 
 
 def projects():
-    if not os.path.isdir(DEV):
-        return []
-    return sorted(os.path.join(DEV, d) for d in os.listdir(DEV)
-                  if os.path.isdir(os.path.join(DEV, d, ".git")))
+    return [p for p in project_folders() if os.path.isdir(os.path.join(p, ".git"))]
 
 
 def confirm(question, assume_yes):
@@ -261,13 +304,11 @@ def find_project(query=None, cwd=None):
     path = os.path.abspath(os.path.expanduser(query))
     if os.path.isdir(path) and ("/" in query or query.startswith(("~", "."))):
         return project_root(path), None
-    root = projects_dir()
-    names = sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)) and not d.startswith(".")) \
-        if os.path.isdir(root) else []
-    hits = [d for d in names if d.lower() == query.lower()] or \
-        [d for d in names if d.lower().startswith(query.lower())]
+    folders = project_folders()
+    hits = [d for d in folders if os.path.basename(d).lower() == query.lower()] or \
+        [d for d in folders if os.path.basename(d).lower().startswith(query.lower())]
     if len(hits) == 1:
-        return os.path.join(root, hits[0]), None
+        return hits[0], None
     if hits:
-        return None, f"«{query}» подходит к нескольким проектам: {', '.join(hits)}"
-    return None, f"проекта «{query}» нет в {tilde(root)}"
+        return None, f"«{query}» подходит к нескольким проектам: {', '.join(tilde(d) for d in hits)}, укажи путь"
+    return None, f"проекта «{query}» нет в {', '.join(tilde(d) for d in DEVS)}"
