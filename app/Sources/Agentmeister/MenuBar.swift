@@ -246,7 +246,8 @@ struct MenuBarPanel: View {
         if let h = backend.state.hostRun {
             MenuBarLine(dot: h.running ? Ink.tealDot : Ink.amberDot, icon: "terminal",
                         title: h.running ? l.t("host-run работает", "host-run running") : l.t("host-run не запущен", "host-run isn't running"),
-                        trailing: h.running ? l.commands(h.commands) : "", tint: Ink.muted, help: h.log ?? "") {
+                        trailing: h.running ? l.commands(h.commands) : "", tint: h.running ? Ink.teal : Ink.muted,
+                        help: h.log ?? "") {
                 openSettingsPane("proxy")
             }
         }
