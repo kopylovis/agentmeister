@@ -117,6 +117,12 @@ struct ProjectView: View {
                     .foregroundStyle(Ink.muted)
             }
             Spacer()
+            Button(l.newSession) {
+                ui.newSessionProject = path
+                ui.newSessionParallel = false
+                ui.showNewSession = true
+            }
+            .buttonStyle(PillStyle(prominent: data?.last == nil))
             if let last = data?.last {
                 Button(l.resumeLast) { open(resume: last.id) }
                     .buttonStyle(PillStyle(prominent: true))
