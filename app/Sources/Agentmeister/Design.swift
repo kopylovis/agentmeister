@@ -45,7 +45,6 @@ enum Ink {
 
     static let card = Color(light: .black(0.035), dark: .white(0.05))
     static let chip = Color(light: .black(0.05), dark: .white(0.06))
-    static let openBg = Color(light: .black(0.04), dark: .white(0.06))
     static let thumb = Color(light: .white(0.96), dark: .white(0.16))
     static let hover = Color(light: NSColor(hex: 0x2F6FE4, alpha: 0.12), dark: NSColor(hex: 0x8DB8FF, alpha: 0.18))
     static let hairline = Color(light: .black(0.08), dark: .white(0.10))

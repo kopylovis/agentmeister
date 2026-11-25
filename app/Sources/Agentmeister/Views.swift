@@ -407,7 +407,7 @@ struct Sidebar: View {
                         SessionRow(session: session, project: project)
                     }
                 } label: {
-                    ProjectRow(project: project, open: expanded.contains(project.path))
+                    ProjectRow(project: project)
                 }
             }
             if let error = backend.lastError {
@@ -594,7 +594,6 @@ struct ProjectRow: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var ui: UIState
     let project: AppState.Project
-    let open: Bool
     @State private var hover = false
 
     var l: L { L(backend.state.lang) }
@@ -603,12 +602,23 @@ struct ProjectRow: View {
         // вкладки этого окна и сессии в других окнах, без двойного счета
         let (tabs, others) = workspace.openSessions(in: project, state: backend.state)
         let count = tabs.count + others.count
-        let waiting = tabs.contains { $0.status == "waiting" } || others.contains { $0.status == "waiting" }
+        let statuses = tabs.map(\.status) + others.map(\.status)
+        let waiting = statuses.contains("waiting")
+        // как на свернутой рельсе: ждет ответа важнее, чем работает
+        let status = waiting ? "waiting" : statuses.contains("busy") ? "busy" : nil
         HStack(spacing: 8) {
             // клик открывает экран проекта, повторный клик закрывает его. Жест висит на всем, кроме "+":
             // simultaneousGesture на всей строке срабатывал и вместе с кнопкой новой сессии
             HStack(spacing: 8) {
                 ProjectIconView(path: project.path, size: 18)
+                    .overlay(alignment: .bottomTrailing) {
+                        if count > 0 {
+                            SessionDot(status: status, size: 7)
+                                .padding(1.5)
+                                .background(Circle().fill(Color(nsColor: .windowBackgroundColor)))
+                                .offset(x: 3, y: 3)
+                        }
+                    }
                 Text(project.name)
                     .fontWeight(.medium)
                     .lineLimit(1)
@@ -644,10 +654,9 @@ struct ProjectRow: View {
         .frame(minHeight: 28)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        // выбранный проект, открытый, а под курсором легкая подсветка, как у строк в строке меню
+        // выбранный проект на подложке, под курсором легкая подсветка; развернутый проект без своей подложки
         .listRowBackground(ui.projectScreen == project.path
                            ? RoundedRectangle(cornerRadius: 10).fill(Ink.thumb).padding(.horizontal, 10)
-                           : open ? RoundedRectangle(cornerRadius: 10).fill(hover ? Ink.hover : Ink.openBg).padding(.horizontal, 10)
                            : hover ? RoundedRectangle(cornerRadius: 10).fill(Ink.hover).padding(.horizontal, 10) : nil)
         .contextMenu {
             Button(l.newSession) {
