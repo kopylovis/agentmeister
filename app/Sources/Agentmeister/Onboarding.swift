@@ -487,7 +487,7 @@ struct OnboardingView: View {
                     Button {
                         // после перезапуска мастер откроется снова на этом шаге
                         UserDefaults.standard.set(Step.permissions.rawValue, forKey: "onboardingResumeStep")
-                        AppDelegate.relaunch()
+                        AppDelegate.relaunch(resumeKey: "onboardingResumeStep")
                     } label: { Label(l.t("Перезапустить Agentmeister", "Restart Agentmeister"), systemImage: "arrow.clockwise") }
                 }
             }
