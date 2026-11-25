@@ -763,6 +763,24 @@ def set_lang(value):
     return 0
 
 
+def set_projects_dir(value):
+    """agentmeister projects-dir <папка>|default. Проекты это подпапки с git, default возвращает ~/Developer."""
+    if value in ("default", "auto"):
+        mnrhlib.write_config(projects=None)
+    else:
+        path = os.path.abspath(os.path.expanduser(value))
+        if not os.path.isdir(path):
+            print(mnrhlib.tr(f"папки {mnrhlib.tilde(path)} нет", f"no folder {mnrhlib.tilde(path)}"), file=sys.stderr)
+            return 2
+        mnrhlib.write_config(projects=mnrhlib.tilde(path))
+    path = os.path.abspath(os.path.expanduser(os.environ.get("MNRH_PROJECTS") or mnrhlib.read_config().get("projects")
+                                              or mnrhlib.DEFAULT_DEV))
+    count = sum(os.path.isdir(os.path.join(path, d, ".git")) for d in os.listdir(path)) if os.path.isdir(path) else 0
+    print(mnrhlib.tr(f"папка проектов: {mnrhlib.tilde(path)}, проектов с git: {count}",
+                     f"projects folder: {mnrhlib.tilde(path)}, git projects: {count}"))
+    return 0
+
+
 def main(argv):
     if argv and argv[0] in ("-h", "--help", "help"):
         print(mnrhlib.tr("agentmeister app-state                состояние для десктопного Agentmeister в JSON\n"
@@ -771,15 +789,22 @@ def main(argv):
                          "agentmeister app-state usage [дней]    статистика, 0 значит за все время\n"
                          "agentmeister app-state settings        что показывает окно настроек\n"
                          "agentmeister app-state doctor          проверки agentmeister doctor\n"
-                         "agentmeister app-state lang [ru|en|auto]  язык интерфейса",
+                         "agentmeister app-state lang [ru|en|auto]  язык интерфейса\n"
+                         "agentmeister app-state projects-dir <папка>|default  папка с проектами",
                          "agentmeister app-state                state for the Agentmeister desktop app as JSON\n"
                          "agentmeister app-state search <words>  search all sessions\n"
                          "agentmeister app-state read <id>       latest messages of a session\n"
                          "agentmeister app-state usage [days]    usage stats, 0 means all time\n"
                          "agentmeister app-state settings        what the settings window shows\n"
                          "agentmeister app-state doctor          agentmeister doctor checks\n"
-                         "agentmeister app-state lang [ru|en|auto]  interface language"))
+                         "agentmeister app-state lang [ru|en|auto]  interface language\n"
+                         "agentmeister app-state projects-dir <folder>|default  the projects folder"))
         return 0
+    if argv and argv[0] == "projects-dir":
+        if len(argv) == 1:
+            print(mnrhlib.tilde(mnrhlib.projects_dir()))
+            return 0
+        return set_projects_dir(argv[1])
     if argv and argv[0] == "lang":
         if len(argv) == 1:
             print(f"{mnrhlib.lang()} ({lang_setting()})")
