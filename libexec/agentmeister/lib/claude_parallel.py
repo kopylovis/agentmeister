@@ -136,7 +136,9 @@ def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None,
     flags = job["flags"] + (["--permission-mode", permission]
                             if permission in PERMISSION_MODES and permission != "default" else [])
     text, bad = claude_open.open_claude({"placement": "window", "path": path, "mode": mode, "prompt": prompt, "flags": flags,
-                                         "trust": claude_open.trusted(root), "remote_control": rc}, cm or "agentmeister")
+                                         "trust": claude_open.trusted(root), "remote_control": rc, "subtask": True,
+                                         "name": f"{os.path.basename(root.rstrip('/'))} · {name}"},
+                                        cm or "agentmeister")
     lines = [f"Ветка {name} от {base}, worktree {tilde(path)}."]
     if sid:
         lines.append(f"Второй Claude продолжает эту переписку: форк сессии {sid[:8]}, эта остаётся как была.")

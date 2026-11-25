@@ -709,7 +709,8 @@ final class Workspace: ObservableObject {
     /// Почему последнее открытие не удалось. Окно показывает это предупреждением.
     @Published var notice: String?
 
-    func open(_ spec: LaunchSpec) {
+    /// select: false оставляет выбранной нынешнюю вкладку. Так открываются вкладки, которые попросил агент.
+    func open(_ spec: LaunchSpec, select: Bool = true) {
         // Сессия уже открыта во вкладке: переходим к ней, а не запускаем второй Claude на той же переписке
         if let sid = spec.resumeId, let tab = tabs.first(where: { $0.sessionId == sid && $0.running }) {
             selected = tab.id
@@ -730,7 +731,7 @@ final class Workspace: ObservableObject {
         } else {
             tabs.append(tab)
         }
-        selected = tab.id
+        if select || selected == nil { selected = tab.id }
     }
 
     // MARK: Подзадачи
@@ -976,6 +977,77 @@ final class Workspace: ObservableObject {
         let same = { (a: String?, b: String?) in a.map { $0.lowercased() } == b.map { $0.lowercased() } }
         let allow = session != nil && request.map { same($0.session, session) && same($0.tab, tab) } == true
         focus(tab: tab, session: session, state: state, allowResume: allow)
+    }
+
+    // MARK: Вкладки по просьбе агента
+
+    static let openDir = (appDir as NSString).appendingPathComponent("open")
+    /// Флаги claude, которые можно передать в запросе: форк разговора, продолжение и режим разрешений без
+    /// обхода проверок. Остальное отклоняем, запрос может прийти от любой программы этого пользователя.
+    private static let permissionModes: Set<String> = ["default", "acceptEdits", "auto", "plan"]
+
+    /// Забрать запросы agentmeister open_claude и parallel из вкладок этого окна: open/<id>.json. На каждый
+    /// пишем ответ <id>.reply.json, CLI ждет его несколько секунд, а без ответа открывает терминал как раньше.
+    func takeOpenRequests(state: AppState) {
+        guard restored, pendingRestore == nil else { return }
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: Self.openDir) else { return }
+        for name in names where name.hasSuffix(".json") && !name.hasSuffix(".reply.json") {
+            let id = String(name.dropLast(5))
+            let path = (Self.openDir as NSString).appendingPathComponent(name)
+            guard id.range(of: Self.sessionPattern, options: .regularExpression) != nil,
+                  let data = fm.contents(atPath: path) else { continue }
+            try? fm.removeItem(atPath: path)
+            var reply: [String: Any] = ["ok": false]
+            switch openRequest(data, state: state) {
+            case .success(let tab): reply = ["ok": true, "tab": tab.uuidString.lowercased()]
+            case .failure(let error): reply["error"] = error.text
+            }
+            if let out = try? JSONSerialization.data(withJSONObject: reply) {
+                try? out.write(to: URL(fileURLWithPath: (Self.openDir as NSString).appendingPathComponent(id + ".reply.json")), options: .atomic)
+            }
+        }
+    }
+
+    struct OpenRefusal: Error { let text: String }
+
+    /// Запрос открыть вкладку. Он должен прийти из открытой вкладки этого окна (id в AGENTMEISTER_TAB), папка
+    /// должна лежать в папке проектов, а маршрут всегда через proxy: иначе сессия из песочницы открыла бы себе
+    /// сессию без нее.
+    private func openRequest(_ data: Data, state: AppState) -> Result<UUID, OpenRefusal> {
+        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let path = o["path"] as? String, !path.isEmpty else { return .failure(OpenRefusal(text: "bad request")) }
+        if let at = o["at"] as? Double, Date().timeIntervalSince1970 - at > 30 { return .failure(OpenRefusal(text: "stale request")) }
+        guard let from = (o["from"] as? String).flatMap(UUID.init(uuidString:)),
+              let requester = tabs.first(where: { $0.id == from && $0.running }) else {
+            return .failure(OpenRefusal(text: "the requesting tab isn't open in Agentmeister"))
+        }
+        let folder = (path as NSString).standardizingPath
+        var isDir: ObjCBool = false
+        let roots = (state.projectsDirs ?? [state.projectsDir]).filter { !$0.isEmpty }.map { ($0 as NSString).standardizingPath }
+        guard FileManager.default.fileExists(atPath: folder, isDirectory: &isDir), isDir.boolValue,
+              roots.contains(where: { folder.hasPrefix($0 + "/") }) else {
+            return .failure(OpenRefusal(text: "the folder isn't inside the projects folder"))
+        }
+        let flags = (o["flags"] as? [String]) ?? []
+        var i = 0
+        while i < flags.count {
+            switch flags[i] {
+            case "--fork-session", "--continue": i += 1
+            case "--resume" where i + 1 < flags.count && flags[i + 1].range(of: Self.sessionPattern, options: .regularExpression) != nil: i += 2
+            case "--permission-mode" where i + 1 < flags.count && Self.permissionModes.contains(flags[i + 1]): i += 2
+            default: return .failure(OpenRefusal(text: "flag \(flags[i]) isn't allowed"))
+            }
+        }
+        let name = (o["name"] as? String).flatMap { $0.isEmpty ? nil : String($0.prefix(80)) } ?? (folder as NSString).lastPathComponent
+        var spec = LaunchSpec(projectName: name, projectPath: folder, agent: .claude, direct: false)
+        spec.firstPrompt = (o["prompt"] as? String) ?? ""
+        spec.extraFlags = flags
+        spec.awake = (o["awake"] as? Bool) ?? false
+        spec.remoteControl = (o["remote_control"] as? Bool) ?? false
+        if o["subtask"] as? Bool == true { spec.parent = requester.id }
+        open(spec, select: false)
+        return tabs.last(where: { $0.spec.projectPath == folder }).map { .success($0.id) } ?? .failure(OpenRefusal(text: "the tab didn't open"))
     }
 
     func terminateAll() {
