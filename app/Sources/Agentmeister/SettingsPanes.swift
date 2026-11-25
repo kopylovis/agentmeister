@@ -520,7 +520,10 @@ struct AgentCard: View {
     let l: L
     let reload: () async -> Void
     @State private var flags = ""
+    /// Итог последнего обновления из этой карточки, последняя строка agent-update.
     @State private var update: String?
+    @State private var updating = false
+    @State private var check: UpdateCheck?
     @State private var checking = false
     @State private var signingIn: LaunchSpec.Agent?
 
@@ -550,7 +553,7 @@ struct AgentCard: View {
                         .onChange(of: flags) { UserDefaults.standard.set(flags, forKey: AgentPrefs.flagsKey(agent)) }
                 }
                 Spacer(minLength: 0)
-                // все кнопки внизу одинаковой ширины; не влезают в ряд, встают столбиком (у обеих карточек одинаково)
+                // две тихие кнопки одной ширины; не влезают в ряд, встают столбиком (у обеих карточек одинаково)
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) { buttons(info) }
                     VStack(spacing: 8) { buttons(info) }
@@ -563,13 +566,18 @@ struct AgentCard: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .glassEffect(.regular, in: .rect(cornerRadius: 20))
-        .onAppear { flags = UserDefaults.standard.string(forKey: AgentPrefs.flagsKey(agent)) ?? "" }
+        .onAppear {
+            flags = UserDefaults.standard.string(forKey: AgentPrefs.flagsKey(agent)) ?? ""
+            if info?.installed == true { runCheck() }
+        }
+        .onChange(of: info?.installed) { if info?.installed == true && check == nil { runCheck() } }
         .sheet(item: $signingIn, onDismiss: { Task { await reload() } }) { agent in
             AuthDialog(agent: agent)
         }
     }
 
-    /// Шапка одной высоты у обеих карточек: иконка агента, имя и версия в строку, под ними способ обновления.
+    /// Шапка одной высоты у обеих карточек: иконка агента, имя и версия в строку, под ними состояние версии.
+    /// Кнопка обновления справа появляется, только когда вышла новая версия.
     private var header: some View {
         HStack(spacing: 12) {
             AgentBadge(agent: agent, size: 40)
@@ -581,53 +589,59 @@ struct AgentCard: View {
                     }
                 }
                 .lineLimit(1)
-                Group {
-                    if info?.installed == true {
-                        Text(update ?? (agent == .claude ? l.t("Обновляется при перезапуске", "Updates on restart")
-                                                         : info?.installedVia == "homebrew" ? l.t("Обновляется через Homebrew", "Updates through Homebrew")
-                                                         : l.t("Обновляется командой codex update", "Updates with codex update")))
-                            .foregroundStyle(Ink.teal)
-                    } else {
-                        Text(l.t("Не найден", "Not found")).foregroundStyle(Ink.amber)
-                    }
-                }
-                .font(.system(size: 12))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .help(update ?? "")
+                versionStatus
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            if info?.installed == true, check?.update == true, update == nil {
+                PillButton(title: l.t("Обновить", "Update"), prominent: true, small: true, busy: updating) { performUpdate() }
+                    .disabled(updating)
+                    .help(info?.installedVia == "homebrew"
+                          ? l.t("brew upgrade через proxy, агент стоит из Homebrew", "brew upgrade through the proxy, the agent is from Homebrew")
+                          : l.t("\(agent == .codex ? "codex" : "claude") update через proxy", "\(agent == .codex ? "codex" : "claude") update through the proxy"))
+            }
         }
         .frame(height: 40)
     }
 
     @ViewBuilder
-    private func buttons(_ info: SettingsData.Agent) -> some View {
-        Button {
-            checkUpdate()
-        } label: {
-            ZStack {
-                Text(l.t("Обновить", "Update")).opacity(checking ? 0 : 1)
-                if checking { ProgressView().controlSize(.small) }
+    private var versionStatus: some View {
+        if info?.installed != true {
+            Text(l.t("Не найден", "Not found")).foregroundStyle(Ink.amber)
+        } else if updating {
+            Text(l.t("Обновляется…", "Updating…")).foregroundStyle(Ink.muted)
+        } else if let update {
+            Text(update).foregroundStyle(Ink.teal).help(update)
+        } else if checking && check == nil {
+            Text(l.t("Проверяю обновления…", "Checking for updates…")).foregroundStyle(Ink.muted)
+        } else if let check, check.update, let latest = check.latest {
+            Text(l.t("Вышла \(latest)", "\(latest) available")).foregroundStyle(Ink.amber)
+        } else if let check, check.error == nil {
+            Text(l.t("Последняя версия", "Up to date")).foregroundStyle(Ink.teal)
+        } else if let check, let error = check.error {
+            Button { runCheck(force: true) } label: {
+                Text(l.t("Не удалось проверить, повторить", "Couldn't check, try again")).foregroundStyle(Ink.muted)
             }
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
+            .buttonStyle(.plain)
+            .help(error)
         }
-        .buttonStyle(.glass)
-        .disabled(checking)
-        .help(info.installedVia == "homebrew"
-              ? l.t("brew upgrade через proxy, агент стоит из Homebrew", "brew upgrade through the proxy, the agent is from Homebrew")
-              : l.t("\(agent == .codex ? "codex" : "claude") update через proxy", "\(agent == .codex ? "codex" : "claude") update through the proxy"))
+    }
+
+    @ViewBuilder
+    private func buttons(_ info: SettingsData.Agent) -> some View {
         Button {
             signingIn = agent
         } label: {
-            Text(info.signedIn == true ? l.t("Сменить аккаунт", "Switch account") : l.t("Войти", "Sign in"))
+            Label(info.signedIn == true ? l.t("Сменить аккаунт", "Switch account") : l.t("Войти", "Sign in"),
+                  systemImage: "person.crop.circle")
                 .lineLimit(1)
-                .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.glass)
+        .buttonStyle(CardActionStyle())
         UtilityButton(title: l.t("Хуки и MCP", "Hooks and MCP"),
-                      args: agent == .claude ? ["setup"] : ["--harness", "codex", "setup"], expand: true)
+                      args: agent == .claude ? ["setup"] : ["--harness", "codex", "setup"], expand: true,
+                      icon: "puzzlepiece.extension")
     }
 
     private func gridRow(_ title: String, _ value: String, mono: Bool = false) -> some View {
@@ -638,28 +652,79 @@ struct AgentCard: View {
         }
     }
 
-    /// Обновление тем способом, каким агент установлен (agentmeister agent-update), через proxy, если он настроен.
-    /// Последняя строка вывода говорит, с какой версии на какую или что версия последняя.
-    private func checkUpdate() {
+    /// Есть ли новая версия: agentmeister agent-update --check спрашивает API Homebrew или npm, через proxy, если он
+    /// настроен. Ответ живет 10 минут на все открытия настроек.
+    private func runCheck(force: Bool = false) {
+        if !force, let cached = UpdateCheck.cache[agent.rawValue], Date().timeIntervalSince(cached.at) < 600 {
+            check = cached.result
+            return
+        }
+        guard !checking else { return }
         checking = true
-        let command = TerminalTab.updateCommand(direct: !proxyReady, agent: agent)
+        let command = TerminalTab.checkCommand(direct: !proxyReady, agent: agent)
+        let key = agent.rawValue
         Task.detached {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            task.arguments = ["-c", command]
-            task.environment = LoginEnvironment.shared
-            let pipe = Pipe()
-            task.standardOutput = pipe
-            task.standardInput = FileHandle.nullDevice
-            try? task.run()
-            let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            task.waitUntilExit()
+            let out = TerminalTab.shell(command).1
+            let line = out.split(separator: "\n").last { $0.hasPrefix("{") }.map(String.init) ?? ""
+            let result = (try? JSONDecoder().decode(UpdateCheck.self, from: Data(line.utf8)))
+                ?? UpdateCheck(current: nil, latest: nil, update: false, error: out.isEmpty ? "no answer" : String(out.suffix(300)))
             await MainActor.run {
                 checking = false
+                check = result
+                if result.error == nil { UpdateCheck.cache[key] = (Date(), result) }
+            }
+        }
+    }
+
+    /// Обновление тем способом, каким агент установлен (agentmeister agent-update), через proxy, если он настроен.
+    /// Последняя строка вывода говорит, с какой версии на какую; потом версия проверяется заново.
+    private func performUpdate() {
+        updating = true
+        let command = TerminalTab.updateCommand(direct: !proxyReady, agent: agent)
+        Task.detached {
+            let out = TerminalTab.shell(command).1.trimmingCharacters(in: .whitespacesAndNewlines)
+            await MainActor.run {
+                updating = false
                 update = out.split(separator: "\n").last.map(String.init) ?? l.t("Команда ничего не вывела", "The command printed nothing")
+                UpdateCheck.cache[agent.rawValue] = nil
+                runCheck(force: true)
                 Task { await reload() }
             }
+        }
+    }
+}
+
+/// Ответ agentmeister agent-update --check.
+struct UpdateCheck: Decodable {
+    let current: String?
+    let latest: String?
+    let update: Bool
+    let error: String?
+
+    @MainActor static var cache: [String: (at: Date, result: UpdateCheck)] = [:]
+}
+
+/// Тихая кнопка карточки: значок и подпись на легкой подложке с тонкой рамкой, подсветка под курсором.
+struct CardActionStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { CardActionBody(configuration: configuration) }
+
+    private struct CardActionBody: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hover = false
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            configuration.label
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Ink.text)
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .padding(.horizontal, 10)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(hover ? Ink.hover : Ink.card))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Ink.hairline))
+                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .opacity(configuration.isPressed ? 0.7 : enabled ? 1 : 0.5)
+                .onHover { hover = $0 }
         }
     }
 }

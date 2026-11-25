@@ -6,16 +6,21 @@
 
 agentmeister agent-update claude|codex   обновить и сказать, с какой версии на какую
 agentmeister agent-update --print claude  только показать команду
+agentmeister agent-update --check claude  JSON с текущей и последней версией, ничего не ставит
 """
+import json
 import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import tr  # noqa: E402
 
 AGENTS = ("claude", "codex")
+# откуда брать последнюю версию у установки не из Homebrew
+NPM = {"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex"}
 BREW_PATHS = ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
 
 
@@ -118,8 +123,58 @@ def update(agent):
     return code
 
 
+def parse_version(text):
+    parts = []
+    for piece in str(text or "").split(",")[0].split("."):
+        digits = "".join(c for c in piece if c.isdigit()) if piece[:1].isdigit() else ""
+        if not digits:
+            break
+        parts.append(int(digits))
+    return tuple(parts)
+
+
+def fetch_json(url):
+    # urllib берет HTTPS_PROXY из окружения, под agentmeister proxy run запрос идет через mihomo
+    request = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "agentmeister"})
+    with urllib.request.urlopen(request, timeout=15) as response:
+        return json.loads(response.read(2_000_000))
+
+
+def latest_version(agent, path):
+    """Последняя версия там, откуда агент ставится: API Homebrew для cask и формул, иначе npm."""
+    package = brew_package(os.path.realpath(path))
+    if package:
+        name, cask = package
+        if cask:
+            return str(fetch_json(f"https://formulae.brew.sh/api/cask/{name}.json")["version"]).split(",")[0]
+        return str(fetch_json(f"https://formulae.brew.sh/api/formula/{name}.json")["versions"]["stable"])
+    return str(fetch_json(f"https://registry.npmjs.org/{NPM[agent]}/latest")["version"])
+
+
+def check(agent):
+    """Есть ли новая версия. JSON в stdout, ошибка сети или источника в поле error."""
+    path = binary_path(agent)
+    out = {"agent": agent, "installed": bool(path), "current": None, "latest": None, "update": False, "error": None}
+    if path:
+        out["current"] = version(path)
+        out["via"] = installed_via(agent, path)
+        try:
+            out["latest"] = latest_version(agent, path)
+            out["update"] = parse_version(out["latest"]) > parse_version(out["current"])
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            out["error"] = str(e) or e.__class__.__name__
+    print(json.dumps(out))
+    return 0
+
+
 def main(argv):
     show = "--print" in argv
+    if "--check" in argv:
+        rest = [a for a in argv if a != "--check"]
+        if len(rest) != 1 or rest[0] not in AGENTS:
+            print("agentmeister agent-update --check claude|codex", file=sys.stderr)
+            return 2
+        return check(rest[0])
     args = [a for a in argv if a != "--print"]
     if len(args) != 1 or args[0] not in AGENTS:
         print("agentmeister agent-update [--print] claude|codex", file=sys.stderr)

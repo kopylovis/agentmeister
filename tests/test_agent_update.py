@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import sys
@@ -50,6 +51,28 @@ class UpdateCommand(unittest.TestCase):
                 self.assertEqual(agent_update.binary_path("codex"), real)
             with patch.dict(os.environ, {"PATH": str(shim_dir)}):
                 self.assertEqual(agent_update.binary_path("codex"), str(shim))  # другого нет, берем обертку
+
+    def test_check_compares_with_the_source_of_the_install(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cask = self.link(tmp, "Caskroom/claude-code/2.1.0/claude")
+            urls = []
+
+            def fake(url):
+                urls.append(url)
+                return {"version": "2.1.10,abc"}
+
+            with patch.object(agent_update, "binary_path", return_value=cask), \
+                    patch.object(agent_update, "version", return_value="2.1.9"), \
+                    patch.object(agent_update, "fetch_json", side_effect=fake), \
+                    patch("sys.stdout") as out:
+                agent_update.check("claude")
+            result = json.loads("".join(call.args[0] for call in out.write.call_args_list))
+            self.assertEqual(urls, ["https://formulae.brew.sh/api/cask/claude-code.json"])
+            self.assertEqual((result["current"], result["latest"], result["update"]), ("2.1.9", "2.1.10", True))
+
+    def test_versions_compare_as_numbers(self):
+        self.assertGreater(agent_update.parse_version("0.172.0"), agent_update.parse_version("0.99.9"))
+        self.assertEqual(agent_update.parse_version("2.1.325 (Claude Code)"), (2, 1, 325))
 
     def test_missing_agent(self):
         with patch.object(agent_update, "binary_path", return_value=None):
