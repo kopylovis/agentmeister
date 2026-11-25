@@ -160,8 +160,9 @@ struct OnboardingView: View {
     private func lead(_ s: Step) -> String {
         switch s {
         case .look: return l.t("По умолчанию как в macOS. Поменять можно потом в настройках.", "Follows macOS by default. You can change both later in Settings.")
-        case .projects: return l.t("Не папка проекта, а папка уровнем выше, где проекты лежат рядом. По умолчанию это ~/Developer.",
-                                   "Not a project folder but the one above it, where your projects sit side by side. It is ~/Developer by default.")
+        // \u{2060} не дает перенести путь после "~/"
+        case .projects: return l.t("Не папка проекта, а папка уровнем выше, где проекты лежат рядом. По умолчанию это ~/\u{2060}Developer.",
+                                   "Not a project folder but the one above it, where your projects sit side by side. It is ~/\u{2060}Developer by default.")
         case .agents: return l.t("Agentmeister запускает Claude Code и Codex в своих вкладках. Нужен хотя бы один из них.",
                                  "Agentmeister runs Claude Code and Codex in its own tabs. You need at least one of them.")
         case .proxy: return l.t("Сессии через proxy работают в sandbox-exec и ходят в сеть только через mihomo. Вход в агентов на следующем шаге тоже пойдет через него.",
