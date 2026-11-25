@@ -42,6 +42,24 @@ else
 fi
 [[ -x $cli/bin/agentmeister ]] || { echo "bundle.sh: CLI не скопировался в $cli" >&2; exit 1; }
 
+# promptsill, строка состояния Claude Code, тоже едет внутри: ссылку ~/.local/bin/promptsill приложение ставит
+# при первом запуске, если promptsill еще нигде нет. Версия закреплена, файл проверяется по sha256 и кэшируется.
+promptsill_version=0.10.0
+promptsill_sha256=af04564e9c2be3fc5259c9c758e64f5e26483596bb56700bd85c85213ca581e3
+cached=$here/build/cache/promptsill-$promptsill_version
+if [[ ! -f $cached/promptsill ]]; then
+  mkdir -p "$cached"
+  base=https://raw.githubusercontent.com/kopylovis/promptsill/v$promptsill_version
+  curl -fsSL "$base/promptsill" -o "$cached/promptsill.part" && curl -fsSL "$base/LICENSE" -o "$cached/LICENSE" \
+    || { echo "bundle.sh: не скачал promptsill $promptsill_version" >&2; exit 1; }
+  [[ $(shasum -a 256 "$cached/promptsill.part" | cut -d' ' -f1) == "$promptsill_sha256" ]] \
+    || { rm -f "$cached/promptsill.part"; echo "bundle.sh: promptsill $promptsill_version не сошелся по sha256" >&2; exit 1; }
+  mv "$cached/promptsill.part" "$cached/promptsill"
+fi
+mkdir -p "$stage/Contents/Resources/promptsill"
+install -m 755 "$cached/promptsill" "$stage/Contents/Resources/promptsill/promptsill"
+cp "$cached/LICENSE" "$stage/Contents/Resources/promptsill/LICENSE"
+
 icon=$root/share/agentmeister/icon.png
 if [[ -f $icon ]]; then
   set=$tmp/AppIcon.iconset
