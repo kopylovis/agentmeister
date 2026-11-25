@@ -241,7 +241,7 @@ struct SearchCapsule: View {
             .frame(minWidth: 120, idealWidth: 240, maxWidth: 240, minHeight: 34, maxHeight: 34)
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hoverCapsule())
         .glassEffect(.regular.interactive(), in: .capsule)
         .accessibilityLabel(l.t("Поиск по сессиям", "Search sessions"))
         .shortcutHelp(l.t("Палитра команд", "Command palette"), .palette)
@@ -283,7 +283,7 @@ struct ProxyBadge: View {
             .frame(height: 34)
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hoverCapsule())
         .glassEffect(live ? .regular.tint(Ink.tealDot.opacity(0.22)).interactive() : .regular.interactive(), in: .capsule)
         .help(backend.lastError ?? [proxy?.node, proxy?.ip].compactMap { $0 }.joined(separator: " · "))
         .popover(isPresented: $showDetails, arrowEdge: .bottom) {

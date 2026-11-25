@@ -1042,7 +1042,7 @@ struct DoctorPane: View {
         let bad = issues.filter { $0.level == "bad" }.count
         let summary = collapsible ? l.t("\(checks(items.count)) в порядке", "\(checks(items.count)) OK")
                                   : problems(bad: bad, warn: issues.count - bad) + (rest.isEmpty ? "" : l.t(", в порядке \(rest.count)", ", \(rest.count) OK"))
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 0) {
             Button {
                 guard collapsible else { return }
                 if expanded.contains(g) { expanded.remove(g) } else { expanded.insert(g) }
@@ -1065,9 +1065,14 @@ struct DoctorPane: View {
                             .rotationEffect(.degrees(open ? 90 : 0))
                     }
                 }
+                // поля карточки внутри кнопки: подсветка под курсором закрывает всю карточку, а у раскрытой ее шапку
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.hover(8))
+            .buttonStyle(HoverStyle(shape: AnyShape(UnevenRoundedRectangle(
+                topLeadingRadius: 18, bottomLeadingRadius: open ? 0 : 18, bottomTrailingRadius: open ? 0 : 18,
+                topTrailingRadius: 18, style: .continuous))))
             .allowsHitTesting(collapsible)
             .accessibilityAddTraits(collapsible ? .isButton : [])
             .accessibilityValue(collapsible ? (open ? l.t("развернуто", "expanded") : l.t("свернуто", "collapsed")) : "")
@@ -1087,11 +1092,11 @@ struct DoctorPane: View {
                         .padding(.horizontal, issues.isEmpty ? 0 : 2)
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
