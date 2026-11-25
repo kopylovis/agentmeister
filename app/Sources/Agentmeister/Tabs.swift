@@ -226,12 +226,15 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         if (try? task.run()) != nil { caffeinate = task }
     }
 
-    /// Команда оболочки для claude update. Через proxy (agentmeister proxy run), если не сказано идти напрямую:
-    /// скачивание обновления не должно уходить в обычную сеть Mac мимо mihomo.
-    /// tail: false отдает весь вывод, а код выхода остается кодом claude update, а не tail.
-    nonisolated static func updateCommand(direct: Bool, tail: Bool = true) -> String {
-        let am = LoginEnvironment.agentmeister.replacingOccurrences(of: "'", with: "'\\''")
-        return (direct ? "claude update" : "'\(am)' proxy run --claude -- claude update") + " 2>&1" + (tail ? " | tail -3" : "")
+    /// Команда оболочки для обновления агента. agentmeister agent-update берет brew upgrade для установки из Homebrew
+    /// и claude update или codex update для остальных, последней строкой печатает итог. Через proxy
+    /// (agentmeister proxy run), если не сказано идти напрямую: скачивание не должно уходить мимо mihomo.
+    /// tail: false отдает весь вывод, а код выхода остается кодом обновления, а не tail.
+    nonisolated static func updateCommand(direct: Bool, agent: LaunchSpec.Agent = .claude, tail: Bool = true) -> String {
+        let am = "'" + LoginEnvironment.agentmeister.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let update = "\(am) agent-update \(agent == .codex ? "codex" : "claude")"
+        let proxy = agent == .codex ? "\(am) proxy run -- " : "\(am) proxy run --claude -- "
+        return (direct ? update : proxy + update) + " 2>&1" + (tail ? " | tail -3" : "")
     }
 
     /// Чем кончился последний claude update перед перезапуском, если он не прошел. Баннер вкладки
@@ -262,7 +265,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     private func updateThenRestart(note: String) {
         view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
         updateFailed = nil
-        let command = TerminalTab.updateCommand(direct: spec.direct, tail: false)
+        let command = TerminalTab.updateCommand(direct: spec.direct, agent: .claude, tail: false)
         Task.detached(priority: .userInitiated) {
             let (code, out) = Self.shell(command)
             // версия, на которой откроется сессия, если обновление не встало

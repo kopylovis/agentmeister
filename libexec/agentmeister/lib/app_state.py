@@ -513,9 +513,8 @@ def agent_info(binary):
     except (OSError, subprocess.TimeoutExpired):
         out = []
     version = next((w for w in out if w[:1].isdigit()), None)
-    real = os.path.realpath(path)
-    via = ("homebrew" if "/Caskroom/" in real or "/Cellar/" in real or real.startswith("/opt/homebrew/") else
-           "installer" if binary == "claude" and "/.local/" in real else "other")
+    import agent_update
+    via = agent_update.installed_via(binary, path)
     return {"installed": True, "path": path, "version": version, "installedVia": via, "model": agent_model(binary),
             **signed_in(binary)}
 
