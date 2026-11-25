@@ -2,7 +2,7 @@
 # Релиз Agentmeister для других маков. Release-сборка, CLI agentmeister внутри приложения, подпись Developer ID
 # с hardened runtime, нотаризация приложения, DMG со ссылкой на Applications, подпись и нотаризация DMG.
 #
-#   ./release.sh            результат в app/build/release/Agentmeister-<версия>.dmg
+#   ./release.sh            результат в app/build/release/Agentmeister-<версия>.dmg, сборка для Apple Silicon и Intel
 #
 # Подпись берется из AGENTMEISTER_SIGN или первой Developer ID Application из связки ключей. Нотаризация идет через
 # профиль notarytool из AGENTMEISTER_NOTARY_PROFILE, по умолчанию tossling-notary (ключ App Store Connect API той же
@@ -19,6 +19,11 @@ identity=${AGENTMEISTER_SIGN:-$(security find-identity -v -p codesigning 2>/dev/
 
 die() { echo "release.sh: $*" >&2; exit 1; }
 [[ $identity == "Developer ID Application:"* ]] || die "нет сертификата Developer ID Application в связке ключей"
+# в DMG идет закоммиченное: bundle.sh берет файлы из рабочей копии, и незакоммиченная правка уехала бы подписанной
+dirty=$(git -C "$root" status --porcelain -- bin libexec share VERSION app/Sources app/Package.swift app/Package.resolved \
+  app/bundle.sh app/release.sh)
+[[ -z $dirty ]] || die "есть незакоммиченные изменения, сначала закоммить их:
+$dirty"
 xcrun notarytool history --keychain-profile "$profile" >/dev/null 2>&1 \
   || die "профиль notarytool $profile не читается. Обычно Mac заблокирован и связка ключей его прячет, разблокируй и запусти снова"
 
@@ -35,12 +40,19 @@ submit() {
 }
 
 cd "$here"
-echo "сборка release…"
-swift build -c release 2>&1 | tail -1
-out=$here/build/release
+echo "сборка release для arm64 и x86_64…"
+arch=(--arch arm64 --arch x86_64)
+swift build -c release "${arch[@]}" 2>&1 | tail -1
+binary=$(swift build -c release "${arch[@]}" --show-bin-path)/Agentmeister
+lipo "$binary" -verify_arch arm64 x86_64 || die "в $binary нет обеих архитектур"
+# все собирается во временную папку и встает на место только целиком: после сбоя не остается DMG, похожего на готовый
+final=$here/build/release
+out=$here/build/release.partial
 rm -rf "$out"
 mkdir -p "$out"
-AGENTMEISTER_SIGN="$identity" ./bundle.sh "" "$out" >/dev/null
+cleanup() { rm -rf "$out" "${stage:-}"; }
+trap cleanup EXIT
+AGENTMEISTER_SIGN="$identity" ./bundle.sh "$binary" "$out" >/dev/null
 app=$out/Agentmeister.app
 codesign --verify --strict --deep "$app"
 
@@ -53,7 +65,6 @@ spctl --assess --type execute "$app"
 
 dmg=$out/Agentmeister-$version.dmg
 stage=$(mktemp -d)
-trap 'rm -rf "$stage"' EXIT
 ditto "$app" "$stage/Agentmeister.app"
 ln -s /Applications "$stage/Applications"
 hdiutil create -volname Agentmeister -srcfolder "$stage" -fs HFS+ -format UDZO -ov "$dmg" >/dev/null
@@ -62,4 +73,6 @@ echo "нотаризация DMG…"
 submit "$dmg"
 xcrun stapler staple "$dmg" >/dev/null
 spctl --assess --type open --context context:primary-signature "$dmg"
-echo "$dmg"
+rm -rf "$final"
+mv "$out" "$final"
+echo "$final/Agentmeister-$version.dmg"
