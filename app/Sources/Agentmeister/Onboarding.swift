@@ -30,11 +30,12 @@ struct OnboardingView: View {
 
     var l: L { L(backend.state.lang) }
 
-    private enum Step: Int, CaseIterable { case look, agents, proxy, signIn, modes, permissions }
+    private enum Step: Int, CaseIterable { case look, projects, agents, proxy, signIn, modes, permissions }
 
     private func name(_ s: Step) -> String {
         switch s {
         case .look: return l.t("Язык и вид", "Language and look")
+        case .projects: return l.projects
         case .agents: return l.t("Агенты", "Agents")
         case .proxy: return "Proxy"
         case .signIn: return l.t("Вход", "Sign in")
@@ -87,6 +88,7 @@ struct OnboardingView: View {
                         lead(lead(current))
                         switch current {
                         case .look: lookStep
+                        case .projects: projectsStep
                         case .agents: agentsStep
                         case .proxy: proxyStep
                         case .signIn: signInStep
@@ -136,6 +138,7 @@ struct OnboardingView: View {
     private func title(_ s: Step) -> String {
         switch s {
         case .look: return l.t("Язык и вид", "Language and look")
+        case .projects: return l.t("Где лежат проекты", "Where your projects live")
         case .agents: return l.t("Какие агенты есть на этом Mac", "Agents on this Mac")
         case .proxy: return l.t("Proxy для сессий", "Session proxy")
         case .signIn: return l.t("Вход в агентов", "Sign in to the agents")
@@ -147,6 +150,8 @@ struct OnboardingView: View {
     private func lead(_ s: Step) -> String {
         switch s {
         case .look: return l.t("По умолчанию как в macOS. Поменять можно потом в настройках.", "Follows macOS by default. You can change both later in Settings.")
+        case .projects: return l.t("Выбери папку, в которой лежат твои репозитории. По умолчанию это ~/Developer.",
+                                   "Pick the folder that holds your repositories. It is ~/Developer by default.")
         case .agents: return l.t("Agentmeister запускает Claude Code и Codex в своих вкладках. Нужен хотя бы один из них.",
                                  "Agentmeister runs Claude Code and Codex in its own tabs. You need at least one of them.")
         case .proxy: return l.t("Сессии через proxy работают в sandbox-exec и ходят в сеть только через mihomo. Вход в агентов на следующем шаге тоже пойдет через него.",
@@ -235,6 +240,14 @@ struct OnboardingView: View {
                 Text(l.t("Оформление", "Appearance")).font(.system(size: 12, weight: .semibold)).foregroundStyle(Ink.muted)
                 AppearancePicker(selection: $appearance, l: l)
             }
+        }
+    }
+
+    private var projectsStep: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            card { ProjectsFolderPicker(l: l) }
+            Note(text: l.t("Agentmeister показывает проектами подпапки этой папки, в которых есть git. Поменять ее можно и потом, в Настройках > Основные.",
+                           "Agentmeister lists the subfolders of this folder that have git as projects. You can change it later in Settings > General."))
         }
     }
 

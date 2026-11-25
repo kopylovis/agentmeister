@@ -70,6 +70,7 @@ help() {
   agentmeister doctor              проверить установку
   agentmeister app-state           состояние для десктопного Agentmeister в JSON
   agentmeister lang [ru|en|auto]   язык интерфейса, auto берет язык macOS
+  agentmeister projects-dir [папка|default]  папка с проектами, по умолчанию ~/Developer
   agentmeister alias               короткое имя am; on, off
   agentmeister --version           версия
 
@@ -93,6 +94,7 @@ case "${1:-}" in
   app-state) shift; exec /usr/bin/python3 "$LIB/app_state.py" "$@" ;;
   agent-update) shift; exec /usr/bin/python3 "$LIB/agent_update.py" "$@" ;;
   lang) shift; exec /usr/bin/python3 "$LIB/app_state.py" lang "$@" ;;
+  projects-dir) shift; exec /usr/bin/python3 "$LIB/app_state.py" projects-dir "$@" ;;
   restore) exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" "$@" ;;
   doctor) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_doctor.py" "$@" ;;
   lid) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_lid.py" "$@" ;;
