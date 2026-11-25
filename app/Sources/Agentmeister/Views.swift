@@ -401,7 +401,7 @@ struct Sidebar: View {
 
     private var projectList: some View {
         List {
-            ForEach(backend.state.projects) { project in
+            ForEach(workspace.sidebarProjects(backend.state)) { project in
                 DisclosureGroup(isExpanded: binding(for: project)) {
                     ForEach(backend.state.sessions(in: project).prefix(6)) { session in
                         SessionRow(session: session, project: project)
@@ -419,6 +419,7 @@ struct Sidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .animation(.snappy, value: workspace.sidebarProjects(backend.state).map(\.path))
     }
 
     private func binding(for project: AppState.Project) -> Binding<Bool> {
