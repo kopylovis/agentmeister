@@ -54,7 +54,7 @@ struct TabAlert: View {
                               body: l.t("Песочница не пустит агента в сеть мимо proxy. Агент ждет, его ход не потерян.",
                                         "The sandbox keeps the agent off the network without the proxy. The agent is waiting, its turn is not lost."),
                               primary: (l.t("Перезапустить mihomo", "Restart mihomo"), { perform(["proxy", "restart"]) }),
-                              secondary: tab.spec.utility == nil ? (l.t("Продолжить напрямую", "Continue without proxy"), { tab.switchRoute() }) : nil))
+                              secondary: tab.spec.utility == nil ? (l.t("Продолжить напрямую", "Continue without proxy"), { ui.confirmingDirect = tab }) : nil))
         }
         if let failed = tab.updateFailed {
             items.append(Item(id: "update-\(failed.at.timeIntervalSince1970)", tone: .red, icon: "exclamationmark.triangle",
