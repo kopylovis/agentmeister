@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HotKey.shared.apply()
         // команда agentmeister в терминале из встроенного CLI, если ее еще нигде нет
         DispatchQueue.global(qos: .utility).async { LoginEnvironment.linkCommand() }
+        Updates.shared.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -123,6 +124,9 @@ struct AgentmeisterApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             let l = L(backend.state.lang)
+            CommandGroup(after: .appInfo) {
+                UpdateCommands(l: l)
+            }
             CommandGroup(replacing: .newItem) {
                 Button(l.newSession + "…") {
                     ui.newSessionProject = workspace.current?.spec.projectPath

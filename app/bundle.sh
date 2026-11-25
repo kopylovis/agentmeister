@@ -27,8 +27,15 @@ version=$(cat "$root/VERSION" 2>/dev/null || echo 0)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 stage=$tmp/Agentmeister.app
-mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Resources"
+mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Resources" "$stage/Contents/Frameworks"
 cp "$bin" "$stage/Contents/MacOS/Agentmeister"
+
+# Sparkle для обновлений: фреймворк из артефактов SwiftPM (одна копия на arm64 и x86_64), бинарник ищет его
+# в Contents/Frameworks
+sparkle=$(find "$here/.build/artifacts" -path "*Sparkle.xcframework/macos-*/Sparkle.framework" -maxdepth 6 -type d 2>/dev/null | head -1)
+[[ -n $sparkle ]] || { echo "bundle.sh: нет Sparkle.framework в .build/artifacts, сначала swift build" >&2; exit 1; }
+ditto "$sparkle" "$stage/Contents/Frameworks/Sparkle.framework"
+install_name_tool -add_rpath @executable_path/../Frameworks "$stage/Contents/MacOS/Agentmeister" 2>/dev/null || true
 
 # CLI agentmeister едет внутри приложения: приложение работает без отдельной установки CLI, а команда в терминале
 # ставится ссылкой на него при первом запуске. Из git берутся только файлы репозитория, без __pycache__ и мусора.
@@ -105,6 +112,17 @@ if [[ -z $identity ]]; then
   identity=$(security find-identity -v -p codesigning 2>/dev/null \
     | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p; s/.*"\(Apple Development: [^"]*\)".*/\1/p' | head -1 || true)
 fi
+# обновления только у релизной сборки: подпись Developer ID и публичный ключ Sparkle в app/sparkle-public-key.
+# Сборка для себя без них не обновляется, иначе релизный DMG заменил бы ее.
+pubkey=$(tr -d ' \n' < "$here/sparkle-public-key" 2>/dev/null || true)
+if [[ $identity == "Developer ID Application:"* && -n $pubkey ]]; then
+  plist=$stage/Contents/Info.plist
+  /usr/libexec/PlistBuddy -c "Add :SUFeedURL string https://github.com/kopylovis/agentmeister/releases/latest/download/appcast.xml" \
+    -c "Add :SUPublicEDKey string $pubkey" -c "Add :SUEnableAutomaticChecks bool true" \
+    -c "Add :SUAutomaticallyUpdate bool true" -c "Add :AgentmeisterDistribution bool true" "$plist"
+  echo "обновления Sparkle включены"
+fi
+
 # расширенные атрибуты (карантин, provenance) codesign не пропускает
 xattr -cr "$stage"
 sign=(codesign --force --sign "${identity:--}")
@@ -120,11 +138,25 @@ if [[ $identity == "Developer ID Application:"* ]]; then
 </dict>
 </plist>
 ENT
-  sign+=(--options runtime --timestamp --entitlements "$entitlements")
+  sign+=(--options runtime --timestamp)
+  # права Apple Events только у самого приложения, частям Sparkle они не нужны
+  app_extra=(--entitlements "$entitlements")
 else
   sign+=(--timestamp=none)
+  app_extra=()
 fi
-"${sign[@]}" "$stage" >/dev/null
+# Sparkle изнутри наружу: XPC-сервисы, Autoupdate, Updater.app, сам фреймворк, потом приложение
+framework=$stage/Contents/Frameworks/Sparkle.framework/Versions/B
+for part in "$framework"/XPCServices/*.xpc "$framework/Autoupdate" "$framework/Updater.app" \
+            "$stage/Contents/Frameworks/Sparkle.framework"; do
+  [[ -e $part ]] || continue
+  if [[ $part == *Downloader.xpc ]]; then
+    "${sign[@]}" --preserve-metadata=entitlements "$part" >/dev/null
+  else
+    "${sign[@]}" "$part" >/dev/null
+  fi
+done
+"${sign[@]}" ${app_extra[@]+"${app_extra[@]}"} "$stage" >/dev/null
 codesign --verify --strict "$stage"
 echo "подпись: ${identity:-ad-hoc}"
 
