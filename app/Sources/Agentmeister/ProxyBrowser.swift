@@ -250,17 +250,17 @@ struct BrowserView: View {
                 Spacer().frame(width: 64)
                 GlassEffectContainer {
                     HStack(spacing: 2) {
-                        Button { model.webView.goBack() } label: { Image(systemName: "chevron.left") }
+                        Button { model.webView.goBack() } label: { Image(systemName: "chevron.left").frame(width: 28, height: 24) }
                             .help(l.t("Назад", "Back")).accessibilityLabel(l.t("Назад", "Back"))
                             .disabled(!model.canBack)
-                        Button { model.webView.goForward() } label: { Image(systemName: "chevron.right") }
+                        Button { model.webView.goForward() } label: { Image(systemName: "chevron.right").frame(width: 28, height: 24) }
                             .help(l.t("Вперед", "Forward")).accessibilityLabel(l.t("Вперед", "Forward"))
                             .disabled(!model.canForward)
                         Button { model.loading ? model.webView.stopLoading() : model.reload() } label: {
-                            Image(systemName: model.loading ? "xmark" : "arrow.clockwise")
+                            Image(systemName: model.loading ? "xmark" : "arrow.clockwise").frame(width: 28, height: 24)
                         }
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.hover(8))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                     .glassEffect(.regular, in: .capsule)
@@ -280,9 +280,9 @@ struct BrowserView: View {
                 Button {
                     if let url = model.webView.url ?? URL(string: model.address) { NSWorkspace.shared.open(url) }
                 } label: {
-                    Image(systemName: "safari")
+                    Image(systemName: "safari").frame(width: 28, height: 24)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.hover(8))
                 .help(l.t("Открыть в браузере системы, мимо proxy", "Open in the system browser, bypassing the proxy"))
             }
             .padding(.horizontal, 10)

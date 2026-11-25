@@ -160,7 +160,7 @@ struct ProjectView: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hover(12, .overlay))
                 .help(l.t("Продолжить во вкладке", "Resume in a tab"))
             } else {
                 Text(l.t("Сессий в этом проекте пока нет", "No sessions in this project yet")).foregroundStyle(Ink.muted)
@@ -199,7 +199,7 @@ struct ProjectView: View {
                         Image(systemName: item.done ? "checkmark.square.fill" : "square")
                             .foregroundStyle(item.done ? Ink.faint : Ink.muted)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hover(4))
                     .disabled(item.done)
                     Text(item.text)
                         .font(.system(size: 12))
@@ -302,7 +302,7 @@ struct ProjectView: View {
             .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hover(10, .overlay))
         .disabled(!enabled)
     }
 

@@ -202,18 +202,106 @@ struct CapsuleButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Text(title)
+        Button(title, action: action).buttonStyle(CapsuleStyle(destructive: destructive))
+    }
+}
+
+/// Капсула 30 pt панели сессии. Под курсором обычная светлеет подсветкой, красная ярче, нажатая чуть прозрачнее.
+struct CapsuleStyle: ButtonStyle {
+    var destructive = false
+
+    func makeBody(configuration: Configuration) -> some View { CapsuleBody(configuration: configuration, destructive: destructive) }
+
+    private struct CapsuleBody: View {
+        let configuration: ButtonStyleConfiguration
+        let destructive: Bool
+        @Environment(\.isEnabled) private var enabled
+        @State private var hover = false
+
+        var body: some View {
+            let lit = hover && enabled
+            configuration.label
                 .font(.system(size: 12))
                 .foregroundStyle(destructive ? Ink.red : Ink.text)
+                .lineLimit(1)
                 .padding(.horizontal, 12)
                 .frame(height: 30)
-                .background(Capsule().fill(destructive ? Ink.redChip : Ink.buttonBg))
+                .background(Capsule().fill(destructive ? Ink.redChip : lit ? Ink.hover : Ink.buttonBg))
                 .overlay(Capsule().strokeBorder(destructive ? Ink.redBorder : Ink.buttonBorder))
+                .brightness(destructive && lit ? 0.08 : 0)
                 .contentShape(Capsule())
+                .opacity(configuration.isPressed ? 0.8 : enabled ? 1 : 0.5)
+                .onHover { hover = $0 }
         }
-        .buttonStyle(.plain)
     }
+}
+
+/// Подсветка под курсором для кнопок со своей отрисовкой: значков, строк, карточек, сегментов.
+/// backdrop рисует подсветку подложкой нужной формы (у кнопки нет своего фона или он есть только у выбранной),
+/// overlay кладет ее поверх (карточки и капсулы с заливкой), brighten осветляет (залитые акцентом).
+struct HoverStyle: ButtonStyle {
+    enum Mode { case backdrop, overlay, brighten }
+    var shape = AnyShape(Capsule())
+    var mode = Mode.backdrop
+
+    func makeBody(configuration: Configuration) -> some View { HoverBody(configuration: configuration, shape: shape, mode: mode) }
+
+    private struct HoverBody: View {
+        let configuration: ButtonStyleConfiguration
+        let shape: AnyShape
+        let mode: Mode
+        @Environment(\.isEnabled) private var enabled
+        @State private var hover = false
+
+        var body: some View {
+            let lit = hover && enabled
+            configuration.label
+                .background { shape.fill(mode == .backdrop && lit ? Ink.hover : .clear) }
+                .overlay { shape.fill(mode == .overlay && lit ? Ink.hover : .clear).allowsHitTesting(false) }
+                .brightness(mode == .brighten && lit ? 0.07 : 0)
+                .contentShape(shape)
+                .opacity(configuration.isPressed ? 0.75 : 1)
+                .onHover { hover = $0 }
+        }
+    }
+}
+
+extension ButtonStyle where Self == HoverStyle {
+    /// Подсветка скругленным прямоугольником.
+    static func hover(_ radius: CGFloat, _ mode: HoverStyle.Mode = .backdrop) -> HoverStyle {
+        HoverStyle(shape: AnyShape(RoundedRectangle(cornerRadius: radius, style: .continuous)), mode: mode)
+    }
+    static func hoverCapsule(_ mode: HoverStyle.Mode = .backdrop) -> HoverStyle { HoverStyle(shape: AnyShape(Capsule()), mode: mode) }
+    static func hoverCircle(_ mode: HoverStyle.Mode = .backdrop) -> HoverStyle { HoverStyle(shape: AnyShape(Circle()), mode: mode) }
+}
+
+/// Текстовая ссылка: цвет ссылки (или свой через foregroundStyle), под курсором подчеркивание и рука.
+struct TextLinkStyle: ButtonStyle {
+    var color = Ink.link
+
+    func makeBody(configuration: Configuration) -> some View { LinkBody(configuration: configuration, color: color) }
+
+    private struct LinkBody: View {
+        let configuration: ButtonStyleConfiguration
+        let color: Color
+        @Environment(\.isEnabled) private var enabled
+        @State private var hover = false
+
+        var body: some View {
+            configuration.label
+                .foregroundStyle(color)
+                .underline(hover && enabled)
+                .opacity(configuration.isPressed ? 0.7 : enabled ? 1 : 0.5)
+                .contentShape(Rectangle())
+                .pointerStyle(.link)
+                .onHover { hover = $0 }
+        }
+    }
+}
+
+extension ButtonStyle where Self == TextLinkStyle {
+    static var textLink: TextLinkStyle { TextLinkStyle() }
+    static func textLink(_ color: Color) -> TextLinkStyle { TextLinkStyle(color: color) }
 }
 
 /// Заголовок секции мелким полужирным, как "Проекты" и "Режимы" в макете.

@@ -555,7 +555,7 @@ struct PreviewView: View {
                 .foregroundStyle(Ink.muted)
                 .lineLimit(3)
             Button(l.t("Читать переписку целиком", "Read the whole conversation"), action: onReadAll)
-                .buttonStyle(.link)
+                .buttonStyle(.textLink)
         }
         .padding(16)
     }
