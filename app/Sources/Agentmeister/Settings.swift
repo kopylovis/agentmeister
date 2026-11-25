@@ -292,6 +292,8 @@ struct UtilityButton: View {
     var icon: String? = nil
     var prominent = false
     var small = false
+    /// Значок перед подписью в капсуле (у icon он рисуется тихой кнопкой карточки).
+    var symbol: String? = nil
 
     var body: some View {
         if let icon {
@@ -302,7 +304,11 @@ struct UtilityButton: View {
             Button {
                 run()
             } label: {
-                Text(title).lineLimit(1).frame(maxWidth: expand ? .infinity : nil)
+                Group {
+                    if let symbol { Label(title, systemImage: symbol) } else { Text(title) }
+                }
+                .lineLimit(1)
+                .frame(maxWidth: expand ? .infinity : nil)
             }
             .help("agentmeister " + args.joined(separator: " "))
             .buttonStyle(PillStyle(prominent: prominent, small: small))
@@ -328,6 +334,8 @@ struct CommandButton: View {
     let title: String
     let args: [String]
     let reload: () async -> Void
+    var small = false
+    var symbol: String? = nil
     @State private var busy = false
 
     var body: some View {
@@ -339,9 +347,15 @@ struct CommandButton: View {
                 busy = false
             }
         } label: {
-            if busy { ProgressView().controlSize(.small) } else { Text(title) }
+            if busy {
+                ProgressView().controlSize(.small)
+            } else if let symbol {
+                Label(title, systemImage: symbol)
+            } else {
+                Text(title)
+            }
         }
-        .buttonStyle(PillStyle())
+        .buttonStyle(PillStyle(small: small))
         .disabled(busy)
     }
 }
