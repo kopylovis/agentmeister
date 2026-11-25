@@ -724,6 +724,16 @@ final class Workspace: ObservableObject {
         return (open.filter { here($0.spec.projectPath) }, others.filter { here($0.cwd) })
     }
 
+    /// Проекты для боковой панели и рельсы: с открытыми сессиями сверху. Внутри обеих групп прежний порядок,
+    /// поэтому смена статуса (работает, ждет ответа) проекты не переставляет, двигает только открытие и закрытие.
+    func sidebarProjects(_ state: AppState) -> [AppState.Project] {
+        let (open, others) = openSessions(state)
+        let paths = open.compactMap(\.spec.projectPath) + others.compactMap(\.cwd)
+        let active = Set(paths.compactMap { state.project(containing: $0)?.path })
+        if active.isEmpty { return state.projects }
+        return state.projects.filter { active.contains($0.path) } + state.projects.filter { !active.contains($0.path) }
+    }
+
     /// Новая вкладка в проекте текущей: новая сессия с тем же агентом и маршрутом. Без вкладок ничего не делает.
     @discardableResult
     func newTab() -> Bool {
