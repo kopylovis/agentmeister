@@ -245,6 +245,7 @@ struct OnboardingView: View {
             Note(text: l.t("Агенты ставятся в обычные места, как без Agentmeister. Их можно запускать и из терминала.",
                            "Agents install to their usual places, as they would without Agentmeister. You can still run them from a terminal."))
             Button(l.t("Проверить снова", "Check again")) { Task { await reload() } }
+                .buttonStyle(PillStyle())
         }
     }
 
@@ -267,8 +268,7 @@ struct OnboardingView: View {
             }
             if data != nil, info?.installed != true {
                 UtilityButton(title: agent == .codex ? l.t("Установить через Homebrew", "Install with Homebrew") : l.t("Установить", "Install"),
-                              args: ["--harness", agent.rawValue, "install"])
-                    .buttonStyle(.glassProminent)
+                              args: ["--harness", agent.rawValue, "install"], prominent: true)
             }
         }
     }
@@ -310,7 +310,7 @@ struct OnboardingView: View {
                     Button(l.t("Проверить", "Check")) {
                         run(["proxy", "setup", subscription.trimmingCharacters(in: .whitespaces)] + (country.isEmpty ? [] : ["--country", country]))
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(PillStyle(prominent: true))
                     .disabled(!subscription.hasPrefix("http"))
                 }
                 Toggle(l.t("Новые сессии по умолчанию через proxy", "New sessions use the proxy by default"), isOn: Binding(
@@ -384,7 +384,7 @@ struct OnboardingView: View {
                     } else {
                         // способ, маршрут и где открыть вход выбираются в диалоге, по умолчанию через proxy
                         Button(l.t("Войти", "Sign in")) { signingIn = agent }
-                            .buttonStyle(.glassProminent)
+                            .buttonStyle(PillStyle(prominent: true))
                     }
                 }
             }
@@ -433,7 +433,7 @@ struct OnboardingView: View {
             } else if ok {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Ink.tealDot)
             } else {
-                UtilityButton(title: l.t("Поставить", "Install"), args: ["setup"]).controlSize(.small)
+                UtilityButton(title: l.t("Поставить", "Install"), args: ["setup"], small: true)
             }
         }
         .padding(14)
@@ -493,6 +493,7 @@ struct OnboardingView: View {
                     }
                     extra()
                 }
+                .buttonStyle(PillStyle(small: true))
             }
         }
     }

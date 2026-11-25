@@ -73,6 +73,7 @@ struct ModesPane: View {
                                     .font(.system(size: 12, design: .monospaced))
                                     .onSubmit(check)
                                 Button(l.t("Проверить", "Test"), action: check)
+                                    .buttonStyle(PillStyle(small: true))
                             }
                             if let result {
                                 Text(describe(result))
@@ -121,8 +122,7 @@ struct ModesPane: View {
                     }
                     if !(data?.modesInfo?.lidReady ?? false) {
                         HStack {
-                            UtilityButton(title: l.t("Настроить", "Set up"), args: ["lid", "setup"])
-                                .buttonStyle(.glassProminent)
+                            UtilityButton(title: l.t("Настроить", "Set up"), args: ["lid", "setup"], prominent: true)
                             Spacer()
                         }
                     }
@@ -232,8 +232,7 @@ struct NotifyPane: View {
                         CommandButton(title: l.t("Прислать тест", "Send test"), args: ["notify", "telegram", "test"], reload: reload)
                         CommandButton(title: l.t("Отключить", "Disconnect"), args: ["notify", "telegram", "off"], reload: reload)
                     } else {
-                        UtilityButton(title: l.t("Подключить бота", "Connect a bot"), args: ["notify", "telegram"])
-                            .buttonStyle(.glassProminent)
+                        UtilityButton(title: l.t("Подключить бота", "Connect a bot"), args: ["notify", "telegram"], prominent: true)
                     }
                 }
                 if n.telegram.connected {
@@ -1013,7 +1012,7 @@ struct DoctorPane: View {
                     Text(l.t("Проверить снова", "Check again"))
                 }
             }
-            .buttonStyle(.glass)
+            .buttonStyle(PillStyle(small: true))
             .disabled(loading)
         }
     }
@@ -1119,9 +1118,7 @@ struct DoctorPane: View {
             .textSelection(.enabled)
             Spacer(minLength: 0)
             if let args = fix(row.check) {
-                UtilityButton(title: l.t("Исправить", "Fix"), args: args)
-                    .buttonStyle(.glassProminent)
-                    .controlSize(.small)
+                UtilityButton(title: l.t("Исправить", "Fix"), args: args, prominent: true, small: true)
             }
         }
         .padding(.horizontal, 12)

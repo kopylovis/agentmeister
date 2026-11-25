@@ -119,7 +119,7 @@ struct ProjectView: View {
             Spacer()
             if let last = data?.last {
                 Button(l.resumeLast) { open(resume: last.id) }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(PillStyle(prominent: true))
             }
         }
     }
@@ -188,7 +188,7 @@ struct ProjectView: View {
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(addTask)
                 Button(l.t("Добавить", "Add"), action: addTask)
-                    .buttonStyle(.glass)
+                    .buttonStyle(PillStyle(small: true))
                     .disabled(newTask.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             ForEach(todos, id: \.self) { item in
@@ -224,8 +224,7 @@ struct ProjectView: View {
                 ui.newSessionParallel = true
                 ui.showNewSession = true
             }
-            .controlSize(.small)
-            .buttonStyle(.glass)
+            .buttonStyle(PillStyle(small: true))
         }) {
             if items.isEmpty {
                 Text(l.t("Сейчас ни одной", "None right now")).font(.system(size: 12)).foregroundStyle(Ink.muted)
@@ -252,7 +251,7 @@ struct ProjectView: View {
                             workspace.open(LaunchSpec(projectName: (project?.name ?? "") + " · " + e.branch, projectPath: e.path))
                             ui.projectScreen = nil
                         }
-                        .controlSize(.small)
+                        .buttonStyle(PillStyle(small: true))
                         .disabled(tabOpen)
                         Menu(l.t("Завершить…", "Finish…")) {
                             Button(l.t("Через PR, дождаться CI и слить", "Through a PR, wait for CI and merge")) { utility(["parallel", "pr", e.branch, "-p", path]) }
@@ -260,7 +259,8 @@ struct ProjectView: View {
                             Divider()
                             Button(l.t("Выбросить", "Drop"), role: .destructive) { utility(["parallel", "drop", e.branch, "-p", path]) }
                         }
-                        .controlSize(.small)
+                        .menuStyle(.button)
+                        .buttonStyle(PillStyle(small: true))
                         .fixedSize()
                     }
                 }
