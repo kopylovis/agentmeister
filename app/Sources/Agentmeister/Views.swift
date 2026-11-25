@@ -1143,18 +1143,13 @@ struct InfoBar: View {
 }
 
 extension InfoBar {
-    /// "контекст 120 тыс." и полоска до порога /compact. За порогом чип желтый, клик вписывает /compact в строку ввода.
+    /// "контекст 120 тыс." За порогом /compact чип желтый, клик вписывает /compact в строку ввода. Полоски нет:
+    /// окно модели (200 тыс. или 1 млн) в переписке не записано, а процент от окна и так есть в строке состояния.
     func contextChip(_ n: Int) -> some View {
         let over = n >= SessionContext.compactHint
         let k = max(1, Int((Double(n) / 1000).rounded()))
-        let fill = min(1, Double(n) / Double(SessionContext.compactHint))
         return Chip(foreground: over ? Ink.amber : Ink.text2, action: over && tab.running ? { tab.type("/compact") } : nil) {
             Text(l.t("контекст \(k) тыс.", "context \(k)k")).monospacedDigit()
-            Capsule().fill(Ink.hairline)
-                .frame(width: 28, height: 4)
-                .overlay(alignment: .leading) {
-                    Capsule().fill(over ? Ink.amberDot : Ink.text2.opacity(0.6)).frame(width: 28 * fill, height: 4)
-                }
         }
         .help(over
               ? l.t("В контексте \(k) тыс. токенов. Клик вписывает /compact, он сожмет разговор. /slim убирает только скриншоты и длинные выводы.",
