@@ -122,8 +122,9 @@ struct TabAlert: View {
                     dismissed.insert(item.id)
                 } label: {
                     Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundStyle(Ink.muted)
+                        .frame(width: 20, height: 20)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hoverCircle())
                 .help(l.t("Скрыть", "Dismiss"))
                 .accessibilityLabel(l.t("Скрыть", "Dismiss"))
             }

@@ -693,7 +693,7 @@ private struct AuthWebPanel: View {
                 .frame(width: 28, height: 28)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hoverCircle())
         .help(label)
         .accessibilityLabel(label)
     }
@@ -735,7 +735,7 @@ private struct OptionRow: View {
             .contentShape(RoundedRectangle(cornerRadius: compact ? 14 : 16))
             .opacity(enabled ? 1 : 0.5)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hover(compact ? 14 : 16, .overlay))
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
@@ -783,7 +783,7 @@ private struct RouteSwitch: View {
                 .background(Capsule().fill(on ? bg : .clear).shadow(color: .black.opacity(on ? 0.2 : 0), radius: 4, y: 2))
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hoverCapsule())
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
@@ -805,7 +805,7 @@ private struct LinkButton: View {
                 .contentShape(Rectangle())
                 .opacity(enabled ? 1 : 0.5)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.textLink)
     }
 }
 

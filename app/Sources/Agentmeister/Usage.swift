@@ -241,7 +241,7 @@ struct UsageView: View {
                     .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hover(10, .overlay))
                 .help(l.t("Продолжить во вкладке", "Resume in a tab"))
             }
         }
