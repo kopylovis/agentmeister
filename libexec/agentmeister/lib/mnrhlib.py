@@ -168,8 +168,10 @@ def tossling_path():
     return next((p for p in TOSSLING_PATHS if os.access(p, os.X_OK)), None)
 
 
+# последним promptsill внутри Agentmeister.app: CLI оттуда же лежит в Contents/Resources/agentmeister
 PROMPTSILL_PATHS = tuple(os.path.join(d, "promptsill")
-                         for d in ("/opt/homebrew/bin", "/usr/local/bin", os.path.join(HOME, ".local", "bin")))
+                         for d in ("/opt/homebrew/bin", "/usr/local/bin", os.path.join(HOME, ".local", "bin"),
+                                   os.path.join(os.path.dirname(ROOT), "promptsill")))
 PROMPTSILL_HINT = "brew install kopylovis/tap/promptsill"
 
 
