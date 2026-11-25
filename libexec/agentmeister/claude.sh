@@ -6,12 +6,21 @@ LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 
 # папки, в которых лежат проекты: projects=<путь>[:<путь>...] в config или MNRH_PROJECTS, по одной в строке
 projects_dirs() {
-  local d="${MNRH_PROJECTS:-}" p
+  local d="${MNRH_PROJECTS:-}" p seen=":"
   [ -z "$d" ] && [ -f "$CONF" ] && d=$(sed -n 's/^projects=//p' "$CONF" | head -1)
   d="${d:-$HOME/Developer}"
   local IFS=':'
   for p in $d; do
-    [ -n "$p" ] && echo "${p/#\~/$HOME}"
+    # как mnrhlib.projects_dirs: пробелы по краям и / в конце не в счет, повтор той же папки пропускается
+    p="${p#"${p%%[![:space:]]*}"}"
+    p="${p%"${p##*[![:space:]]}"}"
+    p="${p/#\~/$HOME}"
+    while [ "${#p}" -gt 1 ] && [ "${p%/}" != "$p" ]; do p="${p%/}"; done
+    [ -n "$p" ] || continue
+    p=$(cd "$p" 2>/dev/null && pwd -P || echo "$p")
+    case "$seen" in *":$p:"*) continue ;; esac
+    seen="$seen$p:"
+    echo "$p"
   done
 }
 projects_dir() {
