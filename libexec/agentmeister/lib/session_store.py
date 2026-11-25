@@ -12,7 +12,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, CLAUDE_HOME, DEV, HOME, UUID_RE, tilde, tr  # noqa: E402
+from mnrhlib import CACHE, CLAUDE_HOME, HOME, UUID_RE, tilde, tr  # noqa: E402
 import claude_search  # noqa: E402
 
 CLAUDE = CLAUDE_HOME
@@ -183,9 +183,8 @@ def clip(text, n):
 
 
 def folder(cwd):
-    if cwd.startswith(DEV + "/") and "/" not in cwd[len(DEV) + 1:]:
-        return cwd[len(DEV) + 1:]
-    return tilde(cwd)
+    from mnrhlib import project_name
+    return project_name(cwd) or tilde(cwd)
 
 
 def running_ids():

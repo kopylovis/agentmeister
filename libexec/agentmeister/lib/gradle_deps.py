@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from mnrhlib import CACHE as MNRH_CACHE, projects_dir, tilde
+from mnrhlib import CACHE as MNRH_CACHE, project_folders, projects_dirs, tilde
 
 CACHE = os.path.join(MNRH_CACHE, "maven")
 TTL = 6 * 3600
@@ -283,25 +283,22 @@ def format_report(report, include_pre=False):
 
 
 def find_projects(query=None):
-    root = projects_dir()
+    folders = project_folders()
     if query:
         path = os.path.abspath(os.path.expanduser(query))
         if os.path.isdir(path):
             return [path]
-        names = sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d))) if os.path.isdir(root) else []
-        hits = [d for d in names if d.lower() == query.lower()] or [d for d in names if d.lower().startswith(query.lower())]
-        return [os.path.join(root, d) for d in hits]
-    if not os.path.isdir(root):
-        return []
-    return [os.path.join(root, d) for d in sorted(os.listdir(root))
-            if os.path.isfile(os.path.join(root, d, "gradle", "libs.versions.toml"))]
+        hits = [d for d in folders if os.path.basename(d).lower() == query.lower()] or \
+            [d for d in folders if os.path.basename(d).lower().startswith(query.lower())]
+        return hits
+    return [d for d in folders if os.path.isfile(os.path.join(d, "gradle", "libs.versions.toml"))]
 
 
 def report_text(query=None, cwd=None, include_pre=False):
     if query:
         targets = find_projects(query)
         if not targets:
-            return f"Проекта «{query}» нет в {tilde(projects_dir())}.", True
+            return f"Проекта «{query}» нет в {', '.join(tilde(d) for d in projects_dirs())}.", True
     elif cwd and os.path.isfile(os.path.join(cwd, "gradle", "libs.versions.toml")):
         targets = [cwd]
     else:
