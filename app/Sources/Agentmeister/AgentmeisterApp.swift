@@ -130,14 +130,15 @@ struct AgentmeisterApp: App {
                 // а не вкладку с агентом. Пока открыт экран проекта, выбранная вкладка скрыта под ним,
                 // поэтому ⌘W закрывает сам экран и возвращает к вкладке, а ⌘R выключен, чтобы не перезапустить
                 // агента, которого не видно.
-                Button(ui.projectScreen != nil ? l.t("Закрыть экран проекта", "Close project screen") : l.closeTab) {
-                    if ui.projectScreen != nil { ui.projectScreen = nil } else { workspace.close(workspace.selected) }
+                Button(ui.projectScreen != nil ? l.t("Закрыть экран проекта", "Close project screen")
+                       : ui.sessionPreview != nil ? l.t("Закрыть превью сессии", "Close session preview") : l.closeTab) {
+                    if ui.screenOpen { ui.projectScreen = nil } else { workspace.close(workspace.selected) }
                 }
                     .shortcut(.closeTab)
-                    .disabled(!ui.mainKey || (ui.projectScreen == nil && workspace.current == nil))
+                    .disabled(!ui.mainKey || (!ui.screenOpen && workspace.current == nil))
                 Button(l.restart) { workspace.current?.restartPreferred(note: l.updating) }
                     .shortcut(.restart)
-                    .disabled(workspace.current == nil || !ui.mainKey || ui.projectScreen != nil)
+                    .disabled(workspace.current == nil || !ui.mainKey || ui.screenOpen)
                 Divider()
                 Button(l.t("Параллельная задача…", "Parallel task…")) {
                     ui.newSessionProject = workspace.current?.spec.projectPath
@@ -154,7 +155,7 @@ struct AgentmeisterApp: App {
             }
             // поиск по терминалу текущей вкладки: панель поиска SwiftTerm, ⌘G и ⇧⌘G по совпадениям
             CommandGroup(after: .textEditing) {
-                let canFind = ui.mainKey && ui.projectScreen == nil && workspace.current != nil
+                let canFind = ui.mainKey && !ui.screenOpen && workspace.current != nil
                 Divider()
                 Button(l.t("Найти…", "Find…")) { workspace.current?.find(.showFindInterface) }
                     .keyboardShortcut("f")
