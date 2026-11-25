@@ -532,6 +532,8 @@ struct AgentCard: View {
     @State private var flags = ""
     /// Итог последнего обновления из этой карточки, последняя строка agent-update.
     @State private var update: String?
+    /// Последнее обновление из карточки упало: строка янтарная, кнопка остается.
+    @State private var updateFailed = false
     @State private var updating = false
     @State private var check: UpdateCheck?
     @State private var checking = false
@@ -547,7 +549,8 @@ struct AgentCard: View {
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
                     gridRow(l.t("Путь", "Path"), tilde(info.path ?? ""), mono: true)
                     gridRow(l.t("Установлен", "Installed with"), info.installedVia == "homebrew" ? "Homebrew"
-                            : info.installedVia == "installer" ? l.t("установщик Anthropic", "Anthropic installer") : l.t("свой путь", "custom path"))
+                            : info.installedVia == "installer" ? l.t("установщик Anthropic", "Anthropic installer")
+                            : info.installedVia == "npm" ? "npm" : l.t("свой путь", "custom path"))
                     gridRow(l.t("Аккаунт", "Account"), info.signedIn == true
                             ? [info.email, info.plan.map { $0 + l.t("", " plan") }].compactMap { $0 }.joined(separator: " · ")
                             : l.t("вход не выполнен", "not signed in"))
@@ -605,7 +608,7 @@ struct AgentCard: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 8)
-            if info?.installed == true, check?.update == true, update == nil {
+            if info?.installed == true, check?.update == true, update == nil || updateFailed {
                 PillButton(title: l.t("Обновить", "Update"), prominent: true, small: true, busy: updating) { performUpdate() }
                     .disabled(updating)
                     .help(info?.installedVia == "homebrew"
@@ -623,7 +626,7 @@ struct AgentCard: View {
         } else if updating {
             Text(l.t("Обновляется…", "Updating…")).foregroundStyle(Ink.muted)
         } else if let update {
-            Text(update).foregroundStyle(Ink.teal).help(update)
+            Text(update).foregroundStyle(updateFailed ? Ink.amber : Ink.teal).help(update)
         } else if checking && check == nil {
             Text(l.t("Проверяю обновления…", "Checking for updates…")).foregroundStyle(Ink.muted)
         } else if let check, check.update, let latest = check.latest {
@@ -690,11 +693,14 @@ struct AgentCard: View {
     /// Последняя строка вывода говорит, с какой версии на какую; потом версия проверяется заново.
     private func performUpdate() {
         updating = true
-        let command = TerminalTab.updateCommand(direct: !proxyReady, agent: agent)
+        // весь вывод, чтобы код выхода был кодом обновления, а не tail
+        let command = TerminalTab.updateCommand(direct: !proxyReady, agent: agent, tail: false)
         Task.detached {
-            let out = TerminalTab.shell(command).1.trimmingCharacters(in: .whitespacesAndNewlines)
+            let (code, raw) = TerminalTab.shell(command)
+            let out = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             await MainActor.run {
                 updating = false
+                updateFailed = code != 0
                 update = out.split(separator: "\n").last.map(String.init) ?? l.t("Команда ничего не вывела", "The command printed nothing")
                 UpdateCheck.cache[agent.rawValue] = nil
                 runCheck(force: true)

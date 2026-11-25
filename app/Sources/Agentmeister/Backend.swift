@@ -147,10 +147,16 @@ enum LoginEnvironment {
         let link = home + "/.local/bin/agentmeister"
         if let target = try? fm.destinationOfSymbolicLink(atPath: link) {
             guard target != bundled, target.contains("/Agentmeister.app/Contents/Resources/") else { return }
-        } else if fm.fileExists(atPath: link) || ["/opt/homebrew/bin", "/usr/local/bin"].contains(where: {
-            fm.fileExists(atPath: $0 + "/agentmeister")
-        }) {
-            return
+        } else {
+            // agentmeister уже есть где-то в PATH входа (Homebrew, ~/bin, bin/ репозитория): своя ссылка его бы
+            // перекрыла, а make install потом счел бы ~/.local/bin/agentmeister чужим
+            let ownDir = (bundled as NSString).deletingLastPathComponent
+            let dirs = (shared["PATH"] ?? "").split(separator: ":").map(String.init).filter { $0 != ownDir }
+            if fm.fileExists(atPath: link) || (dirs + ["/opt/homebrew/bin", "/usr/local/bin"]).contains(where: {
+                fm.isExecutableFile(atPath: $0 + "/agentmeister")
+            }) {
+                return
+            }
         }
         try? fm.createDirectory(atPath: home + "/.local/bin", withIntermediateDirectories: true)
         try? fm.removeItem(atPath: link)

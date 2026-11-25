@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// Значок Agentmeister в строке меню и его панель: открытые сессии, proxy, host-run и быстрые действия.
@@ -105,18 +106,28 @@ enum MenuBarGlyph {
 struct MenuBarLabel: View {
     @ObservedObject var backend: Backend
     @ObservedObject var workspace: Workspace
-    /// Кадр спиннера. Таймер меняет его, только пока агент пишет, в простое значок не перерисовывается.
+    /// Кадр спиннера. Таймер идет, только пока агент пишет: в простое главный поток не просыпается 8 раз в секунду.
     @State private var frame = 0
-    @State private var ticker = Timer.publish(every: 0.125, on: .main, in: .common).autoconnect()
+    @State private var ticker: AnyCancellable?
 
     var body: some View {
         let status = MenuBarStatus.of(workspace, backend.state)
         let l = L(backend.state.lang)
         Image(nsImage: status == .busy ? MenuBarGlyph.spinner[frame % MenuBarGlyph.spinner.count] : status.image)
             .accessibilityLabel("Agentmeister, " + (status == .waiting ? l.waiting : status == .busy ? l.working : l.idle))
-            .onReceive(ticker) { _ in
-                if status == .busy { frame = (frame + 1) % MenuBarGlyph.spinner.count }
-            }
+            .onAppear { spin(status == .busy) }
+            .onChange(of: status == .busy) { spin(status == .busy) }
+    }
+
+    private func spin(_ on: Bool) {
+        if !on {
+            ticker = nil
+            return
+        }
+        guard ticker == nil else { return }
+        ticker = Timer.publish(every: 0.125, on: .main, in: .common).autoconnect().sink { _ in
+            frame = (frame + 1) % MenuBarGlyph.spinner.count
+        }
     }
 }
 
