@@ -30,11 +30,6 @@ struct LibraryView: View {
     @State private var searching = false
     @AppStorage("librarySelection") private var storedSelection = ""
     @State private var selection: String?
-    @State private var preview: SessionPreview?
-    /// Для какой выбранной сессии прочитано preview.
-    @State private var previewFor: String?
-    @State private var confirmDelete = false
-    @State private var renaming = false
     /// all, claude или codex: переключатель над списком.
     @AppStorage("libraryAgent") private var agentFilter = "all"
 
@@ -81,13 +76,6 @@ struct LibraryView: View {
             guard !backend.state.sessions(in: p).isEmpty else { return nil }
             return (p, backend.state.sessions(in: p, agent: agentKind).count)
         }
-    }
-
-    /// Превью выбранной сессии и ее id. Пока превью новой не прочиталось, старое не показываем:
-    /// продолжить, переименовать или удалить ушло бы не той сессии.
-    private var shown: (preview: SessionPreview, id: String)? {
-        guard let preview, preview.id != nil, let id = selection, previewFor == id else { return nil }
-        return (preview, id)
     }
 
     var body: some View {
@@ -175,12 +163,11 @@ struct LibraryView: View {
             .padding(.top, 8)
             .navigationSplitViewColumnWidth(min: 380, ideal: 480, max: 680)
         } detail: {
-            if case let (preview, id)? = shown {
-                PreviewView(preview: preview, sessionId: id, size: backend.state.sessions.first { $0.id == id }?.size,
-                            onMoveToClaude: { moveToClaude(id) },
-                            onResume: { resume(awake: $0) }, onDelete: { confirmDelete = true },
-                            onRename: { renaming = true }, onMove: move, onSlim: slim,
-                            onReadAll: { readAll(id) })
+            if let selection {
+                SessionDetail(id: selection, onOpened: { openWindow(id: "main") }) {
+                    self.selection = nil
+                    if !query.isEmpty { Task { found = await backend.search(query) } }
+                }
             } else {
                 ContentUnavailableView(l.t("Выбери сессию", "Pick a session"), systemImage: "text.bubble")
             }
@@ -197,19 +184,8 @@ struct LibraryView: View {
             found = result
             searching = false
         }
-        .task(id: selection) { await loadPreview() }
+        .onChange(of: selection) { storedSelection = selection ?? "" }
         .onAppear { if selection == nil, !storedSelection.isEmpty { selection = storedSelection } }
-        .confirmationDialog(l.t("Удалить сессию?", "Delete the session?"), isPresented: $confirmDelete) {
-            Button(l.t("Удалить", "Delete"), role: .destructive) { delete() }
-        } message: {
-            Text(l.t("Удалятся переписка, история правок и строки в history.jsonl. Вернуть нельзя.",
-                     "The transcript, its file history and its lines in history.jsonl are removed. This can't be undone."))
-        }
-        .sheet(isPresented: $renaming) {
-            if case let (preview, id)? = shown {
-                RenameSessionSheet(id: id, current: preview.title ?? "") { Task { await loadPreview(); backend.refresh() } }
-            }
-        }
         .frame(minWidth: 1000, minHeight: 580)
         .onAppear { WindowMemory.set("library", open: true) }
         .onDisappear { WindowMemory.set("library", open: false) }
@@ -252,14 +228,72 @@ struct LibraryView: View {
                    "\(l.count(n, "сессия", "сессии", "сессий", "session", "sessions")), \(size) in ~/.claude/projects. Transcripts are kept for \(days) days.")
     }
 
+}
+
+/// Превью сессии с действиями: продолжить, переименовать, перенести, сжать, удалить. Его показывают окно "Сессии"
+/// и главное окно по клику на сессию в боковом меню.
+struct SessionDetail: View {
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var workspace: Workspace
+    let id: String
+    /// Сессия открылась во вкладке главного окна.
+    var onOpened: () -> Void = {}
+    /// Сессию удалили.
+    var onDeleted: () -> Void = {}
+    @State private var preview: SessionPreview?
+    /// Для какой сессии прочитано preview.
+    @State private var previewFor: String?
+    @State private var confirmDelete = false
+    @State private var renaming = false
+
+    var l: L { L(backend.state.lang) }
+
+    /// Превью и id. Пока превью новой сессии не прочиталось, старое не показываем:
+    /// продолжить, переименовать или удалить ушло бы не той сессии.
+    private var shown: (preview: SessionPreview, id: String)? {
+        guard let preview, preview.id != nil, previewFor == id else { return nil }
+        return (preview, id)
+    }
+
+    var body: some View {
+        Group {
+            if case let (preview, id)? = shown {
+                PreviewView(preview: preview, sessionId: id, size: backend.state.sessions.first { $0.id == id }?.size,
+                            onMoveToClaude: { moveToClaude(id) },
+                            onResume: { resume(awake: $0) }, onDelete: { confirmDelete = true },
+                            onRename: { renaming = true }, onMove: move, onSlim: slim,
+                            onReadAll: { readAll(id) })
+            } else if previewFor == id {
+                ContentUnavailableView(l.t("Переписку не прочитать", "Couldn't read the conversation"),
+                                       systemImage: "exclamationmark.bubble",
+                                       description: Text(preview?.error ?? ""))
+            } else {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task(id: id) { await loadPreview() }
+        .confirmationDialog(l.t("Удалить сессию?", "Delete the session?"), isPresented: $confirmDelete) {
+            Button(l.t("Удалить", "Delete"), role: .destructive) { delete() }
+        } message: {
+            Text(l.t("Удалятся переписка, история правок и строки в history.jsonl. Вернуть нельзя.",
+                     "The transcript, its file history and its lines in history.jsonl are removed. This can't be undone."))
+        }
+        .sheet(isPresented: $renaming) {
+            if case let (preview, id)? = shown {
+                RenameSessionSheet(id: id, current: preview.title ?? "") { Task { await loadPreview(); backend.refresh() } }
+            }
+        }
+    }
+
     private func loadPreview() async {
-        preview = nil
-        previewFor = nil
-        storedSelection = selection ?? ""
-        guard let id = selection else { return }
+        let id = self.id
+        if previewFor != id {
+            preview = nil
+            previewFor = nil
+        }
         let result = await backend.read(id)
         // выбрали другую сессию, пока это превью читалось: оно уже не нужно
-        guard !Task.isCancelled, selection == id else { return }
+        guard !Task.isCancelled, self.id == id else { return }
         previewFor = id
         if result?.id == nil, let codex = backend.state.sessions.first(where: { $0.id == id && $0.kind == .codex }) {
             // тред не прочитался: превью без сообщений, продолжить его все равно можно
@@ -281,7 +315,7 @@ struct LibraryView: View {
             ?? LaunchSpec(projectName: name, projectPath: path, agent: agent, resumeId: id)
         spec.awake = awake
         workspace.open(spec)
-        openWindow(id: "main")
+        onOpened()
     }
 
     /// Новая вкладка Claude Code в проекте треда Codex с его контекстом: /import-codex <id>.
@@ -293,16 +327,15 @@ struct LibraryView: View {
                               direct: backend.state.proxy?.defaultRoute == "direct")
         spec.firstPrompt = "/import-codex " + id
         workspace.open(spec)
-        openWindow(id: "main")
+        onOpened()
     }
 
     private func delete() {
         guard let id = shown?.id else { return }
         Task {
             if await backend.perform(["sessions", "rm", id, "-y"]) {
-                selection = nil
                 preview = nil
-                if !query.isEmpty { found = await backend.search(query) }
+                onDeleted()
             }
         }
     }
@@ -334,7 +367,7 @@ struct LibraryView: View {
         var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
         spec.utility = ["sessions", "show", id]
         workspace.open(spec)
-        openWindow(id: "main")
+        onOpened()
     }
 }
 
