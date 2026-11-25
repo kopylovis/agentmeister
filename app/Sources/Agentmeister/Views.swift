@@ -1148,7 +1148,7 @@ struct InfoBar: View {
     /// а не в body при каждой перерисовке.
     @State private var head: String?
     /// Токены в контексте сессии Claude Code, из ее переписки. Читается раз в 10 секунд, как и ветка.
-    @State private var context: Int?
+    @State private var context: SessionContext.Usage?
     @State private var contextOpen = false
 
     private func revealFolder() {
@@ -1240,8 +1240,8 @@ struct InfoBar: View {
                 .help(l.t("Mac не уснет, пока идет эта сессия", "The Mac stays awake while this session runs"))
                 .accessibilityAddTraits(tab.spec.awake ? .isSelected : [])
             }
-            if tab.spec.agent == .claude, tab.spec.utility == nil, let n = context {
-                contextChip(n)
+            if tab.spec.utility == nil, let usage = context {
+                contextChip(usage)
             }
             if !tab.running {
                 Text(l.exited + (tab.exitCode.map { ", \($0)" } ?? ""))
@@ -1274,9 +1274,10 @@ struct InfoBar: View {
         .padding(.horizontal, 4)
         .task(id: tab.sessionId) {
             context = nil
-            guard let sid = tab.sessionId, tab.spec.agent == .claude, tab.spec.utility == nil else { return }
+            guard let sid = tab.sessionId, tab.spec.utility == nil else { return }
+            let codex = tab.spec.agent == .codex
             while !Task.isCancelled {
-                let now = await Task.detached(priority: .utility) { SessionContext.tokens(sid) }.value
+                let now = await Task.detached(priority: .utility) { codex ? SessionContext.codex(sid) : SessionContext.claude(sid) }.value
                 if context != now { context = now }
                 try? await Task.sleep(for: .seconds(10))
             }
@@ -1294,17 +1295,26 @@ struct InfoBar: View {
 }
 
 extension InfoBar {
-    /// "контекст 120 тыс.", с 200 тыс. желтый. Клик открывает выбор, чем сжать: /compact, /slim или обоими.
-    /// Полоски нет: окно модели (200 тыс. или 1 млн) в переписке не записано, а процент есть в строке состояния.
-    func contextChip(_ n: Int) -> some View {
-        let over = n >= SessionContext.compactHint
-        let k = max(1, Int((Double(n) / 1000).rounded()))
+    /// "контекст 279k / 1M" и полоска от окна модели, если окно известно (promptsill у Claude, rollout у Codex),
+    /// иначе только число. С 200 тыс. (или 80% окна поменьше) желтый. Клик открывает выбор, чем сжать.
+    func contextChip(_ usage: SessionContext.Usage) -> some View {
+        let over = usage.over
+        let used = SessionContext.short(usage.used)
         return Chip(foreground: over ? Ink.amber : Ink.text2, action: tab.running && tab.sessionId != nil ? { contextOpen = true } : nil) {
-            Text(l.t("контекст \(k) тыс.", "context \(k)k")).monospacedDigit()
+            Text(l.t("контекст", "context") + " " + used + (usage.size.map { " / " + SessionContext.short($0) } ?? ""))
+                .monospacedDigit()
+            if let size = usage.size {
+                Capsule().fill(Ink.hairline)
+                    .frame(width: 28, height: 4)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(over ? Ink.amberDot : Ink.text2.opacity(0.6))
+                            .frame(width: 28 * min(1, Double(usage.used) / Double(size)), height: 4)
+                    }
+            }
         }
-        .help(l.t("Токенов в контексте сессии. Клик предлагает сжать разговор или переписку.",
-                  "Tokens in this session's context. Click to condense the conversation or the transcript."))
-        .popover(isPresented: $contextOpen, arrowEdge: .bottom) { CompactPopover(tab: tab, tokens: n, l: l) { contextOpen = false } }
+        .help(l.t("Токенов в контексте сессии" + (usage.size == nil ? "" : " из окна модели") + ". Клик предлагает сжать разговор.",
+                  "Tokens in this session's context" + (usage.size == nil ? "" : " out of the model's window") + ". Click to condense the conversation."))
+        .popover(isPresented: $contextOpen, arrowEdge: .bottom) { CompactPopover(tab: tab, usage: usage, l: l) { contextOpen = false } }
     }
 }
 
@@ -1312,19 +1322,23 @@ extension InfoBar {
 /// скриншоты и длинные выводы и уменьшает файл. "Оба" сначала сжимает файл, затем открывает сессию с /compact.
 struct CompactPopover: View {
     @ObservedObject var tab: TerminalTab
-    let tokens: Int
+    let usage: SessionContext.Usage
     let l: L
     let close: () -> Void
 
     var body: some View {
-        let k = max(1, Int((Double(tokens) / 1000).rounded()))
+        let used = SessionContext.short(usage.used)
+        let window = usage.size.map { SessionContext.short($0) }
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(l.t("В контексте \(k) тыс. токенов", "\(k)k tokens in context")).font(.system(size: 13, weight: .semibold))
-                if tokens >= SessionContext.compactHint {
-                    Text(l.t("Больше \(SessionContext.compactHint / 1000) тыс., разговор пора сжать.",
-                             "Over \(SessionContext.compactHint / 1000)k, time to condense the conversation."))
+                Text(window.map { l.t("В контексте \(used) из \($0)", "\(used) of \($0) in context") }
+                     ?? l.t("В контексте \(used) токенов", "\(used) tokens in context"))
+                    .font(.system(size: 13, weight: .semibold))
+                if usage.over {
+                    Text(l.t("Разговор пора сжать: длинный контекст дороже и хуже держит детали.",
+                             "Time to condense: a long context costs more and keeps details worse."))
                         .foregroundStyle(Ink.amber)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             option(l.t("Сжать разговор", "Condense the conversation"), "/compact",
@@ -1332,15 +1346,17 @@ struct CompactPopover: View {
                        "Claude summarizes the conversation and the context shrinks. Early details survive only in the summary.")) {
                 tab.submit("/compact")
             }
-            option(l.t("Сжать переписку", "Slim the transcript"), "/slim",
-                   l.t("Убирает старые скриншоты и длинные выводы из файла сессии, разговор не меняется. Сессия перезапустится.",
-                       "Removes old screenshots and long outputs from the session file, the conversation stays. The session restarts.")) {
-                tab.slim(note: l.slimming)
-            }
-            option(l.t("Все вместе", "Both"), "/slim + /compact",
-                   l.t("Сначала /slim, потом сессия откроется и сразу выполнит /compact.",
-                       "First /slim, then the session reopens and runs /compact right away.")) {
-                tab.slim(note: l.slimming, then: "/compact")
+            if tab.spec.agent == .claude {
+                option(l.t("Сжать переписку", "Slim the transcript"), "/slim",
+                       l.t("Убирает старые скриншоты и длинные выводы из файла сессии, разговор не меняется. Сессия перезапустится.",
+                           "Removes old screenshots and long outputs from the session file, the conversation stays. The session restarts.")) {
+                    tab.slim(note: l.slimming)
+                }
+                option(l.t("Все вместе", "Both"), "/slim + /compact",
+                       l.t("Сначала /slim, потом сессия откроется и сразу выполнит /compact.",
+                           "First /slim, then the session reopens and runs /compact right away.")) {
+                    tab.slim(note: l.slimming, then: "/compact")
+                }
             }
         }
         .font(.system(size: 12))
