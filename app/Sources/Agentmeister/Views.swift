@@ -11,6 +11,8 @@ final class UIState: ObservableObject {
     @Published var showNewSession = false
     @Published var showPalette = false
     @Published var showOnboarding = false
+    /// С какого шага открыть мастер первого запуска (agentmeister://onboarding?step=N, перезапуск ради разрешений).
+    @Published var onboardingStep = 0
     @Published var showInspector = UserDefaults.standard.object(forKey: "layout.showInspector") as? Bool ?? true {
         didSet { UserDefaults.standard.set(showInspector, forKey: "layout.showInspector") }
     }
@@ -142,8 +144,10 @@ struct MainView: View {
             workspace.restore(live: backend.state.live, projects: backend.state.projects, sessions: backend.state.sessions)
             // клик по уведомлению мог и запустить приложение: запрос ждет в focus.json
             workspace.takeFocusRequest(state: backend.state)
-            // мастер один раз, при первом запуске
-            if !UserDefaults.standard.bool(forKey: "onboardingDone") { ui.showOnboarding = true }
+            // мастер один раз, при первом запуске, и снова, если он сам перезапустил приложение ради разрешений
+            if !UserDefaults.standard.bool(forKey: "onboardingDone") || UserDefaults.standard.object(forKey: "onboardingResumeStep") != nil {
+                ui.showOnboarding = true
+            }
         }
         .frame(minWidth: 900, minHeight: 560)
         .modifier(ReopenWindows())
@@ -154,6 +158,14 @@ struct MainView: View {
                    let target = URL(string: raw), ["http", "https"].contains(target.scheme?.lowercased() ?? "") {
                     ProxyBrowser.shared.open(target)
                 }
+                return
+            }
+            // agentmeister://onboarding?step=N открывает мастер первого запуска на шаге N (с нуля)
+            if url.host() == "onboarding" {
+                let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "step" }?.value
+                ui.onboardingStep = max(0, Int(raw ?? "") ?? 0)
+                ui.showOnboarding = true
+                Workspace.bringMainWindowForward()
                 return
             }
             // agentmeister://focus?tab=<id>&session=<id> из клика по уведомлению
