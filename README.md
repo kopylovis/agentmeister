@@ -75,6 +75,14 @@ agentmeister
 
 `am` is the short name.
 
+### Desktop app
+
+Download `Agentmeister-<version>.dmg` from the [latest release](https://github.com/kopylovis/agentmeister/releases/latest),
+open it and drag Agentmeister to Applications. The app is signed with Developer ID and notarized. It needs macOS 26
+on Apple Silicon and the Xcode Command Line Tools (`xcode-select --install`). The `agentmeister` CLI ships inside the
+app. On first launch the app links `~/.local/bin/agentmeister` to it if the command isn't installed yet, so Homebrew
+is optional. A newer CLI from your PATH or a git checkout of this repository takes precedence.
+
 ### Codex
 
 When both CLIs are installed, "Open a project" asks which agent to start. The menu lists saved Codex sessions
