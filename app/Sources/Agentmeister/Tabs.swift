@@ -135,6 +135,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         super.init()
         view.tab = self
         view.processDelegate = self
+        view.registerForDraggedTypes([.fileURL])
         TerminalPrefs.apply(to: view)
         view.changeScrollback(TerminalPrefs.scrollback)
         start()
@@ -1142,6 +1143,34 @@ final class AppTerminalView: LocalProcessTerminalView {
                 }
             }
         }
+    }
+
+    // Файлы из Finder и скриншоты: путь вставляется в строку ввода, как в Terminal и iTerm2. Claude Code
+    // по пути к картинке прикладывает ее к сообщению.
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        Self.files(sender).isEmpty || tab?.running != true ? [] : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        draggingEntered(sender)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let files = Self.files(sender)
+        guard !files.isEmpty, tab?.running == true else { return false }
+        window?.makeFirstResponder(self)
+        pasteText(files.map { Self.escaped($0.path) }.joined(separator: " ") + " ")
+        return true
+    }
+
+    private static func files(_ sender: NSDraggingInfo) -> [URL] {
+        sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
+
+    /// Путь для строки ввода: пробелы, кавычки и скобки через обратную косую черту, как при перетаскивании в Terminal.
+    static func escaped(_ path: String) -> String {
+        let special = Set(" \t\\'\"()[]{}&;|<>$`!*?#~")
+        return path.map { special.contains($0) ? "\\" + String($0) : String($0) }.joined()
     }
 
     override func requestOpenLink(source: TerminalView, request: TerminalLinkRequest) {
