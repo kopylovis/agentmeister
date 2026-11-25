@@ -8,7 +8,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import HOME, LOCAL_CLI, project_folders, projects_dirs, run, settings_path, tilde, tr  # noqa: E402
+from mnrhlib import HOME, LOCAL_CLI, project_entries, project_folders, project_label, projects_dirs, run, settings_path, tilde, tr  # noqa: E402
 
 OPEN = {
     "Apple_Terminal": '''
@@ -120,7 +120,7 @@ def choices(root, dirs, note=""):
     lines = [note] if note else []
     lines.append(f"Проекты в {root} (ветка, последний коммит):")
     lines.append("  ~  домашний каталог")
-    lines += [f"  {os.path.basename(d)}  ({git_line(d)})" for d in dirs]
+    lines += [f"  {project_label(d, dirs)}  ({git_line(d)})" for d in dirs]
     lines.append("")
     lines.append("Режим: caffeinate — Mac не уснёт, пока идёт сессия (по умолчанию); normal — обычная.")
     lines.append("Можно добавить первый запрос (prompt) или продолжить прошлую сессию (continue).")
@@ -319,10 +319,11 @@ def open_claude(args, cm):
     elif not project:
         return choices(root, dirs), False
     else:
-        found = match(project, dirs)
+        # по имени ищем и среди ссылок-псевдонимов, ссылка и ее папка считаются одним проектом
+        found = list({os.path.realpath(d): d for d in match(project, project_entries())}.values())
     if len(found) != 1:
-        note = (f"«{project}» подходит к нескольким: {', '.join(os.path.basename(d) for d in found)}." if found
-                else f"Проекта «{project}» нет в {tilde(root)}.")
+        note = (f"«{project}» подходит к нескольким: {', '.join(tilde(d) for d in found)}, укажи path." if found
+                else f"Проекта «{project}» нет в {root}.")
         return choices(root, dirs, note), True
     target = found[0]
     mode = args.get("mode") or "caffeinate"

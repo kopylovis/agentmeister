@@ -24,17 +24,20 @@ NPM = {"claude": "@anthropic-ai/claude-code", "codex": "@openai/codex"}
 BREW_PATHS = ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
 
 
+# Обертки, которые сами ищут агента дальше по PATH: по метке в тексте скрипта. Обертки pnpm, nix и старый
+# ~/.claude/local/claude это и есть установленный агент, их не пропускаем.
+SHIM_MARKS = (b"promptsill",)
+
+
 def is_shim(path):
-    """Обертка-скрипт перед настоящим агентом (например, codex от promptsill в ~/.local/bin): она сама ищет
-    агента дальше по PATH. Скрипты npm (в node_modules) и пакеты Homebrew оберткой не считаются."""
+    """Известная обертка-скрипт перед настоящим агентом, например codex от promptsill в ~/.local/bin."""
     real = os.path.realpath(path)
-    if "node_modules" in real.split(os.sep) or brew_package(real):
-        return False
     try:
         with open(real, "rb") as f:
-            return f.read(2) == b"#!"
+            head = f.read(65536)
     except OSError:
         return False
+    return head[:2] == b"#!" and any(mark in head for mark in SHIM_MARKS)
 
 
 def binary_path(agent):
@@ -53,22 +56,31 @@ def binary_path(agent):
     return next((c for c in found if not is_shim(c)), found[0] if found else None)
 
 
-def brew_package(real):
-    """(имя, cask ли) пакета Homebrew по настоящему пути бинарника, иначе None."""
+# пакеты Homebrew самих агентов; mise или volta из Homebrew, через которые агент поставлен, агентом не считаются
+BREW_TOKENS = {"claude": ("claude-code",), "codex": ("codex",)}
+
+
+def brew_package(real, agent=None):
+    """(имя, cask ли) пакета Homebrew по настоящему пути бинарника, иначе None. С agent только пакет этого агента."""
     parts = real.split(os.sep)
     for marker, cask in (("Caskroom", True), ("Cellar", False)):
         if marker in parts:
             index = parts.index(marker)
             if index + 1 < len(parts) and parts[index + 1]:
-                return parts[index + 1], cask
+                name = parts[index + 1]
+                if agent and not any(name == t or name.startswith(t + "@") for t in BREW_TOKENS.get(agent, ())):
+                    return None
+                return name, cask
     return None
 
 
 def installed_via(agent, path):
-    """homebrew, installer (официальный установщик Claude Code в ~/.local) или other."""
+    """homebrew, installer (официальный установщик Claude Code в ~/.local), npm или other."""
     real = os.path.realpath(path)
-    if brew_package(real) or real.startswith("/opt/homebrew/"):
+    if brew_package(real, agent):
         return "homebrew"
+    if "node_modules" in real.split(os.sep):
+        return "npm"
     if agent == "claude" and "/.local/" in real:
         return "installer"
     return "other"
@@ -83,7 +95,7 @@ def update_argv(agent, path=None):
     path = path or binary_path(agent)
     if not path:
         return None
-    package = brew_package(os.path.realpath(path))
+    package = brew_package(os.path.realpath(path), agent)
     if package:
         name, cask = package
         return [brew(), "upgrade"] + (["--cask"] if cask else []) + [name]
@@ -124,13 +136,23 @@ def update(agent):
 
 
 def parse_version(text):
-    parts = []
-    for piece in str(text or "").split(",")[0].split("."):
-        digits = "".join(c for c in piece if c.isdigit()) if piece[:1].isdigit() else ""
+    """(числа версии, 1 у выпуска или 0 у предварительной), None без версии. "1.2.3-rc1" дает ((1, 2, 3), 0):
+    предварительная версия младше выпуска с теми же числами. "2.1.325 (Claude Code)" дает ((2, 1, 325), 1)."""
+    word = str(text or "").strip().split(",")[0].split()[0] if str(text or "").strip() else ""
+    numbers, release = [], 1
+    for piece in word.split("."):
+        digits = ""
+        for c in piece:
+            if not c.isdigit():
+                break
+            digits += c
         if not digits:
             break
-        parts.append(int(digits))
-    return tuple(parts)
+        numbers.append(int(digits))
+        if digits != piece:  # -rc1, b4, -alpha: дальше уже не номер выпуска
+            release = 0
+            break
+    return (tuple(numbers), release) if numbers else None
 
 
 def fetch_json(url):
@@ -142,13 +164,25 @@ def fetch_json(url):
 
 def latest_version(agent, path):
     """Последняя версия там, откуда агент ставится: API Homebrew для cask и формул, иначе npm."""
-    package = brew_package(os.path.realpath(path))
+    package = brew_package(os.path.realpath(path), agent)
     if package:
         name, cask = package
         if cask:
             return str(fetch_json(f"https://formulae.brew.sh/api/cask/{name}.json")["version"]).split(",")[0]
         return str(fetch_json(f"https://formulae.brew.sh/api/formula/{name}.json")["versions"]["stable"])
-    return str(fetch_json(f"https://registry.npmjs.org/{NPM[agent]}/latest")["version"])
+    return str(fetch_json(f"https://registry.npmjs.org/{NPM[agent]}/{npm_channel(agent)}")["version"])
+
+
+def npm_channel(agent):
+    """Метка npm, которую ставит само обновление: у Claude Code autoUpdatesChannel stable или latest."""
+    if agent != "claude":
+        return "latest"
+    try:
+        with open(os.path.join(os.path.expanduser("~"), ".claude", "settings.json")) as f:
+            channel = json.load(f).get("autoUpdatesChannel")
+    except (OSError, ValueError, AttributeError):
+        return "latest"
+    return "stable" if channel == "stable" else "latest"
 
 
 def check(agent):
@@ -160,8 +194,10 @@ def check(agent):
         out["via"] = installed_via(agent, path)
         try:
             out["latest"] = latest_version(agent, path)
-            out["update"] = parse_version(out["latest"]) > parse_version(out["current"])
-        except (OSError, ValueError, KeyError, TypeError) as e:
+            latest, current = parse_version(out["latest"]), parse_version(out["current"])
+            # без своей версии сравнивать не с чем: обновление не предлагаем
+            out["update"] = bool(latest and current and latest > current)
+        except Exception as e:  # noqa: BLE001 — сеть, HTTP и разбор ответа: приложение ждет JSON в любом случае
             out["error"] = str(e) or e.__class__.__name__
     print(json.dumps(out))
     return 0
