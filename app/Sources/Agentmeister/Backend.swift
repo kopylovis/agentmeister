@@ -135,16 +135,28 @@ enum LoginEnvironment {
         return 0
     }
 
-    /// Команда agentmeister в терминале сразу после установки приложения: ссылка ~/.local/bin/agentmeister на
-    /// встроенный CLI. Только из Applications и только если agentmeister еще нигде не стоит. Ссылку на CLI внутри
-    /// другой копии Agentmeister.app (приложение перенесли) переводит на эту.
+    /// promptsill, который едет внутри приложения (Contents/Resources/promptsill), его кладет туда bundle.sh.
+    static let bundledPromptsill: String? = {
+        guard let resources = Bundle.main.resourcePath else { return nil }
+        let path = resources + "/promptsill/promptsill"
+        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+    }()
+
+    /// Команды в терминале сразу после установки приложения: ссылки ~/.local/bin/agentmeister и
+    /// ~/.local/bin/promptsill на то, что едет внутри. statusLine Claude Code на promptsill ставит agentmeister setup.
     static func linkCommand() {
-        guard let bundled = bundledCLI else { return }
+        if let cli = bundledCLI { link("agentmeister", to: cli) }
+        if let promptsill = bundledPromptsill { link("promptsill", to: promptsill) }
+    }
+
+    /// Ссылка ~/.local/bin/<name> на копию внутри приложения. Только из Applications и только если команды еще
+    /// нигде нет. Ссылку на копию внутри другого Agentmeister.app (приложение перенесли) переводит на эту.
+    private static func link(_ name: String, to bundled: String) {
         let home = NSHomeDirectory()
         let app = Bundle.main.bundlePath
         guard app.hasPrefix("/Applications/") || app.hasPrefix(home + "/Applications/") else { return }
         let fm = FileManager.default
-        let link = home + "/.local/bin/agentmeister"
+        let link = home + "/.local/bin/" + name
         if let target = try? fm.destinationOfSymbolicLink(atPath: link) {
             guard target != bundled, target.contains("/Agentmeister.app/Contents/Resources/") else { return }
         } else {
@@ -153,7 +165,7 @@ enum LoginEnvironment {
             let ownDir = (bundled as NSString).deletingLastPathComponent
             let dirs = (shared["PATH"] ?? "").split(separator: ":").map(String.init).filter { $0 != ownDir }
             if fm.fileExists(atPath: link) || (dirs + ["/opt/homebrew/bin", "/usr/local/bin"]).contains(where: {
-                fm.isExecutableFile(atPath: $0 + "/agentmeister")
+                fm.isExecutableFile(atPath: $0 + "/" + name)
             }) {
                 return
             }
