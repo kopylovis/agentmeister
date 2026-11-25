@@ -66,8 +66,15 @@ enum MenuBarGlyph {
                 shape.dropFirst().forEach { path.line(to: point($0)) }
                 path.close()
             }
-            NSColor.black.setFill()
-            path.fill()
+            // контур внутрь фигуры: обводка двойной толщины, обрезанная по самому глифу. Снаружи глиф того же
+            // размера, узкая прорезь под крышей не зарастает, а у стрелки внутри тоже остается только контур.
+            NSGraphicsContext.saveGraphicsState()
+            path.addClip()
+            path.lineWidth = 1.7
+            path.lineJoinStyle = .miter
+            NSColor.black.setStroke()
+            path.stroke()
+            NSGraphicsContext.restoreGraphicsState()
             if status != .idle, let context = NSGraphicsContext.current {
                 // правый верхний угол рамки, над срезом глифа: зазор вокруг точки глиф почти не задевает
                 let center = CGPoint(x: size.width - 2.8, y: 2.9)
