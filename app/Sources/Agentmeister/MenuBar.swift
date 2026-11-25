@@ -140,14 +140,23 @@ struct MenuBarPanel: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.dismiss) private var dismiss
 
+    /// Агенты со свернутыми подзадачами и агенты, у которых показаны все подзадачи, а не первые три.
+    @State private var collapsed: Set<UUID> = []
+    @State private var showAll: Set<UUID> = []
+
     var l: L { L(backend.state.lang) }
 
-    /// Строка списка: вкладка этого окна или сессия из реестра, открытая в другом окне.
+    /// Подзадач под агентом видно сразу, остальные прячутся в строку "еще N".
+    private static let subtaskLimit = 3
+
+    /// Строка списка: вкладка этого окна или сессия из реестра, открытая в другом окне. У вкладки агента
+    /// с подзадачами они идут следом, ждущие ответа первыми.
     private struct Entry: Identifiable {
         let id: String
         let tab: TerminalTab?
         let live: AppState.Live?
         let status: String?
+        var subtasks: [TerminalTab] = []
     }
 
     private static func rank(_ status: String?) -> Int {
@@ -160,7 +169,14 @@ struct MenuBarPanel: View {
 
     private var entries: [Entry] {
         let (tabs, others) = workspace.openSessions(backend.state)
-        let list = tabs.map { Entry(id: "tab-" + $0.id.uuidString, tab: $0, live: nil, status: $0.status) }
+        let open = Set(tabs.map(\.id))
+        // подзадача, чей агент открыт, идет под ним; группа встает по самому важному статусу в ней
+        let list = tabs.filter { tab in tab.spec.parent.map { !open.contains($0) } ?? true }.map { tab -> Entry in
+            let subtasks = tabs.filter { $0.spec.parent == tab.id }.enumerated()
+                .sorted { (Self.rank($0.element.status), $0.offset) < (Self.rank($1.element.status), $1.offset) }.map(\.element)
+            let status = ([tab.status] + subtasks.map(\.status)).min { Self.rank($0) < Self.rank($1) } ?? nil
+            return Entry(id: "tab-" + tab.id.uuidString, tab: tab, live: nil, status: status, subtasks: subtasks)
+        }
             + others.enumerated().map { index, live in
                 // одна сессия бывает открыта в двух окнах сразу: id из сессии и pid, без pid из номера
                 Entry(id: "live-\(live.sessionId ?? "")-" + (live.pid.map { String($0) } ?? "n\(index)"),
@@ -174,7 +190,11 @@ struct MenuBarPanel: View {
 
     var body: some View {
         let items = entries
-        let waiting = items.filter { $0.status == "waiting" }.count
+        // ждущие считаются вместе с подзадачами, а "открыто" считает только агентов
+        let waiting = items.map { entry in
+            (entry.tab.map { $0.status == "waiting" ? 1 : 0 } ?? (entry.status == "waiting" ? 1 : 0))
+                + entry.subtasks.filter { $0.status == "waiting" }.count
+        }.reduce(0, +)
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text("Agentmeister").font(.system(size: 13, weight: .semibold)).foregroundStyle(Ink.text)
@@ -215,7 +235,19 @@ struct MenuBarPanel: View {
             let list = VStack(spacing: 2) {
                 ForEach(items) { entry in
                     if let tab = entry.tab {
-                        MenuBarTabRow(tab: tab) { focus(tab) }
+                        let open = !collapsed.contains(tab.id)
+                        MenuBarTabRow(tab: tab, subtasks: entry.subtasks.count, expanded: open,
+                                      toggle: { if open { collapsed.insert(tab.id) } else { collapsed.remove(tab.id) } }) { focus(tab) }
+                        if open && !entry.subtasks.isEmpty {
+                            let all = showAll.contains(tab.id) || entry.subtasks.count <= Self.subtaskLimit + 1
+                            let shown = all ? entry.subtasks : Array(entry.subtasks.prefix(Self.subtaskLimit))
+                            ForEach(Array(shown.enumerated()), id: \.element.id) { index, sub in
+                                MenuBarSubtaskRow(tab: sub, last: all && index == shown.count - 1) { focus(sub) }
+                            }
+                            if !all {
+                                MenuBarMoreRow(count: entry.subtasks.count - shown.count, l: l) { showAll.insert(tab.id) }
+                            }
+                        }
                     } else if let live = entry.live {
                         liveRow(live)
                     }
@@ -223,8 +255,9 @@ struct MenuBarPanel: View {
             }
             .padding(4)
             .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
-            if items.count > 7 {
-                ScrollView { list }.frame(height: 7 * 42 + 8)
+            let rows = items.count + items.map { $0.tab.map { collapsed.contains($0.id) } == true ? 0 : min($0.subtasks.count, Self.subtaskLimit + 1) }.reduce(0, +)
+            if rows > 8 {
+                ScrollView { list }.frame(height: 8 * 40 + 8)
             } else {
                 list
             }
@@ -334,10 +367,14 @@ struct MenuBarPanel: View {
     }
 }
 
-/// Строка вкладки: следит за самой вкладкой, чтобы статус и заголовок менялись на ходу.
+/// Строка вкладки: следит за самой вкладкой, чтобы статус и заголовок менялись на ходу. У агента
+/// с подзадачами справа их число со стрелкой, клик по ней сворачивает и разворачивает группу.
 private struct MenuBarTabRow: View {
     @EnvironmentObject var backend: Backend
     @ObservedObject var tab: TerminalTab
+    var subtasks = 0
+    var expanded = true
+    var toggle: () -> Void = {}
     let action: () -> Void
 
     var body: some View {
@@ -346,7 +383,120 @@ private struct MenuBarTabRow: View {
         MenuBarRow(status: tab.status, agent: tab.spec.agent,
                    title: saved?.title.isEmpty == false ? saved!.title : tab.title,
                    detail: tab.spec.projectName + " · " + (tab.spec.agent == .codex && tab.status == nil ? l.t("открыта", "open") : l.statusTitle(tab.status)),
-                   elsewhere: false, help: "", action: action)
+                   elsewhere: false, help: "", reserve: subtasks > 0 ? 44 : 0, action: action)
+            .overlay(alignment: .trailing) {
+                if subtasks > 0 {
+                    Button(action: toggle) {
+                        HStack(spacing: 4) {
+                            Text("\(subtasks)").font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .bold))
+                                .rotationEffect(.degrees(expanded ? 0 : -90))
+                        }
+                        .foregroundStyle(Ink.text2)
+                        .padding(.horizontal, 8)
+                        .frame(height: 22)
+                        .background(Capsule().fill(Ink.chip))
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.hoverCapsule())
+                    .padding(.trailing, 8)
+                    .help(expanded ? l.t("Свернуть подзадачи", "Collapse subtasks") : l.t("Показать подзадачи", "Show subtasks"))
+                }
+            }
+    }
+}
+
+/// Подзадача под агентом: линия дерева, состояние, имя и "ветка · статус".
+private struct MenuBarSubtaskRow: View {
+    @EnvironmentObject var backend: Backend
+    @ObservedObject var tab: TerminalTab
+    /// Последняя в группе: линия дерева заканчивается уголком.
+    let last: Bool
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        let l = L(backend.state.lang)
+        let parts = tab.spec.projectName.components(separatedBy: " · ")
+        let branch = parts.count > 1 ? parts.last! : nil
+        let status = tab.running ? l.statusTitle(tab.status) : l.t("готово", "done")
+        Button(action: action) {
+            HStack(spacing: 8) {
+                TreeLine(last: last).frame(width: 14, height: 32)
+                Group {
+                    if !tab.running {
+                        Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundStyle(Ink.teal)
+                    } else {
+                        SessionDot(status: tab.status, size: 6)
+                    }
+                }
+                .frame(width: 8)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(tab.title).font(.system(size: 12)).foregroundStyle(Ink.text).lineLimit(1)
+                    Text([branch, status].compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(tab.status == "waiting" ? Ink.amber : Ink.muted)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 4)
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 8)
+            .frame(height: 32)
+            .background(RoundedRectangle(cornerRadius: 9).fill(hover ? Ink.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// "еще N" под тремя первыми подзадачами: раскрывает весь список.
+private struct MenuBarMoreRow: View {
+    let count: Int
+    let l: L
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                TreeLine(last: true).frame(width: 14, height: 24)
+                Text(l.t("еще \(count)", "\(count) more")).font(.system(size: 11)).foregroundStyle(Ink.muted)
+                Spacer()
+            }
+            .padding(.leading, 14)
+            .frame(height: 24)
+            .background(RoundedRectangle(cornerRadius: 9).fill(hover ? Ink.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+    }
+}
+
+/// Линия дерева слева от подзадачи: вертикаль от агента и отвод вправо, у последней уголок.
+private struct TreeLine: View {
+    let last: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            Path { p in
+                let x: CGFloat = 4, mid = geo.size.height / 2
+                p.move(to: CGPoint(x: x, y: 0))
+                p.addLine(to: CGPoint(x: x, y: last ? mid - 4 : geo.size.height))
+                if last {
+                    p.addQuadCurve(to: CGPoint(x: x + 4, y: mid), control: CGPoint(x: x, y: mid))
+                } else {
+                    p.move(to: CGPoint(x: x, y: mid))
+                }
+                p.addLine(to: CGPoint(x: geo.size.width, y: mid))
+            }
+            .stroke(Ink.hairline, lineWidth: 1.2)
+        }
     }
 }
 
@@ -358,6 +508,8 @@ private struct MenuBarRow: View {
     let detail: String
     let elsewhere: Bool
     let help: String
+    /// Место справа под кнопку поверх строки, например число подзадач: заголовок под нее не заходит.
+    var reserve: CGFloat = 0
     let action: () -> Void
     @State private var hover = false
 
@@ -382,6 +534,7 @@ private struct MenuBarRow: View {
                 if elsewhere {
                     Image(systemName: "macwindow.on.rectangle").font(.system(size: 10)).foregroundStyle(Ink.faint)
                 }
+                if reserve > 0 { Color.clear.frame(width: reserve) }
             }
             .padding(.horizontal, 8)
             .frame(height: 38)
