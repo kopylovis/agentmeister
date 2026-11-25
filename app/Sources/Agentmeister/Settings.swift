@@ -288,15 +288,23 @@ struct UtilityButton: View {
     let args: [String]
     /// Растянуть кнопку на всю доступную ширину (ряд одинаковых кнопок внизу карточки).
     var expand = false
+    /// Со значком кнопка рисуется тихой кнопкой карточки (CardActionStyle), без него стеклянной.
+    var icon: String? = nil
 
     var body: some View {
-        Button {
-            run()
-        } label: {
-            Text(title).lineLimit(1).frame(maxWidth: expand ? .infinity : nil)
+        if let icon {
+            Button { run() } label: { Label(title, systemImage: icon).lineLimit(1) }
+                .help("agentmeister " + args.joined(separator: " "))
+                .buttonStyle(CardActionStyle())
+        } else {
+            Button {
+                run()
+            } label: {
+                Text(title).lineLimit(1).frame(maxWidth: expand ? .infinity : nil)
+            }
+            .help("agentmeister " + args.joined(separator: " "))
+            .buttonStyle(.glass)
         }
-        .help("agentmeister " + args.joined(separator: " "))
-        .buttonStyle(.glass)
     }
 
     private func run() {
