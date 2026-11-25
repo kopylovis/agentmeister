@@ -39,6 +39,8 @@ enum MenuBarGlyph {
     static let idle = make(.idle)
     static let busy = make(.busy)
     static let waiting = make(.waiting)
+    /// Кадры спиннера, пока агент пишет: дуга в 270 градусов поворачивается на 30 градусов за кадр.
+    static let spinner = (0..<12).map { make(.busy, spin: CGFloat($0) * 30) }
 
     private static let outline: [CGPoint] = [
         (360, 243), (638, 243), (752, 378), (752, 683), (795, 683), (795, 757), (585, 757), (585, 712), (532, 758),
@@ -48,7 +50,7 @@ enum MenuBarGlyph {
         (371, 500), (434, 500), (518, 585), (434, 673), (371, 673), (450, 585),
     ].map { CGPoint(x: $0.0, y: $0.1) }
 
-    private static func make(_ status: MenuBarStatus) -> NSImage {
+    private static func make(_ status: MenuBarStatus, spin: CGFloat? = nil) -> NSImage {
         // поля по бокам шире, чем у стандартных значков: глиф 15 pt в ширину внутри 24 pt
         let size = NSSize(width: 24, height: 18)
         let scale: CGFloat = 14 / 515
@@ -77,6 +79,14 @@ enum MenuBarGlyph {
                 let dot = NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
                 if status == .waiting {
                     NSBezierPath(ovalIn: dot).fill()
+                } else if let spin {
+                    // flipped: углы идут по часовой стрелке, поворот кадра тоже по часовой
+                    let arc = NSBezierPath()
+                    arc.appendArc(withCenter: center, radius: radius - 0.6, startAngle: spin, endAngle: spin + 270)
+                    arc.lineWidth = 1.3
+                    arc.lineCapStyle = .round
+                    NSColor.black.setStroke()
+                    arc.stroke()
                 } else {
                     let ring = NSBezierPath(ovalIn: dot.insetBy(dx: 0.6, dy: 0.6))
                     ring.lineWidth = 1.2
@@ -95,12 +105,18 @@ enum MenuBarGlyph {
 struct MenuBarLabel: View {
     @ObservedObject var backend: Backend
     @ObservedObject var workspace: Workspace
+    /// Кадр спиннера. Таймер меняет его, только пока агент пишет, в простое значок не перерисовывается.
+    @State private var frame = 0
+    @State private var ticker = Timer.publish(every: 0.125, on: .main, in: .common).autoconnect()
 
     var body: some View {
         let status = MenuBarStatus.of(workspace, backend.state)
         let l = L(backend.state.lang)
-        Image(nsImage: status.image)
+        Image(nsImage: status == .busy ? MenuBarGlyph.spinner[frame % MenuBarGlyph.spinner.count] : status.image)
             .accessibilityLabel("Agentmeister, " + (status == .waiting ? l.waiting : status == .busy ? l.working : l.idle))
+            .onReceive(ticker) { _ in
+                if status == .busy { frame = (frame + 1) % MenuBarGlyph.spinner.count }
+            }
     }
 }
 
