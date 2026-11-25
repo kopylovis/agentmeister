@@ -842,9 +842,8 @@ def ping(path=SOCK, timeout=2):
 
 
 def ensure():
-    """Поднять исполнитель из лаунчера сессии, пока песочницы еще нет. Без списка команд не нужен."""
-    if not os.path.exists(COMMANDS):
-        return
+    """Поднять исполнитель из лаунчера сессии, пока песочницы еще нет. Он нужен и без списка команд: первую
+    команду добавляет host-run add, а его обслуживает исполнитель."""
     info = ping()
     if info and info.get("version") == version() and info.get("code") == CODE:
         return
@@ -858,10 +857,10 @@ def ensure():
 
 
 def not_running():
-    return tr("agentmeister host-run: исполнитель не запущен. Он стартует с новой сессией через proxy, если есть "
-              f"{tilde(COMMANDS)}, или в обычном терминале запусти (agentmeister host-run serve &)",
-              "agentmeister host-run: the runner isn't running. It starts with a new proxied session when "
-              f"{tilde(COMMANDS)} exists, or run (agentmeister host-run serve &) in a regular terminal")
+    return tr("agentmeister host-run: исполнитель не запущен. Он стартует с новой сессией через proxy, "
+              "или в обычном терминале запусти (agentmeister host-run serve &)",
+              "agentmeister host-run: the runner isn't running. It starts with a new proxied session, "
+              "or run (agentmeister host-run serve &) in a regular terminal")
 
 
 def call(name, args, path=SOCK, out=None, err=None):
