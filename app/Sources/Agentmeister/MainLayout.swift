@@ -279,8 +279,9 @@ struct SidebarRail: View {
                                 }
                             }
                             .frame(width: 46, height: 44)
-                            // выбранный проект на мягкой подложке, как выбранная строка в развернутом списке
-                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(current ? Ink.thumb : .clear))
+                            // выбранный проект на мягкой подложке, как выбранная строка в развернутом списке,
+                            // под курсором легкая подсветка
+                            .modifier(HoverFill(selected: current, radius: 12))
                             .overlay(alignment: .bottomTrailing) {
                                 if s.count > 0 {
                                     SessionDot(status: s.status, size: 9)
