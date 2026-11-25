@@ -156,9 +156,9 @@ struct MainHeader: View {
                     Image(systemName: "sidebar.right")
                         .foregroundStyle(Ink.text2)
                         .frame(width: 34, height: 28)
-                        .contentShape(Rectangle())
+                        .contentShape(Capsule())
                 }
-                .buttonStyle(.hover(8))
+                .buttonStyle(.hoverCapsule())
                 .shortcutHelp(l.t("Показать или скрыть панель сессии", "Show or hide the session panel"), .inspector)
                 .accessibilityLabel(l.t("Показать или скрыть панель сессии", "Show or hide the session panel"))
             }
@@ -207,9 +207,9 @@ struct SidebarToggle: View {
             Image(systemName: "sidebar.left")
                 .foregroundStyle(Ink.text2)
                 .frame(width: 34, height: 28)
-                .contentShape(Rectangle())
+                .contentShape(Capsule())
         }
-        .buttonStyle(.hover(8))
+        .buttonStyle(.hoverCapsule())
         .shortcutHelp(l.t("Свернуть или развернуть проекты", "Collapse or expand projects"), .sidebar)
         .accessibilityLabel(l.t("Свернуть или развернуть проекты", "Collapse or expand projects"))
     }
