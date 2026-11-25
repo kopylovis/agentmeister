@@ -180,6 +180,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// /restart, /forget, /fresh и /slim кладут задание в ~/.cache/mnrh/restart/<tty>, restart_job.py take
     /// проверяет его поля, run строит argv сам. Без этого цикла вкладке после выхода Claude некуда вернуться.
     static let shellScript = """
+    export MNRH_TTY=${TTY:-$(tty)}
     "$0" "$@"
     j=${MNRH_RESTART_JOB:-}
     [[ -n $j && -f $j ]] || exit

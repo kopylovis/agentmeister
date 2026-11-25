@@ -3,6 +3,8 @@
 # сессия из песочницы, поэтому как команду shell его не выполняем: restart_job.py проверяет поля и сам строит
 # argv. 2 — версия хука: с ним agentmeister пишет задания в JSON, со старым (1) в эту вкладку не пишет.
 export MNRH_RESTART_HOOK=2
+# терминал вкладки для /slim, /forget и /fresh: в песочнице proxy-сессии ps его не узнает
+export MNRH_TTY=$TTY
 typeset -g _mnrh_restart_job=${${(%):-%x}:a:h:h:h}/libexec/agentmeister/lib/restart_job.py
 
 _mnrh_restart() {
