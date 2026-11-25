@@ -1373,6 +1373,8 @@ struct TabInspector: View {
     @AppStorage("restartWithUpdate") private var withUpdate = true
     /// Git и бэклог проекта вкладки из app-state project. Обновляются при смене вкладки и раз в минуту.
     @State private var project: ProjectData?
+    /// Изменения рабочей копии: git status раз в 5 секунд, пока инспектор открыт.
+    @State private var changes: GitChanges.Snapshot?
 
     var l: L { L(backend.state.lang) }
 
@@ -1444,6 +1446,10 @@ struct TabInspector: View {
                         .padding(.horizontal, 4)
                 }
 
+                if tab.spec.utility == nil, let changes {
+                    ChangesCard(snapshot: changes, l: l)
+                }
+
                 if let h = backend.state.hostRun {
                     VStack(alignment: .leading, spacing: 8) {
                         SectionCaption(text: "host-run")
@@ -1493,6 +1499,16 @@ struct TabInspector: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 16)
+        }
+        .task(id: tab.spec.projectPath) {
+            changes = nil
+            let path = tab.spec.projectPath
+            guard tab.spec.utility == nil else { return }
+            while !Task.isCancelled {
+                let now = await Task.detached(priority: .utility) { GitChanges.snapshot(at: path) }.value
+                if changes != now { changes = now }
+                try? await Task.sleep(for: .seconds(5))
+            }
         }
         .task(id: tab.spec.projectPath) {
             while !Task.isCancelled {
