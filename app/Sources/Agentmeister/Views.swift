@@ -29,6 +29,8 @@ final class UIState: ObservableObject {
     @Published var forgetting: TerminalTab?
     /// Вкладка, сессию которой переименовывают.
     @Published var renaming: TerminalTab?
+    /// Вкладка, которую просят перезапустить без proxy. Пока не nil, окно перечисляет риски и ждет подтверждения.
+    @Published var confirmingDirect: TerminalTab?
     /// Агент, в которого входят через диалог входа из баннера вкладки. Лист висит на окне, а не на баннере:
     /// баннер пропадает, как только вход прошел, а диалог должен показать "Вход выполнен".
     @Published var signingIn: LaunchSpec.Agent?
@@ -73,6 +75,39 @@ struct MainView: View {
         }
         .sheet(isPresented: $ui.showOnboarding) {
             OnboardingView()
+        }
+        .alert(l.t("Перезапустить без proxy?", "Restart without the proxy?"),
+               isPresented: Binding(get: { ui.confirmingDirect != nil }, set: { if !$0 { ui.confirmingDirect = nil } }),
+               presenting: ui.confirmingDirect) { tab in
+            Button(l.t("Перезапустить без proxy", "Restart without proxy"), role: .destructive) {
+                tab.switchRoute()
+                ui.confirmingDirect = nil
+            }
+            Button(l.cancel, role: .cancel) { ui.confirmingDirect = nil }
+        } message: { _ in
+            Text(l.t("""
+                Сессия продолжится вне песочницы, и ее трафик пойдет напрямую с этого Mac, мимо mihomo.
+
+                Anthropic, OpenAI и другие сервисы увидят настоящий IP и страну. Если аккаунт обычно работает \
+                из другой страны, внезапная смена может закончиться проверкой или блокировкой.
+
+                Агент и его команды смогут ходить в сеть напрямую, а правила mihomo на них перестанут действовать.
+
+                Запрет на правку списка host-run и настроек proxy тоже снимается.
+
+                Вернуть proxy можно кнопкой "Перезапустить через proxy".
+                """, """
+                The session continues outside the sandbox, and its traffic goes straight from this Mac, past mihomo.
+
+                Anthropic, OpenAI and other services see your real IP and country. If the account usually works \
+                from another country, the sudden change can lead to a check or a block.
+
+                The agent and its commands can reach the network directly, and the mihomo rules stop applying to them.
+
+                The lock on the host-run list and the proxy settings is lifted too.
+
+                Restart via proxy brings the proxy back.
+                """))
         }
         .sheet(item: $ui.renaming) { tab in
             RenameSheet(tab: tab)
@@ -871,6 +906,7 @@ struct RenameSheet: View {
 struct InfoBar: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var ui: UIState
     @ObservedObject var tab: TerminalTab
     @Environment(\.openSettings) private var openSettings
     /// Ветку только что скопировали: чип полторы секунды показывает "Скопировано".
@@ -976,7 +1012,7 @@ struct InfoBar: View {
                           : l.t("Новая вкладка Claude Code с контекстом этой сессии Codex", "A new Claude Code tab with this Codex session's context"))
             }
             if tab.spec.utility == nil {
-                Button { tab.switchRoute() } label: {
+                Button { if tab.spec.proxied { ui.confirmingDirect = tab } else { tab.switchRoute() } } label: {
                     Label(tab.spec.proxied ? l.t("Перезапустить напрямую", "Restart without proxy")
                                            : l.t("Перезапустить через proxy", "Restart via proxy"),
                           systemImage: tab.spec.proxied ? "arrow.triangle.2.circlepath" : "shield")
