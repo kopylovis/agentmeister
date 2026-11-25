@@ -288,8 +288,10 @@ struct UtilityButton: View {
     let args: [String]
     /// Растянуть кнопку на всю доступную ширину (ряд одинаковых кнопок внизу карточки).
     var expand = false
-    /// Со значком кнопка рисуется тихой кнопкой карточки (CardActionStyle), без него стеклянной.
+    /// Со значком кнопка рисуется тихой кнопкой карточки (CardActionStyle), без него капсулой (PillStyle).
     var icon: String? = nil
+    var prominent = false
+    var small = false
 
     var body: some View {
         if let icon {
@@ -303,7 +305,7 @@ struct UtilityButton: View {
                 Text(title).lineLimit(1).frame(maxWidth: expand ? .infinity : nil)
             }
             .help("agentmeister " + args.joined(separator: " "))
-            .buttonStyle(.glass)
+            .buttonStyle(PillStyle(prominent: prominent, small: small))
         }
     }
 
@@ -339,7 +341,7 @@ struct CommandButton: View {
         } label: {
             if busy { ProgressView().controlSize(.small) } else { Text(title) }
         }
-        .buttonStyle(.glass)
+        .buttonStyle(PillStyle())
         .disabled(busy)
     }
 }
@@ -524,8 +526,7 @@ struct ProxyHostRunPane: View {
                             .foregroundStyle(Ink.red)
                             .font(.system(size: 12))
                     } else {
-                        UtilityButton(title: l.t("Настроить proxy", "Set up proxy"), args: ["proxy", "setup"])
-                            .buttonStyle(.glassProminent)
+                        UtilityButton(title: l.t("Настроить proxy", "Set up proxy"), args: ["proxy", "setup"], prominent: true)
                     }
                 }
                 .confirmationDialog(l.t("Удалить настройку proxy?", "Remove the proxy setup?"), isPresented: $confirmRemove) {
@@ -556,7 +557,7 @@ struct ProxyHostRunPane: View {
                         .lineLimit(2)
                     Spacer()
                     Button(l.t("Добавить команду", "Add command")) { adding = true }
-                        .buttonStyle(.glassProminent)
+                        .buttonStyle(PillStyle(prominent: true))
                 }
                 HStack(spacing: 8) {
                     GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
@@ -645,6 +646,7 @@ struct AddHostRunSheet: View {
                     HStack {
                         TextField("~/Developer/myapp", text: $folder).textFieldStyle(.roundedBorder).font(.system(.body, design: .monospaced))
                         Button(l.t("Выбрать…", "Choose…")) { choose() }
+                            .buttonStyle(PillStyle(small: true))
                     }
                 }
                 GridRow {

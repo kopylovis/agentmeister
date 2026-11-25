@@ -915,19 +915,9 @@ struct InfoBar: View {
                 Button {
                     tab.setAwake(!tab.spec.awake)
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "timer").font(.system(size: 11))
-                        Text(l.t("Не спать", "Stay awake"))
-                    }
-                    .font(.system(size: 12))
-                    .foregroundStyle(tab.spec.awake ? Ink.modeOn : Ink.muted)
-                    .padding(.horizontal, 12)
-                    .frame(height: 26)
-                    .background(Capsule().fill(tab.spec.awake ? Ink.modeOnBg : .clear))
-                    .overlay(Capsule().strokeBorder(tab.spec.awake ? Ink.modeOnBorder : Ink.buttonBorder))
-                    .contentShape(Capsule())
+                    Label(l.t("Не спать", "Stay awake"), systemImage: "timer")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ChipStyle(on: tab.spec.awake))
                 .help(l.t("Mac не уснет, пока идет эта сессия", "The Mac stays awake while this session runs"))
                 .accessibilityAddTraits(tab.spec.awake ? .isSelected : [])
             }
@@ -938,23 +928,25 @@ struct InfoBar: View {
             }
             Spacer(minLength: 0)
             if tab.spec.agent == .codex && tab.spec.utility == nil {
-                Button(l.moveToClaude) { workspace.moveToClaude(tab) }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
+                Button { workspace.moveToClaude(tab) } label: { Label(l.moveToClaude, systemImage: "arrow.right.circle") }
+                    .buttonStyle(ChipStyle())
                     .disabled(tab.sessionId == nil)
                     .help(tab.sessionId == nil
                           ? l.t("Тред Codex появится после первого запроса", "The Codex thread appears after the first request")
                           : l.t("Новая вкладка Claude Code с контекстом этой сессии Codex", "A new Claude Code tab with this Codex session's context"))
             }
             if tab.spec.utility == nil {
-                Button(tab.spec.proxied ? l.t("Перезапустить напрямую", "Restart without proxy")
-                                        : l.t("Перезапустить через proxy", "Restart via proxy")) { tab.switchRoute() }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
+                Button { tab.switchRoute() } label: {
+                    Label(tab.spec.proxied ? l.t("Перезапустить напрямую", "Restart without proxy")
+                                           : l.t("Перезапустить через proxy", "Restart via proxy"),
+                          systemImage: tab.spec.proxied ? "arrow.triangle.2.circlepath" : "shield")
+                }
+                .buttonStyle(ChipStyle())
+                .help(tab.spec.proxied ? l.t("Та же сессия, но без песочницы и proxy", "The same session without the sandbox and proxy")
+                                       : l.t("Та же сессия в песочнице, сеть через mihomo", "The same session in the sandbox, network through mihomo"))
             } else {
-                Button(l.restart) { tab.restart() }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
+                Button { tab.restart() } label: { Label(l.restart, systemImage: "arrow.clockwise") }
+                    .buttonStyle(ChipStyle())
             }
         }
         .padding(.horizontal, 4)
