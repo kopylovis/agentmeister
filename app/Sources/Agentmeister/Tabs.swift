@@ -27,6 +27,9 @@ struct LaunchSpec: Hashable {
     /// Вход из диалога входа: страницу, которую агент открывает сам, BROWSER всегда отдает приложению,
     /// а диалог открывает ее там, где выбрано. Маршрут при этом любой.
     var signInDialog = false
+    /// Вкладка агента, чьей подзадачей открыта эта: параллельная задача в своем worktree. Подзадачи показываются
+    /// рядом под вкладкой агента, а не в общей полосе.
+    var parent: UUID?
 
     /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
     var proxied: Bool {
@@ -596,6 +599,8 @@ final class Workspace: ObservableObject {
         var remoteControl: Bool?
         /// Id вкладки. Nil в tabs.json старых версий.
         var id: String?
+        /// Id вкладки агента, если это его подзадача.
+        var parent: String?
     }
 
     static var savedTabsURL: URL {
@@ -609,7 +614,8 @@ final class Workspace: ObservableObject {
         let saved = tabs.filter { $0.spec.utility == nil }.map {
             SavedTab(projectName: $0.spec.projectName, projectPath: $0.spec.projectPath, agent: $0.spec.agent.rawValue,
                      direct: $0.spec.direct, sessionId: $0.sessionId, selected: $0.id == selected,
-                     awake: $0.spec.awake, remoteControl: $0.spec.remoteControl, id: $0.id.uuidString.lowercased())
+                     awake: $0.spec.awake, remoteControl: $0.spec.remoteControl, id: $0.id.uuidString.lowercased(),
+                     parent: $0.spec.parent?.uuidString.lowercased())
         }
         let url = Self.savedTabsURL
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -666,6 +672,7 @@ final class Workspace: ObservableObject {
             var spec = LaunchSpec(projectName: item.projectName, projectPath: item.projectPath, agent: agent, direct: item.direct)
             spec.awake = item.awake ?? false
             spec.remoteControl = item.remoteControl ?? false
+            spec.parent = item.parent.flatMap(UUID.init(uuidString:))
             if let sid = item.sessionId, resumable.contains(sid) { spec.resumeId = sid }
             specs.append((spec, item.selected, item.id.flatMap(UUID.init(uuidString:))))
         }
@@ -713,10 +720,31 @@ final class Workspace: ObservableObject {
             notice = sid
             return
         }
+        var spec = spec
+        // у подзадачи подзадач нет: новая встает к тому же агенту
+        spec.parent = spec.parent.flatMap { id in tabs.first { $0.id == id } }.map { root(of: $0).id }
         let tab = TerminalTab(spec: spec)
-        tabs.append(tab)
+        // подзадача встает за последней подзадачей своего агента, так соседние вкладки по ⌃Tab идут подряд
+        if let parent = spec.parent, let last = tabs.lastIndex(where: { $0.id == parent || $0.spec.parent == parent }) {
+            tabs.insert(tab, at: last + 1)
+        } else {
+            tabs.append(tab)
+        }
         selected = tab.id
     }
+
+    // MARK: Подзадачи
+
+    /// Агент вкладки: та, чьей подзадачей она открыта, если она еще открыта, иначе сама вкладка.
+    func root(of tab: TerminalTab) -> TerminalTab {
+        guard let id = tab.spec.parent, let parent = tabs.first(where: { $0.id == id }) else { return tab }
+        return parent
+    }
+
+    /// Вкладки общей полосы: агенты без подзадач.
+    var roots: [TerminalTab] { tabs.filter { root(of: $0) === $0 } }
+
+    func subtasks(of tab: TerminalTab) -> [TerminalTab] { tabs.filter { $0.spec.parent == tab.id } }
 
     /// Открытые сессии: идущие вкладки этого окна и записи реестра Claude Code, которых среди них нет
     /// (iTerm2, второй Agentmeister). Реестр знает и наши вкладки, поэтому вкладка с известной сессией
@@ -767,9 +795,13 @@ final class Workspace: ObservableObject {
 
     func close(_ id: UUID?) {
         guard let id, let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+        // подзадачи закрытого агента остаются и встают в общую полосу
+        for child in tabs where child.spec.parent == id { child.spec.parent = nil }
+        let parent = tabs[index].spec.parent.flatMap { p in tabs.first { $0.id == p } }
         tabs[index].terminate()
         tabs.remove(at: index)
-        selected = tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)].id
+        // после закрытой подзадачи выбран ее агент
+        selected = parent?.id ?? (tabs.isEmpty ? nil : tabs[min(index, tabs.count - 1)].id)
     }
 
     /// Соседняя вкладка по кругу: 1 следующая, -1 предыдущая.
@@ -780,9 +812,11 @@ final class Workspace: ObservableObject {
         current?.rang = false
     }
 
+    /// ⌘1…9 считает вкладки общей полосы, подзадачи в счет не идут.
     func select(number: Int) {
-        guard number >= 1, number <= tabs.count else { return }
-        selected = tabs[number - 1].id
+        let roots = roots
+        guard number >= 1, number <= roots.count else { return }
+        selected = roots[number - 1].id
     }
 
     /// Сопоставить открытые сессии Claude Code с вкладками по дереву процессов и обновить статусы.
