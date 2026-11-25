@@ -18,6 +18,8 @@ import restart_job  # noqa: E402
 
 LOG = os.path.join(HOME, "Library", "Logs", "mnrh-claude-restart.log")
 SLIM_MIN = 5 << 20
+# с какого контекста /slim напоминает про /compact: сам /slim то, что видит модель, не трогает
+COMPACT_HINT = 200_000
 QUEUE = RESTART_QUEUE
 NOTICE_TTL = 300
 
@@ -230,7 +232,7 @@ def notice_text(n):
         if n.get("status") == "done":
             return (f"✓ agentmeister: сессия «{title}» сжата: {n.get('before')} → {n.get('after')}, скриншотов убрано "
                     f"{n.get('images', 0)}. То, что видит модель, не менялось. Вернуть: "
-                    f"agentmeister sessions slim {n.get('old_sid', '')[:8]} --undo")
+                    f"agentmeister sessions slim {n.get('old_sid', '')[:8]} --undo." + compact_hint(n.get("context")))
         if n.get("status") == "failed":
             return f"! agentmeister: сессию «{title}» сжать не удалось ({n.get('error')}). Она открыта без изменений."
         return f"… agentmeister: сессия «{title}» открыта, но сжатие не отчиталось — проверь: agentmeister sessions slim"
@@ -511,19 +513,31 @@ def slim_current(dry=False, delay=1.5):
     path = session_path(sid) if sid else None
     if not path:
         raise RestartError("не нашёл файл этой сессии")
+    tokens = claude_slim.context_tokens(path)
+    hint = compact_hint(tokens)
     _, _, st = claude_slim.plan(path)
     if not st:
-        return "Сжимать нечего: в сессии меньше двух /compact, а последние два отрезка не трогаются.", False
-    if st["before"] - st["after"] < SLIM_MIN:
-        return (f"Сжимать почти нечего: {fmt_mb(st['before'])} → {fmt_mb(st['after'])}. "
-                "Старые скриншоты и выводы уже маленькие."), False
-    what = (f"«{session_title(sid) or sid}»: {fmt_mb(st['before'])} → {fmt_mb(st['after'])}, "
+        return "Сжимать нечего: в сессии меньше двух /compact, а последние два отрезка не трогаются." + hint, False
+    before, after = st["before"] + st["side_before"], st["after"] + st["side_after"]
+    if before - after < SLIM_MIN:
+        return (f"Сжимать почти нечего: {fmt_mb(before)} → {fmt_mb(after)}. "
+                "Старые скриншоты и выводы уже маленькие." + hint), False
+    what = (f"«{session_title(sid) or sid}»: {fmt_mb(before)} → {fmt_mb(after)} вместе с папкой сессии, "
             f"скриншотов {st['images']}, длинных выводов {st['texts']}")
+    if st["side_files"] or st["side_agents"]:
+        what += f", старых файлов {st['side_files']}, переписок субагентов {st['side_agents']}"
     if dry:
-        return f"Сожму {what}.", False
+        return f"Сожму {what}." + hint, False
     restart(update=False, delay=delay, slim=True)
     return (f"Сжимаю {what}. Claude Code сейчас закроется, сессия сожмётся в этой вкладке и откроется снова; "
-            "то, что видит модель, не меняется."), True
+            "то, что видит модель, не меняется." + compact_hint(tokens, later=True)), True
+
+
+def compact_hint(tokens, later=False):
+    if not tokens or tokens < COMPACT_HINT:
+        return ""
+    return (f" В контексте {tokens // 1000} тыс. токенов, а /slim их не убирает. Чтобы сжать сам разговор, "
+            "набери /compact" + (", когда сессия откроется снова." if later else "."))
 
 
 def cli_slim(args):

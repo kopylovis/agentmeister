@@ -413,6 +413,11 @@ outputs longer than 8000 characters to their beginning and end. It leaves alone 
 the messages kept by `/compact`, the chain up to the last message, Claude's messages (they carry thinking
 signatures) and the file history for `/rewind`.
 
+The folder next to the session file (`<id>/`) is slimmed too. Saved outputs and screenshots in `tool-results`
+that nothing in the model's context mentions go to the backup, and transcripts of subagents the model no longer
+sees are slimmed the same way as the old part. `slim` doesn't shrink the context itself. When it holds more
+than 200 thousand tokens, `/slim` suggests `/compact`.
+
 Before writing, the slimmed file is checked against the original: line count, `uuid`, `parentUuid`, types and
 timestamps must match, and everything that goes into the model's context must match byte for byte. Otherwise
 nothing is written. The original is compressed into `~/.cache/mnrh/slim-backup/` and kept for 14 days.
