@@ -160,6 +160,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         env["FORCE_HYPERLINK"] = "1"
         // хук уведомлений узнает по нему вкладку: клик открывает ее, а если она впереди, уведомления нет
         env["AGENTMEISTER_TAB"] = tab.uuidString.lowercased()
+        // классический режим Claude Code: переписка в прокрутке терминала, ⌘F по ней ищет (Settings > Terminal)
+        if spec.agent == .claude && TerminalPrefs.classicRenderer { env["CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"] = "1" }
         if let job = LoginEnvironment.restartJob {
             // тот же признак, что ставит restart.zsh: claude_restart пишет задание для хука, а не ищет вкладку iTerm2
             env["MNRH_RESTART_HOOK"] = "2"
