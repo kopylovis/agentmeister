@@ -6,6 +6,9 @@
 // action, клавиатура до нее не доходит, а клик засчитывается, только если событие пришло от устройства
 // (у события, которое отправил процесс, в поле источника стоит его pid).
 //
+// Невидимые символы и символы смены направления (Trojan Source) в тексте окна показываются как \uXXXX,
+// иначе команда выглядела бы не так, как запустится.
+//
 // Аргументы: --title (заголовок окна), --heading, --context, --text, --code, --note, --allow, --deny,
 // --expiry (строка про тайм-аут, {left} заменяется на оставшееся время) и --timeout в секундах. Без новых
 // аргументов окно работает как раньше: заголовок берется из --title, код из --detail.
@@ -29,7 +32,22 @@ let options: [String: String] = {
     return out
 }()
 
-func option(_ name: String, _ fallback: String) -> String { options[name] ?? fallback }
+func option(_ name: String, _ fallback: String) -> String { visible(options[name] ?? fallback) }
+
+// Управляющие, форматные (U+202E, U+200B), разделители строк, частные и неназначенные символы видны кодом.
+func visible(_ text: String) -> String {
+    var out = ""
+    for scalar in text.unicodeScalars {
+        switch scalar.properties.generalCategory {
+        case .control where scalar != "\n" && scalar != "\t", .format, .lineSeparator, .paragraphSeparator,
+             .privateUse, .unassigned, .surrogate:
+            out += String(format: "\\u%04X", scalar.value)
+        default:
+            out.unicodeScalars.append(scalar)
+        }
+    }
+    return out
+}
 
 func finish(_ answer: String) -> Never {
     print(answer)
