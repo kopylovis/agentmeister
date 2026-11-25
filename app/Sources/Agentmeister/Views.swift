@@ -1004,6 +1004,8 @@ struct InfoBar: View {
     /// Ветка папки сейчас, из .git/HEAD. Читается вне главного потока раз в 5 секунд, пока строка видна,
     /// а не в body при каждой перерисовке.
     @State private var head: String?
+    /// Токены в контексте сессии Claude Code, из ее переписки. Читается раз в 10 секунд, как и ветка.
+    @State private var context: Int?
 
     private func revealFolder() {
         NSWorkspace.shared.open(URL(fileURLWithPath: tab.spec.projectPath, isDirectory: true))
@@ -1087,6 +1089,9 @@ struct InfoBar: View {
                 .help(l.t("Mac не уснет, пока идет эта сессия", "The Mac stays awake while this session runs"))
                 .accessibilityAddTraits(tab.spec.awake ? .isSelected : [])
             }
+            if tab.spec.agent == .claude, tab.spec.utility == nil, let n = context {
+                contextChip(n)
+            }
             if !tab.running {
                 Text(l.exited + (tab.exitCode.map { ", \($0)" } ?? ""))
                     .font(.system(size: 12))
@@ -1116,6 +1121,15 @@ struct InfoBar: View {
             }
         }
         .padding(.horizontal, 4)
+        .task(id: tab.sessionId) {
+            context = nil
+            guard let sid = tab.sessionId, tab.spec.agent == .claude, tab.spec.utility == nil else { return }
+            while !Task.isCancelled {
+                let now = await Task.detached(priority: .utility) { SessionContext.tokens(sid) }.value
+                if context != now { context = now }
+                try? await Task.sleep(for: .seconds(10))
+            }
+        }
         .task(id: tab.spec.projectPath) {
             let path = tab.spec.projectPath
             head = nil
@@ -1125,6 +1139,28 @@ struct InfoBar: View {
                 try? await Task.sleep(for: .seconds(5))
             }
         }
+    }
+}
+
+extension InfoBar {
+    /// "контекст 120 тыс." и полоска до порога /compact. За порогом чип желтый, клик вписывает /compact в строку ввода.
+    func contextChip(_ n: Int) -> some View {
+        let over = n >= SessionContext.compactHint
+        let k = max(1, Int((Double(n) / 1000).rounded()))
+        let fill = min(1, Double(n) / Double(SessionContext.compactHint))
+        return Chip(foreground: over ? Ink.amber : Ink.text2, action: over && tab.running ? { tab.type("/compact") } : nil) {
+            Text(l.t("контекст \(k) тыс.", "context \(k)k")).monospacedDigit()
+            Capsule().fill(Ink.hairline)
+                .frame(width: 28, height: 4)
+                .overlay(alignment: .leading) {
+                    Capsule().fill(over ? Ink.amberDot : Ink.text2.opacity(0.6)).frame(width: 28 * fill, height: 4)
+                }
+        }
+        .help(over
+              ? l.t("В контексте \(k) тыс. токенов. Клик вписывает /compact, он сожмет разговор. /slim убирает только скриншоты и длинные выводы.",
+                    "\(k)k tokens in context. Click to type /compact, it condenses the conversation. /slim only removes screenshots and long outputs.")
+              : l.t("Токенов в контексте сессии. С \(SessionContext.compactHint / 1000) тыс. стоит сжать разговор через /compact.",
+                    "Tokens in this session's context. From \(SessionContext.compactHint / 1000)k it's worth condensing with /compact."))
     }
 }
 
