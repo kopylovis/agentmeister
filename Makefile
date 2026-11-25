@@ -6,6 +6,7 @@ BIN := $(PREFIX)/bin
 install:
 	@mkdir -p "$(BIN)"
 	@if [ "$$(readlink "$(BIN)/agentmeister")" = "$(CURDIR)/bin/agentmeister" ] || \
+	    case "$$(readlink "$(BIN)/agentmeister")" in */Agentmeister.app/Contents/Resources/*) true ;; *) false ;; esac || \
 	    { [ ! -e "$(BIN)/agentmeister" ] && [ ! -L "$(BIN)/agentmeister" ]; }; then \
 		ln -sfn "$(CURDIR)/bin/agentmeister" "$(BIN)/agentmeister"; \
 	else echo "$(BIN)/agentmeister уже занят другой программой" >&2; exit 1; fi

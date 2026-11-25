@@ -386,7 +386,7 @@ struct ProjectsFolderPicker: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Text(count == 0 ? l.t("Проектов здесь нет", "No projects here")
-                                        : l.t("Проектов внутри: \(count)", "\(count) projects inside"))
+                                        : l.t("Проектов внутри: \(count)", count == 1 ? "1 project inside" : "\(count) projects inside"))
                             .font(.system(size: 12))
                             .foregroundStyle(count == 0 ? Ink.amber : Ink.muted)
                     }
@@ -415,12 +415,20 @@ struct ProjectsFolderPicker: View {
         }
     }
 
+    /// Команда agentmeister с выводом ошибки: отказ (папка вложена в другую, это сам проект) виден под списком.
     private func run(_ args: [String]) {
         busy = true
         error = nil
-        Task {
-            _ = await backend.perform(args)
-            busy = false
+        let quote = { (text: String) in "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+        let command = ([LoginEnvironment.agentmeister] + args).map(quote).joined(separator: " ")
+        Task.detached {
+            let (code, out) = TerminalTab.shell(command)
+            let message = out.split(separator: "\n").last.map(String.init) ?? ""
+            await MainActor.run {
+                busy = false
+                if code != 0 { error = message.isEmpty ? l.t("Команда не сработала", "The command failed") : message }
+                backend.refresh()
+            }
         }
     }
 
@@ -447,7 +455,10 @@ struct ProjectsFolderPicker: View {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
             url = parent
         }
-        if folders.contains(url.path) { return }
+        if folders.contains(url.path) {
+            error = l.t("\(tilde(url.path)) уже в списке", "\(tilde(url.path)) is already listed")
+            return
+        }
         // первая настройка: ~/Developer по умолчанию заменяется выбранной папкой, если в нем нет проектов
         let replaceDefault = folders == [NSHomeDirectory() + "/Developer"] && backend.state.projects.isEmpty
         run(["projects-dir"] + (replaceDefault ? [] : ["add"]) + [url.path])
