@@ -95,7 +95,7 @@ enum GitChanges {
 struct ChangesCard: View {
     let snapshot: GitChanges.Snapshot
     let l: L
-    @State private var open: GitChange?
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -111,7 +111,10 @@ struct ChangesCard: View {
                 Text(l.t("Рабочая копия чистая", "The working tree is clean")).foregroundStyle(Ink.muted)
             }
             ForEach(snapshot.files.prefix(12)) { file in
-                Button { open = file } label: { row(file) }
+                Button {
+                    ChangesFocus.shared.show(file.path, in: snapshot.root)
+                    openWindow(id: "changes", value: snapshot.root)
+                } label: { row(file) }
                     .buttonStyle(.hover(6))
                     .help(file.path)
             }
@@ -123,7 +126,6 @@ struct ChangesCard: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
-        .sheet(item: $open) { file in DiffSheet(file: file, root: snapshot.root, l: l) }
     }
 
     private func row(_ file: GitChange) -> some View {
@@ -146,81 +148,5 @@ struct ChangesCard: View {
         .monospacedDigit()
         .padding(.vertical, 2)
         .contentShape(Rectangle())
-    }
-}
-
-/// Дифф файла в листе: строки с + и - на цветной подложке, заголовки ханков приглушены.
-struct DiffSheet: View {
-    let file: GitChange
-    let root: String
-    let l: L
-    @Environment(\.dismiss) private var dismiss
-    @State private var lines: [Substring]?
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text(file.letter).font(.system(size: 11, weight: .bold, design: .monospaced)).foregroundStyle(file.color)
-                Text(file.path).font(.system(size: 13, weight: .semibold, design: .monospaced)).lineLimit(1).truncationMode(.head)
-                    .textSelection(.enabled)
-                Spacer()
-                if file.letter != "D" {
-                    Button(l.t("Открыть файл", "Open file")) {
-                        NSWorkspace.shared.open(URL(fileURLWithPath: (root as NSString).appendingPathComponent(file.path)))
-                    }
-                    .buttonStyle(PillStyle())
-                }
-                Button(l.t("Готово", "Done")) { dismiss() }
-                    .buttonStyle(PillStyle())
-                    .keyboardShortcut(.cancelAction)
-            }
-            .padding(14)
-            Divider()
-            if let lines {
-                if lines.isEmpty {
-                    ContentUnavailableView(l.t("Без отличий в тексте", "No text changes"), systemImage: "doc")
-                } else {
-                    ScrollView([.vertical, .horizontal]) {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(lines.prefix(5000).enumerated()), id: \.offset) { _, line in
-                                Text(line.isEmpty ? " " : String(line))
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .foregroundStyle(color(line))
-                                    .fixedSize()
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 14)
-                                    .background(background(line))
-                            }
-                        }
-                        .padding(.vertical, 8)
-                        .textSelection(.enabled)
-                    }
-                }
-            } else {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .frame(minWidth: 720, idealWidth: 860, minHeight: 480, idealHeight: 620)
-        .task {
-            let file = file, root = root
-            let text = await Task.detached(priority: .userInitiated) { GitChanges.diff(file, root: root) }.value
-            // шапку диффа (diff --git, index, ---/+++) не показываем, имя файла уже в заголовке
-            let all = text.split(separator: "\n", omittingEmptySubsequences: false)
-            let start = all.firstIndex { $0.hasPrefix("@@") } ?? all.endIndex
-            lines = Array(all[start...]).filter { !($0.isEmpty && $0 == all.last) }
-        }
-    }
-
-    private func color(_ line: Substring) -> Color {
-        if line.hasPrefix("@@") { return Ink.faint }
-        if line.hasPrefix("+") { return Ink.teal }
-        if line.hasPrefix("-") { return Ink.red }
-        return Ink.text2
-    }
-
-    private func background(_ line: Substring) -> Color {
-        if line.hasPrefix("+") && !line.hasPrefix("+++") { return Ink.teal.opacity(0.1) }
-        if line.hasPrefix("-") && !line.hasPrefix("---") { return Ink.red.opacity(0.1) }
-        return .clear
     }
 }

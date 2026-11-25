@@ -95,6 +95,13 @@ struct AgentmeisterApp: App {
                 .environmentObject(ui)
         }
         .defaultSize(width: 980, height: 760)
+        // изменения рабочей копии: одно окно на репозиторий, клик по другому файлу того же репозитория
+        // прокручивает уже открытое окно
+        WindowGroup(L(backend.state.lang).t("Изменения", "Changes"), id: "changes", for: String.self) { $root in
+            ChangesWindow(root: root ?? "")
+                .environmentObject(backend)
+        }
+        .defaultSize(width: 1060, height: 680)
         // привязка только для чтения: MenuBarExtra сам пишет в isInserted при каждом обновлении сцены, запись
         // в @AppStorage снова перестраивает сцену, и главный поток крутился в этом цикле без конца. Значок
         // включает и выключает только переключатель в Настройках.
