@@ -24,7 +24,28 @@ final class UIState: ObservableObject {
     /// Лист новой сессии открыть сразу на "параллельно, своя ветка и worktree".
     @Published var newSessionParallel = false
     /// Путь проекта, чей экран открыт вместо терминала. Nil, когда видны вкладки.
-    @Published var projectScreen: String?
+    /// Экран проекта и превью сессии взаимоисключающие, а projectScreen = nil везде значит "вернуться к вкладкам",
+    /// поэтому это убирает и превью.
+    @Published var projectScreen: String? {
+        didSet {
+            guard !switching, sessionPreview != nil else { return }
+            switching = true
+            sessionPreview = nil
+            switching = false
+        }
+    }
+    /// Сессия, чье превью открыто вместо терминала: клик по закрытой сессии в боковом меню.
+    @Published var sessionPreview: String? {
+        didSet {
+            guard !switching, sessionPreview != nil, projectScreen != nil else { return }
+            switching = true
+            projectScreen = nil
+            switching = false
+        }
+    }
+    private var switching = false
+    /// Вместо вкладок открыт экран проекта или превью сессии.
+    var screenOpen: Bool { projectScreen != nil || sessionPreview != nil }
     /// Главное окно сейчас впереди. Команды вкладок (⌘W, ⌘R) работают только тогда.
     @Published var mainKey = true
     /// Вкладка, сессию которой просят забыть. Пока не nil, окно спрашивает подтверждение.
@@ -665,10 +686,16 @@ struct SessionRow: View {
         let live = backend.state.live.first { $0.sessionId == session.id }
         let status = tab?.status ?? live?.status
         // пока открыт экран проекта, выделен он, а не вкладка
-        let current = tab != nil && tab?.id == workspace.selected && ui.projectScreen == nil
+        let current = ui.sessionPreview == session.id
+            || (tab != nil && tab?.id == workspace.selected && !ui.screenOpen)
         Button {
-            ui.projectScreen = nil
-            workspace.open(LaunchSpec.resume(session, project: project))
+            // открытая во вкладке сессия сразу переключает на вкладку, закрытая сначала показывает превью
+            if tab != nil {
+                ui.projectScreen = nil
+                workspace.open(LaunchSpec.resume(session, project: project))
+            } else {
+                ui.sessionPreview = ui.sessionPreview == session.id ? nil : session.id
+            }
         } label: {
             HStack(spacing: 8) {
                 SessionDot(status: status, open: status != nil || tab != nil, size: 7)
@@ -694,9 +721,17 @@ struct SessionRow: View {
         .onHover { hover = $0 }
         .listRowBackground(current ? RoundedRectangle(cornerRadius: 10).fill(Ink.thumb).padding(.horizontal, 10)
                            : hover ? RoundedRectangle(cornerRadius: 10).fill(Ink.hover).padding(.horizontal, 10) : nil)
+        .contextMenu {
+            Button(l.resume) {
+                ui.projectScreen = nil
+                workspace.open(LaunchSpec.resume(session, project: project))
+            }
+            Button(l.t("Показать переписку", "Show the conversation")) { ui.sessionPreview = session.id }
+        }
         .help(live != nil && tab == nil
               ? l.t("Открыта в другом окне", "Open in another window")
-              : l.t("Продолжить в новой вкладке", "Resume in a new tab"))
+              : tab != nil ? l.t("Перейти к вкладке", "Go to the tab")
+              : l.t("Показать переписку, продолжить оттуда", "Show the conversation and resume from there"))
     }
 }
 
@@ -713,6 +748,8 @@ struct DetailView: View {
     var body: some View {
         if let path = ui.projectScreen {
             ProjectView(path: path)
+        } else if let id = ui.sessionPreview {
+            SessionPreviewScreen(id: id)
         } else if workspace.tabs.isEmpty {
             ContentUnavailableView(l.noTabs, systemImage: "terminal", description: Text(l.noTabsHint(ShortcutStore.shared.label(.newSession))))
         } else {
@@ -733,6 +770,24 @@ struct DetailView: View {
                     }
             }
         }
+    }
+}
+
+/// Превью закрытой сессии вместо терминала. Продолжить открывает ее во вкладке, Esc и ⌘W возвращают к вкладкам.
+struct SessionPreviewScreen: View {
+    @EnvironmentObject var ui: UIState
+    let id: String
+
+    var body: some View {
+        SessionDetail(id: id, onOpened: { ui.sessionPreview = nil }, onDeleted: { ui.sessionPreview = nil })
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.regularMaterial))
+            .clipShape(.windowCard)
+            .background {
+                Button("") { ui.sessionPreview = nil }
+                    .keyboardShortcut(.cancelAction)
+                    .hidden()
+                    .accessibilityHidden(true)
+            }
     }
 }
 
