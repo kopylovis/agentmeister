@@ -766,6 +766,9 @@ struct DetailView: View {
             VStack(spacing: 10) {
                 TabStrip()
                 if let tab = workspace.current {
+                    let root = workspace.root(of: tab)
+                    let subtasks = workspace.subtasks(of: root)
+                    if !subtasks.isEmpty { SubtaskRow(root: root, subtasks: subtasks) }
                     InfoBar(tab: tab)
                     TabAlert(tab: tab)
                         .id(tab.id)
@@ -813,8 +816,10 @@ struct TabStrip: View {
         HStack(spacing: 2) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
-                    ForEach(workspace.tabs) { tab in
-                        TabChip(tab: tab, selected: tab.id == workspace.selected)
+                    // подзадачи живут в своем ряду под агентом, здесь только агенты
+                    let current = workspace.current.map { workspace.root(of: $0).id }
+                    ForEach(workspace.roots) { tab in
+                        TabChip(tab: tab, selected: tab.id == current, subtasks: workspace.subtasks(of: tab).count)
                     }
                 }
             }
@@ -842,6 +847,8 @@ struct TabChip: View {
     @EnvironmentObject var ui: UIState
     @ObservedObject var tab: TerminalTab
     let selected: Bool
+    /// Сколько у агента подзадач. Число стоит после имени, сами подзадачи в ряду под полосой.
+    var subtasks = 0
     @State private var hover = false
 
     var l: L { L(backend.state.lang) }
@@ -857,6 +864,16 @@ struct TabChip: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if subtasks > 0 {
+                    Text("\(subtasks)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Ink.text2)
+                        .padding(.horizontal, 5)
+                        .frame(minWidth: 16, minHeight: 16)
+                        .background(Capsule().fill(Ink.chip))
+                        .help(l.t("Подзадач у агента: \(subtasks)", "Agent's subtasks: \(subtasks)"))
+                }
                 if tab.spec.proxied || tab.spec.utility == nil {
                     Text(tab.spec.proxied ? l.proxy : l.direct)
                         .font(.system(size: 11))
@@ -893,6 +910,107 @@ struct TabChip: View {
         .onHover { hover = $0 }
         // полное имя сессии, если в вкладку оно не влезло, и под ним проект
         .help(tab.title + "\n" + tab.spec.projectName)
+        .contextMenu { TabMenu(tab: tab) }
+    }
+}
+
+/// Ряд подзадач под полосой вкладок: параллельные задачи выбранного агента в своих worktree.
+/// Виден, пока выбран агент с подзадачами или одна из них.
+struct SubtaskRow: View {
+    @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var ui: UIState
+    let root: TerminalTab
+    let subtasks: [TerminalTab]
+
+    var l: L { L(backend.state.lang) }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.turn.down.right").font(.system(size: 10, weight: .medium))
+                Text(l.t("подзадачи агента", "agent's subtasks"))
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(Ink.faint)
+            .padding(.leading, 18)
+            .padding(.trailing, 6)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 4) {
+                    ForEach(subtasks) { tab in
+                        SubtaskChip(tab: tab, selected: tab.id == workspace.selected)
+                    }
+                    Button {
+                        workspace.selected = root.id
+                        ui.newSessionProject = backend.state.project(containing: root.spec.projectPath)?.path ?? root.spec.projectPath
+                        ui.newSessionParallel = true
+                        ui.showNewSession = true
+                    } label: {
+                        Label(l.t("задача", "task"), systemImage: "plus")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Ink.muted)
+                            .padding(.horizontal, 10)
+                            .frame(height: 26)
+                    }
+                    .buttonStyle(.hoverCapsule())
+                    .help(l.t("Новая параллельная задача этого агента", "A new parallel task for this agent"))
+                }
+            }
+        }
+    }
+}
+
+/// Подзадача в ряду: состояние, имя и ветка worktree.
+struct SubtaskChip: View {
+    @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var backend: Backend
+    @ObservedObject var tab: TerminalTab
+    let selected: Bool
+    @State private var hover = false
+
+    var l: L { L(backend.state.lang) }
+
+    /// Ветка из имени вкладки параллельной задачи: "agentmeister · par/drop-files".
+    private var branch: String? {
+        let parts = tab.spec.projectName.components(separatedBy: " · ")
+        return parts.count > 1 ? parts.last : nil
+    }
+
+    var body: some View {
+        Button {
+            workspace.selected = tab.id
+            tab.rang = false
+        } label: {
+            HStack(spacing: 6) {
+                Group {
+                    if !tab.running {
+                        Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(Ink.teal)
+                    } else {
+                        SessionDot(status: tab.status, size: 7)
+                    }
+                }
+                .frame(width: 10)
+                Text(tab.title).lineLimit(1).foregroundStyle(selected ? Ink.strong : Ink.text2)
+                if let branch {
+                    Text(branch).font(.system(size: 11, design: .monospaced)).foregroundStyle(Ink.faint).lineLimit(1)
+                }
+                if hover {
+                    Button { workspace.close(tab.id) } label: {
+                        Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).frame(width: 14, height: 14)
+                    }
+                    .buttonStyle(.hoverCircle(.overlay))
+                    .accessibilityLabel(l.closeTab)
+                }
+            }
+            .font(.system(size: 12))
+            .padding(.horizontal, 10)
+            .frame(maxWidth: 280, minHeight: 26, maxHeight: 26)
+            .background(Capsule().fill(selected ? Ink.thumb : hover ? Ink.hover : .clear))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help(tab.title + (branch.map { "\n" + $0 } ?? ""))
         .contextMenu { TabMenu(tab: tab) }
     }
 }
@@ -1037,6 +1155,13 @@ struct InfoBar: View {
         let branch = head ?? backend.state.sessions.first { $0.id == tab.sessionId }?.branch ?? ""
         let port = backend.state.proxy?.port ?? 17890
         HStack(spacing: 8) {
+            if let parent = tab.spec.parent, workspace.tabs.contains(where: { $0.id == parent }) {
+                Chip(action: { workspace.selected = parent }) {
+                    Image(systemName: "arrow.up").font(.system(size: 10, weight: .semibold))
+                    Text(l.t("к агенту", "to the agent"))
+                }
+                .help(l.t("Вернуться к вкладке агента", "Back to the agent's tab"))
+            }
             Chip(mono: true, action: { revealFolder() }) {
                 Text(tilde(tab.spec.projectPath)).lineLimit(1).truncationMode(.head)
             }
@@ -1792,6 +1917,11 @@ struct NewSessionSheet: View {
                 parallel.projectPath = path
                 parallel.firstPrompt = job.prompt ?? prompt
                 parallel.extraFlags = job.flags ?? []
+                // задача из вкладки этого же проекта встает подзадачей ее агента
+                if let current = workspace.current, current.spec.utility == nil,
+                   backend.state.project(containing: current.spec.projectPath)?.path == project.path {
+                    parallel.parent = workspace.root(of: current).id
+                }
                 workspace.open(parallel)
                 dismiss()
             }
