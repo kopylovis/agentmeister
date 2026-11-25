@@ -37,6 +37,20 @@ class UpdateCommand(unittest.TestCase):
             self.assertEqual(agent_update.update_argv("codex", npm), [npm, "update"])
             self.assertEqual(agent_update.installed_via("codex", npm), "other")
 
+    def test_shim_in_front_is_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shim_dir = Path(tmp) / "local"
+            shim_dir.mkdir()
+            shim = shim_dir / "codex"
+            shim.write_text("#!/usr/bin/env python3\n")
+            shim.chmod(0o755)
+            real = self.link(tmp, "Caskroom/codex/0.1.0/codex")
+            path = os.pathsep.join([str(shim_dir), str(Path(real).parent)])
+            with patch.dict(os.environ, {"PATH": path}):
+                self.assertEqual(agent_update.binary_path("codex"), real)
+            with patch.dict(os.environ, {"PATH": str(shim_dir)}):
+                self.assertEqual(agent_update.binary_path("codex"), str(shim))  # другого нет, берем обертку
+
     def test_missing_agent(self):
         with patch.object(agent_update, "binary_path", return_value=None):
             self.assertIsNone(agent_update.update_argv("codex"))
