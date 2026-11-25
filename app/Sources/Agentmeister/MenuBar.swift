@@ -22,14 +22,72 @@ enum MenuBarStatus {
         return .idle
     }
 
-    /// Шаблонный SF Symbol: пузырь в простое, пузырь с многоточием, пока агент пишет, залитый с восклицательным
-    /// знаком, когда агент ждет ответа.
-    var symbol: String {
+    /// Значок для строки меню, готовый для каждого статуса.
+    var image: NSImage {
         switch self {
-        case .idle: return "bubble.left"
-        case .busy: return "ellipsis.bubble"
-        case .waiting: return "exclamationmark.bubble.fill"
+        case .idle: return MenuBarGlyph.idle
+        case .busy: return MenuBarGlyph.busy
+        case .waiting: return MenuBarGlyph.waiting
         }
+    }
+}
+
+/// Глиф иконки приложения (буква "a" со стрелкой терминала) шаблоном для строки меню. Контур снят с
+/// share/agentmeister/icon.png (1024 px, глиф в рамке 225...795 по x и 243...758 по y). В свободном срезанном
+/// углу справа сверху точка статуса, кольцо, пока агент пишет, и залитая, когда агент ждет ответа.
+enum MenuBarGlyph {
+    static let idle = make(.idle)
+    static let busy = make(.busy)
+    static let waiting = make(.waiting)
+
+    private static let outline: [CGPoint] = [
+        (360, 243), (638, 243), (752, 378), (752, 683), (795, 683), (795, 757), (585, 757), (585, 712), (532, 758),
+        (225, 758), (225, 547), (330, 445), (575, 445), (575, 390), (236, 390),
+    ].map { CGPoint(x: $0.0, y: $0.1) }
+    private static let chevron: [CGPoint] = [
+        (371, 500), (434, 500), (518, 585), (434, 673), (371, 673), (450, 585),
+    ].map { CGPoint(x: $0.0, y: $0.1) }
+
+    private static func make(_ status: MenuBarStatus) -> NSImage {
+        // поля по бокам шире, чем у стандартных значков: глиф 15 pt в ширину внутри 24 pt
+        let size = NSSize(width: 24, height: 18)
+        let scale: CGFloat = 14 / 515
+        let origin = CGPoint(x: (size.width - 570 * scale) / 2, y: (size.height - 515 * scale) / 2)
+        func point(_ p: CGPoint) -> CGPoint {
+            CGPoint(x: origin.x + (p.x - 225) * scale, y: origin.y + (p.y - 243) * scale)
+        }
+        let image = NSImage(size: size, flipped: true) { _ in
+            let path = NSBezierPath()
+            path.windingRule = .evenOdd
+            for shape in [outline, chevron] {
+                path.move(to: point(shape[0]))
+                shape.dropFirst().forEach { path.line(to: point($0)) }
+                path.close()
+            }
+            NSColor.black.setFill()
+            path.fill()
+            if status != .idle, let context = NSGraphicsContext.current {
+                // правый верхний угол рамки, над срезом глифа: зазор вокруг точки глиф почти не задевает
+                let center = CGPoint(x: size.width - 2.8, y: 2.9)
+                let radius: CGFloat = 2.5, gap: CGFloat = 1
+                context.compositingOperation = .clear
+                NSBezierPath(ovalIn: NSRect(x: center.x - radius - gap, y: center.y - radius - gap,
+                                            width: (radius + gap) * 2, height: (radius + gap) * 2)).fill()
+                context.compositingOperation = .sourceOver
+                let dot = NSRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+                if status == .waiting {
+                    NSBezierPath(ovalIn: dot).fill()
+                } else {
+                    let ring = NSBezierPath(ovalIn: dot.insetBy(dx: 0.6, dy: 0.6))
+                    ring.lineWidth = 1.2
+                    NSColor.black.setStroke()
+                    ring.stroke()
+                }
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 }
 
@@ -41,7 +99,7 @@ struct MenuBarLabel: View {
     var body: some View {
         let status = MenuBarStatus.of(workspace, backend.state)
         let l = L(backend.state.lang)
-        Image(systemName: status.symbol)
+        Image(nsImage: status.image)
             .accessibilityLabel("Agentmeister, " + (status == .waiting ? l.waiting : status == .busy ? l.working : l.idle))
     }
 }
@@ -196,28 +254,39 @@ struct MenuBarPanel: View {
 
     // MARK: Кнопки
 
+    /// Главное действие кнопкой на всю ширину, под линией тихая строка: окно и настройки слева, выход справа.
     private var actions: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                PillButton(title: l.newSession, prominent: true, small: true) {
-                    showMain()
-                    ui.newSessionProject = workspace.current?.spec.projectPath
-                    ui.showNewSession = true
+            Button {
+                showMain()
+                ui.newSessionProject = workspace.current?.spec.projectPath
+                ui.showNewSession = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
+                    Text(l.newSession).font(.system(size: 12, weight: .medium))
                 }
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                PillButton(title: l.t("Показать окно", "Show Agentmeister"), small: true) { showMain() }
-                    .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .background(Capsule().fill(Color.accentColor).shadow(color: .black.opacity(0.25), radius: 4, y: 2))
+                .contentShape(Capsule())
             }
-            HStack(spacing: 8) {
-                PillButton(title: l.t("Настройки", "Settings"), small: true) { openSettingsPane(nil) }
-                    .frame(maxWidth: .infinity)
-                PillButton(title: l.t("Выйти", "Quit"), small: true) {
+            .buttonStyle(.plain)
+            .padding(.top, 2)
+
+            Rectangle().fill(Ink.hairline).frame(height: 1).padding(.horizontal, 4)
+
+            HStack(spacing: 2) {
+                MenuBarFooterButton(icon: "macwindow", title: l.t("Окно", "Open window")) { showMain() }
+                MenuBarFooterButton(icon: "gearshape", title: l.t("Настройки", "Settings")) { openSettingsPane(nil) }
+                Spacer(minLength: 4)
+                MenuBarFooterButton(icon: "power", title: l.t("Выйти", "Quit")) {
                     dismiss()
                     // вопрос "закрыть идущие сессии?" должен встать впереди, а не за другим приложением
                     NSApp.activate()
                     NSApp.terminate(nil)
                 }
-                .frame(maxWidth: .infinity)
             }
         }
     }
@@ -328,5 +397,29 @@ private struct MenuBarLine: View {
         .buttonStyle(.plain)
         .onHover { hover = $0 }
         .help(help)
+    }
+}
+
+/// Тихая кнопка нижней строки панели: значок и подпись, подсветка под курсором.
+private struct MenuBarFooterButton: View {
+    let icon: String
+    let title: String
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 11, weight: .medium))
+                Text(title).font(.system(size: 12))
+            }
+            .foregroundStyle(hover ? Ink.text : Ink.muted)
+            .padding(.horizontal, 8)
+            .frame(height: 26)
+            .background(RoundedRectangle(cornerRadius: 8).fill(hover ? Ink.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
     }
 }
