@@ -459,6 +459,18 @@ class English(unittest.TestCase):
             self.assertNotRegex(host_run.usage() + host_run.add_usage(), "[а-яА-Я]")
 
 
+class EntryText(unittest.TestCase):
+    def test_non_latin_characters_are_named(self):
+        found = host_run.foreign_chars({"x": {"cwd": "~/Developer/t\u043essling", "run": ["echo", "a\u00a0b"]}})
+        self.assertEqual(found, ["\u043e U+043E CYRILLIC SMALL LETTER O", "  U+00A0 NO-BREAK SPACE"])
+
+    def test_lone_surrogate_is_refused_before_the_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            request = {"op": "add", "command": {"name": "x", "cwd": tmp, "run": ["echo", "\ud800"]}}
+            with self.assertRaises(host_run.RuleError):
+                host_run.plan_change(request, os.path.join(tmp, "commands.json"))
+
+
 class PinnedConfirm(unittest.TestCase):
     def test_window_is_built_from_the_source_read_at_start(self):
         import hashlib
