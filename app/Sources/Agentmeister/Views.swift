@@ -339,8 +339,8 @@ struct Sidebar: View {
                 Color.clear
             }
         }
+        // без .clipped(): обрезка по краю шапки убирала строки из-под нее, и размывать там было нечего
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
         // флаг хранится в UserDefaults, и withAnimation у заголовка до него не доходит: анимация по значению
         .animation(.snappy(duration: 0.28), value: projectsOpen)
         .safeAreaBar(edge: .top, spacing: 0) {
