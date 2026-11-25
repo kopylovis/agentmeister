@@ -314,6 +314,13 @@ def plan_change(request, path):
         raise RuleError(tr(f"имя {name!r} не подходит: латиница, цифры, точка, дефис и _, до 64 знаков, не {reserved}",
                            f"bad name {name!r}: Latin letters, digits, dot, hyphen and _, up to 64 characters, "
                            f"not {reserved}"))
+    # одиночные суррогаты не кодируются в UTF-8: окно показало бы U+FFFD, а запись упала бы уже после "Разрешить"
+    for text in [name] + [v for v in (entry.get("cwd"), *(entry.get("run") or [])) if isinstance(v, str)]:
+        try:
+            text.encode("utf-8")
+        except UnicodeEncodeError:
+            raise RuleError(tr("в записи есть символ, который нельзя записать в UTF-8",
+                               "the entry has a character that can't be written as UTF-8"))
     raw, data = read_list(path)
     commands = data["commands"]
     old = commands.get(name)
@@ -362,6 +369,19 @@ def entry_code(name, rule):
     return json.dumps(name, ensure_ascii=False) + ": {\n" + ",\n".join(lines) + "\n}"
 
 
+def foreign_chars(entry):
+    """Символы вне ASCII в записи: кириллическая "о" в пути выглядит как латинская, U+00A0 как пробел.
+    -> список "о U+043E CYRILLIC SMALL LETTER O" без повторов, не больше шести."""
+    import unicodedata
+    seen = []
+    for ch in json.dumps(entry, ensure_ascii=False):
+        if ord(ch) > 0x7E and ch not in seen:
+            seen.append(ch)
+    out = [f"{ch if unicodedata.category(ch)[0] in 'LNPS' else ' '} U+{ord(ch):04X} {unicodedata.name(ch, '?')}"
+           for ch in seen[:6]]
+    return out + (["…"] if len(seen) > 6 else [])
+
+
 def dialog(change):
     """Строки окна подтверждения на языке agentmeister."""
     name = change.name
@@ -390,6 +410,13 @@ def dialog(change):
         code = entry_code(name, change.new)
     if change.op != "remove" and change.new.get("args") is True:
         text += tr(" Сессия сможет дописывать к ней свои аргументы.", " Sessions can append their own arguments to it.")
+    foreign = foreign_chars({name: change.old if change.op == "remove" else change.new})
+    if foreign:
+        # русские имена папок законны, но так же выглядит и подмена латинской буквы похожей
+        text += tr(" Внимание, в записи есть символы не из латиницы, они бывают похожи на латинские. Проверь путь "
+                   "и команду: " + "; ".join(foreign) + ".",
+                   " Heads up, the entry has non-Latin characters, which can look like Latin ones. Check the path "
+                   "and the command: " + "; ".join(foreign) + ".")
     return {
         "title": f"agentmeister host-run: {title}",
         "heading": heading,
@@ -451,6 +478,7 @@ def apply_change(change, path):
 
 
 PINNED_CONFIRM = None  # исходник окна, прочитанный при старте исполнителя
+SERVING = False  # это процесс исполнителя: без запомненного исходника окно не собирается
 
 
 def pin_confirm():
@@ -468,6 +496,10 @@ def confirm_helper():
     """Собранное окно подтверждения. Исходник, запомненный при старте, копируется в папку состояния и собирается
     там же. Правка файла на диске до перезапуска исполнителя на окно не влияет."""
     source = PINNED_CONFIRM
+    if source is None and SERVING:
+        # исходника не было при старте: с диска его не берем, сессия могла его подложить
+        raise RuleError(tr("исходник окна подтверждения не прочитался при старте исполнителя, перезапусти его",
+                           "the confirm window source wasn't read when the runner started, restart it"))
     if source is None:
         try:
             with open(CONFIRM_SRC, "rb") as f:
@@ -818,6 +850,8 @@ def serve():
     pid.flush()
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    global SERVING
+    SERVING = True
     pin_confirm()
     log(f"serve {version()} pid {os.getpid()}")
     listener = listen(SOCK)

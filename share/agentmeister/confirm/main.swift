@@ -8,7 +8,9 @@
 //
 // Настоящий клик можно подставить под кнопку, если сдвинуть окно или перенести курсор
 // (CGWarpMouseCursorPosition событий не шлет). Поэтому после перемещения окна или курсора без мыши кнопка
-// на секунду гаснет, а клик засчитывается, только если курсор пришел на это место движением мыши.
+// на секунду гаснет, а клик засчитывается, только если курсор пришел на это место движением мыши. Расхождения
+// с delta мыши копятся за секунду, так что перенос мелкими шажками тоже заметен. Пока кнопка зажата, курсор
+// обязан двигаться только от мыши, иначе нажатие отменяется.
 //
 // Невидимые символы и символы смены направления (Trojan Source) в тексте окна показываются как \uXXXX,
 // иначе команда выглядела бы не так, как запустится.
@@ -38,13 +40,14 @@ let options: [String: String] = {
 
 func option(_ name: String, _ fallback: String) -> String { visible(options[name] ?? fallback) }
 
-// Управляющие, форматные (U+202E, U+200B), разделители строк, частные и неназначенные символы видны кодом.
+// Управляющие, форматные (U+202E, U+200B), пробелы кроме обычного (U+00A0), разделители строк, частные и
+// неназначенные символы видны кодом.
 func visible(_ text: String) -> String {
     var out = ""
     for scalar in text.unicodeScalars {
         switch scalar.properties.generalCategory {
-        case .control where scalar != "\n" && scalar != "\t", .format, .lineSeparator, .paragraphSeparator,
-             .privateUse, .unassigned, .surrogate:
+        case .control where scalar != "\n" && scalar != "\t", .spaceSeparator where scalar != " ", .format,
+             .lineSeparator, .paragraphSeparator, .privateUse, .unassigned, .surrogate:
             out += String(format: "\\u%04X", scalar.value)
         default:
             out.unicodeScalars.append(scalar)
@@ -68,6 +71,8 @@ final class HumanButton: NSButton {
     var onPress: () -> Void = {}
     var cameByMouse: (CGPoint) -> Bool = { _ in false }
     var onSuspicious: (String) -> Void = { _ in }
+    /// Проверка движения во время нажатия: false, если событие не от мыши или курсор ушел без нее.
+    var verify: (NSEvent) -> Bool = { _ in false }
 
     override var acceptsFirstResponder: Bool { false }
     override func performKeyEquivalent(with event: NSEvent) -> Bool { false }
@@ -86,10 +91,25 @@ final class HumanButton: NSButton {
             onSuspicious("click without mouse movement")
             return
         }
-        super.mouseDown(with: event)  // подсветка до отпускания кнопки мыши
+        // Свое слежение до отпускания вместо super.mouseDown: каждое событие должно прийти от устройства, а курсор
+        // двигаться ровно на его delta. Курсор, переставленный, пока кнопка зажата, или синтетическое событие
+        // отменяют нажатие. Отпускание считается по самому событию, а не по текущему положению курсора.
         guard let window = window else { return }
-        let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
-        if bounds.contains(point) { onPress() }
+        var inside = true
+        var cancelled = false
+        highlight(true)
+        while let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]) {
+            if !verify(next) {
+                note("cancelled a click: the cursor moved without the mouse while the button was held")
+                cancelled = true
+                onSuspicious("the cursor moved during a click")
+            }
+            inside = bounds.contains(convert(next.locationInWindow, from: nil))
+            highlight(inside && !cancelled)
+            if next.type == .leftMouseUp { break }
+        }
+        highlight(false)
+        if inside && !cancelled && armed { onPress() }
     }
 }
 
@@ -99,6 +119,10 @@ final class Arming {
     let button: HumanButton
     weak var window: NSWindow?
     private var last: CGPoint?
+    /// Время последнего учтенного события: монитор получает одно движение дважды, второй раз его не считаем.
+    private var lastTime: TimeInterval = -1
+    /// Превышения допуска за последнюю секунду: перенос курсора мелкими шажками тоже складывается.
+    private var drift: [(at: Date, amount: CGFloat)] = []
     private var generation = 0
     private var monitors: [Any] = []
 
@@ -109,6 +133,7 @@ final class Arming {
             return hypot(at.x - last.x, at.y - last.y) <= 4
         }
         button.onSuspicious = { [unowned self] why in self.disarm(why) }
+        button.verify = { [unowned self] event in self.track(event) }
         NSEvent.isMouseCoalescingEnabled = false
         let kinds: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
         if let global = NSEvent.addGlobalMonitorForEvents(matching: kinds, handler: { [unowned self] in self.moved($0) }) {
@@ -138,12 +163,40 @@ final class Arming {
 
     private func moved(_ event: NSEvent) {
         guard let cg = event.cgEvent, cg.getIntegerValueField(.eventSourceUnixProcessID) == 0 else { return }
+        if !track(event) { disarm("the cursor moved without the mouse") }
+    }
+
+    /// Учесть движение от устройства. false, если событие синтетическое или курсор ушел дальше, чем объясняет
+    /// delta мыши. delta не учитывает ускорение курсора: по замерам курсор проходит 0,6–1,25 от нее с отклонением
+    /// до 20°, поэтому допуск растет с шагом (1,5 pt + 0,4 шага), а превышения копятся за секунду до 6 pt.
+    func track(_ event: NSEvent) -> Bool {
+        guard let cg = event.cgEvent, cg.getIntegerValueField(.eventSourceUnixProcessID) == 0 else { return false }
+        if event.timestamp == lastTime { return true }
+        lastTime = event.timestamp
         let now = cg.location
-        if let last = last {
-            let expected = CGPoint(x: last.x + event.deltaX, y: last.y + event.deltaY)
-            if hypot(now.x - expected.x, now.y - expected.y) > 4, nearWindow(now) { disarm("the cursor jumped") }
+        guard let previous = last else {
+            last = now
+            return true
         }
         last = now
+        let miss = hypot(now.x - previous.x - event.deltaX, now.y - previous.y - event.deltaY)
+        let allowance = 1.5 + 0.4 * hypot(event.deltaX, event.deltaY)
+        guard miss > allowance, nearWindow(now) else { return true }
+        let time = Date()
+        drift.append((time, miss - allowance))
+        drift.removeAll { time.timeIntervalSince($0.at) > 1 }
+        if drift.reduce(0, { $0 + $1.amount }) > 6 {
+            drift.removeAll()
+            return false
+        }
+        return true
+    }
+
+    /// Окно сдвинули: прежняя позиция мыши больше ничего не говорит о том, где кнопка относительно курсора.
+    func windowMoved() {
+        last = nil
+        drift.removeAll()
+        disarm("the window moved")
     }
 
     // Прыжок курсора у края экрана (там delta есть, а курсор стоит) окну не опасен, его не считаем.
@@ -466,7 +519,16 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.backgroundColor = .clear
         window.hasShadow = true
         window.isMovableByWindowBackground = true
-        window.contentView = sheet
+        // Окно прозрачное, но тень и край macOS рисует по его прямоугольнику: за скругленным листом проступала
+        // рамка с острыми углами. Содержимое обрезается по тому же скруглению, тогда тень повторяет лист.
+        let holder = NSView()
+        holder.wantsLayer = true
+        holder.layer?.cornerRadius = 28
+        holder.layer?.cornerCurve = .continuous
+        holder.layer?.masksToBounds = true
+        holder.layer?.backgroundColor = NSColor.clear.cgColor
+        pin(sheet, in: holder, inset: NSEdgeInsets())
+        window.contentView = holder
         window.delegate = self
         window.level = .floating
         window.isReleasedWhenClosed = false
@@ -496,7 +558,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) { finish("closed") }
 
-    func windowDidMove(_ notification: Notification) { arming?.disarm("the window moved") }
+    func windowDidMove(_ notification: Notification) { arming?.windowMoved() }
 }
 
 let app = NSApplication.shared
