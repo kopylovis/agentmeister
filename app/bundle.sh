@@ -30,6 +30,18 @@ stage=$tmp/Agentmeister.app
 mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Resources"
 cp "$bin" "$stage/Contents/MacOS/Agentmeister"
 
+# CLI agentmeister едет внутри приложения: приложение работает без отдельной установки CLI, а команда в терминале
+# ставится ссылкой на него при первом запуске. Из git берутся только файлы репозитория, без __pycache__ и мусора.
+cli=$stage/Contents/Resources/agentmeister
+mkdir -p "$cli"
+if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+  (cd "$root" && git ls-files -z bin libexec share VERSION | tar -c --null -T - -f -) | tar -x -C "$cli" -f -
+else
+  (cd "$root" && tar -c --exclude __pycache__ --exclude '*.pyc' --exclude .DS_Store -f - bin libexec share VERSION) \
+    | tar -x -C "$cli" -f -
+fi
+[[ -x $cli/bin/agentmeister ]] || { echo "bundle.sh: CLI не скопировался в $cli" >&2; exit 1; }
+
 icon=$root/share/agentmeister/icon.png
 if [[ -f $icon ]]; then
   set=$tmp/AppIcon.iconset
@@ -58,6 +70,7 @@ cat > "$stage/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSAppleEventsUsageDescription</key><string>Agentmeister opens sessions in iTerm2 or Terminal tabs.</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>
@@ -74,7 +87,27 @@ if [[ -z $identity ]]; then
   identity=$(security find-identity -v -p codesigning 2>/dev/null \
     | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p; s/.*"\(Apple Development: [^"]*\)".*/\1/p' | head -1 || true)
 fi
-codesign --force --sign "${identity:--}" --timestamp=none "$stage" >/dev/null
+# расширенные атрибуты (карантин, provenance) codesign не пропускает
+xattr -cr "$stage"
+sign=(codesign --force --sign "${identity:--}")
+if [[ $identity == "Developer ID Application:"* ]]; then
+  # для нотаризации: hardened runtime и метка времени. Apple Events нужны вкладкам iTerm2 и Terminal через osascript.
+  entitlements=$tmp/entitlements.plist
+  cat > "$entitlements" <<ENT
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.automation.apple-events</key><true/>
+</dict>
+</plist>
+ENT
+  sign+=(--options runtime --timestamp --entitlements "$entitlements")
+else
+  sign+=(--timestamp=none)
+fi
+"${sign[@]}" "$stage" >/dev/null
+codesign --verify --strict "$stage"
 echo "подпись: ${identity:-ad-hoc}"
 
 mkdir -p "$out"

@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Appearance.apply(UserDefaults.standard.string(forKey: Appearance.key) ?? "system")
         // ⌃⌥Space (или свое сочетание из настроек) из любого приложения показывает Agentmeister
         HotKey.shared.apply()
+        // команда agentmeister в терминале из встроенного CLI, если ее еще нигде нет
+        DispatchQueue.global(qos: .utility).async { LoginEnvironment.linkCommand() }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

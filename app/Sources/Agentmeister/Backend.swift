@@ -16,6 +16,11 @@ enum LoginEnvironment {
         let captured = capture(["-l", "-i", "-c"]) ?? capture(["-l", "-c"]) ?? [:]
         for (key, value) in captured where !shellOnly.contains(key) { env[key] = value }
         env["PATH"] = withFallbacks(env["PATH"] ?? "/usr/bin:/bin")
+        // встроенный CLI последним: agentmeister по имени во вкладках находится, даже если его не ставили отдельно
+        if let bundled = bundledCLI {
+            let dir = (bundled as NSString).deletingLastPathComponent
+            if !(env["PATH"] ?? "").split(separator: ":").contains(Substring(dir)) { env["PATH"]! += ":" + dir }
+        }
         return env
     }
 
@@ -67,17 +72,82 @@ enum LoginEnvironment {
         return FileManager.default.fileExists(atPath: job) ? job : nil
     }()
 
-    /// Полный путь к agentmeister из PATH пользователя.
-    static var agentmeister: String {
+    /// CLI, который едет внутри приложения (Contents/Resources/agentmeister), его кладет туда bundle.sh.
+    static let bundledCLI: String? = {
+        guard let resources = Bundle.main.resourcePath else { return nil }
+        let path = resources + "/agentmeister/bin/agentmeister"
+        return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+    }()
+
+    /// Полный путь к agentmeister. Из PATH пользователя (checkout или Homebrew), если он не старее встроенного,
+    /// иначе встроенный: приложение не должно звать команды, которых в старом CLI еще нет.
+    static let agentmeister: String = {
         let path = shared["PATH"] ?? "/usr/bin:/bin"
-        for dir in path.split(separator: ":") {
-            let candidate = "\(dir)/agentmeister"
-            if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
-        }
-        return "agentmeister"
-    }
+        let first = path.split(separator: ":").map { "\($0)/agentmeister" }
+            .first { FileManager.default.isExecutableFile(atPath: $0) }
+        guard let bundled = bundledCLI else { return first ?? "agentmeister" }
+        guard let first, realPath(first) != realPath(bundled) else { return bundled }
+        return compareVersions(cliVersion(first), cliVersion(bundled)) >= 0 ? first : bundled
+    }()
 
     static var found: Bool { agentmeister.hasPrefix("/") }
+
+    /// Встроенный CLI сейчас главный: в PATH своего нет или он старее.
+    static var usesBundledCLI: Bool { bundledCLI != nil && realPath(agentmeister) == realPath(bundledCLI!) }
+
+    private static func realPath(_ path: String) -> String { (path as NSString).resolvingSymlinksInPath }
+
+    /// Версия CLI из файла VERSION в его корне (bin/..), без него из agentmeister --version.
+    private static func cliVersion(_ path: String) -> String {
+        let root = ((realPath(path) as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+        if let text = try? String(contentsOfFile: root + "/VERSION", encoding: .utf8) {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: path)
+        task.arguments = ["--version"]
+        task.environment = shared
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = FileHandle.nullDevice
+        task.standardInput = FileHandle.nullDevice
+        guard (try? task.run()) != nil else { return "0" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        task.waitUntilExit()
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "0"
+    }
+
+    private static func compareVersions(_ a: String, _ b: String) -> Int {
+        let x = a.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 }
+        let y = b.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 }
+        for i in 0..<max(x.count, y.count) {
+            let l = i < x.count ? x[i] : 0, r = i < y.count ? y[i] : 0
+            if l != r { return l < r ? -1 : 1 }
+        }
+        return 0
+    }
+
+    /// Команда agentmeister в терминале сразу после установки приложения: ссылка ~/.local/bin/agentmeister на
+    /// встроенный CLI. Только из Applications и только если agentmeister еще нигде не стоит. Ссылку на CLI внутри
+    /// другой копии Agentmeister.app (приложение перенесли) переводит на эту.
+    static func linkCommand() {
+        guard let bundled = bundledCLI else { return }
+        let home = NSHomeDirectory()
+        let app = Bundle.main.bundlePath
+        guard app.hasPrefix("/Applications/") || app.hasPrefix(home + "/Applications/") else { return }
+        let fm = FileManager.default
+        let link = home + "/.local/bin/agentmeister"
+        if let target = try? fm.destinationOfSymbolicLink(atPath: link) {
+            guard target != bundled, target.contains("/Agentmeister.app/Contents/Resources/") else { return }
+        } else if fm.fileExists(atPath: link) || ["/opt/homebrew/bin", "/usr/local/bin"].contains(where: {
+            fm.fileExists(atPath: $0 + "/agentmeister")
+        }) {
+            return
+        }
+        try? fm.createDirectory(atPath: home + "/.local/bin", withIntermediateDirectories: true)
+        try? fm.removeItem(atPath: link)
+        try? fm.createSymbolicLink(atPath: link, withDestinationPath: bundled)
+    }
 }
 
 /// Ответ agentmeister app-state.
