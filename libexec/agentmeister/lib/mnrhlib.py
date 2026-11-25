@@ -102,7 +102,8 @@ BAD = paint("✗", "31")
 
 
 def tilde(path):
-    return path.replace(HOME, "~", 1) if path.startswith(HOME) else path
+    # только сама домашняя папка или путь внутри нее: /Users/mnrh-old не должен стать ~-old
+    return "~" + path[len(HOME):] if path == HOME or path.startswith(HOME + "/") else path
 
 
 def has_flag(args, *names):
@@ -227,7 +228,8 @@ def projects_dirs():
         part = part.strip()
         if part:
             path = os.path.abspath(os.path.expanduser(part))
-            if path not in out:
+            # одна и та же папка дважды (в том числе через ссылку) дала бы каждый проект дважды
+            if all(os.path.realpath(path) != os.path.realpath(p) for p in out):
                 out.append(path)
     return out or [DEFAULT_DEV]
 
@@ -237,39 +239,55 @@ def projects_dir():
 
 
 DEV = projects_dir()
-DEVS = projects_dirs()
+DEVS = projects_dirs()  # на момент запуска; долгие процессы (MCP-сервер) зовут projects_dirs() заново
 
 
 def project_name(cwd):
     """Имя проекта, если cwd лежит прямо в одной из папок проектов, иначе None."""
-    for dev in DEVS:
+    for dev in projects_dirs():
         if cwd.startswith(dev + "/") and "/" not in cwd[len(dev) + 1:]:
             return cwd[len(dev) + 1:]
     return None
 
 
-def project_folders():
-    """Подпапки всех папок проектов без скрытых, по имени. Одноименные проекты из разных папок остаются оба,
-    одна и та же папка, попавшая в список дважды (вложенные папки проектов, ссылки), только раз."""
-    seen, out = set(), []
-    for dev in DEVS:
+def project_entries():
+    """Все подпапки папок проектов без скрытых, вместе со ссылками-псевдонимами (claudemeister -> agentmeister):
+    по ним проект ищут по имени."""
+    out = []
+    for dev in projects_dirs():
         try:
             names = sorted(d for d in os.listdir(dev) if not d.startswith(".") and os.path.isdir(os.path.join(dev, d)))
         except OSError:
             continue
-        for name in names:
-            path = os.path.join(dev, name)
-            if os.path.realpath(path) not in seen:
-                seen.add(os.path.realpath(path))
-                out.append(path)
+        out += [os.path.join(dev, name) for name in names]
+    return out
+
+
+def project_folders():
+    """Проекты для списков: подпапки папок проектов по имени. Одноименные проекты из разных папок остаются оба.
+    Ссылка на папку, которая и так в списке, пропускается, а сама папка остается, как в меню и в приложении."""
+    entries = project_entries()
+    real = {os.path.realpath(p) for p in entries if not os.path.islink(p)}
+    seen, out = set(), []
+    for path in entries:
+        target = os.path.realpath(path)
+        if (os.path.islink(path) and target in real) or target in seen:
+            continue
+        seen.add(target)
+        out.append(path)
     return sorted(out, key=lambda p: (os.path.basename(p).lower(), p))
 
 
 def project_label(path, folders=None):
-    """Имя проекта для списков; если такое имя есть и в другой папке проектов, к нему дописана папка: backend · Work."""
+    """Имя проекта для списков. Если такое имя есть и в другой папке проектов, к нему дописана папка
+    (backend · Work), а если и папки называются одинаково, путь целиком."""
     name = os.path.basename(path)
     others = [p for p in (folders if folders is not None else project_folders()) if os.path.basename(p) == name]
-    return f"{name} · {os.path.basename(os.path.dirname(path))}" if len(others) > 1 else name
+    if len(others) < 2:
+        return name
+    parents = [os.path.basename(os.path.dirname(p)) for p in others]
+    parent = os.path.basename(os.path.dirname(path))
+    return f"{name} · {parent}" if parents.count(parent) == 1 else tilde(path)
 
 
 def projects():
@@ -304,11 +322,16 @@ def find_project(query=None, cwd=None):
     path = os.path.abspath(os.path.expanduser(query))
     if os.path.isdir(path) and ("/" in query or query.startswith(("~", "."))):
         return project_root(path), None
-    folders = project_folders()
+    folders = project_entries()
     hits = [d for d in folders if os.path.basename(d).lower() == query.lower()] or \
         [d for d in folders if os.path.basename(d).lower().startswith(query.lower())]
+    # ссылка и папка, на которую она ведет, это один проект
+    unique = {}
+    for d in hits:
+        unique.setdefault(os.path.realpath(d), d)
+    hits = list(unique.values())
     if len(hits) == 1:
         return hits[0], None
     if hits:
         return None, f"«{query}» подходит к нескольким проектам: {', '.join(tilde(d) for d in hits)}, укажи путь"
-    return None, f"проекта «{query}» нет в {', '.join(tilde(d) for d in DEVS)}"
+    return None, f"проекта «{query}» нет в {', '.join(tilde(d) for d in projects_dirs())}"

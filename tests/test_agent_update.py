@@ -36,14 +36,14 @@ class UpdateCommand(unittest.TestCase):
             self.assertEqual(agent_update.installed_via("claude", installer), "installer")
             npm = self.link(tmp, "lib/node_modules/@openai/codex/bin/codex")
             self.assertEqual(agent_update.update_argv("codex", npm), [npm, "update"])
-            self.assertEqual(agent_update.installed_via("codex", npm), "other")
+            self.assertEqual(agent_update.installed_via("codex", npm), "npm")
 
     def test_shim_in_front_is_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             shim_dir = Path(tmp) / "local"
             shim_dir.mkdir()
             shim = shim_dir / "codex"
-            shim.write_text("#!/usr/bin/env python3\n")
+            shim.write_text("#!/usr/bin/env python3\n# promptsill wrapper\n")
             shim.chmod(0o755)
             real = self.link(tmp, "Caskroom/codex/0.1.0/codex")
             path = os.pathsep.join([str(shim_dir), str(Path(real).parent)])
@@ -72,7 +72,27 @@ class UpdateCommand(unittest.TestCase):
 
     def test_versions_compare_as_numbers(self):
         self.assertGreater(agent_update.parse_version("0.172.0"), agent_update.parse_version("0.99.9"))
-        self.assertEqual(agent_update.parse_version("2.1.325 (Claude Code)"), (2, 1, 325))
+        self.assertEqual(agent_update.parse_version("2.1.325 (Claude Code)"), ((2, 1, 325), 1))
+        self.assertLess(agent_update.parse_version("0.47.0-alpha.1"), agent_update.parse_version("0.47.0"))
+        self.assertEqual(agent_update.parse_version("1.2.3b4"), ((1, 2, 3), 0))
+        self.assertIsNone(agent_update.parse_version(""))
+
+    def test_version_manager_from_homebrew_is_not_the_agent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mise = self.link(tmp, "Cellar/mise/2025.1.0/bin/mise")
+            self.assertIsNone(agent_update.brew_package(os.path.realpath(mise), "claude"))
+            self.assertEqual(agent_update.update_argv("claude", mise), [mise, "update"])
+            npm = self.link(tmp, "opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js")
+            self.assertEqual(agent_update.installed_via("claude", npm), "npm")
+
+    def test_only_known_wrappers_are_skipped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            plain = Path(tmp) / "pnpm-claude"
+            plain.write_text("#!/bin/sh\nexec node cli.js \"$@\"\n")
+            wrapper = Path(tmp) / "codex"
+            wrapper.write_text("#!/usr/bin/env python3\nPROFILE = 'Codex with promptsill'\n")
+            self.assertFalse(agent_update.is_shim(str(plain)))
+            self.assertTrue(agent_update.is_shim(str(wrapper)))
 
     def test_missing_agent(self):
         with patch.object(agent_update, "binary_path", return_value=None):

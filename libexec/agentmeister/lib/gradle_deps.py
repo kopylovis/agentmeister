@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from mnrhlib import CACHE as MNRH_CACHE, project_folders, projects_dirs, tilde
+from mnrhlib import CACHE as MNRH_CACHE, project_entries, project_folders, projects_dirs, tilde
 
 CACHE = os.path.join(MNRH_CACHE, "maven")
 TTL = 6 * 3600
@@ -288,9 +288,10 @@ def find_projects(query=None):
         path = os.path.abspath(os.path.expanduser(query))
         if os.path.isdir(path):
             return [path]
-        hits = [d for d in folders if os.path.basename(d).lower() == query.lower()] or \
-            [d for d in folders if os.path.basename(d).lower().startswith(query.lower())]
-        return hits
+        entries = project_entries()
+        hits = [d for d in entries if os.path.basename(d).lower() == query.lower()] or \
+            [d for d in entries if os.path.basename(d).lower().startswith(query.lower())]
+        return list({os.path.realpath(d): d for d in hits}.values())
     return [d for d in folders if os.path.isfile(os.path.join(d, "gradle", "libs.versions.toml"))]
 
 

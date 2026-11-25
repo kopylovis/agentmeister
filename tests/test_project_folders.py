@@ -26,7 +26,7 @@ class ProjectFolders(unittest.TestCase):
             self.assertEqual(mnrhlib.projects_dir(), self.a)
 
     def test_same_name_in_two_folders_keeps_both(self):
-        with patch.object(mnrhlib, "DEVS", [self.a, self.b]):
+        with patch.dict(os.environ, {"MNRH_PROJECTS": f"{self.a}:{self.b}"}):
             folders = mnrhlib.project_folders()
             self.assertEqual([mnrhlib.project_label(p, folders) for p in folders], ["backend · A", "backend · B", "web"])
             path, error = mnrhlib.find_project("backend")
@@ -34,6 +34,19 @@ class ProjectFolders(unittest.TestCase):
             self.assertIn("укажи путь", error)
             self.assertEqual(mnrhlib.find_project("web")[0], os.path.join(self.b, "web"))
             self.assertEqual(mnrhlib.project_name(os.path.join(self.b, "web")), "web")
+
+    def test_alias_link_keeps_the_real_folder_and_still_matches(self):
+        os.symlink(os.path.join(self.b, "web"), os.path.join(self.b, "aaa-alias"))
+        with patch.dict(os.environ, {"MNRH_PROJECTS": self.b}):
+            names = [os.path.basename(p) for p in mnrhlib.project_folders()]
+            self.assertIn("web", names)
+            self.assertNotIn("aaa-alias", names)
+            self.assertEqual(os.path.realpath(mnrhlib.find_project("aaa-alias")[0]), os.path.realpath(os.path.join(self.b, "web")))
+            self.assertEqual(mnrhlib.find_project("web")[0], os.path.join(self.b, "web"))
+
+    def test_tilde_only_replaces_the_home_folder_itself(self):
+        self.assertEqual(mnrhlib.tilde(mnrhlib.HOME + "-old/x"), mnrhlib.HOME + "-old/x")
+        self.assertEqual(mnrhlib.tilde(mnrhlib.HOME + "/x"), "~/x")
 
     def test_cli_refuses_a_project_as_a_folder_of_projects(self):
         env = dict(os.environ, XDG_CONFIG_HOME=self.tmp.name, PYTHONDONTWRITEBYTECODE="1")

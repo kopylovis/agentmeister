@@ -76,13 +76,16 @@ def resolve_dest(arg):
     path = os.path.abspath(os.path.expanduser(arg))
     if os.path.isdir(path):
         return path
-    names = [p for p in projects() if os.path.basename(p) == arg] or \
-            [p for p in projects() if os.path.basename(p).startswith(arg)]
+    from mnrhlib import project_entries
+    entries = project_entries()
+    names = [p for p in entries if os.path.basename(p) == arg] or \
+            [p for p in entries if os.path.basename(p).startswith(arg)]
+    names = list({os.path.realpath(p): p for p in names}.values())
     if len(names) == 1:
         return names[0]
     if names:
         sys.exit(f"agentmeister sessions: «{arg}» подходит к нескольким проектам: "
-                 + " ".join(os.path.basename(p) for p in names))
+                 + " ".join(tilde(p) for p in names))
     sys.exit(f"agentmeister sessions: папки «{arg}» нет")
 
 
@@ -475,7 +478,9 @@ def clean(assume_yes):
 
 
 def pick_dest(screen, s):
-    options = [(os.path.basename(p), p) for p in projects() if p != s["cwd"]]
+    from mnrhlib import project_label
+    found = projects()
+    options = [(project_label(p, found), p) for p in found if p != s["cwd"]]
     if s["cwd"] != HOME:
         options.insert(0, ("~", HOME))
     items = [(k, tr("🏠 ~ (домашний каталог)", "🏠 ~ (home folder)") if p == HOME else f"📁 {k}") for k, p in options]
