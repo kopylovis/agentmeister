@@ -9,12 +9,12 @@ _mnrh_restart() {
   local f=$HOME/.cache/mnrh/restart/${TTY:t} out
   local -a job
   while [[ -e $f || -L $f ]]; do
-    out=$(/usr/bin/python3 -I $_mnrh_restart_job take $f) || return 0
+    out=$(/usr/bin/python3 -I -B $_mnrh_restart_job take $f) || return 0
     job=( "${(@0)out}" )
     (( $#job == 3 )) || return 0
     cd -- $job[1] || return 0
     print -s -- $job[2]
-    /usr/bin/python3 -I $_mnrh_restart_job run $job[3]
+    /usr/bin/python3 -I -B $_mnrh_restart_job run $job[3]
   done
 }
 

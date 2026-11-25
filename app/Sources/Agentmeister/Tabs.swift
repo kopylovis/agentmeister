@@ -184,11 +184,11 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     t=${TTY:-$(tty)}
     f=$HOME/.cache/mnrh/restart/${t:t}
     while [[ -e $f || -L $f ]]; do
-      out=$(/usr/bin/python3 -I $j take $f) || break
+      out=$(/usr/bin/python3 -I -B $j take $f) || break
       job=( "${(@0)out}" )
       (( $#job == 3 )) || break
       cd -- $job[1] || break
-      /usr/bin/python3 -I $j run $job[3]
+      /usr/bin/python3 -I -B $j run $job[3]
     done
     """
 
