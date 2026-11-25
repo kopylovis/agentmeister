@@ -346,6 +346,51 @@ struct CommandButton: View {
     }
 }
 
+/// Папка с проектами: путь, сколько в ней проектов с git и выбор другой. Общая для мастера первого запуска
+/// и Настроек, пишет то же, что agentmeister projects-dir.
+struct ProjectsFolderPicker: View {
+    @EnvironmentObject var backend: Backend
+    let l: L
+    @State private var busy = false
+
+    var body: some View {
+        let count = backend.state.projects.count
+        HStack(spacing: 12) {
+            Image(systemName: "folder").font(.system(size: 18)).foregroundStyle(Ink.muted)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tilde(backend.state.projectsDir))
+                    .font(.system(size: 13, design: .monospaced))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(count == 0 ? l.t("Проектов с git здесь нет", "No git projects here")
+                                : l.t("Проектов с git: \(count)", "\(count) git projects"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(count == 0 ? Ink.amber : Ink.muted)
+            }
+            Spacer(minLength: 8)
+            PillButton(title: l.t("Выбрать…", "Choose…"), small: true, busy: busy) { choose() }
+                .disabled(busy)
+        }
+    }
+
+    private func choose() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = l.t("Выбрать", "Choose")
+        panel.message = l.t("Папка, в которой лежат твои проекты", "The folder that holds your projects")
+        panel.directoryURL = URL(fileURLWithPath: backend.state.projectsDir.isEmpty ? NSHomeDirectory() : backend.state.projectsDir)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        busy = true
+        Task {
+            _ = await backend.perform(["projects-dir", url.path])
+            busy = false
+        }
+    }
+}
+
 /// Язык и вид. Язык общий с CLI (agentmeister lang), вид хранит само приложение.
 struct GeneralPane: View {
     @EnvironmentObject var backend: Backend
@@ -369,6 +414,12 @@ struct GeneralPane: View {
         GlassSection {
             Text(l.t("Оформление", "Appearance")).font(.system(size: 13, weight: .semibold))
             AppearancePicker(selection: $appearance, l: l)
+        }
+        GlassSection {
+            Text(l.t("Папка проектов", "Projects folder")).font(.system(size: 13, weight: .semibold))
+            ProjectsFolderPicker(l: l)
+            Note(text: l.t("Проекты это подпапки с git. Папка общая с agentmeister в терминале, это agentmeister projects-dir.",
+                           "Projects are its subfolders with git. The app and agentmeister in a terminal share it, same as agentmeister projects-dir."))
         }
         GlassSection {
             HStack(alignment: .top, spacing: 12) {

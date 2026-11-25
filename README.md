@@ -174,8 +174,8 @@ request the MCP server checks whether its code changed (a `brew upgrade` or a `g
 so, replaces itself with the new one on the same connection, without losing the request. `agentmeister setup --remove` takes everything out of Claude Code,
 and `brew uninstall agentmeister` removes the program.
 
-The projects folder is `~/Developer` by default. Set another one with a `projects=<path>` line in
-`~/.config/mnrh/config` or with `MNRH_PROJECTS=<path>`. setup puts the read-only MCP tools (`session_search`,
+The projects folder is `~/Developer` by default. Set another one with `agentmeister projects-dir <path>`, a
+`projects=<path>` line in `~/.config/mnrh/config` or `MNRH_PROJECTS=<path>`. The desktop app asks for it on first run. setup puts the read-only MCP tools (`session_search`,
 `session_read`, `usage_report`, `deps_outdated` and others) into `permissions.allow` in `~/.claude/settings.json`, so Claude
 doesn't ask before using them.
 

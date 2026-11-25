@@ -170,7 +170,7 @@ Claude Code удаляет переписки старше `cleanupPeriodDays`, 
 сменился, заменяет себя новым на том же соединении, не теряя запрос. Убрать из Claude Code: `agentmeister setup --remove`.
 Удаление: `brew uninstall agentmeister`.
 
-Папка проектов по умолчанию `~/Developer`, другую задает строка `projects=<путь>` в `~/.config/mnrh/config`
+Папка проектов по умолчанию `~/Developer`. Другую задает `agentmeister projects-dir <путь>`, строка `projects=<путь>` в `~/.config/mnrh/config`
 или `MNRH_PROJECTS=<путь>`. Читающие MCP-инструменты (`session_search`, `session_read`, `usage_report`,
 `deps_outdated` и другие) setup разрешает сразу в `permissions.allow` в `~/.claude/settings.json`.
 
