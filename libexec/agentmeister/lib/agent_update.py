@@ -86,6 +86,15 @@ def installed_via(agent, path):
     return "other"
 
 
+def nested_sandbox_ok():
+    """Можно ли поставить песочницу macOS: внутри sandbox-exec нельзя, и brew upgrade там падает."""
+    try:
+        return subprocess.run(["/usr/bin/sandbox-exec", "-p", "(version 1)(allow default)", "/usr/bin/true"],
+                              capture_output=True, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return True
+
+
 def brew():
     return shutil.which("brew") or next((p for p in BREW_PATHS if os.access(p, os.X_OK)), "brew")
 
@@ -117,6 +126,14 @@ def update(agent):
     if not argv:
         print(tr(f"{agent} не найден в PATH", f"{agent} isn't in PATH"), file=sys.stderr)
         return 127
+    if os.path.basename(argv[0]) == "brew" and not nested_sandbox_ok():
+        # внутри песочницы proxy-сессии brew не распакует архив: его песочница не встанет внутрь нашей
+        command = "brew " + " ".join(argv[1:])
+        print(tr(f"{agent}: brew upgrade не работает внутри песочницы proxy-сессии. Обнови снаружи: ⌘R во вкладке "
+                 f"Agentmeister или {command} в обычном терминале",
+                 f"{agent}: brew upgrade can't run inside a proxied session's sandbox. Update from outside: ⌘R in an "
+                 f"Agentmeister tab or {command} in a regular terminal"), file=sys.stderr)
+        return 1
     before = version(path)
     print("$ " + " ".join(argv), flush=True)
     try:

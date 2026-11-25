@@ -315,7 +315,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     nonisolated static func updateCommand(direct: Bool, agent: LaunchSpec.Agent = .claude, tail: Bool = true) -> String {
         let am = "'" + LoginEnvironment.agentmeister.replacingOccurrences(of: "'", with: "'\\''") + "'"
         let update = "\(am) agent-update \(agent == .codex ? "codex" : "claude")"
-        let proxy = agent == .codex ? "\(am) proxy run -- " : "\(am) proxy run --claude -- "
+        // через mihomo, но без песочницы: brew upgrade распаковывает в своей песочнице macOS, а вложенную macOS не дает
+        let proxy = "\(am) proxy run --no-sandbox -- "
         return (direct ? update : proxy + update) + " 2>&1" + (tail ? " | tail -3" : "")
     }
 
@@ -323,7 +324,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     nonisolated static func checkCommand(direct: Bool, agent: LaunchSpec.Agent) -> String {
         let am = "'" + LoginEnvironment.agentmeister.replacingOccurrences(of: "'", with: "'\\''") + "'"
         let check = "\(am) agent-update --check \(agent == .codex ? "codex" : "claude")"
-        return (direct ? check : "\(am) proxy run -- " + check) + " 2>/dev/null"
+        return (direct ? check : "\(am) proxy run --no-sandbox -- " + check) + " 2>/dev/null"
     }
 
     /// Чем кончился последний claude update перед перезапуском, если он не прошел. Баннер вкладки
