@@ -349,8 +349,14 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Перезапуск с claude update перед ним, как /restart. У вкладки через proxy обновление тоже идет через proxy.
     func restartWithUpdate(note: String) {
         guard spec.agent == .claude, spec.utility == nil else { restart(); return }
+        // пока агент выходит и обновляется, терминалом не пользуются: плашка поверх него, клавиатура не у него
+        updatingAgent = true
+        view.window?.makeFirstResponder(nil)
         afterStop { self.updateThenRestart(note: note) }
     }
+
+    /// Идет обновление агента перед перезапуском: вкладка показывает плашку и не принимает ввод.
+    @Published var updatingAgent = false
 
     private func updateThenRestart(note: String) {
         view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
@@ -363,7 +369,9 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
                 .map(String.init).first { $0.first?.isNumber == true }
             let lines = out.split(separator: "\n", omittingEmptySubsequences: true).suffix(3)
             await MainActor.run {
+                self.updatingAgent = false
                 guard !self.closed else { return }
+                self.view.window?.makeFirstResponder(self.view)
                 self.view.feed(text: lines.joined(separator: "\r\n") + (lines.isEmpty ? "" : "\r\n"))
                 if code != 0 {
                     // сессия все равно открывается: старая версия Claude Code работает

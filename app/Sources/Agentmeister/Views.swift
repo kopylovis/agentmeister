@@ -726,6 +726,9 @@ struct DetailView: View {
                     .overlay(alignment: .topTrailing) {
                         if let tab = workspace.current { TerminalFindOverlay(tab: tab) }
                     }
+                    .overlay {
+                        if let tab = workspace.current { AgentUpdateOverlay(tab: tab) }
+                    }
             }
         }
     }
@@ -1100,9 +1103,41 @@ struct TerminalHost: NSViewRepresentable {
                 term.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
             ])
         }
-        // пока открыта панель поиска, фокус у ее поля, а не у терминала
-        if tab?.finding != true {
+        // пока открыта панель поиска, фокус у ее поля, а не у терминала; пока агент обновляется, ни у кого
+        if tab?.finding != true && tab?.updatingAgent != true {
             DispatchQueue.main.async { term.window?.makeFirstResponder(term) }
+        }
+    }
+}
+
+/// Плашка поверх терминала, пока агент вкладки обновляется перед перезапуском: терминал затемнен, клики до него
+/// не доходят, а сессия откроется сама, когда обновление закончится.
+struct AgentUpdateOverlay: View {
+    @EnvironmentObject var backend: Backend
+    @ObservedObject var tab: TerminalTab
+
+    var body: some View {
+        if tab.updatingAgent {
+            let l = L(backend.state.lang)
+            ZStack {
+                Rectangle().fill(.black.opacity(0.45))
+                VStack(spacing: 10) {
+                    ProgressView().controlSize(.regular)
+                    Text(l.updating).font(.system(size: 14, weight: .semibold)).foregroundStyle(Ink.strong)
+                    Text(l.t("Сессия откроется сама, когда обновление закончится. До этого терминал не принимает ввод.",
+                             "The session reopens by itself when the update finishes. Until then the terminal takes no input."))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Ink.muted)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 320)
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 22)
+                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {}
+            .transition(.opacity)
         }
     }
 }
