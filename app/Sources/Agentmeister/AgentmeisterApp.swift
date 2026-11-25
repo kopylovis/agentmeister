@@ -75,7 +75,10 @@ struct AgentmeisterApp: App {
                 .environmentObject(ui)
         }
         .defaultSize(width: 980, height: 760)
-        MenuBarExtra(isInserted: $showMenuBar) {
+        // привязка только для чтения: MenuBarExtra сам пишет в isInserted при каждом обновлении сцены, запись
+        // в @AppStorage снова перестраивает сцену, и главный поток крутился в этом цикле без конца. Значок
+        // включает и выключает только переключатель в Настройках.
+        MenuBarExtra(isInserted: Binding(get: { showMenuBar }, set: { _ in })) {
             MenuBarPanel()
                 .environmentObject(backend)
                 .environmentObject(workspace)
