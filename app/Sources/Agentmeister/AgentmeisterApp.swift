@@ -105,10 +105,13 @@ struct AgentmeisterApp: App {
                 .shortcut(.newTab)
                 // только когда впереди главное окно: в Настройках, Сессиях и других окнах ⌘W закрывает само окно,
                 // а не вкладку с агентом. Пока открыт экран проекта, выбранная вкладка скрыта под ним,
-                // и ⌘W или ⌘R убили бы агента, которого не видно.
-                Button(l.closeTab) { workspace.close(workspace.selected) }
+                // поэтому ⌘W закрывает сам экран и возвращает к вкладке, а ⌘R выключен, чтобы не перезапустить
+                // агента, которого не видно.
+                Button(ui.projectScreen != nil ? l.t("Закрыть экран проекта", "Close project screen") : l.closeTab) {
+                    if ui.projectScreen != nil { ui.projectScreen = nil } else { workspace.close(workspace.selected) }
+                }
                     .shortcut(.closeTab)
-                    .disabled(workspace.current == nil || !ui.mainKey || ui.projectScreen != nil)
+                    .disabled(!ui.mainKey || (ui.projectScreen == nil && workspace.current == nil))
                 Button(l.restart) { workspace.current?.restartPreferred(note: l.updating) }
                     .shortcut(.restart)
                     .disabled(workspace.current == nil || !ui.mainKey || ui.projectScreen != nil)
