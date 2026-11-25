@@ -36,8 +36,10 @@ def project_dirs(dev=None):
         except OSError:
             continue
         for e in found:
-            if e.path not in seen:
-                seen.add(e.path)
+            # та же папка из второй папки проектов (ссылка на папку проектов, вложенные папки) только раз
+            key = os.path.realpath(e.path) if not e.is_symlink() else e.path
+            if key not in seen:
+                seen.add(key)
                 folders.append(e)
     real_folders = {os.path.realpath(e.path) for e in folders if not e.is_symlink()}
     return [e.path for e in sorted(folders, key=lambda e: (e.name.lower(), e.path))

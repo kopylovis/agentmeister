@@ -783,6 +783,26 @@ def check_projects_folder(path):
                           f"{mnrhlib.tilde(path)} is a project itself, pick the folder that holds projects, for example {parent}")
     if ":" in path:
         return mnrhlib.tr("в пути папки не должно быть двоеточия", "the folder path can't contain a colon")
+    real = os.path.realpath(path)
+    for existing in mnrhlib.projects_dirs():
+        other = os.path.realpath(existing)
+        if real == other:
+            return mnrhlib.tr(f"{mnrhlib.tilde(path)} уже в списке как {mnrhlib.tilde(existing)}",
+                              f"{mnrhlib.tilde(path)} is already listed as {mnrhlib.tilde(existing)}")
+        if real.startswith(other + "/") or other.startswith(real + "/"):
+            return mnrhlib.tr(f"{mnrhlib.tilde(path)} вложена в {mnrhlib.tilde(existing)} или наоборот, проекты задвоятся",
+                              f"{mnrhlib.tilde(path)} and {mnrhlib.tilde(existing)} are nested, projects would show twice")
+    return None
+
+
+def check_projects_folder_alone(path):
+    """Как check_projects_folder, но для замены всего списка: с прежними папками не сравниваем."""
+    if not os.path.isdir(path):
+        return mnrhlib.tr(f"папки {mnrhlib.tilde(path)} нет", f"no folder {mnrhlib.tilde(path)}")
+    if os.path.exists(os.path.join(path, ".git")):
+        parent = mnrhlib.tilde(os.path.dirname(path))
+        return mnrhlib.tr(f"{mnrhlib.tilde(path)} сам проект, а нужна папка, в которой лежат проекты, например {parent}",
+                          f"{mnrhlib.tilde(path)} is a project itself, pick the folder that holds projects, for example {parent}")
     return None
 
 
@@ -797,6 +817,12 @@ def set_projects_dir(args):
     """agentmeister projects-dir [add|remove] <папка> или default. Это папки, в которых лежат проекты, а не проекты:
     проектами считаются их подпапки. Без add/remove папка заменяет весь список."""
     usage = "agentmeister projects-dir [add|remove] <папка> | default"
+    if os.environ.get("MNRH_PROJECTS"):
+        # переменная перекрывает config: запись в config ничего бы не поменяла
+        print(mnrhlib.tr("задан MNRH_PROJECTS, он перекрывает список в config. Убери переменную или поменяй ее",
+                         "MNRH_PROJECTS is set and overrides the list in config. Unset or change the variable"),
+              file=sys.stderr)
+        return 2
     op = args[0] if args[0] in ("add", "remove") else "set"
     value = args[1] if op != "set" and len(args) > 1 else args[0] if op == "set" else None
     if not value:
@@ -814,7 +840,9 @@ def set_projects_dir(args):
         rest = [d for d in dirs if d != path]
         write_projects_dirs(rest or [mnrhlib.DEFAULT_DEV])
         return show_projects_dirs()
-    error = check_projects_folder(path)
+    if op == "add" and path in dirs:
+        return show_projects_dirs()
+    error = check_projects_folder(path) if op == "add" else check_projects_folder_alone(path)
     if error:
         print(error, file=sys.stderr)
         return 2
