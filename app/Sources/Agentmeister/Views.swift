@@ -806,6 +806,8 @@ struct TabChip: View {
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
+        // полное имя сессии, если в вкладку оно не влезло, и под ним проект
+        .help(tab.title + "\n" + tab.spec.projectName)
         .contextMenu { TabMenu(tab: tab) }
     }
 }
