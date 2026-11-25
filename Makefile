@@ -1,7 +1,7 @@
 PREFIX ?= $(HOME)/.local
 BIN := $(PREFIX)/bin
 
-.PHONY: install uninstall test app
+.PHONY: install uninstall test app dmg
 
 install:
 	@mkdir -p "$(BIN)"
@@ -143,3 +143,7 @@ test:
 # Десктопный Agentmeister: release-сборка и app/build/Agentmeister.app. Из обычного терминала, не из proxy-сессии.
 app:
 	@cd app && swift build -c release && ./bundle.sh
+
+# DMG для других маков: подпись Developer ID, нотаризация, app/build/release/Agentmeister-<версия>.dmg
+dmg:
+	@./app/release.sh
