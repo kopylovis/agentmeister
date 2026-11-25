@@ -134,6 +134,23 @@ struct AgentmeisterApp: App {
                     .shortcut(.shot)
                     .disabled(!workspace.hasClaudeTab)
             }
+            // поиск по терминалу текущей вкладки: панель поиска SwiftTerm, ⌘G и ⇧⌘G по совпадениям
+            CommandGroup(after: .textEditing) {
+                let canFind = ui.mainKey && ui.projectScreen == nil && workspace.current != nil
+                Divider()
+                Button(l.t("Найти…", "Find…")) { workspace.current?.find(.showFindInterface) }
+                    .keyboardShortcut("f")
+                    .disabled(!canFind)
+                Button(l.t("Найти следующее", "Find Next")) { workspace.current?.find(.nextMatch) }
+                    .keyboardShortcut("g")
+                    .disabled(!canFind)
+                Button(l.t("Найти предыдущее", "Find Previous")) { workspace.current?.find(.previousMatch) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                    .disabled(!canFind)
+                Button(l.t("Искать выделенное", "Use Selection for Find")) { workspace.current?.find(.setSearchString) }
+                    .keyboardShortcut("e")
+                    .disabled(!canFind)
+            }
             CommandGroup(after: .windowList) {
                 OpenLibraryButton(title: l.t("Сессии", "Sessions"))
                 OpenUsageButton(title: l.t("Статистика", "Usage"))
