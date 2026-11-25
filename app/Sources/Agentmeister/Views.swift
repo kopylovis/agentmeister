@@ -769,7 +769,7 @@ struct DetailView: View {
                 if let tab = workspace.current {
                     let root = workspace.root(of: tab)
                     let subtasks = workspace.subtasks(of: root)
-                    if !subtasks.isEmpty { SubtaskRow(root: root, subtasks: subtasks) }
+                    SubtaskRowHost(root: root, subtasks: subtasks)
                     InfoBar(tab: tab)
                     TabAlert(tab: tab)
                         .id(tab.id)
@@ -915,13 +915,34 @@ struct TabChip: View {
     }
 }
 
+/// Ряд подзадач, пока у агента есть подзадачи-вкладки или фоновые агенты в сессии. Агентов сессии
+/// перечитывает раз в 3 секунды из папки ее переписки.
+struct SubtaskRowHost: View {
+    @ObservedObject var root: TerminalTab
+    let subtasks: [TerminalTab]
+
+    var body: some View {
+        Group {
+            if !subtasks.isEmpty || !root.agents.isEmpty { SubtaskRow(root: root, subtasks: subtasks) }
+        }
+        .task(id: root.sessionId) {
+            guard let sid = root.sessionId, root.spec.agent == .claude else { root.agents = []; return }
+            while !Task.isCancelled {
+                let now = await Task.detached(priority: .utility) { SubAgents.list(sid) }.value
+                if root.agents != now { root.agents = now }
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+}
+
 /// Ряд подзадач под полосой вкладок: параллельные задачи выбранного агента в своих worktree.
 /// Виден, пока выбран агент с подзадачами или одна из них.
 struct SubtaskRow: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var ui: UIState
-    let root: TerminalTab
+    @ObservedObject var root: TerminalTab
     let subtasks: [TerminalTab]
 
     var l: L { L(backend.state.lang) }
@@ -940,6 +961,9 @@ struct SubtaskRow: View {
                 HStack(spacing: 4) {
                     ForEach(subtasks) { tab in
                         SubtaskChip(tab: tab, selected: tab.id == workspace.selected)
+                    }
+                    ForEach(root.agents) { agent in
+                        SubAgentChip(agent: agent, l: l)
                     }
                     Button {
                         workspace.selected = root.id
