@@ -95,5 +95,66 @@ class Undo(unittest.TestCase):
             self.assertEqual(f.read(), self.slimmed)
 
 
+class SideFolder(unittest.TestCase):
+    """Папка рядом с сессией: файлы, о которых модель не знает, уходят в копию, остальные остаются."""
+
+    def setUp(self):
+        self.folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        self.saved = slim.BACKUPS
+        slim.BACKUPS = os.path.join(self.folder, "backups")
+        self.addCleanup(setattr, slim, "BACKUPS", self.saved)
+        self.sid = "11111111-2222-3333-4444-555555555555"
+        self.path = os.path.join(self.folder, self.sid + ".jsonl")
+        side = self.path[:-6]
+        os.makedirs(os.path.join(side, "tool-results"))
+        os.makedirs(os.path.join(side, "subagents"))
+        self.old_shot = os.path.join(side, "tool-results", "old.png")
+        self.new_shot = os.path.join(side, "tool-results", "new.png")
+        self.old_agent = os.path.join(side, "subagents", "agent-aold1.jsonl")
+        self.new_agent = os.path.join(side, "subagents", "agent-anew2.jsonl")
+        for p in (self.old_shot, self.new_shot):
+            with open(p, "wb") as f:
+                f.write(b"\x89PNG" + b"0" * 50000)
+        self.agent_text = line({"type": "user", "uuid": "s1", "message": {"content": "z" * 30000}})
+        for p in (self.old_agent, self.new_agent):
+            with open(p, "w") as f:
+                f.write(self.agent_text)
+        lines = [{"type": "user", "uuid": "u1", "message": {"content": f"{self.old_shot} agentId: aold1"}},
+                 {"type": "system", "subtype": "compact_boundary", "uuid": "b1"},
+                 {"type": "user", "uuid": "u2", "parentUuid": "b1", "message": {"content": "y" * 20000}},
+                 {"type": "system", "subtype": "compact_boundary", "uuid": "b2"},
+                 {"type": "user", "uuid": "u3", "parentUuid": "b2", "message": {"content": f"{self.new_shot} anew2"}},
+                 {"type": "assistant", "uuid": "a3", "parentUuid": "u3",
+                  "message": {"usage": {"input_tokens": 5, "cache_read_input_tokens": 250000}}}]
+        with open(self.path, "w") as f:
+            f.writelines(line(o) for o in lines)
+
+    def test_old_files_go_and_come_back(self):
+        _, _, planned = slim.plan(self.path)
+        self.assertEqual((planned["side_files"], planned["side_agents"]), (1, 1))
+        self.assertTrue(os.path.exists(self.old_shot))
+        st = slim.apply(self.path, self.sid)
+        self.assertEqual(st["side_after"], planned["side_after"])
+        self.assertFalse(os.path.exists(self.old_shot))
+        self.assertTrue(os.path.exists(self.new_shot))
+        with open(self.new_agent) as f:
+            self.assertEqual(f.read(), self.agent_text)
+        with open(self.old_agent) as f:
+            self.assertIn("mnrh slim", f.read())
+        slim.undo(self.path, self.sid)
+        self.assertTrue(os.path.exists(self.old_shot))
+        with open(self.old_agent) as f:
+            self.assertEqual(f.read(), self.agent_text)
+        self.assertEqual(slim.side_backups_of(self.sid), [])
+
+    def test_context_tokens(self):
+        self.assertEqual(slim.context_tokens(self.path), 250005)
+        with open(self.path, "a") as f:
+            f.write(line({"type": "system", "subtype": "compact_boundary", "uuid": "b3",
+                          "compactMetadata": {"postTokens": 21000}}))
+        self.assertEqual(slim.context_tokens(self.path), 21000)
+
+
 if __name__ == "__main__":
     unittest.main()
