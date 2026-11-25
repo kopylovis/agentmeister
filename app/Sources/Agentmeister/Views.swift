@@ -771,6 +771,7 @@ struct DetailView: View {
                     let subtasks = workspace.subtasks(of: root)
                     SubtaskRowHost(root: root, subtasks: subtasks)
                     InfoBar(tab: tab)
+                        .background { SubAgentPoller(root: root) }
                     TabAlert(tab: tab)
                         .id(tab.id)
                 }
@@ -915,17 +916,24 @@ struct TabChip: View {
     }
 }
 
-/// Ряд подзадач, пока у агента есть подзадачи-вкладки или фоновые агенты в сессии. Агентов сессии
-/// перечитывает раз в 3 секунды из папки ее переписки.
+/// Ряд подзадач, пока у агента есть подзадачи-вкладки или фоновые агенты в сессии.
 struct SubtaskRowHost: View {
     @ObservedObject var root: TerminalTab
     let subtasks: [TerminalTab]
 
     var body: some View {
-        Group {
-            if !subtasks.isEmpty || !root.agents.isEmpty { SubtaskRow(root: root, subtasks: subtasks) }
-        }
-        .task(id: root.sessionId) {
+        if !subtasks.isEmpty || !root.agents.isEmpty { SubtaskRow(root: root, subtasks: subtasks) }
+    }
+}
+
+/// Опрос фоновых агентов сессии. Висит на фоне InfoBar, который виден всегда: модификатор на пустом ряду
+/// подзадач достается только его детям, и без подзадач-вкладок опрос не запускался бы вовсе. Агентов
+/// перечитывает раз в 3 секунды из папки переписки сессии.
+struct SubAgentPoller: View {
+    @ObservedObject var root: TerminalTab
+
+    var body: some View {
+        Color.clear.task(id: root.sessionId) {
             guard let sid = root.sessionId, root.spec.agent == .claude else { root.agents = []; return }
             while !Task.isCancelled {
                 let now = await Task.detached(priority: .utility) { SubAgents.list(sid) }.value
