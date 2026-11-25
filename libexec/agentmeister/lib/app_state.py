@@ -505,7 +505,9 @@ def agent_info(binary):
     """Путь и версия агента. Версию спрашиваем у самого бинарника, как agentmeister doctor."""
     import shutil
     import subprocess
-    path = shutil.which(binary)
+    import agent_update
+    # обертку вроде codex от promptsill пропускаем: путь, версия и способ установки у самого агента
+    path = agent_update.binary_path(binary) if binary in agent_update.AGENTS else shutil.which(binary)
     if not path:
         return {"installed": False, "path": None, "version": None}
     try:
@@ -513,7 +515,6 @@ def agent_info(binary):
     except (OSError, subprocess.TimeoutExpired):
         out = []
     version = next((w for w in out if w[:1].isdigit()), None)
-    import agent_update
     via = agent_update.installed_via(binary, path)
     return {"installed": True, "path": path, "version": version, "installedVia": via, "model": agent_model(binary),
             **signed_in(binary)}
