@@ -161,8 +161,12 @@ def caffeinate_args(pid):
     parent = ps("ppid", pid)
     if parent and os.path.basename(ps("comm", int(parent))) == "caffeinate":
         candidates.append(int(parent))
-    r = subprocess.run(["ps", "-axo", "pid=,ppid=,comm="], capture_output=True, text=True)
-    for line in r.stdout.splitlines():
+    try:
+        listing = subprocess.run(["ps", "-axo", "pid=,ppid=,comm="], capture_output=True, text=True).stdout
+    except OSError:
+        # в песочнице proxy-сессии ps запрещен: caffeinate не найдем, перезапуск пойдет без него
+        listing = ""
+    for line in listing.splitlines():
         parts = line.split(None, 2)
         if len(parts) == 3 and parts[1] == str(pid) and os.path.basename(parts[2]) == "caffeinate":
             candidates.append(int(parts[0]))
