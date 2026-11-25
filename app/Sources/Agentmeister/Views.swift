@@ -541,7 +541,7 @@ struct CollapsibleHeader: View {
             .frame(height: 22)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.hover(6))
+        .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityValue(open ? "expanded" : "collapsed")
     }
