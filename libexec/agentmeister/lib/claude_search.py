@@ -213,10 +213,10 @@ def title(sid, data):
 
 
 def folder(data):
-    from mnrhlib import DEV
+    from mnrhlib import project_name
     cwd = home_of(data)
-    if cwd.startswith(DEV + "/") and "/" not in cwd[len(DEV) + 1:]:
-        return cwd[len(DEV) + 1:]
+    if cwd and project_name(cwd):
+        return project_name(cwd)
     return tilde(cwd) if cwd else os.path.basename(os.path.dirname(data["path"]))
 
 

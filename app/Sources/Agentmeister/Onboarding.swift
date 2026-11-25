@@ -111,8 +111,9 @@ struct OnboardingView: View {
                             .buttonStyle(.borderless)
                     }
                     Spacer()
-                    // Esc нужен терминалу, пока он открыт: иначе он закрыл бы мастер и оборвал команду
-                    Button("") { finish() }.keyboardShortcut(console == nil ? .cancelAction : nil).hidden().frame(width: 0)
+                    // Esc нужен терминалу, пока он открыт: иначе он закрыл бы мастер и оборвал команду. Настоящий первый
+                    // запуск Esc не закрывает вовсе: мастер проходят до конца, закрыть можно только открытый из меню.
+                    Button("") { finish() }.keyboardShortcut(console == nil && done ? .cancelAction : nil).hidden().frame(width: 0)
                     if step > 0 {
                         PillButton(title: l.t("Назад", "Back")) { step -= 1 }
                     }
@@ -129,6 +130,7 @@ struct OnboardingView: View {
         .frame(width: 820, height: 540)
         .environment(\.utilityRunner) { args in run(args) }
         .task { await reload() }
+        .interactiveDismissDisabled(!done)
         .onAppear {
             // шаг из ссылки agentmeister://onboarding или тот, на котором мастер перезапустил приложение
             let resume = UserDefaults.standard.object(forKey: "onboardingResumeStep") as? Int
@@ -146,7 +148,7 @@ struct OnboardingView: View {
     private func title(_ s: Step) -> String {
         switch s {
         case .look: return l.t("Язык и вид", "Language and look")
-        case .projects: return l.t("Где лежат проекты", "Where your projects live")
+        case .projects: return l.t("Папки с проектами", "Folders with your projects")
         case .agents: return l.t("Какие агенты есть на этом Mac", "Agents on this Mac")
         case .proxy: return l.t("Proxy для сессий", "Session proxy")
         case .signIn: return l.t("Вход в агентов", "Sign in to the agents")
@@ -158,8 +160,8 @@ struct OnboardingView: View {
     private func lead(_ s: Step) -> String {
         switch s {
         case .look: return l.t("По умолчанию как в macOS. Поменять можно потом в настройках.", "Follows macOS by default. You can change both later in Settings.")
-        case .projects: return l.t("Выбери папку, в которой лежат твои репозитории. По умолчанию это ~/Developer.",
-                                   "Pick the folder that holds your repositories. It is ~/Developer by default.")
+        case .projects: return l.t("Не папка проекта, а папка уровнем выше, где проекты лежат рядом. По умолчанию это ~/Developer.",
+                                   "Not a project folder but the one above it, where your projects sit side by side. It is ~/Developer by default.")
         case .agents: return l.t("Agentmeister запускает Claude Code и Codex в своих вкладках. Нужен хотя бы один из них.",
                                  "Agentmeister runs Claude Code and Codex in its own tabs. You need at least one of them.")
         case .proxy: return l.t("Сессии через proxy работают в sandbox-exec и ходят в сеть только через mihomo. Вход в агентов на следующем шаге тоже пойдет через него.",
@@ -254,8 +256,8 @@ struct OnboardingView: View {
     private var projectsStep: some View {
         VStack(alignment: .leading, spacing: 12) {
             card { ProjectsFolderPicker(l: l) }
-            Note(text: l.t("Agentmeister показывает проектами подпапки этой папки, в которых есть git. Поменять ее можно и потом, в Настройках > Основные.",
-                           "Agentmeister lists the subfolders of this folder that have git as projects. You can change it later in Settings > General."))
+            Note(text: l.t("Укажи папки, в которых лежат проекты, а не сами проекты. Каждая подпапка станет проектом в боковой панели. Папок может быть несколько, например ~/Developer и ~/Work. Список меняется и потом, в Настройках > Основные.",
+                           "Add the folders that hold your projects, not the projects themselves. Each subfolder becomes a project in the sidebar. You can add several, like ~/Developer and ~/Work, and change them later in Settings > General."))
         }
     }
 

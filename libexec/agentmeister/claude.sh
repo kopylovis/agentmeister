@@ -4,12 +4,18 @@ set -uo pipefail
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}/mnrh/config"
 LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 
-projects_dir() {
-  local d="${MNRH_PROJECTS:-}"
+# папки, в которых лежат проекты: projects=<путь>[:<путь>...] в config или MNRH_PROJECTS, по одной в строке
+projects_dirs() {
+  local d="${MNRH_PROJECTS:-}" p
   [ -z "$d" ] && [ -f "$CONF" ] && d=$(sed -n 's/^projects=//p' "$CONF" | head -1)
   d="${d:-$HOME/Developer}"
-  d="${d/#\~/$HOME}"
-  echo "$d"
+  local IFS=':'
+  for p in $d; do
+    [ -n "$p" ] && echo "${p/#\~/$HOME}"
+  done
+}
+projects_dir() {
+  projects_dirs | head -1
 }
 CLAUDE_BIN="${MNRH_CLAUDE_BIN:-claude}"
 MENU="$LIB/menu.py"
@@ -70,7 +76,7 @@ help() {
   agentmeister doctor              проверить установку
   agentmeister app-state           состояние для десктопного Agentmeister в JSON
   agentmeister lang [ru|en|auto]   язык интерфейса, auto берет язык macOS
-  agentmeister projects-dir [папка|default]  папка с проектами, по умолчанию ~/Developer
+  agentmeister projects-dir [add|remove] <папка>|default  папки, в которых лежат проекты (по умолчанию ~/Developer)
   agentmeister alias               короткое имя am; on, off
   agentmeister --version           версия
 
@@ -78,7 +84,7 @@ caffeinate (по умолчанию) не даёт Mac уснуть, пока и
 удобно для долгих задач и Remote Control с телефона. Экран при этом гаснуть может.
 С закрытой крышкой на батарее Mac все равно уснет, caffeinate этого не отменяет.
 agentmeister lid setup разрешит не засыпать и с закрытой крышкой (спросит пароль sudo).
-Папка проектов: ~/Developer, строка projects=<путь> в ~/.config/mnrh/config или MNRH_PROJECTS=<путь>.
+Папки с проектами: ~/Developer, agentmeister projects-dir add <папка>, строка projects=<путь>[:<путь>] в ~/.config/mnrh/config или MNRH_PROJECTS.
 EOF
 }
 
@@ -144,15 +150,23 @@ if [ ! -f "$CONF" ] && [ -z "${MNRH_PROJECTS:-}" ] && [ ! -d "$DEV" ] && command
 fi
 
 dirs=()
-for d in "$DEV"/*/; do
-  [ -d "$d" ] && dirs+=("${d%/}")
-done
+while IFS= read -r root; do
+  for d in "$root"/*/; do
+    [ -d "$d" ] && dirs+=("${d%/}")
+  done
+done < <(projects_dirs)
 
 match() {
   local q="$1" d found=()
+  # точное имя; одноименные проекты в разных папках проектов дают выбор по пути
   for d in ${dirs[@]+"${dirs[@]}"}; do
-    case "$(basename "$d")" in "$q") echo "$d"; return 0 ;; esac
+    case "$(basename "$d")" in "$q") found+=("$d") ;; esac
   done
+  if [ "${#found[@]}" -eq 1 ]; then echo "${found[0]}"; return 0; fi
+  if [ "${#found[@]}" -gt 1 ]; then
+    echo "agentmeister: «${q}» есть в нескольких папках проектов: $(for f in "${found[@]}"; do printf '%s ' "${f/#$HOME/~}"; done), укажи путь" >&2
+    return 1
+  fi
   for d in ${dirs[@]+"${dirs[@]}"}; do
     case "$(basename "$d")" in "$q"*) found+=("$d") ;; esac
   done
@@ -160,7 +174,7 @@ match() {
   if [ "${#found[@]}" -gt 1 ]; then
     echo "agentmeister: «${q}» подходит к нескольким: $(for f in "${found[@]}"; do printf '%s ' "$(basename "$f")"; done)" >&2
   else
-    echo "agentmeister: проекта «${q}» нет в ${DEV/#$HOME/~}" >&2
+    echo "agentmeister: проекта «${q}» нет в $(projects_dirs | sed "s|^$HOME|~|" | paste -sd ',' - | sed 's/,/, /g')" >&2
   fi
   return 1
 }
