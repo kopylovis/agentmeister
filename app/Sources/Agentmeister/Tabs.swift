@@ -106,6 +106,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// вкладку, и AGENTMEISTER_TAB у идущего агента остается верным.
     let id: UUID
     @Published var spec: LaunchSpec
+    /// Фоновые агенты внутри сессии вкладки, идущие и недавно законченные. Обновляет ряд подзадач.
+    @Published var agents: [SubAgent] = []
     @Published var title: String
     @Published var running = true
     @Published var exitCode: Int32?
