@@ -190,7 +190,8 @@ def codex_meta(path):
             role, text, _ = codex_item(line)
             if role in ("codex", "codex-raw"):
                 item["answered"] = True
-            elif role in ("user", "user-raw") and text and not item["title"]:
+            elif role in ("user", "user-raw") and text and not item["title"] and not text.lstrip().startswith(COMMAND_TAGS):
+                # служебная запись команды (<command-name>…) заголовком не годится, ждем настоящий запрос
                 item["title"] = " ".join(text.split())[:200]
             if item["answered"] and item["title"]:
                 break
@@ -204,6 +205,13 @@ def codex_rollouts(home):
         for name in files:
             if name.startswith("rollout-") and name.endswith(".jsonl"):
                 yield os.path.join(directory, name)
+
+
+# служебные записи команд в переписке, их текст в заголовок не берем
+COMMAND_TAGS = ("<command-name>", "<command-message>", "<command-args>", "<local-command-stdout>",
+                "<local-command-stderr>", "<local-command-caveat>")
+# формат заголовка в кеше: старые записи с заголовком из служебной записи разбираются заново
+TITLE_FORMAT = 2
 
 
 def codex_sessions(cache_path=None):
@@ -228,12 +236,13 @@ def codex_sessions(cache_path=None):
             continue
         version = [st.st_mtime_ns, st.st_size]
         item = cache.get(path)
-        if not isinstance(item, dict) or (item.get("v") != version and not (item.get("answered") and item.get("title"))):
+        if not isinstance(item, dict) or item.get("t") != TITLE_FORMAT or \
+                (item.get("v") != version and not (item.get("answered") and item.get("title"))):
             try:
                 item = codex_meta(path)
             except OSError:
                 continue
-        item = dict(item, v=version)
+        item = dict(item, v=version, t=TITLE_FORMAT)
         fresh[path] = item
         sid = item.get("id")
         if not sid or item.get("sub") or not item.get("answered"):
