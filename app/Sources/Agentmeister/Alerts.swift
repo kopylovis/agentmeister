@@ -109,10 +109,10 @@ struct TabAlert: View {
                     Text(item.body).font(.system(size: 12)).foregroundStyle(Ink.text2).lineLimit(3)
                     HStack(spacing: 6) {
                         if let primary = item.primary {
-                            Button(primary.0, action: primary.1).buttonStyle(.glassProminent).controlSize(.small).disabled(busy)
+                            Button(primary.0, action: primary.1).buttonStyle(PillStyle(prominent: true, small: true)).disabled(busy)
                         }
                         if let secondary = item.secondary {
-                            Button(secondary.0, action: secondary.1).buttonStyle(.glass).controlSize(.small)
+                            Button(secondary.0, action: secondary.1).buttonStyle(PillStyle(small: true))
                         }
                     }
                     .padding(.top, 6)

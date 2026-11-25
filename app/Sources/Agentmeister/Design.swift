@@ -270,7 +270,6 @@ struct PillButton: View {
     var small = false
     var busy = false
     let action: () -> Void
-    @Environment(\.isEnabled) private var enabled
 
     var body: some View {
         Button(action: action) {
@@ -278,18 +277,84 @@ struct PillButton: View {
                 Text(title).opacity(busy ? 0 : 1)
                 if busy { ProgressView().controlSize(.small).tint(prominent ? .white : nil) }
             }
-            .font(.system(size: small ? 12 : 13, weight: prominent ? .medium : .regular))
-            .foregroundStyle(prominent ? .white : Ink.text)
-            .padding(.horizontal, small ? 12 : 16)
-            .frame(minWidth: small ? nil : 96)
-            .frame(height: small ? 28 : 34)
-            .background(Capsule().fill(prominent ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(Ink.buttonBg))
-                .shadow(color: .black.opacity(prominent ? 0.25 : 0), radius: 4, y: 2))
-            .overlay(Capsule().strokeBorder(prominent ? .clear : Ink.buttonBorder))
-            .contentShape(Capsule())
-            .opacity(enabled ? 1 : 0.5)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PillStyle(prominent: prominent, small: small))
+    }
+}
+
+/// Капсула приложения для любой кнопки: синяя главная или светлая обычная, 34 pt (small 28 pt), подсветка под
+/// курсором. Ей заменены системные .glass и .glassProminent, чтобы кнопки во всех окнах были одного вида.
+struct PillStyle: ButtonStyle {
+    var prominent = false
+    var small = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        PillBody(configuration: configuration, prominent: prominent, small: small)
+    }
+
+    private struct PillBody: View {
+        let configuration: ButtonStyleConfiguration
+        let prominent: Bool
+        let small: Bool
+        @Environment(\.isEnabled) private var enabled
+        @State private var hover = false
+
+        var body: some View {
+            configuration.label
+                .font(.system(size: small ? 12 : 13, weight: prominent ? .medium : .regular))
+                .foregroundStyle(prominent ? .white : Ink.text)
+                .lineLimit(1)
+                .padding(.horizontal, small ? 12 : 16)
+                .frame(minWidth: small ? nil : 96)
+                .frame(height: small ? 28 : 34)
+                .background(Capsule().fill(prominent ? AnyShapeStyle(Color.accentColor)
+                                                     : AnyShapeStyle(hover && enabled ? Ink.hover : Ink.buttonBg))
+                    .shadow(color: .black.opacity(prominent ? 0.25 : 0), radius: 4, y: 2))
+                .overlay(Capsule().strokeBorder(prominent ? .clear : Ink.buttonBorder))
+                .brightness(prominent && hover && enabled ? 0.06 : 0)
+                .contentShape(Capsule())
+                .opacity(configuration.isPressed ? 0.8 : enabled ? 1 : 0.5)
+                .onHover { hover = $0 }
+        }
+    }
+}
+
+/// Чип информационной строки вкладки: капсула 26 pt с тонкой рамкой, значок и подпись, как "Не спать".
+/// on подсвечивает включенное состояние.
+struct ChipStyle: ButtonStyle {
+    var on = false
+
+    func makeBody(configuration: Configuration) -> some View { ChipBody(configuration: configuration, on: on) }
+
+    private struct ChipBody: View {
+        let configuration: ButtonStyleConfiguration
+        let on: Bool
+        @Environment(\.isEnabled) private var enabled
+        @State private var hover = false
+
+        var body: some View {
+            configuration.label
+                .labelStyle(ChipLabelStyle())
+                .font(.system(size: 12))
+                .foregroundStyle(on ? Ink.modeOn : hover && enabled ? Ink.text : Ink.muted)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(height: 26)
+                .background(Capsule().fill(on ? Ink.modeOnBg : hover && enabled ? Ink.hover : .clear))
+                .overlay(Capsule().strokeBorder(on ? Ink.modeOnBorder : Ink.buttonBorder))
+                .contentShape(Capsule())
+                .opacity(configuration.isPressed ? 0.8 : enabled ? 1 : 0.5)
+                .onHover { hover = $0 }
+        }
+    }
+
+    private struct ChipLabelStyle: LabelStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            HStack(spacing: 6) {
+                configuration.icon.font(.system(size: 11))
+                configuration.title
+            }
+        }
     }
 }
 

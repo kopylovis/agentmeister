@@ -226,8 +226,7 @@ struct LibraryView: View {
                 .font(.system(size: 12))
                 .frame(width: 250)
                 .accessibilityLabel(l.agent)
-            UtilityButton(title: l.t("Очистить лишние", "Clean up"), args: ["sessions", "clean"])
-                .controlSize(.small)
+            UtilityButton(title: l.t("Очистить лишние", "Clean up"), args: ["sessions", "clean"], small: true)
                 .help(l.t("Битые ссылки, сессии без ответа, папки удаленных проектов. Сначала покажет список.",
                           "Broken links, sessions without a reply, folders of deleted projects. Shows the list first."))
         }
