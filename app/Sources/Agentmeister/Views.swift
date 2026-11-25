@@ -920,7 +920,7 @@ struct InfoBar: View {
             if !branch.isEmpty {
                 Chip(mono: true, action: { copyBranch(branch) }) {
                     Text(l.t("ветка", "branch")).font(.system(size: 12)).foregroundStyle(Ink.faint)
-                    Text(copied ? l.t("Скопировано", "Copied") : branch).lineLimit(1)
+                    Text(copied ? l.t("скопировано", "copied") : branch).lineLimit(1)
                 }
                 .layoutPriority(1)
                 .help(l.t("Скопировать имя ветки", "Copy the branch name"))
