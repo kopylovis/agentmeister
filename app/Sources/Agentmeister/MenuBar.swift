@@ -300,7 +300,7 @@ struct MenuBarPanel: View {
                 .background(Capsule().fill(Color.accentColor).shadow(color: .black.opacity(0.25), radius: 4, y: 2))
                 .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hoverCapsule(.brighten))
             .padding(.top, 2)
 
             Rectangle().fill(Ink.hairline).frame(height: 1).padding(.horizontal, 4)

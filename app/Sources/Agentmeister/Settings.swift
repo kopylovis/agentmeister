@@ -151,7 +151,7 @@ struct SettingsView: View {
                             .background(RoundedRectangle(cornerRadius: 10).fill(item == current ? Ink.thumb : .clear))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hover(10))
                     .accessibilityAddTraits(item == current ? .isSelected : [])
                 }
                 Spacer()
@@ -396,8 +396,9 @@ struct ProjectsFolderPicker: View {
                             run(["projects-dir", "remove", folder])
                         } label: {
                             Image(systemName: "minus.circle").font(.system(size: 14)).foregroundStyle(Ink.muted)
+                                .frame(width: 24, height: 24)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.hoverCircle())
                         .help(l.t("Убрать папку из списка, сами проекты останутся на месте", "Remove the folder from the list, the projects stay where they are"))
                         .disabled(busy)
                     }
@@ -571,7 +572,7 @@ struct AppearancePicker: View {
                     .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(on ? Color.accentColor : .clear, lineWidth: 2))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hover(14, .overlay))
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
@@ -668,7 +669,7 @@ struct ProxyHostRunPane: View {
                     if p.configured {
                         Spacer()
                         Button(l.t("Удалить proxy", "Remove proxy"), role: .destructive) { confirmRemove = true }
-                            .buttonStyle(.link)
+                            .buttonStyle(.textLink(Ink.red))
                             .foregroundStyle(Ink.red)
                             .font(.system(size: 12))
                     } else {
@@ -926,7 +927,7 @@ struct ProxyActions: View {
             .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hover(12, .overlay))
         .disabled(busy)
     }
 
