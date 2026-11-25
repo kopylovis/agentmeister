@@ -249,7 +249,7 @@ struct SidebarRail: View {
         // проекты прокручиваются во всю высоту рельсы, под место светофора и под закрепленный внизу host-run
         ScrollView {
                 VStack(spacing: 8) {
-                    ForEach(backend.state.projects) { project in
+                    ForEach(workspace.sidebarProjects(backend.state)) { project in
                         let s = state(project)
                         // выделен один проект: открытый экран проекта, а без него проект текущей вкладки
                         let current = ui.projectScreen.map { $0 == project.path } ?? (workspace.current?.spec.projectPath == project.path)
@@ -305,6 +305,7 @@ struct SidebarRail: View {
                 }
                 .padding(.vertical, 6)
                 .frame(maxWidth: .infinity)
+                .animation(.snappy, value: workspace.sidebarProjects(backend.state).map(\.path))
             }
             .scrollIndicators(.never)
             .safeAreaBar(edge: .top, spacing: 0) {
