@@ -177,6 +177,7 @@ struct NotifyPane: View {
     @EnvironmentObject var backend: Backend
     let data: SettingsData?
     let reload: () async -> Void
+    @AppStorage(DockAttention.key) private var dock = true
 
     var l: L { L(backend.state.lang) }
 
@@ -215,6 +216,12 @@ struct NotifyPane: View {
                 }
                 row(l.t("Звук Prompt", "Prompt sound"), l.t("Без него уведомления приходят беззвучно", "Without it notifications arrive silently")) {
                     HeaderSwitch(label: "sound", on: n.sound) { run(["notify", "sound", $0 ? "on" : "off"]) }
+                }
+                row(l.t("Значок в Dock", "Dock icon"),
+                    l.t("Подпрыгивает, когда вкладка ждет ответа, а окно не в фокусе. Число на значке показывает, сколько вкладок ждут.",
+                        "Bounces when a tab is waiting for you and the window isn't focused. The badge shows how many tabs are waiting.")) {
+                    Toggle("", isOn: $dock).toggleStyle(.switch).labelsHidden()
+                        .onChange(of: dock) { if !dock { NSApp.dockTile.badgeLabel = nil } }
                 }
                 HStack {
                     CommandButton(title: l.t("Прислать тест", "Send test"), args: ["notify", "test"], reload: reload)
