@@ -623,9 +623,11 @@ struct ProjectRow: View {
         .frame(minHeight: 28)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
+        // выбранный проект, открытый, а под курсором легкая подсветка, как у строк в строке меню
         .listRowBackground(ui.projectScreen == project.path
                            ? RoundedRectangle(cornerRadius: 10).fill(Ink.thumb).padding(.horizontal, 10)
-                           : open ? RoundedRectangle(cornerRadius: 10).fill(Ink.openBg).padding(.horizontal, 10) : nil)
+                           : open ? RoundedRectangle(cornerRadius: 10).fill(hover ? Ink.hover : Ink.openBg).padding(.horizontal, 10)
+                           : hover ? RoundedRectangle(cornerRadius: 10).fill(Ink.hover).padding(.horizontal, 10) : nil)
         .contextMenu {
             Button(l.newSession) {
                 workspace.open(LaunchSpec.quick(project))
@@ -654,6 +656,7 @@ struct SessionRow: View {
     @EnvironmentObject var ui: UIState
     let session: AppState.Session
     let project: AppState.Project
+    @State private var hover = false
 
     var l: L { L(backend.state.lang) }
 
@@ -691,7 +694,9 @@ struct SessionRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(current ? RoundedRectangle(cornerRadius: 10).fill(Ink.thumb).padding(.horizontal, 10) : nil)
+        .onHover { hover = $0 }
+        .listRowBackground(current ? RoundedRectangle(cornerRadius: 10).fill(Ink.thumb).padding(.horizontal, 10)
+                           : hover ? RoundedRectangle(cornerRadius: 10).fill(Ink.hover).padding(.horizontal, 10) : nil)
         .help(live != nil && tab == nil
               ? l.t("Открыта в другом окне", "Open in another window")
               : l.t("Продолжить в новой вкладке", "Resume in a new tab"))
