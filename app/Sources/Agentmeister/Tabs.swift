@@ -800,6 +800,7 @@ final class Workspace: ObservableObject {
                 tab.status = nil
             }
         }
+        DockAttention.update(waiting: tabs.filter { $0.running && $0.status == "waiting" }.count)
     }
 
     /// Новая вкладка Claude Code в том же проекте и маршруте с контекстом треда Codex: /import-codex <id>.
@@ -1185,5 +1186,20 @@ final class AppTerminalView: LocalProcessTerminalView {
             return
         }
         super.requestOpenLink(source: source, request: request)
+    }
+}
+
+/// Значок в Dock: число вкладок, которые ждут ответа, и один отскок, когда их стало больше, а окно не в фокусе.
+@MainActor
+enum DockAttention {
+    static let key = "dock.attention"
+    private static var last = 0
+
+    static func update(waiting: Int) {
+        defer { last = waiting }
+        guard UserDefaults.standard.object(forKey: key) as? Bool ?? true else { return }
+        let label = waiting > 0 ? String(waiting) : nil
+        if NSApp.dockTile.badgeLabel != label { NSApp.dockTile.badgeLabel = label }
+        if waiting > last, !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
     }
 }
