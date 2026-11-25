@@ -148,7 +148,7 @@ struct MainHeader: View {
                     .background(Capsule().fill(Color.accentColor))
                     .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hoverCapsule(.brighten))
                 .shortcutHelp(l.newSession, .newSession)
                 Button {
                     withAnimation(.snappy(duration: 0.25)) { ui.showInspector.toggle() }
@@ -158,7 +158,7 @@ struct MainHeader: View {
                         .frame(width: 34, height: 28)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hover(8))
                 .shortcutHelp(l.t("Показать или скрыть панель сессии", "Show or hide the session panel"), .inspector)
                 .accessibilityLabel(l.t("Показать или скрыть панель сессии", "Show or hide the session panel"))
             }
@@ -209,7 +209,7 @@ struct SidebarToggle: View {
                 .frame(width: 34, height: 28)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hover(8))
         .shortcutHelp(l.t("Свернуть или развернуть проекты", "Collapse or expand projects"), .sidebar)
         .accessibilityLabel(l.t("Свернуть или развернуть проекты", "Collapse or expand projects"))
     }
@@ -330,7 +330,7 @@ struct SidebarRail: View {
                                 .offset(x: 2, y: 2)
                         }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hover(8, .overlay))
                 .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
                 .help(h.running ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
                                 : l.t("host-run не запущен", "host-run isn't running"))

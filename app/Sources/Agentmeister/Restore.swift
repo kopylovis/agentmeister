@@ -85,7 +85,7 @@ struct RestoreSheet: View {
             .background(RoundedRectangle(cornerRadius: 12).fill(on ? Ink.card : .clear))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hover(12))
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 }

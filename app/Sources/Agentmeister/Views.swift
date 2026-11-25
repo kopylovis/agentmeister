@@ -331,7 +331,7 @@ struct ProxyPopover: View {
                 SettingsLink {
                     Text(l.t("Настройки proxy", "Proxy settings"))
                 }
-                .buttonStyle(.link)
+                .buttonStyle(.textLink)
                 .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
             }
         }
@@ -485,7 +485,7 @@ struct SidebarFooter: View {
                         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(on ? Ink.modeOnBorder : Ink.modeOffBorder))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hover(10, .overlay))
                     .help(l.modeTitle(key))
                     .accessibilityLabel(key + ", " + modeHint(key))
                     .accessibilityAddTraits(on ? .isSelected : [])
@@ -541,7 +541,7 @@ struct CollapsibleHeader: View {
             .frame(height: 22)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hover(6))
         .accessibilityLabel(title)
         .accessibilityValue(open ? "expanded" : "collapsed")
     }
@@ -634,9 +634,9 @@ struct ProjectRow: View {
                                                   direct: backend.state.proxy?.defaultRoute == "direct"))
                     }
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "plus").frame(width: 22, height: 22)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.hover(6))
                 .help(l.newSession)
                 .accessibilityLabel(l.newSession)
             }
@@ -817,7 +817,7 @@ struct TabStrip: View {
                     .frame(width: 32, height: 32)
                     .contentShape(Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hoverCircle())
             .shortcutHelp(l.newTab, .newTab)
             .accessibilityLabel(l.newTab)
         }
@@ -861,7 +861,7 @@ struct TabChip: View {
                             .frame(width: 16, height: 16)
                             .background(Circle().fill(Ink.chip))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hoverCircle(.overlay))
                     .shortcutHelp(l.closeTab, .closeTab)
                     .accessibilityLabel(l.closeTab)
                 } else if tab.running && (tab.status == "waiting" || tab.status == "busy") {
@@ -1283,7 +1283,7 @@ struct TerminalFindBar: View {
                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? Ink.modeOnBg : .clear))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hover(6))
         .help(help)
         .accessibilityAddTraits(on ? .isSelected : [])
     }
@@ -1296,7 +1296,7 @@ struct TerminalFindBar: View {
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.hover(6))
         .help(help)
     }
 }
@@ -1411,7 +1411,7 @@ struct TabInspector: View {
                         SettingsLink {
                             Text(l.t("Весь белый список", "Full allowlist")).foregroundStyle(Ink.link)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.textLink)
                         .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
                     }
                     .font(.system(size: 12))
@@ -1435,7 +1435,7 @@ struct TabInspector: View {
                                 }
                                 .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.hover(6))
                             .help(l.t("Отметить сделанной", "Mark done"))
                         }
                     }
@@ -1714,7 +1714,7 @@ struct SegmentedCapsule<T: Hashable>: View {
                         .background(Capsule().fill(on ? Ink.thumb : .clear).shadow(color: .black.opacity(on ? 0.2 : 0), radius: 3, y: 1))
                         .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hoverCapsule())
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }

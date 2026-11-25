@@ -93,7 +93,7 @@ struct ModesPane: View {
                                 .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
                             if let path = g.logPath {
                                 Button(tilde(path)) { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
-                                    .buttonStyle(.link)
+                                    .buttonStyle(.textLink)
                                     .font(.system(size: 12))
                             }
                         }
@@ -637,7 +637,7 @@ struct AgentCard: View {
             Button { runCheck(force: true) } label: {
                 Text(l.t("Не удалось проверить, повторить", "Couldn't check, try again")).foregroundStyle(Ink.muted)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.textLink(Ink.muted))
             .help(error)
         }
     }
@@ -823,7 +823,7 @@ struct ShortcutsPane: View {
                 Button { recorder.toggle(action, l: l) } label: {
                     Keycap(text: text, recording: recording, muted: key.isEmpty && !recording)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.hover(6, .overlay))
                 .help(recording ? l.t("Esc отменяет, Delete убирает сочетание", "Esc cancels, Delete clears the shortcut")
                                 : l.t("Нажми, чтобы поменять", "Click to change"))
                 .accessibilityLabel(action.title(l) + ", " + (key.isEmpty ? l.t("нет сочетания", "no shortcut") : key))
@@ -1067,7 +1067,7 @@ struct DoctorPane: View {
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.hover(8))
             .allowsHitTesting(collapsible)
             .accessibilityAddTraits(collapsible ? .isButton : [])
             .accessibilityValue(collapsible ? (open ? l.t("развернуто", "expanded") : l.t("свернуто", "collapsed")) : "")

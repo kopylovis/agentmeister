@@ -67,7 +67,7 @@ struct OnboardingView: View {
                         .background(RoundedRectangle(cornerRadius: 10).fill(item == current ? Ink.thumb : .clear))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.hover(10))
                     .accessibilityAddTraits(item == current ? .isSelected : [])
                 }
                 Spacer()
@@ -108,7 +108,7 @@ struct OnboardingView: View {
                 HStack {
                     if current == .proxy && data?.proxy?.configured != true {
                         Button(l.t("Пропустить, работать без proxy", "Skip, work without the proxy")) { skipProxy() }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(PillStyle(small: true))
                     }
                     Spacer()
                     // Esc нужен терминалу, пока он открыт: иначе он закрыл бы мастер и оборвал команду. Настоящий первый
@@ -572,8 +572,8 @@ struct ConsolePanel: View {
                         .font(.caption)
                         .foregroundStyle(tab.exitCode == 0 ? Ink.teal : Ink.amber)
                 }
-                Button(action: close) { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless)
+                Button(action: close) { Image(systemName: "xmark").frame(width: 22, height: 22) }
+                    .buttonStyle(.hoverCircle())
                     .help(tab.running ? l.t("Остановить и закрыть", "Stop and close") : l.t("Закрыть", "Close"))
                     .accessibilityLabel(tab.running ? l.t("Остановить и закрыть", "Stop and close") : l.t("Закрыть", "Close"))
             }
