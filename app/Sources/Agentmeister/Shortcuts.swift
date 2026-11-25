@@ -225,6 +225,10 @@ enum ReservedShortcuts {
             (KeyCombo("z", .command, code: kVK_ANSI_Z), l.t("Отменить", "Undo")),
             (KeyCombo("z", [.command, .shift], code: kVK_ANSI_Z), l.t("Повторить", "Redo")),
             (KeyCombo("return", .command, code: kVK_Return), l.t("Открыть в новой вкладке", "Open in a new tab")),
+            (KeyCombo("f", .command, code: kVK_ANSI_F), l.t("Найти в терминале", "Find in the terminal")),
+            (KeyCombo("g", .command, code: kVK_ANSI_G), l.t("Найти следующее", "Find next")),
+            (KeyCombo("g", [.command, .shift], code: kVK_ANSI_G), l.t("Найти предыдущее", "Find previous")),
+            (KeyCombo("e", .command, code: kVK_ANSI_E), l.t("Искать выделенное", "Use selection for find")),
         ]
         let digits = [kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9]
         for (index, code) in digits.enumerated() {
