@@ -872,9 +872,34 @@ struct InfoBar: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
     @ObservedObject var tab: TerminalTab
+    @Environment(\.openSettings) private var openSettings
+    /// Ветку только что скопировали: чип полторы секунды показывает "Скопировано".
+    @State private var copied = false
     /// Ветка папки сейчас, из .git/HEAD. Читается вне главного потока раз в 5 секунд, пока строка видна,
     /// а не в body при каждой перерисовке.
     @State private var head: String?
+
+    private func revealFolder() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: tab.spec.projectPath, isDirectory: true))
+    }
+
+    private func copy(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func copyBranch(_ branch: String) {
+        copy(branch)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+    }
+
+    /// Настройки на разделе proxy и host-run.
+    private func openProxySettings() {
+        UserDefaults.standard.set("proxy", forKey: "settingsSection")
+        openSettings()
+        NSApp.activate()
+    }
 
     var l: L { L(backend.state.lang) }
 
@@ -883,25 +908,39 @@ struct InfoBar: View {
         let branch = head ?? backend.state.sessions.first { $0.id == tab.sessionId }?.branch ?? ""
         let port = backend.state.proxy?.port ?? 17890
         HStack(spacing: 8) {
-            Chip(mono: true) { Text(tilde(tab.spec.projectPath)).lineLimit(1).truncationMode(.head) }
-                .layoutPriority(2)
+            Chip(mono: true, action: { revealFolder() }) {
+                Text(tilde(tab.spec.projectPath)).lineLimit(1).truncationMode(.head)
+            }
+            .layoutPriority(2)
+            .help(l.t("Открыть папку в Finder", "Open the folder in Finder"))
+            .contextMenu {
+                Button(l.t("Открыть в Finder", "Open in Finder")) { revealFolder() }
+                Button(l.t("Скопировать путь", "Copy path")) { copy(tab.spec.projectPath) }
+            }
             if !branch.isEmpty {
-                Chip(mono: true) { Text(branch).lineLimit(1) }
-                    .layoutPriority(1)
+                Chip(mono: true, action: { copyBranch(branch) }) {
+                    Text(copied ? l.t("Скопировано", "Copied") : branch).lineLimit(1)
+                }
+                .layoutPriority(1)
+                .help(l.t("Скопировать имя ветки", "Copy the branch name"))
             }
             if tab.spec.utility != nil {
-                Chip(foreground: Ink.muted) {
+                Chip(foreground: Ink.muted, action: { openProxySettings() }) {
                     Text(tab.spec.proxied ? l.t("proxy run, сеть через 127.0.0.1:\(port)", "proxy run, network via 127.0.0.1:\(port)")
                                           : l.t("команда agentmeister", "agentmeister command"))
                 }
             } else if tab.spec.proxied {
-                Chip(background: Ink.tealChip, foreground: Ink.teal) {
+                Chip(background: Ink.tealChip, foreground: Ink.teal, action: { openProxySettings() }) {
                     Text(tab.spec.agent == .codex
                          ? l.t("строгий профиль, сеть только через mihomo", "strict profile, network only through mihomo")
                          : l.t("sandbox-exec, сеть через 127.0.0.1:\(port)", "sandbox-exec, network via 127.0.0.1:\(port)"))
                 }
+                .help(l.t("Настройки proxy и host-run", "Proxy and host-run settings"))
             } else {
-                Chip(foreground: Ink.direct) { Text(l.t("напрямую, без sandbox-exec", "direct, no sandbox-exec")) }
+                Chip(foreground: Ink.direct, action: { openProxySettings() }) {
+                    Text(l.t("напрямую, без sandbox-exec", "direct, no sandbox-exec"))
+                }
+                .help(l.t("Настройки proxy и host-run", "Proxy and host-run settings"))
             }
             if tab.spec.remoteControl && tab.spec.agent == .claude {
                 Chip {
