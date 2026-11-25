@@ -1952,27 +1952,11 @@ struct NewSessionSheet: View {
             // ветку и worktree делает agentmeister parallel --prepare, а вкладку с задачей открываем сами
             busy = true
             error = nil
-            var args = ["parallel", prompt, "-p", project.path, "--prepare"]
-            if fork, let sid = forkSource { args += ["--fork-sid", sid] }
+            let forkSid = fork ? forkSource : nil
             Task {
-                let job: ParallelJob? = await Backend.json(args)
+                error = await workspace.openParallel(spec, project: project, task: prompt, forkSid: forkSid, state: backend.state, l: l)
                 busy = false
-                guard let job, job.error == nil, let path = job.path else {
-                    error = job?.error ?? l.t("Не получилось сделать worktree", "Couldn't create the worktree")
-                    return
-                }
-                var parallel = spec
-                parallel.projectName = project.name + " · " + (job.branch ?? "")
-                parallel.projectPath = path
-                parallel.firstPrompt = job.prompt ?? prompt
-                parallel.extraFlags = job.flags ?? []
-                // задача из вкладки этого же проекта встает подзадачей ее агента
-                if let current = workspace.current, current.spec.utility == nil,
-                   backend.state.project(containing: current.spec.projectPath)?.path == project.path {
-                    parallel.parent = workspace.root(of: current).id
-                }
-                workspace.open(parallel)
-                dismiss()
+                if error == nil { dismiss() }
             }
             return
         }
@@ -1988,6 +1972,30 @@ struct ParallelJob: Decodable {
     let prompt: String?
     let flags: [String]?
     let error: String?
+}
+
+extension Workspace {
+    /// Параллельная задача: ветку и worktree делает agentmeister parallel --prepare, вкладку с задачей открываем
+    /// сами. Задача из вкладки этого же проекта встает подзадачей ее агента. Возвращает текст ошибки.
+    func openParallel(_ spec: LaunchSpec, project: AppState.Project, task: String, forkSid: String? = nil,
+                      state: AppState, l: L) async -> String? {
+        var args = ["parallel", task, "-p", project.path, "--prepare"]
+        if let forkSid { args += ["--fork-sid", forkSid] }
+        let job: ParallelJob? = await Backend.json(args)
+        guard let job, job.error == nil, let path = job.path else {
+            return job?.error ?? l.t("Не получилось сделать worktree", "Couldn't create the worktree")
+        }
+        var parallel = spec
+        parallel.projectName = project.name + " · " + (job.branch ?? "")
+        parallel.projectPath = path
+        parallel.firstPrompt = job.prompt ?? task
+        parallel.extraFlags = job.flags ?? []
+        if let current, current.spec.utility == nil, state.project(containing: current.spec.projectPath)?.path == project.path {
+            parallel.parent = root(of: current).id
+        }
+        open(parallel)
+        return nil
+    }
 }
 
 /// Сегментный переключатель-капсула из макета: дорожка и светлый ползунок у выбранного.
