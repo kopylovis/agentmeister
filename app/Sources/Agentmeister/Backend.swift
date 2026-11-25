@@ -79,15 +79,17 @@ enum LoginEnvironment {
         return FileManager.default.isExecutableFile(atPath: path) ? path : nil
     }()
 
-    /// Полный путь к agentmeister. Из PATH пользователя (checkout или Homebrew), если он не старее встроенного,
-    /// иначе встроенный: приложение не должно звать команды, которых в старом CLI еще нет.
+    /// Полный путь к agentmeister. Из PATH пользователя, если он новее встроенного, или той же версии, но это
+    /// git-репозиторий (разработка agentmeister: правки в нем должны работать сразу). Иначе встроенный: VERSION
+    /// поднимается не с каждым изменением, и CLI той же версии из Homebrew может не знать новых команд.
     static let agentmeister: String = {
         let path = shared["PATH"] ?? "/usr/bin:/bin"
         let first = path.split(separator: ":").map { "\($0)/agentmeister" }
             .first { FileManager.default.isExecutableFile(atPath: $0) }
         guard let bundled = bundledCLI else { return first ?? "agentmeister" }
         guard let first, realPath(first) != realPath(bundled) else { return bundled }
-        return compareVersions(cliVersion(first), cliVersion(bundled)) >= 0 ? first : bundled
+        let order = compareVersions(cliVersion(first), cliVersion(bundled))
+        return order > 0 || (order == 0 && isCheckout(first)) ? first : bundled
     }()
 
     static var found: Bool { agentmeister.hasPrefix("/") }
@@ -96,6 +98,12 @@ enum LoginEnvironment {
     static var usesBundledCLI: Bool { bundledCLI != nil && realPath(agentmeister) == realPath(bundledCLI!) }
 
     private static func realPath(_ path: String) -> String { (path as NSString).resolvingSymlinksInPath }
+
+    /// CLI лежит в git-репозитории (bin/.. содержит .git).
+    private static func isCheckout(_ path: String) -> Bool {
+        let root = ((realPath(path) as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
+        return FileManager.default.fileExists(atPath: root + "/.git")
+    }
 
     /// Версия CLI из файла VERSION в его корне (bin/..), без него из agentmeister --version.
     private static func cliVersion(_ path: String) -> String {
