@@ -19,10 +19,33 @@ AGENTS = ("claude", "codex")
 BREW_PATHS = ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
 
 
+def is_shim(path):
+    """Обертка-скрипт перед настоящим агентом (например, codex от promptsill в ~/.local/bin): она сама ищет
+    агента дальше по PATH. Скрипты npm (в node_modules) и пакеты Homebrew оберткой не считаются."""
+    real = os.path.realpath(path)
+    if "node_modules" in real.split(os.sep) or brew_package(real):
+        return False
+    try:
+        with open(real, "rb") as f:
+            return f.read(2) == b"#!"
+    except OSError:
+        return False
+
+
 def binary_path(agent):
-    """Бинарник агента из PATH. Claude Code можно подменить через MNRH_CLAUDE_BIN, как во всем agentmeister."""
+    """Бинарник агента из PATH, обертки пропускаются, если дальше по PATH есть сам агент. Claude Code можно
+    подменить через MNRH_CLAUDE_BIN, как во всем agentmeister."""
     name = os.environ.get("MNRH_CLAUDE_BIN", "claude") if agent == "claude" else agent
-    return shutil.which(name)
+    if os.sep in name:
+        return name if os.access(name, os.X_OK) else None
+    found, seen = [], set()
+    for directory in os.get_exec_path():
+        candidate = os.path.join(directory or ".", name)
+        real = os.path.realpath(candidate)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK) and real not in seen:
+            seen.add(real)
+            found.append(candidate)
+    return next((c for c in found if not is_shim(c)), found[0] if found else None)
 
 
 def brew_package(real):
