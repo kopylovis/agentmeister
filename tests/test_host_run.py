@@ -17,6 +17,13 @@ import claude_proxy
 import host_run
 
 
+def setUpModule():
+    # тексты проверяются на русском, язык машины не важен; английский проверяет отдельный тест
+    patcher = patch("mnrhlib.lang", return_value="ru")
+    patcher.start()
+    unittest.addModuleCleanup(patcher.stop)
+
+
 def write_commands(path, commands):
     Path(path).write_text(json.dumps({"commands": commands}))
 
@@ -439,6 +446,17 @@ class Restart(unittest.TestCase):
                 self.assertFalse(host_run.lock(f, wait=0.2))
                 threading.Timer(0.2, held.close).start()
                 self.assertTrue(host_run.lock(f, wait=2))
+
+
+class English(unittest.TestCase):
+    def test_messages_follow_the_language(self):
+        with patch("mnrhlib.lang", return_value="en"):
+            with self.assertRaisesRegex(host_run.RuleError, "no command 'nope'"):
+                host_run.resolve("nope", [], {})
+            self.assertIn("<name>", host_run.usage())
+            self.assertIn("isn't running", host_run.not_running())
+            self.assertEqual(host_run.answer_text("deny"), "denied in the window")
+            self.assertNotRegex(host_run.usage() + host_run.add_usage(), "[а-яА-Я]")
 
 
 class PinnedConfirm(unittest.TestCase):

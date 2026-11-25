@@ -8,7 +8,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import HOME, LOCAL_CLI, projects_dir, run, settings_path, tilde  # noqa: E402
+from mnrhlib import HOME, LOCAL_CLI, projects_dir, run, settings_path, tilde, tr  # noqa: E402
 
 OPEN = {
     "Apple_Terminal": '''
@@ -237,10 +237,12 @@ def host_open_command(argv):
     project, mode, incognito = None, None, False
     for arg in head:
         if arg in ("-d", "--direct"):
-            raise ValueError("host-run open открывает сессию только через proxy, -d нельзя")
+            raise ValueError(tr("host-run open открывает сессию только через proxy, -d нельзя",
+                                "host-run open only opens proxied sessions, -d is not allowed"))
         if arg.startswith("-"):
             if arg not in HOST_FLAGS:
-                raise ValueError(f"флаг {arg} не подходит, можно -k, -n, -i, -x, --new")
+                raise ValueError(tr(f"флаг {arg} не подходит, можно -k, -n, -i, -x, --new",
+                                    f"flag {arg} is not allowed, use -k, -n, -i, -x, --new"))
             if HOST_FLAGS[arg] == "-i":
                 incognito = True
             elif HOST_FLAGS[arg]:
@@ -248,9 +250,11 @@ def host_open_command(argv):
         elif project is None:
             project = arg
         else:
-            raise ValueError(f"лишний аргумент {arg}, аргументы claude пиши после --")
+            raise ValueError(tr(f"лишний аргумент {arg}, аргументы claude пиши после --",
+                                f"extra argument {arg}, put claude arguments after --"))
     if not project:
-        raise ValueError("нужен проект: host-run open <проект> [флаги agentmeister open] -- [аргументы claude]")
+        raise ValueError(tr("нужен проект: host-run open <проект> [флаги agentmeister open] -- [аргументы claude]",
+                            "a project is required: host-run open <project> [agentmeister open flags] -- [claude arguments]"))
     cmd = [LOCAL_CLI, "open", project, mode or "-k", "-x", "--new"] + (["-i"] if incognito else [])
     return cmd + (["--", *tail] if tail else [])
 
@@ -260,10 +264,10 @@ def open_tab(cmd):
     -> (текст, ошибка ли)"""
     tty, err = launch("iTerm.app", shell_line(cmd), "tab")
     if not tty:
-        return f"iTerm2 не открыл вкладку ({err}).", True
+        return tr(f"iTerm2 не открыл вкладку ({err}).", f"iTerm2 didn't open a tab ({err})."), True
     rc = "--remote-control" in cmd[cmd.index("--") + 1:] if "--" in cmd else False
-    where = f"{tilde(cmd[2])}, через proxy"
-    return report("iTerm.app", tty, cmd, "новую вкладку", where, rc, prompt=False)
+    where = tr(f"{tilde(cmd[2])}, через proxy", f"{tilde(cmd[2])}, through the proxy")
+    return report("iTerm.app", tty, cmd, tr("новую вкладку", "a new tab"), where, rc, prompt=False)
 
 
 def launch(term, line, placement):
@@ -334,7 +338,7 @@ def open_claude(args, cm):
         return "placement должен быть tab или window", True
     if placement == "tab":
         term = "iTerm.app"
-    destination = "новую вкладку" if placement == "tab" else "новое окно"
+    destination = tr("новую вкладку", "a new tab") if placement == "tab" else tr("новое окно", "a new window")
 
     if not trusted(target):
         if args.get("trust") is not True:
@@ -362,7 +366,7 @@ def open_claude(args, cm):
 
     if term == "iTerm.app" and "placement" not in args:
         placement = "auto"
-        destination = "новую сессию"
+        destination = tr("новую сессию", "a new session")
     tty, err = launch(term, line, placement)
     app = "iTerm2" if term == "iTerm.app" else "Terminal"
     if not tty:
@@ -382,7 +386,8 @@ def open_claude(args, cm):
             hint += f" В iTerm2 нажми ⌘T и выполни в новой вкладке:\n{line}"
         return f"Не удалось подтвердить запуск в {app} ({err}).{hint}", True
 
-    where = f"{tilde(target)}, режим {mode}" + (", через proxy" if net == "-x" else "")
+    where = tr(f"{tilde(target)}, режим {mode}", f"{tilde(target)}, mode {mode}") + \
+        (tr(", через proxy", ", through the proxy") if net == "-x" else "")
     return report(term, tty, cmd, destination, where, rc, bool(args.get("prompt")))
 
 
@@ -397,16 +402,21 @@ def report(term, tty, cmd, destination, where, rc, prompt):
         time.sleep(0.5)
     url = remote_url(term, tty) if pid and rc else ""
     if pid:
-        text = f"Открыл {destination} {app} ({tty}): Claude Code запущен в {where}, pid {pid}."
+        text = tr(f"Открыл {destination} {app} ({tty}): Claude Code запущен в {where}, pid {pid}.",
+                  f"Opened {destination} in {app} ({tty}): Claude Code is running in {where}, pid {pid}.")
         if url:
-            text += f" Remote Control включён: {url}"
+            text += tr(f" Remote Control включён: {url}", f" Remote Control is on: {url}")
         elif rc:
-            text += " Remote Control запрошен, но ссылка за 20 секунд не появилась — проверь терминал."
+            text += tr(" Remote Control запрошен, но ссылка за 20 секунд не появилась — проверь терминал.",
+                       " Remote Control was requested, but no link appeared in 20 seconds, check the terminal.")
     else:
-        text = (f"Открыл {destination} {app} ({tty}) и запустил там `{' '.join(cmd[1:])}`, но за 20 секунд "
-                f"Claude Code не появился — проверь терминал ({where}).")
+        line = " ".join(cmd[1:])
+        text = tr(f"Открыл {destination} {app} ({tty}) и запустил там `{line}`, но за 20 секунд "
+                  f"Claude Code не появился — проверь терминал ({where}).",
+                  f"Opened {destination} in {app} ({tty}) and ran `{line}` there, but Claude Code didn't show up "
+                  f"in 20 seconds, check the terminal ({where}).")
     if prompt:
-        text += " Первый запрос передан."
+        text += tr(" Первый запрос передан.", " The first prompt was sent.")
     return text, not pid
 
 
