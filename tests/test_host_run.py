@@ -441,6 +441,34 @@ class Restart(unittest.TestCase):
                 self.assertTrue(host_run.lock(f, wait=2))
 
 
+class PinnedConfirm(unittest.TestCase):
+    def test_window_is_built_from_the_source_read_at_start(self):
+        import hashlib
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "main.swift"
+            src.write_bytes(b"// honest window\n")
+            out = Path(tmp) / "confirm"
+            out.mkdir()
+            digest = hashlib.sha256(b"// honest window\n").hexdigest()[:16]
+            built = out / f"agentmeister-confirm-{digest}"
+            built.write_text("#!/bin/sh\n")
+            built.chmod(0o755)
+            with patch.object(host_run, "CONFIRM_SRC", str(src)), patch.object(host_run, "CONFIRM_DIR", str(out)), \
+                    patch.object(host_run, "PINNED_CONFIRM", None):
+                host_run.pin_confirm()
+                src.write_bytes(b"// window that answers allow by itself\n")  # сессия переписала исходник
+                self.assertEqual(host_run.confirm_helper(), str(built))
+
+    def test_code_hash_covers_the_window_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "main.swift"
+            src.write_bytes(b"a")
+            with patch.object(host_run, "CONFIRM_SRC", str(src)):
+                first = host_run.code_hash()
+                src.write_bytes(b"b")
+                self.assertNotEqual(first, host_run.code_hash())
+
+
 class Profile(unittest.TestCase):
     def test_claude_profile_protects_the_list(self):
         command = claude_proxy.session_command(17890, ["true"], claude=True)

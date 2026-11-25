@@ -67,12 +67,13 @@ class RuleError(Exception):
 
 
 def code_hash():
-    """Хеш кода исполнителя: он перезапускается, когда код поменялся, даже без новой версии."""
+    """Хеш кода исполнителя и исходника окна: исполнитель перезапускается, когда они поменялись, даже без новой
+    версии. Перезапуск делает только лаунчер новой сессии, работающий исполнитель окно не пересобирает."""
     h = hashlib.sha256()
     here = os.path.dirname(os.path.abspath(__file__))
-    for name in ("host_run.py", "claude_open.py", "mnrhlib.py"):
+    for path in [os.path.join(here, n) for n in ("host_run.py", "claude_open.py", "mnrhlib.py")] + [CONFIRM_SRC]:
         try:
-            with open(os.path.join(here, name), "rb") as f:
+            with open(path, "rb") as f:
                 h.update(f.read())
         except OSError:
             h.update(b"?")
@@ -442,13 +443,30 @@ def apply_change(change, path):
     write_list(path, change.data)
 
 
-def confirm_helper():
-    """Собранное окно подтверждения. Исходник копируется в папку состояния и собирается там же, при изменении."""
+PINNED_CONFIRM = None  # исходник окна, прочитанный при старте исполнителя
+
+
+def pin_confirm():
+    """Запомнить исходник окна при старте. Сессия может писать в репозиторий, и если бы исполнитель собирал окно
+    из файла на диске при каждом запросе, она подменила бы его окном, которое само отвечает "Разрешить"."""
+    global PINNED_CONFIRM
     try:
         with open(CONFIRM_SRC, "rb") as f:
-            source = f.read()
-    except OSError as e:
-        raise RuleError(f"нет исходника окна подтверждения: {e}")
+            PINNED_CONFIRM = f.read()
+    except OSError:
+        PINNED_CONFIRM = None
+
+
+def confirm_helper():
+    """Собранное окно подтверждения. Исходник, запомненный при старте, копируется в папку состояния и собирается
+    там же. Правка файла на диске до перезапуска исполнителя на окно не влияет."""
+    source = PINNED_CONFIRM
+    if source is None:
+        try:
+            with open(CONFIRM_SRC, "rb") as f:
+                source = f.read()
+        except OSError as e:
+            raise RuleError(f"нет исходника окна подтверждения: {e}")
     digest = hashlib.sha256(source).hexdigest()[:16]
     binary = os.path.join(CONFIRM_DIR, f"agentmeister-confirm-{digest}")
     if os.access(binary, os.X_OK):
@@ -781,6 +799,7 @@ def serve():
     pid.flush()
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    pin_confirm()
     log(f"serve {version()} pid {os.getpid()}")
     listener = listen(SOCK)
     mine = os.stat(SOCK).st_ino
