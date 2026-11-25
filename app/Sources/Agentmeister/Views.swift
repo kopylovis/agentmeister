@@ -708,6 +708,9 @@ struct DetailView: View {
                 }
                 TerminalHost(tab: workspace.current)
                     .clipShape(.windowCard)
+                    .overlay(alignment: .topTrailing) {
+                        if let tab = workspace.current { TerminalFindOverlay(tab: tab) }
+                    }
             }
         }
     }
@@ -1080,7 +1083,112 @@ struct TerminalHost: NSViewRepresentable {
                 term.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
             ])
         }
-        DispatchQueue.main.async { term.window?.makeFirstResponder(term) }
+        // пока открыта панель поиска, фокус у ее поля, а не у терминала
+        if tab?.finding != true {
+            DispatchQueue.main.async { term.window?.makeFirstResponder(term) }
+        }
+    }
+}
+
+/// Панель поиска над терминалом, когда она открыта у этой вкладки.
+struct TerminalFindOverlay: View {
+    @ObservedObject var tab: TerminalTab
+
+    var body: some View {
+        if tab.finding {
+            TerminalFindBar(tab: tab)
+                .padding(.top, 12)
+                .padding(.trailing, 16)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+}
+
+/// Поиск по выводу вкладки: поле, "номер из всего", регистр, слово целиком, регулярное выражение, стрелки и
+/// закрытие. Enter ищет дальше, Shift+Enter назад, Esc закрывает.
+struct TerminalFindBar: View {
+    @EnvironmentObject var backend: Backend
+    @ObservedObject var tab: TerminalTab
+    @FocusState private var focused: Bool
+
+    var l: L { L(backend.state.lang) }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").font(.system(size: 12, weight: .medium)).foregroundStyle(Ink.muted)
+            TextField(l.t("Найти в выводе", "Find in output"), text: $tab.findTerm)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .frame(width: 190)
+                .focused($focused)
+                .onSubmit { tab.step(forward: !NSEvent.modifierFlags.contains(.shift)) }
+                .onKeyPress(.escape) {
+                    tab.closeFind()
+                    return .handled
+                }
+            Text(counter)
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(!tab.findTerm.isEmpty && tab.findPosition.total == 0 ? Ink.amber : Ink.muted)
+                .frame(minWidth: 56, alignment: .trailing)
+            Rectangle().fill(Ink.hairline).frame(width: 1, height: 16)
+            option("Aa", on: tab.findOptions.caseSensitive, help: l.t("С учетом регистра", "Match case")) {
+                tab.findOptions.caseSensitive.toggle()
+            }
+            option("W", on: tab.findOptions.wholeWord, help: l.t("Слово целиком", "Whole word")) {
+                tab.findOptions.wholeWord.toggle()
+            }
+            option(".*", on: tab.findOptions.regex, help: l.t("Регулярное выражение", "Regular expression")) {
+                tab.findOptions.regex.toggle()
+            }
+            Rectangle().fill(Ink.hairline).frame(width: 1, height: 16)
+            icon("chevron.up", help: l.t("Предыдущее (⇧⌘G)", "Previous (⇧⌘G)")) { tab.step(forward: false) }
+            icon("chevron.down", help: l.t("Следующее (⌘G)", "Next (⌘G)")) { tab.step(forward: true) }
+            icon("xmark", help: l.t("Закрыть (Esc)", "Close (Esc)")) { tab.closeFind() }
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .frame(height: 38)
+        .glassEffect(.regular, in: Capsule())
+        .onAppear { focused = true }
+        .onChange(of: tab.findFocus) { focused = true }
+        .onChange(of: tab.findTerm) { tab.restartSearch() }
+    }
+
+    /// "3/14", "нет совпадений" или пусто, пока ничего не введено. Больше тысячи совпадений SwiftTerm не считает.
+    private var counter: String {
+        guard !tab.findTerm.isEmpty else { return "" }
+        let (index, total) = tab.findPosition
+        if total == 0 { return l.t("нет", "none") }
+        return "\(index)/" + (total >= 1000 ? "1000+" : "\(total)")
+    }
+
+    private func option(_ title: String, on: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            tab.restartSearch()
+        } label: {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(on ? Ink.modeOn : Ink.muted)
+                .frame(width: 26, height: 22)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(on ? Ink.modeOnBg : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private func icon(_ name: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: name)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Ink.text2)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }
 

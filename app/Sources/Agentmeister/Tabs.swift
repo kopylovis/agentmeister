@@ -209,11 +209,78 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     }
 
     /// Включить или выключить "не спать" прямо в идущей сессии, без перезапуска.
-    /// Поиск по выводу терминала: панель поиска SwiftTerm и переходы по совпадениям, как из меню Правка.
+    // MARK: Поиск по выводу
+
+    /// Своя панель поиска над терминалом (у SwiftTerm панель закрытая и без счетчика): открыта ли, что ищем,
+    /// параметры и место текущего совпадения среди всех.
+    @Published var finding = false
+    @Published var findTerm = ""
+    @Published var findOptions = SearchOptions()
+    @Published var findPosition: (index: Int, total: Int) = (0, 0)
+    /// Растет, когда полю поиска нужно снова взять фокус (⌘F при уже открытой панели).
+    @Published var findFocus = 0
+
+    /// Действия меню Правка: ⌘F, ⌘G, ⇧⌘G, ⌘E.
     func find(_ action: NSTextFinder.Action) {
-        let item = NSMenuItem()
-        item.tag = action.rawValue
-        view.performTextFinderAction(item)
+        switch action {
+        case .showFindInterface:
+            if let selected = view.getSelection(), !selected.isEmpty, !selected.contains("\n") {
+                findTerm = selected
+            } else if findTerm.isEmpty, let last = NSPasteboard(name: .find).string(forType: .string) {
+                findTerm = last
+            }
+            finding = true
+            findFocus += 1
+            restartSearch()
+        case .nextMatch:
+            step(forward: true)
+        case .previousMatch:
+            step(forward: false)
+        case .setSearchString:
+            guard let selected = view.getSelection(), !selected.isEmpty else { return }
+            findTerm = selected
+            remember(selected)
+            restartSearch()
+        case .hideFindInterface:
+            closeFind()
+        default:
+            break
+        }
+    }
+
+    /// Искать заново с начала: поменялся текст или параметры.
+    func restartSearch() {
+        view.clearSearch()
+        guard !findTerm.isEmpty else {
+            findPosition = (0, 0)
+            return
+        }
+        view.findNext(findTerm, options: findOptions)
+        findPosition = view.searchMatchSummary(findTerm, options: findOptions)
+    }
+
+    /// К следующему или предыдущему совпадению. Без текста в панели берет последний искомый, как ⌘G в macOS.
+    func step(forward: Bool) {
+        if findTerm.isEmpty, let last = NSPasteboard(name: .find).string(forType: .string) { findTerm = last }
+        guard !findTerm.isEmpty else { return }
+        if forward { view.findNext(findTerm, options: findOptions) } else { view.findPrevious(findTerm, options: findOptions) }
+        findPosition = view.searchMatchSummary(findTerm, options: findOptions)
+        remember(findTerm)
+    }
+
+    func closeFind() {
+        if !findTerm.isEmpty { remember(findTerm) }
+        finding = false
+        view.clearSearch()
+        findPosition = (0, 0)
+        view.window?.makeFirstResponder(view)
+    }
+
+    /// Общий для приложений буфер поиска macOS: ⌘G в другом окне найдет то же.
+    private func remember(_ term: String) {
+        let board = NSPasteboard(name: .find)
+        board.clearContents()
+        board.setString(term, forType: .string)
     }
 
     func setAwake(_ on: Bool) {
