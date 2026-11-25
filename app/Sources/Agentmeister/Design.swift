@@ -500,3 +500,17 @@ enum GitHead {
         return nil
     }
 }
+
+/// Подложка элемента боковой панели: выбранный на мягкой подложке, под курсором легкая подсветка.
+struct HoverFill: ViewModifier {
+    let selected: Bool
+    var radius: CGFloat = 10
+    @State private var hover = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: radius, style: .continuous)
+                .fill(selected ? Ink.thumb : hover ? Ink.hover : .clear))
+            .onHover { hover = $0 }
+    }
+}
