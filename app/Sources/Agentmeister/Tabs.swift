@@ -48,7 +48,9 @@ struct LaunchSpec: Hashable {
         // флаги запуска по умолчанию из настроек агента
         agentArgs = AgentPrefs.flags(agent) + agentArgs
         if let id = resumeId, agent == .claude {
-            args += ["--", "--resume", id] + agentArgs
+            // запрос после продолжения: перезапуск после /slim так сразу выполняет /compact
+            let prompt = firstPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+            args += ["--", "--resume", id] + agentArgs + (prompt.isEmpty ? [] : [prompt])
         } else if let id = resumeId {
             // как agentmeister --harness codex restart: codex resume -C <папка> <id>, флаги перед id
             args += ["--", "resume", "-C", projectPath] + agentArgs + [id]
@@ -453,9 +455,15 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     }
 
     /// Сжать сессию (старые скриншоты и длинные выводы) и продолжить ее, как /slim.
-    func slim(note: String) {
+    /// then: первый запрос сессии после сжатия, например /compact, чтобы сжать и сам разговор.
+    func slim(note: String, then prompt: String = "") {
         guard let sid = sessionId, spec.agent == .claude else { return }
-        whileStopped(note, ["sessions", "slim", sid, "-y"]) { _ in self.relaunch() }
+        whileStopped(note, ["sessions", "slim", sid, "-y"]) { _ in self.relaunch(prompt: prompt) }
+    }
+
+    /// Вписать команду агенту и отправить ее, как будто ее набрали и нажали Enter.
+    func submit(_ text: String) {
+        view.send(txt: text + "\r")
     }
 
     /// Удалить сессию без следа и открыть чистую в той же папке, как /forget.
@@ -488,12 +496,14 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     }
 
     /// Запуск той же сессии, когда агент уже остановлен. Последний шаг любого перезапуска.
-    private func relaunch() {
+    private func relaunch(prompt: String = "") {
         if let sid = sessionId, spec.utility == nil {
             spec.resumeId = sid
-            spec.firstPrompt = ""
+            spec.firstPrompt = prompt
         }
         start()
+        // запрос нужен один раз: иначе восстановленная после перезапуска приложения вкладка повторила бы его
+        if !prompt.isEmpty { spec.firstPrompt = "" }
     }
 
     func terminate() {
