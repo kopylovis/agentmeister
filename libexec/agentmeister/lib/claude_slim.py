@@ -5,6 +5,7 @@ import json
 import os
 import re
 import shutil
+import tarfile
 import time
 import uuid
 
@@ -217,6 +218,159 @@ def verify(src, dst, info, prot, keep, rename=None):
     return True
 
 
+# Папка рядом с файлом сессии (<sid>/): tool-results с сохраненными скриншотами и длинными выводами и subagents
+# с переписками субагентов. promptsill и размер сессии считают ее вместе с файлом.
+AGENT_FILE = re.compile(r"agent-([0-9a-z]+)\.jsonl")
+
+
+def side_dir(path):
+    folder = path[:-6] if path.endswith(".jsonl") else ""
+    return folder if folder and os.path.isdir(folder) else None
+
+
+def mentioned(path, prot, words):
+    """Какие из words встречаются в строках, которые модель видит (и в строках, дописанных после scan)."""
+    if not words:
+        return set()
+    pattern = re.compile(b"|".join(re.escape(w.encode()) for w in sorted(words, key=len, reverse=True)))
+    found = set()
+    with open(path, "rb") as f:
+        for i, raw in enumerate(f):
+            if i < len(prot["flags"]) and not prot["flags"][i]:
+                continue
+            found.update(m.decode() for m in pattern.findall(raw))
+    return found
+
+
+def slim_agent(src, dst):
+    """Переписка субагента, которого модель уже не видит: все строки сжимаются как старая часть сессии."""
+    stats = {"images": 0, "image_bytes": 0, "texts": 0, "changed": 0}
+    with open(src, "rb") as fi, open(dst, "wb") as fo:
+        for raw in fi:
+            try:
+                o = json.loads(raw)
+            except ValueError:
+                fo.write(raw)
+                continue
+            new = slim_line(o, stats) if isinstance(o, dict) and o.get("type") in ("user", "attachment") else o
+            if new is o or dump(new) == dump(o):
+                fo.write(raw)
+                continue
+            stats["changed"] += 1
+            fo.write(dump(new).encode("utf-8") + (b"\n" if raw.endswith(b"\n") else b""))
+    return stats
+
+
+def folder_size(folder):
+    total = 0
+    for root, _, files in os.walk(folder or ""):
+        for name in files:
+            try:
+                total += os.lstat(os.path.join(root, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def side_plan(path, prot, run=False, backup_to=None):
+    """Что делать с папкой сессии. Файлы tool-results, о которых модель уже не знает, уходят в резервную копию,
+    переписки субагентов, которых модель не видит, сжимаются. run=False только считает."""
+    folder = side_dir(path)
+    out = {"side_before": folder_size(folder), "side_after": 0, "side_files": 0, "side_agents": 0, "side_backup": None}
+    if not folder or not prot:
+        out["side_after"] = out["side_before"]
+        return out
+    results = os.path.join(folder, "tool-results")
+    names = [n for n in (os.listdir(results) if os.path.isdir(results) else []) if os.path.isfile(os.path.join(results, n))]
+    agents_dir = os.path.join(folder, "subagents")
+    agents = {}
+    for n in (os.listdir(agents_dir) if os.path.isdir(agents_dir) else []):
+        m = AGENT_FILE.fullmatch(n)
+        if m:
+            agents[m.group(1)] = os.path.join(agents_dir, n)
+    seen = mentioned(path, prot, set(names) | set(agents))
+    drop = [os.path.join(results, n) for n in names if n not in seen]
+    rewrites = []
+    for agent_id, agent_path in sorted(agents.items()):
+        if agent_id in seen:
+            continue
+        tmp = agent_path + ".mnrh-slim"
+        try:
+            if slim_agent(agent_path, tmp)["changed"] and os.path.getsize(tmp) < os.path.getsize(agent_path):
+                rewrites.append((agent_path, tmp))
+            else:
+                os.remove(tmp)
+        except OSError:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+    saved = sum(os.path.getsize(p) for p in drop) + sum(os.path.getsize(a) - os.path.getsize(t) for a, t in rewrites)
+    out.update(side_after=out["side_before"] - saved, side_files=len(drop), side_agents=len(rewrites))
+    try:
+        if run and (drop or rewrites):
+            tar = backup_to + ".side.tar.gz"
+            with tarfile.open(tar, "w:gz", compresslevel=1) as t:
+                for p in drop + [a for a, _ in rewrites]:
+                    t.add(p, arcname=os.path.relpath(p, folder))
+            os.chmod(tar, 0o600)
+            out["side_backup"] = tar
+            for p in drop:
+                os.remove(p)
+            for agent_path, tmp in rewrites:
+                shutil.copystat(agent_path, tmp)
+                os.replace(tmp, agent_path)
+    finally:
+        for _, tmp in rewrites:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+    return out
+
+
+def side_backups_of(sid):
+    return sorted(glob.glob(os.path.join(BACKUPS, f"{sid}.*.side.tar.gz")))
+
+
+def restore_side(path, tar):
+    folder = path[:-6]
+    with tarfile.open(tar) as t:
+        for member in t.getmembers():
+            if not member.isfile() or member.name.startswith("/") or ".." in member.name.split("/"):
+                raise SlimError(f"в {tilde(tar)} странный путь {member.name}")
+        # фильтр data есть с Python 3.12 (и в поздних 3.8–3.11), пути выше уже проверены
+        if hasattr(tarfile, "data_filter"):
+            t.extractall(folder, filter="data")
+        else:
+            t.extractall(folder)
+
+
+def context_tokens(path, tail=8 << 20):
+    """Сколько токенов в контексте по последней записи: ответ модели или /compact. None, если не видно."""
+    try:
+        with open(path, "rb") as f:
+            size = f.seek(0, os.SEEK_END)
+            f.seek(max(0, size - tail))
+            lines = f.read().split(b"\n")
+    except OSError:
+        return None
+    for raw in reversed(lines):
+        if b'"compact_boundary"' not in raw and b'"usage"' not in raw:
+            continue
+        try:
+            o = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(o, dict) or o.get("isSidechain"):
+            continue
+        if o.get("type") == "system" and o.get("subtype") == "compact_boundary":
+            return (o.get("compactMetadata") or {}).get("postTokens")
+        usage = (o.get("message") or {}).get("usage") if o.get("type") == "assistant" else None
+        if isinstance(usage, dict):
+            total = sum(usage.get(k) or 0 for k in ("input_tokens", "cache_read_input_tokens",
+                                                    "cache_creation_input_tokens"))
+            if total:
+                return total
+    return None
+
+
 def plan(path, keep=2):
     info = scan(path)
     prot = protection(info, keep)
@@ -232,6 +386,7 @@ def plan(path, keep=2):
     stats["before"] = os.path.getsize(path)
     stats["guarded"] = sum(1 for f in prot["flags"] if f)
     stats["bounds"] = prot["bounds"]
+    stats.update(side_plan(path, prot))
     return info, prot, stats
 
 
@@ -258,13 +413,16 @@ def prefix_digest(f, size):
     return h.hexdigest()
 
 
-def backup(path, sid, slim_size, slim_file=None):
-    """slim_file: сжатый файл, который сейчас встанет на место path. Его inode и sha256 нужны undo: только
-    так видно, что после сжатия файл не переписали (sessions mv меняет cwd и длину строк)."""
+def backup_base(sid):
     os.makedirs(BACKUPS, mode=0o700, exist_ok=True)
     prune_backups()
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    gz = os.path.join(BACKUPS, f"{sid}.{stamp}.jsonl.gz")
+    return os.path.join(BACKUPS, f"{sid}.{time.strftime('%Y%m%d-%H%M%S')}")
+
+
+def backup(path, sid, slim_size, slim_file=None, base=None):
+    """slim_file: сжатый файл, который сейчас встанет на место path. Его inode и sha256 нужны undo: только
+    так видно, что после сжатия файл не переписали (sessions mv меняет cwd и длину строк)."""
+    gz = (base or backup_base(sid)) + ".jsonl.gz"
     with open(path, "rb") as fi, gzip.open(gz, "wb", compresslevel=1) as fo:
         shutil.copyfileobj(fi, fo, 4 << 20)
     os.chmod(gz, 0o600)
@@ -286,23 +444,31 @@ def apply(path, sid, keep=2):
     if not prot:
         raise SlimError(f"в сессии меньше {keep} сжатий /compact, сжимать нечего")
     tmp = path + ".mnrh-slim"
+    base = backup_base(sid)
     try:
         stats = write_slim(path, tmp, info, prot)
         if not stats["changed"]:
-            stats.update(before=os.path.getsize(path), after=os.path.getsize(path), backup=None)
-            return stats
-        verify(path, tmp, info, prot, keep)
-        shutil.copystat(path, tmp)
-        # строки, дописанные после scan, в tmp не попали; заменить файл можно, только пока он того же размера
-        stats["before"] = size
-        stats["after"] = os.path.getsize(tmp)
-        stats["backup"] = backup(path, sid, stats["after"], tmp)
-        if os.path.getsize(path) != size:
-            raise SlimError("сессия изменилась во время сжатия, повтори")
-        os.replace(tmp, path)
+            stats.update(before=size, after=size, backup=None)
+        else:
+            verify(path, tmp, info, prot, keep)
+            shutil.copystat(path, tmp)
+            # строки, дописанные после scan, в tmp не попали; заменить файл можно, только пока он того же размера
+            stats["before"] = size
+            stats["after"] = os.path.getsize(tmp)
+            stats["backup"] = backup(path, sid, stats["after"], tmp, base)
+            if os.path.getsize(path) != size:
+                raise SlimError("сессия изменилась во время сжатия, повтори")
+            os.replace(tmp, path)
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
+    try:
+        stats.update(side_plan(path, prot, run=True, backup_to=base))
+    except (OSError, tarfile.TarError) as e:
+        # сама сессия уже сжата, папка рядом осталась как была
+        side = folder_size(side_dir(path))
+        stats.update(side_before=side, side_after=side, side_files=0, side_agents=0, side_backup=None,
+                     side_error=str(e))
     return stats
 
 
@@ -336,10 +502,17 @@ def backups_of(sid):
 
 
 def undo(path, sid):
-    found = backups_of(sid)
-    if not found:
+    found, sides = backups_of(sid), side_backups_of(sid)
+    if not found and not sides:
         raise SlimError(f"резервной копии нет в {tilde(BACKUPS)} (хранятся {BACKUP_DAYS} дней)")
-    gz = found[-1]
+    added = undo_file(path, found[-1]) if found else 0
+    for tar in reversed(sides):
+        restore_side(path, tar)
+        os.remove(tar)
+    return added
+
+
+def undo_file(path, gz):
     with open(gz[:-9] + ".json") as f:
         meta = json.load(f)
     rewritten = SlimError("сессию после сжатия переписали (перенос или другая правка), вернуть автоматически нельзя; "

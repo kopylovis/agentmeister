@@ -10,9 +10,21 @@ from session_store import UUID, clip, fast_session, find, fmt_size, folder, load
 import claude_search  # noqa: E402
 
 
+def saved(st):
+    """Сколько освободит сжатие: файл сессии и папка рядом с ним."""
+    return st["before"] - st["after"] + st.get("side_before", 0) - st.get("side_after", 0)
+
+
+def side_report(st):
+    if not (st.get("side_files") or st.get("side_agents")):
+        return ""
+    return (f"; папка сессии {fmt_size(st['side_before'])} → {fmt_size(st['side_after'])}, "
+            f"убрано старых файлов {st['side_files']}, сжато переписок субагентов {st['side_agents']}")
+
+
 def slim_report(st):
     return (f"{fmt_size(st['before'])} → {fmt_size(st['after'])}: скриншотов {st['images']}, "
-            f"обрезано длинных выводов {st['texts']}, изменено строк {st['changed']}")
+            f"обрезано длинных выводов {st['texts']}, изменено строк {st['changed']}" + side_report(st))
 
 
 def slim_notice(sid, **fields):
@@ -37,12 +49,15 @@ def slim_in_tab(sid):
         print(f"agentmeister: сжимаю «{s['title'] or sid}»…", flush=True)
         st = claude_slim.apply(s["path"], sid)
         claude_search.drop(sid)
+        context = claude_slim.context_tokens(s["path"])
     except claude_slim.SlimError as e:
         print(f"agentmeister: не сжал: {e}. Открываю как есть.")
         slim_notice(sid, status="failed", error=str(e))
         return 1
     print(f"agentmeister: {slim_report(st)}")
-    slim_notice(sid, status="done", before=fmt_size(st["before"]), after=fmt_size(st["after"]), images=st["images"])
+    slim_notice(sid, status="done", before=fmt_size(st["before"] + st.get("side_before", 0)),
+                after=fmt_size(st["after"] + st.get("side_after", 0)), images=st["images"] + st.get("side_files", 0),
+                context=context)
     return 0
 
 
@@ -65,16 +80,17 @@ def slim_cmd(args, yes):
             if s["running"] or s["link"] or s["size"] < 20 << 20:
                 continue
             _, prot, st = claude_slim.plan(s["path"], keep)
-            if st and st["before"] - st["after"] >= 5 << 20:
+            if st and saved(st) >= 5 << 20:
                 found.append((s, st))
         if not found:
             print("Сжимать нечего: нет закрытых сессий, где старая часть занимает заметное место.")
             return 0
-        total = sum(st["before"] - st["after"] for _, st in found)
+        total = sum(saved(st) for _, st in found)
         print(f"Можно освободить {fmt_size(total)}:")
         for s, st in found:
-            print(f"  {s['id'][:8]}  {clip(folder(s['cwd']), 20):<20}  {fmt_size(st['before']):>7} → "
-                  f"{fmt_size(st['after']):>7}  {clip(s['title'] or '—', 50)}")
+            print(f"  {s['id'][:8]}  {clip(folder(s['cwd']), 20):<20}  "
+                  f"{fmt_size(st['before'] + st.get('side_before', 0)):>7} → "
+                  f"{fmt_size(st['after'] + st.get('side_after', 0)):>7}  {clip(s['title'] or '—', 50)}")
         print(paint(f"Сжать: agentmeister sessions slim <id>. Проверить сначала на копии: slim <id> --copy", "2"))
         return 0
     s = fast_session(ids[0]) if UUID.match(ids[0]) else find(ss, ids[0])
@@ -108,11 +124,11 @@ def slim_cmd(args, yes):
             return 0
         st = claude_slim.apply(s["path"], s["id"], keep)
         claude_search.drop(s["id"])
-        if not st["backup"]:
+        if not st["backup"] and not st.get("side_backup"):
             print("Менять нечего: старая часть уже сжата.")
             return 0
         print(f"Готово: {slim_report(st)}. Проверка пройдена: всё, что уходит модели, совпадает побайтно.")
-        print(paint(f"Оригинал: {tilde(st['backup'])}", "2"))
+        print(paint(f"Оригинал: {tilde(st['backup'] or st['side_backup'])}", "2"))
     except claude_slim.SlimError as e:
         sys.exit(f"agentmeister sessions slim: {e}. Ничего не изменено.")
     return 0
