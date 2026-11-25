@@ -209,6 +209,13 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     }
 
     /// Включить или выключить "не спать" прямо в идущей сессии, без перезапуска.
+    /// Поиск по выводу терминала: панель поиска SwiftTerm и переходы по совпадениям, как из меню Правка.
+    func find(_ action: NSTextFinder.Action) {
+        let item = NSMenuItem()
+        item.tag = action.rawValue
+        view.performTextFinderAction(item)
+    }
+
     func setAwake(_ on: Bool) {
         spec.awake = on
         updateAwake()
