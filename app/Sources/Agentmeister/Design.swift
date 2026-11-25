@@ -166,15 +166,32 @@ struct Chip<Content: View>: View {
     var background: Color = Ink.chip
     var foreground: Color = Ink.text2
     var mono = false
+    /// С действием чип становится кнопкой: под курсором рамка и рука, по клику действие.
+    var action: (() -> Void)? = nil
     @ViewBuilder let content: () -> Content
+    @State private var hover = false
 
     var body: some View {
+        if let action {
+            Button(action: action) { face }
+                .buttonStyle(.plain)
+                .pointerStyle(.link)
+                .onHover { hover = $0 }
+        } else {
+            face
+        }
+    }
+
+    private var face: some View {
         HStack(spacing: 6, content: content)
             .font(mono ? .system(size: 12, design: .monospaced) : .system(size: 12))
             .foregroundStyle(foreground)
             .padding(.horizontal, 12)
             .frame(height: 26)
             .background(Capsule().fill(background))
+            .overlay(Capsule().strokeBorder(hover ? Ink.buttonBorder : .clear))
+            .brightness(hover ? 0.04 : 0)
+            .contentShape(Capsule())
     }
 }
 
