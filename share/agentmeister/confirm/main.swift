@@ -6,6 +6,10 @@
 // action, клавиатура до нее не доходит, а клик засчитывается, только если событие пришло от устройства
 // (у события, которое отправил процесс, в поле источника стоит его pid).
 //
+// Настоящий клик можно подставить под кнопку, если сдвинуть окно или перенести курсор
+// (CGWarpMouseCursorPosition событий не шлет). Поэтому после перемещения окна или курсора без мыши кнопка
+// на секунду гаснет, а клик засчитывается, только если курсор пришел на это место движением мыши.
+//
 // Невидимые символы и символы смены направления (Trojan Source) в тексте окна показываются как \uXXXX,
 // иначе команда выглядела бы не так, как запустится.
 //
@@ -62,6 +66,8 @@ func note(_ text: String) {
 final class HumanButton: NSButton {
     var armed = false
     var onPress: () -> Void = {}
+    var cameByMouse: (CGPoint) -> Bool = { _ in false }
+    var onSuspicious: (String) -> Void = { _ in }
 
     override var acceptsFirstResponder: Bool { false }
     override func performKeyEquivalent(with event: NSEvent) -> Bool { false }
@@ -75,10 +81,77 @@ final class HumanButton: NSButton {
             return
         }
         guard armed else { return }
+        guard let at = event.cgEvent?.location, cameByMouse(at) else {
+            note("ignored a click: the cursor got there without the mouse")
+            onSuspicious("click without mouse movement")
+            return
+        }
         super.mouseDown(with: event)  // подсветка до отпускания кнопки мыши
         guard let window = window else { return }
         let point = convert(window.mouseLocationOutsideOfEventStream, from: nil)
         if bounds.contains(point) { onPress() }
+    }
+}
+
+// Следит за курсором по событиям от устройства (pid источника 0) внутри окна и вне его. Координаты CGEvent,
+// начало в левом верхнем углу главного экрана, ось y вниз, как и у delta.
+final class Arming {
+    let button: HumanButton
+    weak var window: NSWindow?
+    private var last: CGPoint?
+    private var generation = 0
+    private var monitors: [Any] = []
+
+    init(button: HumanButton) {
+        self.button = button
+        button.cameByMouse = { [unowned self] at in
+            guard let last = self.last else { return false }
+            return hypot(at.x - last.x, at.y - last.y) <= 4
+        }
+        button.onSuspicious = { [unowned self] why in self.disarm(why) }
+        NSEvent.isMouseCoalescingEnabled = false
+        let kinds: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: kinds, handler: { [unowned self] in self.moved($0) }) {
+            monitors.append(global)
+        }
+        if let local = NSEvent.addLocalMonitorForEvents(matching: kinds, handler: { [unowned self] in
+            self.moved($0)
+            return $0
+        }) {
+            monitors.append(local)
+        }
+    }
+
+    // Кнопка гаснет и снова работает через секунду после последней причины.
+    func disarm(_ why: String) {
+        if button.armed { note("disarmed for a second: \(why)") }
+        button.armed = false
+        button.isEnabled = false
+        generation += 1
+        let mine = generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self = self, self.generation == mine else { return }
+            self.button.armed = true
+            self.button.isEnabled = true
+        }
+    }
+
+    private func moved(_ event: NSEvent) {
+        guard let cg = event.cgEvent, cg.getIntegerValueField(.eventSourceUnixProcessID) == 0 else { return }
+        let now = cg.location
+        if let last = last {
+            let expected = CGPoint(x: last.x + event.deltaX, y: last.y + event.deltaY)
+            if hypot(now.x - expected.x, now.y - expected.y) > 4, nearWindow(now) { disarm("the cursor jumped") }
+        }
+        last = now
+    }
+
+    // Прыжок курсора у края экрана (там delta есть, а курсор стоит) окну не опасен, его не считаем.
+    private func nearWindow(_ point: CGPoint) -> Bool {
+        guard let window = window, let primary = NSScreen.screens.first else { return true }
+        let frame = window.frame
+        let rect = CGRect(x: frame.minX, y: primary.frame.maxY - frame.maxY, width: frame.width, height: frame.height)
+        return rect.insetBy(dx: -24, dy: -24).contains(point)
     }
 }
 
@@ -205,6 +278,7 @@ func countdown(_ seconds: Int) -> String {
 final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     var ticker: Timer?
+    var arming: Arming?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         let width: CGFloat = 540, padding: CGFloat = 24
@@ -300,6 +374,8 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         allow.bezelColor = Palette.confirm
         allow.isEnabled = false
         allow.onPress = { finish("allow") }
+        let arming = Arming(button: allow)
+        self.arming = arming
         let deny = NSButton(title: option("--deny", "Отказать"), target: self, action: #selector(denied))
         deny.bezelStyle = .rounded
         deny.controlSize = .large
@@ -394,6 +470,8 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.delegate = self
         window.level = .floating
         window.isReleasedWhenClosed = false
+        window.acceptsMouseMovedEvents = true
+        arming.window = window
         window.setContentSize(sheet.fittingSize)
         window.layoutIfNeeded()
         window.invalidateShadow()
@@ -402,10 +480,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         // Пауза, чтобы клик, начатый до появления окна, не попал в кнопку.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            allow.armed = true
-            allow.isEnabled = true
-        }
+        arming.disarm("the window opened")
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { finish("timeout") }
 
         if let field = expiryField, expiry.contains("{left}") {
@@ -420,6 +495,8 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func denied() { finish("deny") }
 
     func windowWillClose(_ notification: Notification) { finish("closed") }
+
+    func windowDidMove(_ notification: Notification) { arming?.disarm("the window moved") }
 }
 
 let app = NSApplication.shared
