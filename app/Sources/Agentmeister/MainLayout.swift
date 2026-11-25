@@ -307,8 +307,10 @@ struct SidebarRail: View {
             }
             .scrollIndicators(.never)
             .safeAreaBar(edge: .top, spacing: 0) {
+                // место светофора: ровное размытие и линия на всю ширину рельсы, как у host-run снизу
                 Color.clear.frame(height: 40).frame(maxWidth: .infinity).background(WindowDragArea())
-                    .blurBar(edge: .top)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Ink.hairline).frame(height: 1) }
+                    .blurBar(edge: .top, fade: false)
             }
             .safeAreaBar(edge: .bottom, spacing: 0) {
             if let h = backend.state.hostRun {
@@ -337,9 +339,9 @@ struct SidebarRail: View {
                 .padding(.top, 10)
                 .padding(.bottom, 14)
                 .overlay(alignment: .top) {
-                    Rectangle().fill(Ink.hairline).frame(height: 1).padding(.horizontal, 12)
+                    Rectangle().fill(Ink.hairline).frame(height: 1)
                 }
-                .blurBar(edge: .bottom)
+                .blurBar(edge: .bottom, fade: false)
             }
             }
         .frame(maxHeight: .infinity)
