@@ -379,11 +379,12 @@ struct ChipStyle: ButtonStyle {
 extension View {
     /// Размытая подложка бара над прокруткой: строки, ушедшие под него, видны только пятнами, без затемнения. Край со стороны
     /// списка плавно гаснет, чтобы бар не выглядел отдельной полосой.
-    func blurBar(edge: VerticalEdge) -> some View {
+    /// fade: false для бара, который отделен линией: размытие ровное до самой линии.
+    func blurBar(edge: VerticalEdge, fade: Bool = true) -> some View {
         background {
             BackdropBlur(radius: 32)
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.75),
-                                             .init(color: .clear, location: 1)],
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: fade ? 0.75 : 1),
+                                             .init(color: fade ? .clear : .black, location: 1)],
                                      startPoint: edge == .top ? .top : .bottom, endPoint: edge == .top ? .bottom : .top))
                 .ignoresSafeArea()
         }
@@ -395,13 +396,20 @@ extension View {
 struct BackdropBlur: NSViewRepresentable {
     var radius: CGFloat
 
+    /// Слой размытия живет подслоем и пересоздается, когда он мог перестать рисовать: смена темы (в том числе пока
+    /// панель скрыта), перенос в окно, показ скрытой панели. Иначе после смены темы и раскрытия боковой панели
+    /// под шапкой оставался непрозрачный фон без размытия.
     final class BlurView: NSView {
         let radius: CGFloat
+        private var backdrop: CALayer?
+        /// Тема и видимость панели при последней сборке слоя.
+        var signature = ""
 
         init(radius: CGFloat) {
             self.radius = radius
             super.init(frame: .zero)
             wantsLayer = true
+            rebuild()
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -409,7 +417,34 @@ struct BackdropBlur: NSViewRepresentable {
         /// Только картинка: клики проходят к тому, что под ним и над ним.
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-        override func makeBackingLayer() -> CALayer {
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            backdrop?.frame = bounds
+            CATransaction.commit()
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
+            rebuild()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            rebuild()
+        }
+
+        func rebuild() {
+            guard let host = layer else { return }
+            backdrop?.removeFromSuperlayer()
+            let fresh = Self.makeBackdrop(radius: radius)
+            fresh.frame = bounds
+            host.addSublayer(fresh)
+            backdrop = fresh
+        }
+
+        private static func makeBackdrop(radius: CGFloat) -> CALayer {
             guard let backdrop = (NSClassFromString("CABackdropLayer") as? CALayer.Type)?.init(),
                   let filterClass = NSClassFromString("CAFilter") as? NSObject.Type,
                   let filter = filterClass.perform(NSSelectorFromString("filterWithType:"), with: "gaussianBlur")?
@@ -427,7 +462,15 @@ struct BackdropBlur: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> BlurView { BlurView(radius: radius) }
-    func updateNSView(_ view: BlurView, context: Context) {}
+
+    func updateNSView(_ view: BlurView, context: Context) {
+        let signature = "\(context.environment.colorScheme)-\(context.environment.sidebarHidden)"
+        if view.signature != signature {
+            let first = view.signature.isEmpty
+            view.signature = signature
+            if !first { view.rebuild() }
+        }
+    }
 }
 
 /// Текущая ветка git для папки: ищет .git вверх по дереву (в worktree это файл со ссылкой gitdir) и читает HEAD.
