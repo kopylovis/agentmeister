@@ -180,3 +180,74 @@ class Trust(unittest.TestCase):
         self.assertEqual(len(n), 3)
         self.assertNotIn("/b", self.read()["projects"])
         self.assertEqual(os.listdir(self.tmp), [".claude.json"])
+
+
+class AppSubtask(unittest.TestCase):
+    """Параллельная задача из вкладки Agentmeister: запрос файлом приложению вместо терминала."""
+    TAB = "0f8fad5b-d9cb-469f-a165-70867728950e"
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+
+    def run_open(self, answer, **options):
+        import threading
+        seen = []
+
+        def app():
+            for _ in range(100):
+                names = [n for n in os.listdir(self.dir) if n.endswith(".json") and not n.endswith(".reply.json")]
+                if names:
+                    path = os.path.join(self.dir, names[0])
+                    with open(path) as f:
+                        seen.append(json.load(f))
+                    if answer is not None:
+                        os.remove(path)
+                        with open(path[:-5] + ".reply.json", "w") as f:
+                            json.dump(answer, f)
+                    return
+                import time
+                time.sleep(0.02)
+
+        thread = threading.Thread(target=app)
+        thread.start()
+        args = {"path": "/tmp/project", "remote_control": False, "subtask": True, "name": "project · par/x",
+                "prompt": "сделай", "flags": ["--resume", self.TAB, "--fork-session"], **options}
+        ok = subprocess.CompletedProcess([], 0, "/dev/ttys001\n", "")
+        with patch.dict(os.environ, TERM_PROGRAM="Agentmeister", AGENTMEISTER_TAB=self.TAB, MNRH_PROXY="1234"), \
+                patch.object(claude_open, "APP_OPEN_DIR", self.dir), patch.object(claude_open, "APP_WAIT", 0.5), \
+                patch.object(claude_open, "trusted", return_value=True), \
+                patch.object(claude_open, "project_dirs", return_value=("/tmp", [])), \
+                patch.object(claude_open.subprocess, "run", return_value=ok) as run, \
+                patch.object(claude_open, "claude_on", return_value=123):
+            result = claude_open.open_claude(args, "agentmeister")
+        thread.join()
+        return result, seen, run
+
+    def test_app_opens_the_subtask(self):
+        (text, bad), seen, run = self.run_open({"ok": True, "tab": "x"})
+        self.assertFalse(bad)
+        self.assertIn("Agentmeister", text)
+        run.assert_not_called()
+        self.assertEqual(seen[0]["from"], self.TAB)
+        self.assertTrue(seen[0]["subtask"])
+        self.assertEqual(seen[0]["name"], "project · par/x")
+        self.assertEqual(seen[0]["flags"], ["--resume", self.TAB, "--fork-session"])
+        self.assertEqual(os.listdir(self.dir), [])
+
+    def test_refusal_is_reported(self):
+        (text, bad), _, run = self.run_open({"ok": False, "error": "flag --x isn't allowed"})
+        self.assertTrue(bad)
+        self.assertIn("--x", text)
+        run.assert_not_called()
+
+    def test_no_answer_falls_back_to_the_terminal(self):
+        (_, bad), seen, run = self.run_open(None)
+        self.assertEqual(len(seen), 1)
+        run.assert_called_once()
+        self.assertEqual(os.listdir(self.dir), [])
+
+    def test_not_a_subtask_goes_to_the_terminal(self):
+        with patch.object(claude_open, "via_app") as via:
+            self.run_open(None, subtask=False)
+        via.assert_not_called()

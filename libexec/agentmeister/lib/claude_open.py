@@ -309,6 +309,52 @@ def claude_on(tty):
     return None
 
 
+APP_OPEN_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "mnrh", "app", "open")
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+APP_WAIT = 6.0  # приложение забирает запросы раз в секунду
+
+
+def app_tab():
+    """id вкладки десктопного Agentmeister, из которой идет эта сессия, или пусто."""
+    tab = os.environ.get("AGENTMEISTER_TAB", "").lower()
+    return tab if os.environ.get("TERM_PROGRAM") == "Agentmeister" and UUID_RE.match(tab) else ""
+
+
+def via_app(request):
+    """Попросить десктопный Agentmeister открыть вкладку: запрос файлом в APP_OPEN_DIR, приложение забирает его
+    раз в секунду и пишет ответ <id>.reply.json. -> ответ dict или None, если сессия не во вкладке приложения
+    или оно не ответило (старая версия, приложение закрыто): тогда открываем как раньше, в терминале."""
+    tab = app_tab()
+    if not tab:
+        return None
+    import uuid
+    rid = str(uuid.uuid4())
+    req = os.path.join(APP_OPEN_DIR, rid + ".json")
+    reply = os.path.join(APP_OPEN_DIR, rid + ".reply.json")
+    try:
+        os.makedirs(APP_OPEN_DIR, exist_ok=True)
+        tmp = req + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(dict(request, at=time.time(), **{"from": tab}), f)
+        os.replace(tmp, req)
+    except OSError:
+        return None
+    deadline = time.time() + APP_WAIT
+    while time.time() < deadline:
+        try:
+            with open(reply) as f:
+                answer = json.load(f)
+            os.remove(reply)
+            return answer if isinstance(answer, dict) else None
+        except (OSError, ValueError):
+            time.sleep(0.1)
+    try:
+        os.remove(req)  # приложение запрос так и не взяло
+        return None
+    except FileNotFoundError:
+        return {"ok": True}  # взяло, но ответ не успел
+
+
 def open_claude(args, cm):
     """-> (текст, ошибка ли)"""
     root, dirs = project_dirs()
@@ -361,6 +407,22 @@ def open_claude(args, cm):
     if extra:
         cmd += ["--"] + extra
     line = shell_line(cmd)
+
+    # параллельная задача из вкладки Agentmeister открывается там же подзадачей этой вкладки
+    flags = (["--continue"] if args.get("continue") else []) + list(args.get("flags") or [])
+    answer = None if not args.get("subtask") else via_app({"path": target, "name": args.get("name") or name, "prompt": args.get("prompt") or "",
+                      "flags": flags, "awake": mode == "caffeinate", "remote_control": rc,
+                      "subtask": bool(args.get("subtask"))})
+    if answer is not None:
+        if not answer.get("ok"):
+            return tr(f"Agentmeister не открыл вкладку: {answer.get('error') or 'без причины'}.",
+                      f"Agentmeister didn't open a tab: {answer.get('error') or 'no reason given'}."), True
+        what = tr("подзадачу этой вкладки", "a subtask of this tab") if args.get("subtask") else tr("новую вкладку", "a new tab")
+        text = tr(f"Открыл в Agentmeister {what}: Claude Code в {tilde(target)}, через proxy.",
+                  f"Opened {what} in Agentmeister: Claude Code in {tilde(target)}, through the proxy.")
+        if args.get("prompt"):
+            text += tr(" Первый запрос передан.", " The first prompt was sent.")
+        return text, False
 
     if term == "iTerm.app" and "placement" not in args:
         placement = "auto"
