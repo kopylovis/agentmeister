@@ -13,6 +13,8 @@ resolve_root() {
 
 ROOT=$(resolve_root)
 LIBEXEC="$ROOT/libexec/agentmeister"
+# CLI внутри Agentmeister.app: __pycache__ рядом с модулями сломал бы подпись приложения
+case "$ROOT" in */Contents/Resources/*) export PYTHONDONTWRITEBYTECODE=1 ;; esac
 
 # без аргументов в терминале: меню действий, как у mnrh claude; MNRH_NO_MENU=1 сразу выбирает проект
 if [ $# -eq 0 ] && [ -t 0 ] && [ -t 1 ] && [ -z "${MNRH_NO_MENU:-}" ]; then
