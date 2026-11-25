@@ -8,7 +8,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import HOME, LOCAL_CLI, projects_dir, run, settings_path, tilde, tr  # noqa: E402
+from mnrhlib import HOME, LOCAL_CLI, project_folders, projects_dirs, run, settings_path, tilde, tr  # noqa: E402
 
 OPEN = {
     "Apple_Terminal": '''
@@ -106,11 +106,8 @@ TOOL = {
 
 
 def project_dirs():
-    root = projects_dir()
-    if not os.path.isdir(root):
-        return root, []
-    return root, sorted(os.path.join(root, d) for d in os.listdir(root)
-                        if os.path.isdir(os.path.join(root, d)) and not d.startswith("."))
+    """(папки проектов для текста, проекты из всех них)."""
+    return ", ".join(tilde(d) for d in projects_dirs()), project_folders()
 
 
 def git_line(d):
@@ -121,7 +118,7 @@ def git_line(d):
 
 def choices(root, dirs, note=""):
     lines = [note] if note else []
-    lines.append(f"Проекты в {tilde(root)} (ветка, последний коммит):")
+    lines.append(f"Проекты в {root} (ветка, последний коммит):")
     lines.append("  ~  домашний каталог")
     lines += [f"  {os.path.basename(d)}  ({git_line(d)})" for d in dirs]
     lines.append("")

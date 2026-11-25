@@ -360,30 +360,67 @@ struct CommandButton: View {
     }
 }
 
-/// Папка с проектами: путь, сколько в ней проектов с git и выбор другой. Общая для мастера первого запуска
-/// и Настроек, пишет то же, что agentmeister projects-dir.
+/// Папки с проектами. Это категории вроде ~/Developer или ~/Work, а не сами проекты: проектами считаются их
+/// подпапки. У каждой видно, сколько в ней проектов, можно добавить еще и убрать лишнюю. Общий для мастера первого
+/// запуска и Настроек, пишет то же, что agentmeister projects-dir.
 struct ProjectsFolderPicker: View {
     @EnvironmentObject var backend: Backend
     let l: L
     @State private var busy = false
+    @State private var error: String?
+
+    private var folders: [String] {
+        let list = backend.state.projectsDirs ?? []
+        return list.isEmpty ? [backend.state.projectsDir].filter { !$0.isEmpty } : list
+    }
 
     var body: some View {
-        let count = backend.state.projects.count
-        HStack(spacing: 12) {
-            Image(systemName: "folder").font(.system(size: 18)).foregroundStyle(Ink.muted)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(tilde(backend.state.projectsDir))
-                    .font(.system(size: 13, design: .monospaced))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(count == 0 ? l.t("Проектов с git здесь нет", "No git projects here")
-                                : l.t("Проектов с git: \(count)", "\(count) git projects"))
-                    .font(.system(size: 12))
-                    .foregroundStyle(count == 0 ? Ink.amber : Ink.muted)
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(folders, id: \.self) { folder in
+                let count = backend.state.projects.filter { ($0.path as NSString).deletingLastPathComponent == folder }.count
+                HStack(spacing: 12) {
+                    Image(systemName: "folder").font(.system(size: 18)).foregroundStyle(Ink.muted)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tilde(folder))
+                            .font(.system(size: 13, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(count == 0 ? l.t("Проектов здесь нет", "No projects here")
+                                        : l.t("Проектов внутри: \(count)", "\(count) projects inside"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(count == 0 ? Ink.amber : Ink.muted)
+                    }
+                    Spacer(minLength: 8)
+                    if folders.count > 1 {
+                        Button {
+                            run(["projects-dir", "remove", folder])
+                        } label: {
+                            Image(systemName: "minus.circle").font(.system(size: 14)).foregroundStyle(Ink.muted)
+                        }
+                        .buttonStyle(.plain)
+                        .help(l.t("Убрать папку из списка, сами проекты останутся на месте", "Remove the folder from the list, the projects stay where they are"))
+                        .disabled(busy)
+                    }
+                }
             }
-            Spacer(minLength: 8)
-            PillButton(title: l.t("Выбрать…", "Choose…"), small: true, busy: busy) { choose() }
-                .disabled(busy)
+            HStack(spacing: 8) {
+                Button { choose() } label: { Label(l.t("Добавить папку с проектами…", "Add a folder of projects…"), systemImage: "plus") }
+                    .buttonStyle(PillStyle(small: true))
+                    .disabled(busy)
+                if busy { ProgressView().controlSize(.small) }
+            }
+            if let error {
+                Text(error).font(.system(size: 12)).foregroundStyle(Ink.amber).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func run(_ args: [String]) {
+        busy = true
+        error = nil
+        Task {
+            _ = await backend.perform(args)
+            busy = false
         }
     }
 
@@ -393,15 +430,27 @@ struct ProjectsFolderPicker: View {
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
-        panel.prompt = l.t("Выбрать", "Choose")
-        panel.message = l.t("Папка, в которой лежат твои проекты", "The folder that holds your projects")
-        panel.directoryURL = URL(fileURLWithPath: backend.state.projectsDir.isEmpty ? NSHomeDirectory() : backend.state.projectsDir)
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        busy = true
-        Task {
-            _ = await backend.perform(["projects-dir", url.path])
-            busy = false
+        panel.prompt = l.t("Добавить", "Add")
+        panel.message = l.t("Выбери папку, в которой лежат проекты, например ~/Developer. Не сам проект, а папку уровнем выше.",
+                            "Pick the folder that holds your projects, like ~/Developer. Not a project itself, the folder one level up.")
+        panel.directoryURL = URL(fileURLWithPath: folders.first ?? NSHomeDirectory())
+        guard panel.runModal() == .OK, var url = panel.url else { return }
+        // выбрали сам проект (в нем есть git): предложить папку уровнем выше
+        if FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path) {
+            let parent = url.deletingLastPathComponent()
+            let alert = NSAlert()
+            alert.messageText = l.t("Это проект, а не папка с проектами", "This is a project, not a folder of projects")
+            alert.informativeText = l.t("В \(url.lastPathComponent) есть git, это сам проект. Agentmeister ждет папку, в которой лежат проекты. Добавить \(tilde(parent.path))?",
+                                        "\(url.lastPathComponent) has git, so it is a project itself. Agentmeister wants the folder that holds projects. Add \(tilde(parent.path)) instead?")
+            alert.addButton(withTitle: l.t("Добавить \(parent.lastPathComponent)", "Add \(parent.lastPathComponent)"))
+            alert.addButton(withTitle: l.cancel)
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            url = parent
         }
+        if folders.contains(url.path) { return }
+        // первая настройка: ~/Developer по умолчанию заменяется выбранной папкой, если в нем нет проектов
+        let replaceDefault = folders == [NSHomeDirectory() + "/Developer"] && backend.state.projects.isEmpty
+        run(["projects-dir"] + (replaceDefault ? [] : ["add"]) + [url.path])
     }
 }
 
@@ -430,10 +479,10 @@ struct GeneralPane: View {
             AppearancePicker(selection: $appearance, l: l)
         }
         GlassSection {
-            Text(l.t("Папка проектов", "Projects folder")).font(.system(size: 13, weight: .semibold))
+            Text(l.t("Папки с проектами", "Project folders")).font(.system(size: 13, weight: .semibold))
             ProjectsFolderPicker(l: l)
-            Note(text: l.t("Проекты это подпапки с git. Папка общая с agentmeister в терминале, это agentmeister projects-dir.",
-                           "Projects are its subfolders with git. The app and agentmeister in a terminal share it, same as agentmeister projects-dir."))
+            Note(text: l.t("Это папки, в которых лежат проекты, например ~/Developer и ~/Work, а не сами проекты. Проектом считается каждая их подпапка. Список общий с agentmeister в терминале, это agentmeister projects-dir.",
+                           "These are folders that hold projects, like ~/Developer and ~/Work, not projects themselves. Each of their subfolders is a project. The app and agentmeister in a terminal share the list, same as agentmeister projects-dir."))
         }
         GlassSection {
             HStack(alignment: .top, spacing: 12) {

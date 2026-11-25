@@ -16,7 +16,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import (Cancel, Panel, Pinned, Quit, Screen, choice, facts as fact_lines, run_framed,  # noqa: E402
                   show_output, tab_hint, width, wrap)
-from mnrhlib import DEV, HOME, LOCAL_CLI, RESTART_QUEUE, ROOT, promptsill_path, run as capture, tilde, tr  # noqa: E402
+from mnrhlib import DEVS, HOME, LOCAL_CLI, RESTART_QUEUE, ROOT, promptsill_path, run as capture, tilde, tr  # noqa: E402
 import claude_sessions  # noqa: E402
 import codex_harness  # noqa: E402
 import open_flow  # noqa: E402
@@ -298,7 +298,7 @@ class Describe:
         if key.startswith("--harness codex "):
             facts += [("promptsill", self.promptsill), (tr("Хуки humanize", "Humanize hooks"), self.hooks)]
         facts += [(tr("Папка", "Folder"), tilde(cwd())),
-                  (tr("Проекты", "Projects"), tilde(DEV)),
+                  (tr("Проекты", "Projects"), ", ".join(tilde(d) for d in DEVS)),
                   (tr("Режимы", "Modes"), ", ".join(on) if on else tr("все выключены", "all off")),
                   (tr("Прокси", "Proxy"), self.proxy)]
         block = ["", "", dim(tr("СЕЙЧАС", "CURRENT SETUP"))] + fact_lines(facts, w)
