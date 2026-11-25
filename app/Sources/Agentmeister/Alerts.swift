@@ -58,7 +58,7 @@ struct TabAlert: View {
         }
         if let failed = tab.updateFailed {
             items.append(Item(id: "update-\(failed.at.timeIntervalSince1970)", tone: .red, icon: "exclamationmark.triangle",
-                              title: l.t("claude update не прошел", "claude update failed"),
+                              title: l.t("Обновление Claude Code не прошло", "Claude Code update failed"),
                               body: failed.version.map { v in
                                   l.t("Новая версия не скачалась. Сессия открыта на \(v), работать можно.",
                                       "The new version didn't download. The session is open on \(v) and usable.")
@@ -159,10 +159,10 @@ struct TabAlert: View {
         workspace.open(spec)
     }
 
-    /// Вывод claude update в окне с прокруткой: в баннер он не влезает, а причина обычно в нем.
+    /// Вывод обновления Claude Code в окне с прокруткой: в баннер он не влезает, а причина обычно в нем.
     private func showUpdateLog(_ failed: TerminalTab.UpdateFailure) {
         let alert = NSAlert()
-        alert.messageText = l.t("claude update, код \(failed.code)", "claude update, exit code \(failed.code)")
+        alert.messageText = l.t("Обновление Claude Code, код \(failed.code)", "Claude Code update, exit code \(failed.code)")
         alert.informativeText = failed.log.isEmpty ? l.t("Команда ничего не вывела.", "The command printed nothing.") : ""
         if !failed.log.isEmpty {
             let scroll = NSTextView.scrollableTextView()

@@ -37,7 +37,7 @@ agentmeister restore        reopen sessions after a reboot or crash
 agentmeister usage          tokens and active time per project and model
 
 # From inside Claude Code, also as /restart, /forget, /fresh, /slim
-agentmeister restart        quit, claude update, reopen the same session
+agentmeister restart        quit, update Claude Code, reopen the same session
 agentmeister forget         delete this session and open a clean one
 agentmeister fresh          new session, this one stays in /resume
 agentmeister slim           slim this session down and reopen it
@@ -104,7 +104,9 @@ $agentmeister release-notes since v1.13.0
 
 To reopen the same session in Codex CLI, choose "Restart Codex" in `/presets` or enter
 `$agentmeister restart`. Enter `/quit` when prompted.
-"Update and restart Codex" runs `codex update` after `/quit` and then reopens the session. You can also enter
+"Update and restart Codex" runs `agentmeister agent-update codex` after `/quit` and then reopens the session.
+`agent-update` updates an agent the way it was installed: `brew upgrade --cask` for Homebrew, `claude update`
+or `codex update` for the official installer, npm and the rest. You can also enter
 `$agentmeister restart --update`. The shell command is
 `agentmeister --harness codex restart <id>`. If Agentmeister can identify the session's terminal and its
 zsh hook is active, it queues the restart for that tab.
@@ -482,7 +484,7 @@ cached for 6 hours. Claude gets the same through the `deps_outdated` tool.
 
 | Command | What it does |
 |---|---|
-| `/restart` | restart with `claude update`, the session continues |
+| `/restart` | restart with a Claude Code update, the session continues |
 | `/forget` | delete this session without a trace and open a clean one |
 | `/fresh` | new untitled session with an empty context, this one stays in `/resume` |
 | `/slim` | slim this session down and reopen it; `/slim list` for others |
@@ -611,7 +613,7 @@ registers the `agentmeister` MCP server with the tools `restart`, `forget`, `fre
   your flags kept.
 
 Claude Code has its own `/restart` since 2.1.288. It applies an installed update and resumes the session, on a
-native install with a Pro or Max plan. agentmeister's `/restart` takes the name: it also runs `claude update`,
+native install with a Pro or Max plan. agentmeister's `/restart` takes the name: it also updates Claude Code,
 keeps caffeinate, the proxy and your launch flags, and works in Terminal, iTerm2 and other terminals through the
 zsh hook. The built-in one stays available as `/update`.
 - "open Claude in kcalm" uses the `open_claude` tool. Without a project it returns the list of projects (branch,
@@ -631,7 +633,7 @@ zsh hook. The built-in one stays available as `/update`.
 What happens under the hood: agentmeister finds its own `claude` in the process tree and its record in
 `~/.claude/sessions/<pid>.json` (session id, folder, terminal). A separate detached process sends it SIGTERM,
 so Claude quits cleanly with the session already on disk, and the same tab runs
-`cd <folder> && { claude update; claude --resume <id>; }`. Launch flags (`--model`,
+`cd <folder> && { agentmeister agent-update claude; claude --resume <id>; }`. Launch flags (`--model`,
 `--dangerously-skip-permissions`, …) and caffeinate are kept.
 
 How the command gets back into the tab:
