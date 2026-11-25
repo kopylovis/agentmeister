@@ -36,14 +36,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Закрыть и открыть приложение заново (разрешение Записи экрана действует только после перезапуска).
-    /// Помощник ждет выхода не дольше минуты: если выход отменили в вопросе о сессиях, второй копии не будет.
-    @MainActor static func relaunch() {
+    /// Помощник ждет выхода. Если выход отменили в вопросе о сессиях, terminate возвращается: помощник
+    /// снимается, а resumeKey (шаг мастера после перезапуска) убирается, иначе он сработал бы через дни.
+    @MainActor static func relaunch(resumeKey: String? = nil) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "for i in $(seq 300); do kill -0 \(getpid()) 2>/dev/null || { /usr/bin/open \"$0\"; exit 0; }; sleep 0.2; done",
-                          Bundle.main.bundlePath]
+        // собранный бинарник без .app (разработка) запускается сам, .app открывается через open
+        let start = Bundle.main.bundleURL.pathExtension == "app" ? "/usr/bin/open \"$0\"" : "\"$0\" >/dev/null 2>&1 &"
+        let target = Bundle.main.bundleURL.pathExtension == "app" ? Bundle.main.bundlePath
+                                                                  : (Bundle.main.executablePath ?? Bundle.main.bundlePath)
+        task.arguments = ["-c", "for i in $(seq 300); do kill -0 \(getpid()) 2>/dev/null || { \(start); exit 0; }; sleep 0.2; done",
+                          target]
         try? task.run()
         NSApp.terminate(nil)
+        task.terminate()
+        if let resumeKey { UserDefaults.standard.removeObject(forKey: resumeKey) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

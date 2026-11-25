@@ -162,9 +162,12 @@ struct MainView: View {
             }
             // agentmeister://onboarding?step=N открывает мастер первого запуска на шаге N (с нуля)
             if url.host() == "onboarding" {
-                let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "step" }?.value
-                ui.onboardingStep = max(0, Int(raw ?? "") ?? 0)
-                ui.showOnboarding = true
+                // открытый мастер ссылка только выводит вперед: шаг с идущей в нем командой она не переключает
+                if !ui.showOnboarding {
+                    let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "step" }?.value
+                    ui.onboardingStep = max(0, Int(raw ?? "") ?? 0)
+                    ui.showOnboarding = true
+                }
                 Workspace.bringMainWindowForward()
                 return
             }

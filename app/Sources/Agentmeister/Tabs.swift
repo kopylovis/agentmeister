@@ -226,6 +226,11 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     func find(_ action: NSTextFinder.Action) {
         switch action {
         case .showFindInterface:
+            // при открытой панели выделено само совпадение: ⌘F только возвращает фокус полю и не трогает поиск
+            if finding {
+                findFocus += 1
+                return
+            }
             if let selected = view.getSelection(), !selected.isEmpty, !selected.contains("\n") {
                 findTerm = selected
             } else if findTerm.isEmpty, let last = NSPasteboard(name: .find).string(forType: .string) {
@@ -257,7 +262,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
             findPosition = (0, 0)
             return
         }
-        view.findNext(findTerm, options: findOptions)
+        // с конца: ближе всего к свежему выводу, а не к началу прокрутки на тысячи строк вверх
+        view.findPrevious(findTerm, options: findOptions)
         findPosition = view.searchMatchSummary(findTerm, options: findOptions)
     }
 
