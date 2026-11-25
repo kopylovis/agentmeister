@@ -672,10 +672,7 @@ struct SessionRow: View {
         } label: {
             HStack(spacing: 8) {
                 SessionDot(status: status, open: status != nil || tab != nil, size: 7)
-                if session.kind == .codex {
-                    // у Claude Code значка нет: их в списке большинство, а X сразу выделяет Codex
-                    AgentBadge(agent: .codex, size: 14)
-                }
+                AgentBadge(agent: session.kind == .codex ? .codex : .claude, size: 14)
                 Text(session.title.isEmpty ? l.untitled : session.title)
                     .lineLimit(1)
                     .truncationMode(.tail)

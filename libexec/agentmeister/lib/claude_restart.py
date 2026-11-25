@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -95,6 +96,11 @@ def plan(update=True, forget=False, slim=False, fresh=False):
         return {"pid": pid, "sid": sid, "cwd": cwd, "via": "proxy", "channel": channel,
                 "title": info.get("name") or sid}
     tty = ps("tty", pid)
+    if not tty or tty in ("??", "-"):
+        # в песочнице proxy-сессии ps запрещен: терминал передает вкладка (Agentmeister и хук zsh) в MNRH_TTY
+        given = os.environ.get("MNRH_TTY", "")
+        if re.fullmatch(r"/dev/ttys\d+", given):
+            tty = given
     if not tty or tty in ("??", "-"):
         if proxy_restart:
             command = shlex.join(["agentmeister", "-x", cwd, "--", "--resume", sid])
