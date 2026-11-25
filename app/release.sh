@@ -44,7 +44,8 @@ echo "сборка release для arm64 и x86_64…"
 arch=(--arch arm64 --arch x86_64)
 swift build -c release "${arch[@]}" 2>&1 | tail -1
 binary=$(swift build -c release "${arch[@]}" --show-bin-path)/Agentmeister
-lipo "$binary" -verify_arch arm64 x86_64 || die "в $binary нет обеих архитектур"
+archs=$(lipo -archs "$binary")
+[[ " $archs " == *" arm64 "* && " $archs " == *" x86_64 "* ]] || die "в $binary нет обеих архитектур: $archs"
 # все собирается во временную папку и встает на место только целиком: после сбоя не остается DMG, похожего на готовый
 final=$here/build/release
 out=$here/build/release.partial
