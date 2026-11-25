@@ -36,7 +36,8 @@ help() {
   agentmeister usage               токены и активное время по проектам (--days N, --project P)
 
 Изнутри Claude Code (они же /restart, /forget, /fresh, /slim)
-  agentmeister restart             закрыть и открыть эту же сессию, с claude update
+  agentmeister restart             закрыть и открыть эту же сессию, с обновлением Claude Code
+  agentmeister agent-update claude|codex  обновить агента тем способом, каким он установлен
   agentmeister forget              удалить эту сессию без следа и открыть чистую
   agentmeister fresh               новая сессия без названия, эта остается в /resume
   agentmeister slim                сжать эту сессию и открыть снова
@@ -90,6 +91,7 @@ case "${1:-}" in
   brief) exec /usr/bin/python3 "$(dirname "$MENU")/claude_brief.py" "$@" ;;
   ps) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" ps "$@" ;;
   app-state) shift; exec /usr/bin/python3 "$LIB/app_state.py" "$@" ;;
+  agent-update) shift; exec /usr/bin/python3 "$LIB/agent_update.py" "$@" ;;
   lang) shift; exec /usr/bin/python3 "$LIB/app_state.py" lang "$@" ;;
   restore) exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" "$@" ;;
   doctor) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_doctor.py" "$@" ;;

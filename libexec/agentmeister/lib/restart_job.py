@@ -171,7 +171,8 @@ def steps(job):
         # после agentmeister lid setup сторож держит Mac и с закрытой крышкой; без правила keep ничего не делает
         out.append(([CM, "lid", "keep"], True))
     if job["update"]:
-        out.append((proxy + [CLAUDE_BIN, "update"], False))
+        # claude update у установки из Homebrew ничего не ставит, agent-update выбирает brew upgrade или claude update
+        out.append((proxy + [LOCAL_CLI, "agent-update", "claude"], False))
     if new:
         out.append((["clear"], False))
     if job["mode"] == "slim":

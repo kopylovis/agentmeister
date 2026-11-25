@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import sys
@@ -91,7 +92,9 @@ def supervise(cmd):
         if stopping:
             break
         if data.get("update") is True:
-            child = subprocess.Popen([original[0], "update"], cwd=cwd)
+            import agent_update
+            command = agent_update.update_argv("claude", shutil.which(original[0]) or original[0]) or [original[0], "update"]
+            child = subprocess.Popen(command, cwd=cwd)
             if stopping:
                 child.terminate()
             child.wait()
