@@ -71,6 +71,14 @@ agentmeister
 
 `am` открывает то же меню.
 
+### Десктопное приложение
+
+Скачай `Agentmeister-<версия>.dmg` из [последнего релиза](https://github.com/kopylovis/agentmeister/releases/latest),
+открой его и перетащи Agentmeister в "Программы". Приложение подписано Developer ID и нотаризовано. Нужны macOS 26
+на Apple Silicon и Command Line Tools от Xcode (`xcode-select --install`). CLI `agentmeister` лежит внутри
+приложения. При первом запуске приложение ставит ссылку `~/.local/bin/agentmeister` на него, если команды еще нет,
+так что Homebrew не обязателен. Если в PATH есть CLI новее или git-копия этого репозитория, приложение берет его.
+
 ### Codex
 
 Если установлены обе CLI, пункт "Открыть проект" предложит выбрать агента. Меню покажет сохраненные сессии
