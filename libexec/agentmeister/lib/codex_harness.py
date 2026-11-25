@@ -240,7 +240,7 @@ def restart(codex, argv):
     if options.update:
         update = [LOCAL_CLI, "agent-update", "codex"]  # brew upgrade или codex update, по способу установки
         if proxy:
-            update = [LOCAL_CLI, "proxy", "run", "--", *update]
+            update = [LOCAL_CLI, "proxy", "run", "--no-sandbox", "--", *update]
         subprocess.run(update, check=True)
     flags = ["-x", "--"] if proxy else ["--"]
     resume = ["resume", "-C", cwd, session or "--last"]
