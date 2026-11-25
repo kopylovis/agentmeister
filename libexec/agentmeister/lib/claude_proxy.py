@@ -763,7 +763,9 @@ def proxy_env(p, *, claude=False):
     return env
 
 
-def run(cmd, *, claude=False):
+def run(cmd, *, claude=False, sandbox=True):
+    """sandbox=False (proxy run --no-sandbox): mihomo и переменные proxy без sandbox-exec. Для обновления
+    агентов: brew upgrade распаковывает в своей песочнице macOS, а вложенную песочницу macOS не дает."""
     if not cmd:
         print("agentmeister proxy run -- <команда>", file=sys.stderr)
         return 2
@@ -792,7 +794,7 @@ def run(cmd, *, claude=False):
         if claude and sys.stdin.isatty() and sys.stdout.isatty():
             from claude_proxy_restart import supervised_command
             cmd = supervised_command(cmd)
-        child = subprocess.Popen(session_command(p, cmd, claude=claude), env=proxy_env(p, claude=claude))
+        child = subprocess.Popen(session_command(p, cmd, claude=claude) if sandbox else cmd, env=proxy_env(p, claude=claude))
     except (OSError, ValueError) as e:
         print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
         child = None
@@ -1272,7 +1274,10 @@ def main(argv):
         claude = rest[:1] == ["--claude"]
         if claude:
             rest = rest[1:]
-        return run(rest[1:] if rest[:1] == ["--"] else rest, claude=claude)
+        sandbox = rest[:1] != ["--no-sandbox"]
+        if not sandbox:
+            rest = rest[1:]
+        return run(rest[1:] if rest[:1] == ["--"] else rest, claude=claude, sandbox=sandbox)
     if cmd == "configured":
         return 0 if configured() and mihomo_bin() else 1
     if cmd == "remember":

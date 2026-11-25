@@ -172,7 +172,9 @@ def steps(job):
         out.append(([CM, "lid", "keep"], True))
     if job["update"]:
         # claude update у установки из Homebrew ничего не ставит, agent-update выбирает brew upgrade или claude update
-        out.append((proxy + [LOCAL_CLI, "agent-update", "claude"], False))
+        # без песочницы, но через mihomo: brew upgrade распаковывает в своей песочнице, а вложенную macOS не дает
+        update_proxy = [LOCAL_CLI, "proxy", "run", "--no-sandbox", "--"] if job["proxy"] else []
+        out.append((update_proxy + [LOCAL_CLI, "agent-update", "claude"], False))
     if new:
         out.append((["clear"], False))
     if job["mode"] == "slim":
