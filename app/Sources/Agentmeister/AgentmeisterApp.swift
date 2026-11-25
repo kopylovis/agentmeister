@@ -35,6 +35,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
 
+    /// Закрыть и открыть приложение заново (разрешение Записи экрана действует только после перезапуска).
+    /// Помощник ждет выхода не дольше минуты: если выход отменили в вопросе о сессиях, второй копии не будет.
+    @MainActor static func relaunch() {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = ["-c", "for i in $(seq 300); do kill -0 \(getpid()) 2>/dev/null || { /usr/bin/open \"$0\"; exit 0; }; sleep 0.2; done",
+                          Bundle.main.bundlePath]
+        try? task.run()
+        NSApp.terminate(nil)
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         // обычный выход: при следующем запуске вкладки откроются без вопроса
         UserDefaults.standard.set(true, forKey: Workspace.cleanExitKey)
@@ -167,7 +178,10 @@ struct AgentmeisterApp: App {
                     .shortcut(.inspector)
             }
             CommandGroup(replacing: .help) {
-                Button(l.t("Мастер первого запуска", "First-run setup")) { ui.showOnboarding = true }
+                Button(l.t("Мастер первого запуска", "First-run setup")) {
+                    ui.onboardingStep = 0
+                    ui.showOnboarding = true
+                }
             }
             CommandMenu(l.t("Вкладки", "Tabs")) {
                 ForEach(1..<10) { n in

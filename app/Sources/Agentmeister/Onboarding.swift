@@ -13,6 +13,7 @@ extension SettingsData.Agent {
 struct OnboardingView: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var ui: UIState
     @Environment(\.dismiss) private var dismiss
     @AppStorage("onboardingDone") private var done = false
     @AppStorage(Appearance.key) private var appearance = Appearance.system.rawValue
@@ -128,6 +129,13 @@ struct OnboardingView: View {
         .frame(width: 820, height: 540)
         .environment(\.utilityRunner) { args in run(args) }
         .task { await reload() }
+        .onAppear {
+            // шаг из ссылки agentmeister://onboarding или тот, на котором мастер перезапустил приложение
+            let resume = UserDefaults.standard.object(forKey: "onboardingResumeStep") as? Int
+            UserDefaults.standard.removeObject(forKey: "onboardingResumeStep")
+            step = min(resume ?? ui.onboardingStep, Step.allCases.count - 1)
+        }
+        .onChange(of: ui.onboardingStep) { step = min(ui.onboardingStep, Step.allCases.count - 1) }
         .onChange(of: step) { Task { await reload() } }
         .onDisappear { console?.terminate() }
         .sheet(item: $signingIn, onDismiss: { Task { await reload() } }) { agent in
@@ -460,12 +468,19 @@ struct OnboardingView: View {
                        allowed: nil, open: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
                 CommandButton(title: l.t("Прислать тест", "Send test"), args: ["notify", "test"]) { await reload() }
             }
-            permission(l.t("Запись экрана", "Screen Recording"), l.t("Для снимков окон, /shot", "For window screenshots, /shot"),
+            permission(l.t("Запись экрана", "Screen Recording"),
+                       l.t("Для снимков окон, /shot. После разрешения macOS требует перезапустить Agentmeister, до этого запись не работает. Вкладки вернутся сами.",
+                           "For window screenshots, /shot. Once you allow it, macOS needs Agentmeister restarted, until then recording stays off. Tabs come back by themselves."),
                        allowed: screenAllowed, open: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                 if !screenAllowed {
                     Button(l.t("Попросить доступ", "Ask for access")) {
                         CGRequestScreenCaptureAccess()
                         screenAllowed = CGPreflightScreenCaptureAccess()
+                    }
+                    Button(l.t("Перезапустить Agentmeister", "Restart Agentmeister")) {
+                        // после перезапуска мастер откроется снова на этом шаге
+                        UserDefaults.standard.set(Step.permissions.rawValue, forKey: "onboardingResumeStep")
+                        AppDelegate.relaunch()
                     }
                 }
             }
