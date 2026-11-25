@@ -237,6 +237,13 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         return (direct ? update : proxy + update) + " 2>&1" + (tail ? " | tail -3" : "")
     }
 
+    /// Команда оболочки для проверки новой версии агента (agentmeister agent-update --check), JSON в stdout.
+    nonisolated static func checkCommand(direct: Bool, agent: LaunchSpec.Agent) -> String {
+        let am = "'" + LoginEnvironment.agentmeister.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let check = "\(am) agent-update --check \(agent == .codex ? "codex" : "claude")"
+        return (direct ? check : "\(am) proxy run -- " + check) + " 2>/dev/null"
+    }
+
     /// Чем кончился последний claude update перед перезапуском, если он не прошел. Баннер вкладки
     /// показывает его, сессия при этом открыта на прежней версии.
     struct UpdateFailure {
