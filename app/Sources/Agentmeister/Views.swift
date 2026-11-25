@@ -1006,6 +1006,7 @@ struct InfoBar: View {
     @State private var head: String?
     /// Токены в контексте сессии Claude Code, из ее переписки. Читается раз в 10 секунд, как и ветка.
     @State private var context: Int?
+    @State private var contextOpen = false
 
     private func revealFolder() {
         NSWorkspace.shared.open(URL(fileURLWithPath: tab.spec.projectPath, isDirectory: true))
@@ -1143,19 +1144,78 @@ struct InfoBar: View {
 }
 
 extension InfoBar {
-    /// "контекст 120 тыс." За порогом /compact чип желтый, клик вписывает /compact в строку ввода. Полоски нет:
-    /// окно модели (200 тыс. или 1 млн) в переписке не записано, а процент от окна и так есть в строке состояния.
+    /// "контекст 120 тыс.", с 200 тыс. желтый. Клик открывает выбор, чем сжать: /compact, /slim или обоими.
+    /// Полоски нет: окно модели (200 тыс. или 1 млн) в переписке не записано, а процент есть в строке состояния.
     func contextChip(_ n: Int) -> some View {
         let over = n >= SessionContext.compactHint
         let k = max(1, Int((Double(n) / 1000).rounded()))
-        return Chip(foreground: over ? Ink.amber : Ink.text2, action: over && tab.running ? { tab.type("/compact") } : nil) {
+        return Chip(foreground: over ? Ink.amber : Ink.text2, action: tab.running && tab.sessionId != nil ? { contextOpen = true } : nil) {
             Text(l.t("контекст \(k) тыс.", "context \(k)k")).monospacedDigit()
         }
-        .help(over
-              ? l.t("В контексте \(k) тыс. токенов. Клик вписывает /compact, он сожмет разговор. /slim убирает только скриншоты и длинные выводы.",
-                    "\(k)k tokens in context. Click to type /compact, it condenses the conversation. /slim only removes screenshots and long outputs.")
-              : l.t("Токенов в контексте сессии. С \(SessionContext.compactHint / 1000) тыс. стоит сжать разговор через /compact.",
-                    "Tokens in this session's context. From \(SessionContext.compactHint / 1000)k it's worth condensing with /compact."))
+        .help(l.t("Токенов в контексте сессии. Клик предлагает сжать разговор или переписку.",
+                  "Tokens in this session's context. Click to condense the conversation or the transcript."))
+        .popover(isPresented: $contextOpen, arrowEdge: .bottom) { CompactPopover(tab: tab, tokens: n, l: l) { contextOpen = false } }
+    }
+}
+
+/// Выбор под чипом контекста. /compact пересказывает разговор и уменьшает контекст, /slim убирает из переписки
+/// скриншоты и длинные выводы и уменьшает файл. "Оба" сначала сжимает файл, затем открывает сессию с /compact.
+struct CompactPopover: View {
+    @ObservedObject var tab: TerminalTab
+    let tokens: Int
+    let l: L
+    let close: () -> Void
+
+    var body: some View {
+        let k = max(1, Int((Double(tokens) / 1000).rounded()))
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(l.t("В контексте \(k) тыс. токенов", "\(k)k tokens in context")).font(.system(size: 13, weight: .semibold))
+                if tokens >= SessionContext.compactHint {
+                    Text(l.t("Больше \(SessionContext.compactHint / 1000) тыс., разговор пора сжать.",
+                             "Over \(SessionContext.compactHint / 1000)k, time to condense the conversation."))
+                        .foregroundStyle(Ink.amber)
+                }
+            }
+            option(l.t("Сжать разговор", "Condense the conversation"), "/compact",
+                   l.t("Claude перескажет разговор, контекст станет меньше. Ранние подробности останутся только в пересказе.",
+                       "Claude summarizes the conversation and the context shrinks. Early details survive only in the summary.")) {
+                tab.submit("/compact")
+            }
+            option(l.t("Сжать переписку", "Slim the transcript"), "/slim",
+                   l.t("Убирает старые скриншоты и длинные выводы из файла сессии, разговор не меняется. Сессия перезапустится.",
+                       "Removes old screenshots and long outputs from the session file, the conversation stays. The session restarts.")) {
+                tab.slim(note: l.slimming)
+            }
+            option(l.t("Все вместе", "Both"), "/slim + /compact",
+                   l.t("Сначала /slim, потом сессия откроется и сразу выполнит /compact.",
+                       "First /slim, then the session reopens and runs /compact right away.")) {
+                tab.slim(note: l.slimming, then: "/compact")
+            }
+        }
+        .font(.system(size: 12))
+        .padding(14)
+        .frame(width: 340)
+    }
+
+    private func option(_ title: String, _ command: String, _ detail: String, action: @escaping () -> Void) -> some View {
+        Button {
+            close()
+            action()
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(title).fontWeight(.medium).foregroundStyle(Ink.text)
+                    Text(command).font(.system(size: 11, design: .monospaced)).foregroundStyle(Ink.faint)
+                }
+                Text(detail).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.hover(8))
     }
 }
 
