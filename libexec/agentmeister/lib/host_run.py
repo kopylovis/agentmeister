@@ -99,27 +99,27 @@ def load(path=None):
     except FileNotFoundError:
         return {}
     except (OSError, ValueError) as e:
-        raise RuleError(f"{tilde(path)} не читается: {e}")
+        raise RuleError(tr(f"{tilde(path)} не читается: {e}", f"can't read {tilde(path)}: {e}"))
     return parse(data, path)
 
 
 def parse(data, path):
     commands = data.get("commands") if isinstance(data, dict) else None
     if not isinstance(commands, dict):
-        raise RuleError(f"в {tilde(path)} нет объекта commands")
+        raise RuleError(tr(f"в {tilde(path)} нет объекта commands", f"{tilde(path)} has no commands object"))
     rules = {}
     for name, rule in commands.items():
         run = rule.get("run") if isinstance(rule, dict) else None
         cwd = rule.get("cwd") if isinstance(rule, dict) else None
         if name in RESERVED or not name or name.startswith("-"):
-            raise RuleError(f"имя {name!r} занято командами host-run")
+            raise RuleError(tr(f"имя {name!r} занято командами host-run", f"the name {name!r} is taken by host-run itself"))
         if not (isinstance(run, list) and run and all(isinstance(a, str) and a for a in run)):
-            raise RuleError(f"{name}: run должен быть непустым списком строк")
+            raise RuleError(tr(f"{name}: run должен быть непустым списком строк", f"{name}: run must be a non-empty list of strings"))
         if not isinstance(cwd, str) or not cwd:
-            raise RuleError(f"{name}: нужна папка cwd")
+            raise RuleError(tr(f"{name}: нужна папка cwd", f"{name}: cwd folder is required"))
         cwd = os.path.expanduser(cwd)
         if not os.path.isabs(cwd):
-            raise RuleError(f"{name}: cwd должен быть полным путем")
+            raise RuleError(tr(f"{name}: cwd должен быть полным путем", f"{name}: cwd must be an absolute path"))
         rules[name] = {"cwd": cwd, "run": run, "args": rule.get("args") is True}
     return rules
 
@@ -127,12 +127,13 @@ def parse(data, path):
 def resolve(name, args, rules):
     rule = rules.get(name)
     if not rule:
-        known = ", ".join(sorted(rules)) or "список пуст"
-        raise RuleError(f"команды {name!r} нет в {tilde(COMMANDS)} ({known})")
+        known = ", ".join(sorted(rules)) or tr("список пуст", "the list is empty")
+        raise RuleError(tr(f"команды {name!r} нет в {tilde(COMMANDS)} ({known})", f"no command {name!r} in {tilde(COMMANDS)} ({known})"))
     if args and not rule["args"]:
-        raise RuleError(f"{name} запускается без аргументов, в списке у нее нет \"args\": true")
+        raise RuleError(tr(f"{name} запускается без аргументов, в списке у нее нет \"args\": true",
+                           f"{name} takes no arguments, its entry has no \"args\": true"))
     if not all(isinstance(a, str) for a in args):
-        raise RuleError("аргументы должны быть строками")
+        raise RuleError(tr("аргументы должны быть строками", "arguments must be strings"))
     return rule["run"] + list(args), rule["cwd"]
 
 
@@ -158,12 +159,13 @@ def trusted_dir(path):
         info = os.lstat(current)
         if stat.S_ISLNK(info.st_mode):
             if info.st_uid != 0:
-                raise OSError(f"{tilde(current)} — символическая ссылка, укажи настоящий путь")
+                raise OSError(tr(f"{tilde(current)} — символическая ссылка, укажи настоящий путь",
+                                  f"{tilde(current)} is a symlink, use the real path"))
             continue
         if info.st_uid not in (0, uid):
-            raise OSError(f"папка {tilde(current)} чужая")
+            raise OSError(tr(f"папка {tilde(current)} чужая", f"{tilde(current)} belongs to another user"))
         if info.st_mode & 0o022 and not (info.st_uid == 0 and info.st_mode & stat.S_ISVTX):
-            raise OSError(f"в папку {tilde(current)} могут писать другие")
+            raise OSError(tr(f"в папку {tilde(current)} могут писать другие", f"others can write to {tilde(current)}"))
     # системные ссылки раскрыты заранее; дальше каждую папку открываем без перехода по ссылкам
     real = os.path.realpath(os.path.dirname(path))
     fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
@@ -190,14 +192,14 @@ def read_trusted(path):
     with os.fdopen(file_fd, "rb") as f:
         info = os.fstat(f.fileno())
         if not stat.S_ISREG(info.st_mode):
-            raise OSError("это не обычный файл")
+            raise OSError(tr("это не обычный файл", "not a regular file"))
         if info.st_uid != os.getuid():
-            raise OSError("файл принадлежит другому пользователю")
+            raise OSError(tr("файл принадлежит другому пользователю", "the file belongs to another user"))
         if info.st_mode & 0o022:
-            raise OSError("в файл могут писать другие, нужно chmod 600")
+            raise OSError(tr("в файл могут писать другие, нужно chmod 600", "others can write to the file, run chmod 600"))
         data = f.read(MAX_COMMANDS + 1)
     if len(data) > MAX_COMMANDS:
-        raise OSError("файл больше мегабайта")
+        raise OSError(tr("файл больше мегабайта", "the file is over a megabyte"))
     return data.decode("utf-8")
 
 
@@ -292,11 +294,11 @@ def read_list(path):
     except FileNotFoundError:
         return None, {"commands": {}}
     except OSError as e:
-        raise RuleError(f"{tilde(path)} не читается: {e}")
+        raise RuleError(tr(f"{tilde(path)} не читается: {e}", f"can't read {tilde(path)}: {e}"))
     try:
         data = json.loads(raw)
     except ValueError as e:
-        raise RuleError(f"{tilde(path)} не читается: {e}")
+        raise RuleError(tr(f"{tilde(path)} не читается: {e}", f"can't read {tilde(path)}: {e}"))
     parse(data, path)
     return raw, data
 
@@ -305,35 +307,39 @@ def plan_change(request, path):
     """Что поменять в списке по запросу add или remove. Ошибки запроса и дубль имени: RuleError."""
     op, entry = request.get("op"), request.get("command")
     if op not in EDITS or not isinstance(entry, dict):
-        raise RuleError("плохой запрос")
+        raise RuleError(tr("плохой запрос", "bad request"))
     name = entry.get("name")
     if not isinstance(name, str) or not NAME.fullmatch(name) or name in RESERVED:
-        raise RuleError(f"имя {name!r} не подходит: латиница, цифры, точка, дефис и _, до 64 знаков, "
-                        f"не {', '.join(n for n in RESERVED if n[0] != '-')}")
+        reserved = ", ".join(n for n in RESERVED if n[0] != "-")
+        raise RuleError(tr(f"имя {name!r} не подходит: латиница, цифры, точка, дефис и _, до 64 знаков, не {reserved}",
+                           f"bad name {name!r}: Latin letters, digits, dot, hyphen and _, up to 64 characters, "
+                           f"not {reserved}"))
     raw, data = read_list(path)
     commands = data["commands"]
     old = commands.get(name)
     if op == "remove":
         if old is None:
-            raise RuleError(f"команды {name} нет в списке")
+            raise RuleError(tr(f"команды {name} нет в списке", f"no command {name} in the list"))
         new = None
         del commands[name]
     else:
         cwd, run = entry.get("cwd"), entry.get("run")
         if not isinstance(cwd, str) or not os.path.isabs(cwd):
-            raise RuleError("нужна папка --cwd полным путем")
+            raise RuleError(tr("нужна папка --cwd полным путем", "--cwd must be an absolute path"))
         cwd = os.path.normpath(cwd)
         if not os.path.isdir(cwd):
-            raise RuleError(f"папки {tilde(cwd)} нет")
+            raise RuleError(tr(f"папки {tilde(cwd)} нет", f"no folder {tilde(cwd)}"))
         if not (isinstance(run, list) and run and all(isinstance(a, str) and a for a in run)):
-            raise RuleError("после --run нужна программа и, если надо, ее аргументы")
+            raise RuleError(tr("после --run нужна программа и, если надо, ее аргументы",
+                               "--run needs a program and, if needed, its arguments"))
         new = {"cwd": tilde(cwd), "run": run}
         if entry.get("args") is True:
             new["args"] = True
         if old is not None and old == new:
             return Change("same", name, old, new, raw, data)
         if old is not None and request.get("replace") is not True:
-            raise RuleError(f"{name} уже есть в списке ({describe(old)}), заменить можно с --replace")
+            raise RuleError(tr(f"{name} уже есть в списке ({describe(old)}), заменить можно с --replace",
+                               f"{name} is already in the list ({describe(old)}), use --replace to replace it"))
         commands[name] = new
     parse(data, path)
     return Change(op, name, old, new, raw, data)
@@ -345,8 +351,8 @@ def command_line(rule):
 
 
 def describe(rule):
-    tail = " + аргументы из сессии" if rule.get("args") is True else ""
-    return f"{command_line(rule)}{tail} в {rule.get('cwd')}"
+    tail = tr(" + аргументы из сессии", " + arguments from the session") if rule.get("args") is True else ""
+    return tr(f"{command_line(rule)}{tail} в {rule.get('cwd')}", f"{command_line(rule)}{tail} in {rule.get('cwd')}")
 
 
 def entry_code(name, rule):
@@ -412,7 +418,7 @@ def write_list(path, data):
     try:
         fd = trusted_dir(path)
     except OSError as e:
-        raise RuleError(f"не записал {tilde(path)}: {e}")
+        raise RuleError(tr(f"не записал {tilde(path)}: {e}", f"couldn't write {tilde(path)}: {e}"))
     tmp = f".{os.path.basename(path)}.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
         text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
@@ -430,7 +436,7 @@ def write_list(path, data):
             os.unlink(tmp, dir_fd=fd)
         except OSError:
             pass
-        raise RuleError(f"не записал {tilde(path)}: {e}")
+        raise RuleError(tr(f"не записал {tilde(path)}: {e}", f"couldn't write {tilde(path)}: {e}"))
     finally:
         os.close(fd)
 
@@ -439,7 +445,8 @@ def apply_change(change, path):
     """Записать изменение, если список не поменяли, пока было открыто окно."""
     raw, _ = read_list(path)
     if raw != change.raw:
-        raise RuleError("список поменялся, пока было открыто окно, попроси еще раз")
+        raise RuleError(tr("список поменялся, пока было открыто окно, попроси еще раз",
+                           "the list changed while the window was open, ask again"))
     write_list(path, change.data)
 
 
@@ -466,13 +473,14 @@ def confirm_helper():
             with open(CONFIRM_SRC, "rb") as f:
                 source = f.read()
         except OSError as e:
-            raise RuleError(f"нет исходника окна подтверждения: {e}")
+            raise RuleError(tr(f"нет исходника окна подтверждения: {e}", f"no confirm window source: {e}"))
     digest = hashlib.sha256(source).hexdigest()[:16]
     binary = os.path.join(CONFIRM_DIR, f"agentmeister-confirm-{digest}")
     if os.access(binary, os.X_OK):
         return binary
     if not shutil.which("swiftc"):
-        raise RuleError("для окна подтверждения нужен swiftc: xcode-select --install")
+        raise RuleError(tr("для окна подтверждения нужен swiftc: xcode-select --install",
+                           "the confirm window needs swiftc: xcode-select --install"))
     os.makedirs(CONFIRM_DIR, mode=0o700, exist_ok=True)
     src = os.path.join(CONFIRM_DIR, f"main-{digest}.{os.getpid()}.swift")
     out = binary + f".{os.getpid()}.tmp"
@@ -482,10 +490,10 @@ def confirm_helper():
         r = subprocess.run(["swiftc", "-O", "-swift-version", "5", src, "-o", out], capture_output=True, text=True,
                            timeout=600, env=command_env())
         if r.returncode != 0:
-            raise RuleError("не собрал окно подтверждения: " + r.stderr[-500:])
+            raise RuleError(tr("не собрал окно подтверждения: ", "couldn't build the confirm window: ") + r.stderr[-500:])
         os.replace(out, binary)
     except (OSError, subprocess.SubprocessError) as e:
-        raise RuleError(f"не собрал окно подтверждения: {e}")
+        raise RuleError(tr(f"не собрал окно подтверждения: {e}", f"couldn't build the confirm window: {e}"))
     finally:
         for leftover in (src, out):
             try:
@@ -501,8 +509,11 @@ def confirm_helper():
     return binary
 
 
-ANSWERS = {"deny": "отказ в окне", "closed": "окно закрыли",
-           "timeout": f"нет ответа за {CONFIRM_TIMEOUT // 60} мин", "gone": "сессия перестала ждать"}
+def answer_text(answer):
+    minutes = CONFIRM_TIMEOUT // 60
+    return {"deny": tr("отказ в окне", "denied in the window"), "closed": tr("окно закрыли", "the window was closed"),
+            "timeout": tr(f"нет ответа за {minutes} мин", f"no answer in {minutes} min"),
+            "gone": tr("сессия перестала ждать", "the session stopped waiting")}.get(answer, answer)
 
 
 def ask_human(conn, change):
@@ -512,7 +523,7 @@ def ask_human(conn, change):
                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  start_new_session=True, env=command_env())
     except OSError as e:
-        raise RuleError(f"окно подтверждения не открылось: {e}")
+        raise RuleError(tr(f"окно подтверждения не открылось: {e}", f"the confirm window didn't open: {e}"))
     gone = threading.Event()
 
     def watch_client():
@@ -559,9 +570,9 @@ class Server:
             try:
                 request = json.loads(line)
                 if not isinstance(request, dict):
-                    raise ValueError("ожидался объект")
+                    raise ValueError(tr("ожидался объект", "expected an object"))
             except ValueError as e:
-                send_frame(conn, b"e", f"плохой запрос: {e}".encode())
+                send_frame(conn, b"e", tr(f"плохой запрос: {e}", f"bad request: {e}").encode())
                 send_frame(conn, b"x", b"2")
                 return
             if request.get("op") == "ping":
@@ -577,7 +588,7 @@ class Server:
             try:
                 name, args = request.get("name"), request.get("args") or []
                 if not isinstance(name, str) or not isinstance(args, list):
-                    raise RuleError("нужны name и args")
+                    raise RuleError(tr("нужны name и args", "name and args are required"))
                 argv, cwd = resolve(name, args, load(self.commands))
             except RuleError as e:
                 send_frame(conn, b"e", str(e).encode())
@@ -586,31 +597,38 @@ class Server:
             self.run(conn, name, argv, cwd)
 
     def change(self, conn, request):
-        verb = "удалена" if request.get("op") == "remove" else "добавлена"
+        removing = request.get("op") == "remove"
+        verb = tr("удалена", "removed") if removing else tr("добавлена", "added")
         with self.edit:
             try:
                 change = plan_change(request, self.commands)
                 if change.op == "same":
-                    send_frame(conn, b"o", f"{change.name} уже есть в списке в том же виде\n".encode())
+                    send_frame(conn, b"o", tr(f"{change.name} уже есть в списке в том же виде\n",
+                                               f"{change.name} is already in the list as is\n").encode())
                     send_frame(conn, b"x", b"0")
                     return
                 answer = ask_human(conn, change)
                 log(f"{change.op} {change.name}: {answer}")
                 if answer != "allow":
-                    send_frame(conn, b"e", f"{change.name} не {verb}: {ANSWERS.get(answer, answer)}".encode())
+                    send_frame(conn, b"e", tr(f"{change.name} не {verb}: {answer_text(answer)}",
+                                               f"{change.name} not {verb}: {answer_text(answer)}").encode())
                     send_frame(conn, b"x", b"1")
                     return
                 apply_change(change, self.commands)
             except RuleError as e:
-                send_frame(conn, b"e", f"не {verb}: {e}".encode())
+                send_frame(conn, b"e", tr(f"не {verb}: {e}", f"not {verb}: {e}").encode())
                 send_frame(conn, b"x", b"2")
                 return
             except OSError:
                 return  # клиент отключился
         if change.op == "remove":
-            text = f"команда {change.name} удалена из списка\n"
+            text = tr(f"команда {change.name} удалена из списка\n", f"command {change.name} removed from the list\n")
+        elif change.old:
+            text = tr(f"команда {change.name} заменена: {describe(change.new)}\n",
+                      f"command {change.name} replaced: {describe(change.new)}\n")
         else:
-            text = f"команда {change.name} {'заменена' if change.old else 'добавлена'}: {describe(change.new)}\n"
+            text = tr(f"команда {change.name} добавлена: {describe(change.new)}\n",
+                      f"command {change.name} added: {describe(change.new)}\n")
         try:
             send_frame(conn, b"o", text.encode())
             send_frame(conn, b"x", b"0")
@@ -623,7 +641,7 @@ class Server:
         argv = request.get("argv")
         try:
             if not (isinstance(argv, list) and all(isinstance(a, str) for a in argv)):
-                raise ValueError("нужен список аргументов")
+                raise ValueError(tr("нужен список аргументов", "a list of arguments is required"))
             cmd = claude_open.host_open_command(argv)
         except ValueError as e:
             send_frame(conn, b"e", str(e).encode())
@@ -633,7 +651,7 @@ class Server:
         try:
             text, failed = claude_open.open_tab(cmd)
         except Exception as e:  # noqa: BLE001 — сессия должна получить ответ, а не оборванное соединение
-            text, failed = f"вкладка не открылась: {e}", True
+            text, failed = tr(f"вкладка не открылась: {e}", f"the tab didn't open: {e}"), True
         log(f"open {cmd[2]}: {'failed' if failed else 'ok'}")
         try:
             send_frame(conn, b"o" if not failed else b"e", text.encode() + (b"\n" if not failed else b""))
@@ -646,7 +664,7 @@ class Server:
             child = subprocess.Popen(argv, cwd=cwd, env=command_env(), stdin=subprocess.DEVNULL,
                                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
         except OSError as e:
-            send_frame(conn, b"e", f"не запустил {argv[0]}: {e}".encode())
+            send_frame(conn, b"e", tr(f"не запустил {argv[0]}: {e}", f"couldn't start {argv[0]}: {e}").encode())
             send_frame(conn, b"x", b"127")
             return
         with self.lock:
@@ -790,8 +808,9 @@ def serve():
         return 0  # уже работает другой
     if not nested_sandbox_ok():
         log("refuse: running inside a sandbox")
-        print("agentmeister host-run: исполнитель запущен внутри песочницы, вне ее запусти agentmeister host-run serve",
-              file=sys.stderr)
+        print(tr("agentmeister host-run: исполнитель запущен внутри песочницы, вне ее запусти agentmeister host-run serve",
+                 "agentmeister host-run: the runner was started inside a sandbox, run agentmeister host-run serve "
+                 "outside it"), file=sys.stderr)
         return 1
     pid.seek(0)
     pid.truncate()
@@ -838,8 +857,11 @@ def ensure():
                      env=command_env())
 
 
-NOT_RUNNING = ("agentmeister host-run: исполнитель не запущен. Он стартует с новой сессией через proxy, если есть "
-               f"{tilde(COMMANDS)}, или в обычном терминале запусти (agentmeister host-run serve &)")
+def not_running():
+    return tr("agentmeister host-run: исполнитель не запущен. Он стартует с новой сессией через proxy, если есть "
+              f"{tilde(COMMANDS)}, или в обычном терминале запусти (agentmeister host-run serve &)",
+              "agentmeister host-run: the runner isn't running. It starts with a new proxied session when "
+              f"{tilde(COMMANDS)} exists, or run (agentmeister host-run serve &) in a regular terminal")
 
 
 def call(name, args, path=SOCK, out=None, err=None):
@@ -854,14 +876,15 @@ def exchange(request, path=SOCK, out=None, err=None):
         conn.connect(path)
     except OSError:
         conn.close()
-        print(NOT_RUNNING, file=err)
+        print(not_running(), file=err)
         return 125
     with conn:
         conn.sendall(json.dumps(request).encode() + b"\n")
         while True:
             kind, payload = recv_frame(conn)
             if kind is None:
-                print("agentmeister host-run: исполнитель оборвал соединение", file=err)
+                print(tr("agentmeister host-run: исполнитель оборвал соединение", "agentmeister host-run: the runner dropped the connection"),
+                      file=err)
                 return 125
             if kind == b"o":
                 out.write(payload)
@@ -872,13 +895,15 @@ def exchange(request, path=SOCK, out=None, err=None):
                 return int(payload)
 
 
-ADD_USAGE = "agentmeister host-run add <имя> --cwd <папка> --run <программа> [аргументы...] [--args] [--replace]"
+def add_usage():
+    return tr("agentmeister host-run add <имя> --cwd <папка> --run <программа> [аргументы...] [--args] [--replace]",
+              "agentmeister host-run add <name> --cwd <folder> --run <program> [arguments...] [--args] [--replace]")
 
 
 def parse_add(argv):
     """Запрос add из аргументов. Флаги --args и --replace можно ставить до --run и в самом конце."""
     if not argv or argv[0].startswith("-"):
-        raise RuleError(f"нужно имя: {ADD_USAGE}")
+        raise RuleError(tr("нужно имя: ", "a name is required: ") + add_usage())
     entry = {"name": argv[0], "cwd": None, "run": None, "args": False}
     replace = False
     rest, i = argv[1:], 0
@@ -903,19 +928,19 @@ def parse_add(argv):
             entry["run"] = run
             break
         else:
-            raise RuleError(f"не знаю {arg}: {ADD_USAGE}")
+            raise RuleError(tr(f"не знаю {arg}: ", f"unknown {arg}: ") + add_usage())
         i += 1
     if not entry["cwd"]:
-        raise RuleError(f"нужна папка --cwd: {ADD_USAGE}")
+        raise RuleError(tr("нужна папка --cwd: ", "--cwd is required: ") + add_usage())
     if not entry["run"]:
-        raise RuleError(f"нужна команда после --run: {ADD_USAGE}")
+        raise RuleError(tr("нужна команда после --run: ", "a command is required after --run: ") + add_usage())
     entry["cwd"] = os.path.abspath(os.path.expanduser(entry["cwd"]))
     return {"op": "add", "command": entry, "replace": replace}
 
 
 def parse_remove(argv):
     if len(argv) != 1 or argv[0].startswith("-"):
-        raise RuleError("agentmeister host-run remove <имя>")
+        raise RuleError(tr("agentmeister host-run remove <имя>", "agentmeister host-run remove <name>"))
     return {"op": "remove", "command": {"name": argv[0]}}
 
 
@@ -924,22 +949,33 @@ def send_op(request, path=SOCK, out=None, err=None):
     err = err or sys.stderr
     info = ping(path)
     if info is None:
-        print(NOT_RUNNING, file=err)
+        print(not_running(), file=err)
         return 125
     if request["op"] not in (info.get("ops") or []):
-        print(f"agentmeister host-run: исполнитель {info.get('version')} не умеет {request['op']}. Он обновится "
-              "с новой сессией через proxy, или в обычном терминале выполни "
-              "agentmeister host-run stop; (agentmeister host-run serve &)", file=err)
+        print(tr(f"agentmeister host-run: исполнитель {info.get('version')} не умеет {request['op']}. Он обновится "
+                 "с новой сессией через proxy, или в обычном терминале выполни "
+                 "agentmeister host-run stop; (agentmeister host-run serve &)",
+                 f"agentmeister host-run: runner {info.get('version')} doesn't support {request['op']}. It updates "
+                 "with a new proxied session, or run agentmeister host-run stop; (agentmeister host-run serve &) "
+                 "in a regular terminal"), file=err)
         return 125
     if request["op"] in EDITS:
-        print(f"agentmeister host-run: жду подтверждения в окне на маке (до {CONFIRM_TIMEOUT // 60} мин)", file=err)
+        minutes = CONFIRM_TIMEOUT // 60
+        print(tr(f"agentmeister host-run: жду подтверждения в окне на маке (до {minutes} мин)",
+                 f"agentmeister host-run: waiting for confirmation in the window on the Mac (up to {minutes} min)"),
+              file=err)
     return exchange(request, path, out, err)
 
 
-OPEN_USAGE = """agentmeister host-run open <проект> [-k | -n] [-i] -- [аргументы claude]
+def open_usage():
+    return tr("""agentmeister host-run open <проект> [-k | -n] [-i] -- [аргументы claude]
 
 Открыть вкладку в текущем окне iTerm2 и запустить в ней agentmeister open <проект> -k -x --new -- [аргументы].
-Вкладку открывает исполнитель вне песочницы. Сессия идет через proxy, флаг -d не принимается."""
+Вкладку открывает исполнитель вне песочницы. Сессия идет через proxy, флаг -d не принимается.""",
+              """agentmeister host-run open <project> [-k | -n] [-i] -- [claude arguments]
+
+Open a tab in the current iTerm2 window and run agentmeister open <project> -k -x --new -- [arguments] in it.
+The runner outside the sandbox opens the tab. The session goes through the proxy, -d is not accepted.""")
 
 
 def show_list():
@@ -949,36 +985,41 @@ def show_list():
         print(f"{BAD} {e}")
         return 1
     if not rules:
-        print(f"{WARN} список пуст. Добавь команду через agentmeister host-run add или создай {tilde(COMMANDS)} "
-              f"в обычном терминале, например\n{EXAMPLE}")
+        print(f"{WARN} " + tr(f"список пуст. Добавь команду через agentmeister host-run add или создай {tilde(COMMANDS)} "
+                              f"в обычном терминале, например\n{EXAMPLE}",
+                              f"the list is empty. Add a command with agentmeister host-run add or create "
+                              f"{tilde(COMMANDS)} in a regular terminal, for example\n{EXAMPLE}"))
         return 0
     for name, rule in sorted(rules.items()):
-        tail = " [аргументы]" if rule["args"] else ""
-        print(f"  {name:<20} {' '.join(rule['run'])}{tail}  " + paint(f"в {tilde(rule['cwd'])}", "2"))
+        tail = tr(" [аргументы]", " [arguments]") if rule["args"] else ""
+        print(f"  {name:<20} {' '.join(rule['run'])}{tail}  " + paint(tr("в ", "in ") + tilde(rule["cwd"]), "2"))
     return 0
 
 
 def status():
     info = ping()
     if info:
-        print(f"{OK} исполнитель работает (pid {info.get('pid')}, версия {info.get('version')}, "
-              f"команд идет {info.get('jobs')})")
+        print(f"{OK} " + tr(f"исполнитель работает (pid {info.get('pid')}, версия {info.get('version')}, "
+                            f"команд идет {info.get('jobs')})",
+                            f"the runner is up (pid {info.get('pid')}, version {info.get('version')}, "
+                            f"{info.get('jobs')} running)"))
     else:
-        print(f"{WARN} исполнитель не запущен")
+        print(f"{WARN} " + tr("исполнитель не запущен", "the runner isn't running"))
     return show_list()
 
 
 def stop():
     info = ping()
     if not info:
-        print(f"{OK} исполнитель не запущен")
+        print(f"{OK} " + tr("исполнитель не запущен", "the runner isn't running"))
         return 0
     os.kill(info["pid"], signal.SIGTERM)
-    print(f"{OK} исполнитель остановлен")
+    print(f"{OK} " + tr("исполнитель остановлен", "the runner stopped"))
     return 0
 
 
-USAGE = f"""agentmeister host-run <имя> [аргументы]   выполнить команду из белого списка вне песочницы сессии
+def usage():
+    return tr(f"""agentmeister host-run <имя> [аргументы]   выполнить команду из белого списка вне песочницы сессии
 agentmeister host-run add <имя> --cwd <папка> --run <программа> [аргументы...] [--args] [--replace]
                                             попросить добавить команду в список
 agentmeister host-run remove <имя>          попросить удалить команду из списка
@@ -1008,13 +1049,44 @@ open открывает вкладку в текущем окне iTerm2 и за
 
 Файл можно вести и руками в обычном терминале:
 {EXAMPLE}
-"args": true разрешает дописывать аргументы в конец команды."""
+"args": true разрешает дописывать аргументы в конец команды.""",
+              f"""agentmeister host-run <name> [arguments]  run an allowlisted command outside the session sandbox
+agentmeister host-run add <name> --cwd <folder> --run <program> [arguments...] [--args] [--replace]
+                                            ask to add a command to the list
+agentmeister host-run remove <name>         ask to remove a command from the list
+agentmeister host-run open <project> [agentmeister open flags] -- [claude arguments]
+                                            new session in an iTerm2 tab, through the proxy
+agentmeister host-run list                  commands in the list
+agentmeister host-run status                whether the runner is up
+agentmeister host-run serve                 start the runner (in a regular terminal)
+agentmeister host-run stop                  stop the runner
+
+A proxied session runs in a macOS sandbox. A command from the list runs outside it, as in a regular
+terminal, with direct network access. Output and the exit code come back to the session, Ctrl+C stops
+the command. The list is {tilde(COMMANDS)}, the sandbox can't write to it.
+
+add and remove change the list through the runner. It shows a window on the Mac with the name, folder and
+command, and the entry changes only if you click "Allow" with a mouse or trackpad. The keyboard, the session
+and Accessibility can't press the button. Deny, a closed window and {CONFIRM_TIMEOUT // 60} minutes without an answer
+give exit code 1, a bad request or a taken name exit code 2. --args lets sessions append arguments to the
+command, --replace replaces the command with the same name, and the window then shows the old and new one.
+Other entries in the file are kept. Example:
+  agentmeister host-run add tossling-ios --cwd ~/Developer/tossling-mobile --run bundle exec fastlane ios_beta
+
+open opens a tab in the current iTerm2 window and runs agentmeister open <project> -k -x --new there
+with the claude arguments after --. iTerm2 won't open a tab from the sandbox, so the runner does it.
+The session always goes through the proxy, -d is not accepted. Example:
+  agentmeister host-run open tossling -- --remote-control tossling "first prompt"
+
+You can also edit the file by hand in a regular terminal:
+{EXAMPLE}
+"args": true lets sessions append arguments to the command.""")
 
 
 def main(argv):
     cmd = argv[0] if argv else "status"
     if cmd in ("-h", "--help", "help"):
-        print(USAGE)
+        print(usage())
         return 0
     if cmd == "list":
         return show_list()
@@ -1026,7 +1098,7 @@ def main(argv):
         return stop()
     if cmd == "open":
         if not argv[1:] or argv[1] in ("-h", "--help"):
-            print(OPEN_USAGE)
+            print(open_usage())
             return 0 if argv[1:] else 2
         signal.signal(signal.SIGINT, lambda *_: sys.exit(130))
         return send_op({"op": "open", "argv": argv[1:]})
