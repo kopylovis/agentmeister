@@ -74,7 +74,7 @@ struct OnboardingView: View {
             }
             .padding(16)
             .frame(width: 210)
-            .glassEffect(.regular, in: .rect(cornerRadius: 18))
+            .glassEffect(.regular, in: .windowCard)
             .padding(10)
             .accessibilityLabel(l.t("Шаги настройки", "Setup steps"))
 
@@ -265,8 +265,8 @@ struct OnboardingView: View {
             agentCard(.codex, data?.codex)
             Note(text: l.t("Агенты ставятся в обычные места, как без Agentmeister. Их можно запускать и из терминала.",
                            "Agents install to their usual places, as they would without Agentmeister. You can still run them from a terminal."))
-            Button(l.t("Проверить снова", "Check again")) { Task { await reload() } }
-                .buttonStyle(PillStyle())
+            Button { Task { await reload() } } label: { Label(l.t("Проверить снова", "Check again"), systemImage: "arrow.clockwise") }
+                .buttonStyle(PillStyle(small: true))
         }
     }
 
@@ -289,7 +289,7 @@ struct OnboardingView: View {
             }
             if data != nil, info?.installed != true {
                 UtilityButton(title: agent == .codex ? l.t("Установить через Homebrew", "Install with Homebrew") : l.t("Установить", "Install"),
-                              args: ["--harness", agent.rawValue, "install"], prominent: true)
+                              args: ["--harness", agent.rawValue, "install"], prominent: true, small: true, symbol: "arrow.down.circle")
             }
         }
     }
@@ -309,8 +309,10 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .glassEffect(.regular.tint(Ink.tealDot.opacity(0.18)), in: .rect(cornerRadius: 14))
                     HStack {
-                        UtilityButton(title: l.t("Проверить выход", "Check the exit"), args: ["proxy", "test"])
-                        UtilityButton(title: l.t("Сменить подписку", "Change subscription"), args: ["proxy", "setup"])
+                        UtilityButton(title: l.t("Проверить выход", "Check the exit"), args: ["proxy", "test"],
+                                      small: true, symbol: "checkmark.shield")
+                        UtilityButton(title: l.t("Сменить подписку", "Change subscription"), args: ["proxy", "setup"],
+                                      small: true, symbol: "arrow.triangle.2.circlepath")
                     }
                 } else {
                     card {
@@ -400,12 +402,13 @@ struct OnboardingView: View {
             if let info, info.installed {
                 HStack {
                     if info.signedInValue {
-                        UtilityButton(title: l.t("Выйти", "Sign out"), args: ["proxy", "run", "--claude", "--"] + logout)
+                        UtilityButton(title: l.t("Выйти", "Sign out"), args: ["proxy", "run", "--claude", "--"] + logout,
+                                      small: true, symbol: "rectangle.portrait.and.arrow.right")
                             .disabled(!ready)
                     } else {
                         // способ, маршрут и где открыть вход выбираются в диалоге, по умолчанию через proxy
-                        Button(l.t("Войти", "Sign in")) { signingIn = agent }
-                            .buttonStyle(PillStyle(prominent: true))
+                        Button { signingIn = agent } label: { Label(l.t("Войти", "Sign in"), systemImage: "person.crop.circle") }
+                            .buttonStyle(PillStyle(prominent: true, small: true))
                     }
                 }
             }
@@ -454,7 +457,7 @@ struct OnboardingView: View {
             } else if ok {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Ink.tealDot)
             } else {
-                UtilityButton(title: l.t("Поставить", "Install"), args: ["setup"], small: true)
+                UtilityButton(title: l.t("Поставить", "Install"), args: ["setup"], small: true, symbol: "arrow.down.circle")
             }
         }
         .padding(14)
@@ -466,22 +469,23 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 12) {
             permission(l.t("Уведомления", "Notifications"), l.t("Для \"Claude ждет ответа\" и подтверждений guard", "For \"Claude is waiting\" and guard prompts"),
                        allowed: nil, open: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
-                CommandButton(title: l.t("Прислать тест", "Send test"), args: ["notify", "test"]) { await reload() }
+                CommandButton(title: l.t("Прислать тест", "Send test"), args: ["notify", "test"], reload: { await reload() },
+                              small: true, symbol: "bell")
             }
             permission(l.t("Запись экрана", "Screen Recording"),
                        l.t("Для снимков окон, /shot. После разрешения macOS требует перезапустить Agentmeister, до этого запись не работает. Вкладки вернутся сами.",
                            "For window screenshots, /shot. Once you allow it, macOS needs Agentmeister restarted, until then recording stays off. Tabs come back by themselves."),
                        allowed: screenAllowed, open: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                 if !screenAllowed {
-                    Button(l.t("Попросить доступ", "Ask for access")) {
+                    Button {
                         CGRequestScreenCaptureAccess()
                         screenAllowed = CGPreflightScreenCaptureAccess()
-                    }
-                    Button(l.t("Перезапустить Agentmeister", "Restart Agentmeister")) {
+                    } label: { Label(l.t("Попросить доступ", "Ask for access"), systemImage: "hand.raised") }
+                    Button {
                         // после перезапуска мастер откроется снова на этом шаге
                         UserDefaults.standard.set(Step.permissions.rawValue, forKey: "onboardingResumeStep")
                         AppDelegate.relaunch()
-                    }
+                    } label: { Label(l.t("Перезапустить Agentmeister", "Restart Agentmeister"), systemImage: "arrow.clockwise") }
                 }
             }
             permission(l.t("Объекты входа", "Login Items"),
@@ -489,10 +493,10 @@ struct OnboardingView: View {
                            "Agentmeister opens at login and brings back its tabs, host-run and mihomo start with them"),
                        allowed: loginItem, open: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
                 if !loginItem {
-                    Button(l.t("Добавить", "Add")) {
+                    Button {
                         try? SMAppService.mainApp.register()
                         loginItem = SMAppService.mainApp.status == .enabled
-                    }
+                    } label: { Label(l.t("Добавить", "Add"), systemImage: "plus") }
                 }
             }
         }
@@ -516,9 +520,9 @@ struct OnboardingView: View {
             }
             if allowed != true {
                 HStack {
-                    Button(l.t("Открыть настройки", "Open Settings")) {
+                    Button {
                         if let url = URL(string: open) { NSWorkspace.shared.open(url) }
-                    }
+                    } label: { Label(l.t("Открыть настройки", "Open Settings"), systemImage: "gearshape") }
                     extra()
                 }
                 .buttonStyle(PillStyle(small: true))
