@@ -457,6 +457,8 @@ struct ProjectsFolderPicker: View {
 /// Язык и вид. Язык общий с CLI (agentmeister lang), вид хранит само приложение.
 struct GeneralPane: View {
     @EnvironmentObject var backend: Backend
+    @EnvironmentObject var ui: UIState
+    @Environment(\.openWindow) private var openWindow
     @AppStorage(Appearance.key) private var appearance = Appearance.system.rawValue
     @AppStorage(MenuBarPrefs.showKey) private var showMenuBar = true
 
@@ -477,6 +479,25 @@ struct GeneralPane: View {
         GlassSection {
             Text(l.t("Оформление", "Appearance")).font(.system(size: 13, weight: .semibold))
             AppearancePicker(selection: $appearance, l: l)
+        }
+        GlassSection {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(l.t("Мастер первого запуска", "First-run setup")).font(.system(size: 13, weight: .semibold))
+                    Text(l.t("Те же семь шагов, что при первом запуске: папки проектов, агенты, proxy, вход, режимы и разрешения.",
+                             "The same seven steps as on first launch: project folders, agents, proxy, sign-in, modes and permissions."))
+                        .font(.system(size: 12)).foregroundStyle(Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Button {
+                    ui.onboardingStep = 0
+                    ui.showOnboarding = true
+                    openWindow(id: "main")
+                    Workspace.bringMainWindowForward()
+                } label: { Label(l.t("Открыть мастер", "Open setup"), systemImage: "wand.and.stars") }
+                    .buttonStyle(PillStyle(small: true))
+            }
         }
         GlassSection {
             Text(l.t("Папки с проектами", "Project folders")).font(.system(size: 13, weight: .semibold))
