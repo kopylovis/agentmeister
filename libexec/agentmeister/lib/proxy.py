@@ -1060,6 +1060,8 @@ class Guard:
                 self.record(key, chosen, sub, self.country(chosen))
                 return
             if self.cache.get(chosen, (None, 0))[0] == want and self.clock() - self.cache[chosen][1] < GUARD_TTL:
+                # страна уже проверена: закрывать не нужно, но файл выхода (и подпись promptsill) про новый сервер
+                self.record(key, chosen, sub, want)
                 return
             # новый сервер: закрыть, пока не проверен, чтобы трафик сессий не ушел через другую страну
             self.api(f"/proxies/{gate}", "PUT", {"name": "REJECT"})
