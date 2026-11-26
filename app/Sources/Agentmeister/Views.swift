@@ -901,11 +901,20 @@ struct TabStrip: View {
                 .coordinateSpace(name: "tabstrip")
                 .onPreferenceChange(TabFramesKey.self) { frames = $0 }
             }
-            // "+" спрашивает, что открыть в проекте текущей вкладки. Маршрут берется из настроек proxy
+            // "+" спрашивает, что открыть в проекте текущей вкладки и как: через proxy (подписка по умолчанию) или
+            // напрямую. Первым идет маршрут по умолчанию из настроек proxy. Без настроенного proxy только напрямую
             Menu {
-                Button("Claude Code") { openNew(.claude) }
-                Button("Codex") { openNew(.codex) }
-                Button(l.t("Терминал", "Terminal")) { openNew(nil) }
+                let proxy = backend.state.proxy
+                let routes: [Bool] = proxy?.configured != true ? [true]
+                    : proxy?.defaultRoute == "direct" ? [true, false] : [false, true]
+                ForEach(routes, id: \.self) { direct in
+                    Section(direct ? l.directly
+                            : l.t("Через proxy", "Via proxy") + (backend.state.defaultSubscription.map { " " + $0 } ?? "")) {
+                        Button("Claude Code") { openNew(.claude, direct: direct) }
+                        Button("Codex") { openNew(.codex, direct: direct) }
+                        Button(l.t("Терминал", "Terminal")) { openNew(nil, direct: direct) }
+                    }
+                }
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .medium))
@@ -950,8 +959,8 @@ struct TabStrip: View {
         dragOffset = translation - dragShift
     }
 
-    /// Новая вкладка из меню "+": агент или терминал (nil) в проекте текущей вкладки, маршрут по умолчанию.
-    private func openNew(_ agent: LaunchSpec.Agent?) {
+    /// Новая вкладка из меню "+": агент или терминал (nil) в проекте текущей вкладки, через proxy или напрямую.
+    private func openNew(_ agent: LaunchSpec.Agent?, direct: Bool) {
         guard let spec = workspace.current.map({ workspace.root(of: $0).spec }) else {
             ui.showNewSession = true
             return
@@ -960,13 +969,13 @@ struct TabStrip: View {
         let project = state.project(containing: spec.projectPath)
         let name = project?.name ?? spec.projectName
         let path = project?.path ?? spec.projectPath
-        let direct = state.proxy?.defaultRoute == "direct"
         guard let agent else {
-            workspace.openTerminal(name: name, path: path, direct: direct, state: state, subscription: state.defaultSubscription)
+            workspace.openTerminal(name: name, path: path, direct: direct, state: state,
+                                   subscription: direct ? nil : state.defaultSubscription)
             return
         }
         workspace.open(LaunchSpec(projectName: name, projectPath: path, agent: agent, direct: direct,
-                                  subscription: state.defaultSubscription))
+                                  subscription: direct ? nil : state.defaultSubscription))
     }
 
     /// Отпустили: вкладка сразу встает на свое место в ряду.
