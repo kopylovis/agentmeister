@@ -1,6 +1,7 @@
 import AppKit
 import SwiftTerm
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// В SwiftTerm тоже есть тип Color, а в интерфейсе нужен цвет SwiftUI
 typealias Color = SwiftUI.Color
@@ -412,7 +413,8 @@ struct Sidebar: View {
 
     private var projectList: some View {
         List {
-            ForEach(workspace.sidebarProjects(backend.state)) { project in
+            let projects = workspace.sidebarProjects(backend.state)
+            ForEach(projects) { project in
                 DisclosureGroup(isExpanded: binding(for: project)) {
                     ForEach(backend.state.sessions(in: project).prefix(6)) { session in
                         SessionRow(session: session, project: project)
@@ -420,6 +422,14 @@ struct Sidebar: View {
                 } label: {
                     ProjectRow(project: project)
                 }
+                // двигаются только проекты с вкладками: порядок повторяет полосу вкладок
+                .moveDisabled(!workspace.hasTabs(in: project, state: backend.state))
+            }
+            .onMove { from, to in
+                guard let i = from.first else { return }
+                // при движении вниз проект встает после того, что был над местом вставки, вверх перед тем, что под ним
+                let target = to > i ? projects[to - 1] : projects[min(to, projects.count - 1)]
+                withAnimation(.snappy) { workspace.moveProject(projects[i].path, to: target.path, state: backend.state) }
             }
             if let error = backend.lastError {
                 Section {
@@ -821,6 +831,8 @@ struct TabStrip: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var ui: UIState
+    /// Вкладка, которую сейчас тащат: соседи расступаются под ней.
+    @State private var dragging: String?
 
     var l: L { L(backend.state.lang) }
 
@@ -832,6 +844,13 @@ struct TabStrip: View {
                     let current = workspace.current.map { workspace.root(of: $0).id }
                     ForEach(workspace.roots) { tab in
                         TabChip(tab: tab, selected: tab.id == current, subtasks: workspace.subtasks(of: tab).count)
+                            .onDrag {
+                                dragging = tab.id.uuidString
+                                return NSItemProvider(object: tab.id.uuidString as NSString)
+                            }
+                            .onDrop(of: [.text], delegate: ReorderDrop(target: tab.id.uuidString, dragging: $dragging) { from, to in
+                                if let from = UUID(uuidString: from), let to = UUID(uuidString: to) { workspace.move(from, to: to) }
+                            })
                     }
                 }
             }
@@ -2037,3 +2056,23 @@ struct SegmentedCapsule<T: Hashable>: View {
     }
 }
 
+
+/// Перестановка перетаскиванием: тащимый элемент встает на место того, над которым оказался, сразу, без
+/// ожидания отпускания. Тащимый id живет в общем состоянии ряда, потому что onDrag его иначе не отдает.
+struct ReorderDrop: DropDelegate {
+    let target: String
+    @Binding var dragging: String?
+    let move: (String, String) -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let from = dragging, from != target else { return }
+        withAnimation(.snappy(duration: 0.2)) { move(from, target) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
+    }
+}

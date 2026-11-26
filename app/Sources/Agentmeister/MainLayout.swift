@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Раскладка главного окна по макету: три стеклянные карточки с зазором 8. Слева проекты (сворачиваются в рельсу),
 /// посередине шапка, вкладки и терминал, справа панель сессии (прячется). Ширины тянутся мышью и запоминаются.
@@ -223,6 +224,9 @@ struct SidebarRail: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var ui: UIState
 
+    /// Проект, который сейчас тащат в рельсе.
+    @State private var dragging: String?
+
     var l: L { L(backend.state.lang) }
 
     /// Сколько сессий проекта открыто и в каком они состоянии: ждущая важнее работающей, работающая важнее простоя.
@@ -301,6 +305,14 @@ struct SidebarRail: View {
                             }
                             Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
                         }
+                        // перетаскивание двигает вкладки проекта, поэтому тащить можно только проект с вкладками
+                        .onDrag {
+                            dragging = workspace.hasTabs(in: project, state: backend.state) ? project.path : nil
+                            return NSItemProvider(object: project.path as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: ReorderDrop(target: project.path, dragging: $dragging) { from, to in
+                            workspace.moveProject(from, to: to, state: backend.state)
+                        })
                     }
                 }
                 .padding(.vertical, 6)
