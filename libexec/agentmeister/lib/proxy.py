@@ -793,8 +793,13 @@ def start(strict=True, sub=None):
     if in_session():
         # mihomo из песочницы не смог бы ни поправить свою настройку, ни выйти к серверу напрямую
         raise ProxyError(f"mihomo не запущен. {IN_SESSION}: agentmeister proxy restart")
-    if "GATE" not in Path(CONFIG).read_text():
-        rerender()  # конфиг до ворот и проверки страны: собрать заново, mixed-port и подписки остаются
+    text = Path(CONFIG).read_text()
+    if "GATE" not in text:
+        # конфиг до ворот и проверки страны: собрать заново. mixed-port, страна, --only и подписки остаются, а
+        # ручные правки уходят, поэтому прежний файл остается рядом
+        write_private(CONFIG + ".bak", text.encode())
+        rerender()
+        print(f"agentmeister proxy: настройка mihomo собрана заново, прежняя в {tilde(CONFIG)}.bak", file=sys.stderr)
     pin_config()
     refresh_all(sub)
     pin_hosts()
