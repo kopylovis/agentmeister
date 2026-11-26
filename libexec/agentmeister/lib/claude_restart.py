@@ -331,12 +331,20 @@ def remember_open(sid, payload):
     """Для agentmeister restore: что было открыто и как запущено. Процесс Claude ищем здесь, в фоне его уже не найти."""
     if os.environ.get("MNRH_CHILD") == "1" or os.environ.get("CLAUDE_CODE_SKIP_PROMPT_HISTORY") == "1":
         return
+    from claude_proxy_restart import CHANNEL, session_pid
+    # в песочнице proxy-сессии ps запрещен: pid дает канал перезапуска, терминал MNRH_TTY, как в plan()
+    channel = os.environ.get(CHANNEL) if os.environ.get("MNRH_PROXY") else None
     try:
-        pid = find_claude()
-    except RestartError:
+        pid = session_pid(channel) if channel else find_claude()
+    except (RestartError, OSError, ValueError):
+        return
+    if not pid:
         return
     tty = ps("tty", pid)
-    if not tty or "?" in tty:
+    if not tty or "?" in tty or tty == "-":
+        given = os.environ.get("MNRH_TTY", "")
+        tty = given if re.fullmatch(r"/dev/ttys\d+", given) else ""
+    if not tty:
         return
     import claude_live
     tty = tty if tty.startswith("/dev/") else "/dev/" + tty

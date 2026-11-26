@@ -360,6 +360,14 @@ that order, so a session can't move to another country halfway through. The othe
 whole setup. Adding or removing a subscription restarts mihomo, and sessions through other subscriptions
 keep running. If a project has the same name as a subscription, put the project before `-x`.
 
+The exit country is checked on every proxied launch, not only when mihomo starts: a session that would go out
+through the wrong country doesn't start. For plain `-x` that covers the cascade exit and every subscription in
+the order that has its own port. A Claude Code session reaches only its own mihomo port: the sandbox closes the
+other subscriptions' ports and the whole 17890-17939 range mihomo takes ports from, so local servers on those
+ports aren't reachable from proxied Claude Code sessions. A subscription that no longer exists (removed, or a
+typo in `--proxy=`) stops the launch instead of falling back to the cascade. While sessions run only through
+`main` and it has no port of its own yet, `proxy add` waits until they close.
+
 `agentmeister proxy` shows the mihomo version and suggests `agentmeister proxy update` when Homebrew has a
 newer one. That command runs `brew upgrade mihomo`. If mihomo is running with no proxied sessions, it stops it
 and the new version starts with the next session. If sessions are running, it asks whether to restart mihomo

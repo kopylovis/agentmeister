@@ -49,7 +49,7 @@ class WatchStep(unittest.TestCase):
 class CountryOnRestart(unittest.TestCase):
     """Сервер недоступен, сторож перезапускает mihomo, а выход проверить нельзя: mihomo должен остаться."""
 
-    def start(self, strict):
+    def start(self, strict, held=()):
         tmp = tempfile.mkdtemp()
         calls = {"n": 0}
 
@@ -70,7 +70,8 @@ class CountryOnRestart(unittest.TestCase):
                 patch.object(p.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, "204", "")), \
                 patch.object(p, "trace", return_value=None), patch.object(p, "active_node", return_value=(None, None)), \
                 patch.object(p, "setting", return_value="KZ"), patch.object(p, "stop", stop), \
-                patch.object(p, "in_session", return_value=False):
+                patch.object(p, "in_session", return_value=False), \
+                patch.object(p, "holders", return_value=list(held)):
             try:
                 return p.start(strict=strict), stop
             except p.ProxyError as e:
@@ -80,6 +81,11 @@ class CountryOnRestart(unittest.TestCase):
         result, stop = self.start(strict=True)
         self.assertIsInstance(result, p.ProxyError)
         stop.assert_called_once()
+
+    def test_refusal_keeps_mihomo_for_sessions_that_hold_it(self):
+        result, stop = self.start(strict=True, held=[4321])
+        self.assertIsInstance(result, p.ProxyError)
+        stop.assert_not_called()
 
     def test_restart_keeps_mihomo_running(self):
         result, stop = self.start(strict=False)

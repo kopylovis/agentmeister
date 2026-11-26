@@ -328,6 +328,33 @@ for path, expected in zip(sys.argv[1:], (0, errno.EPERM)):
                     command = proxy.session_command(17890, ["true"])
                     self.assertFalse(any(a.startswith("SSH_AUTH_SOCK=") for a in command))
 
+    def test_claude_session_cannot_reach_another_mihomo_port(self):
+        client = """\
+import errno, socket, sys
+
+for port, expected in ((int(sys.argv[1]), 0), (int(sys.argv[2]), errno.EPERM)):
+    with socket.socket() as conn:
+        conn.settimeout(1)
+        result = conn.connect_ex(("127.0.0.1", port))
+        assert result == expected, (port, result, expected)
+"""
+        own, other = socket.socket(), socket.socket()
+        with own, other:
+            for listener, ports in ((own, range(proxy.DEFAULT_PORT + 20, proxy.DEFAULT_PORT + 40)),
+                                    (other, range(proxy.DEFAULT_PORT + 40, proxy.DEFAULT_PORT + proxy.PORT_WINDOW))):
+                for p in ports:
+                    try:
+                        listener.bind(("127.0.0.1", p))
+                        break
+                    except OSError:
+                        continue
+                else:
+                    self.skipTest("no free port in the mihomo window")
+                listener.listen()
+            mine, theirs = own.getsockname()[1], other.getsockname()[1]
+            cmd = [sys.executable, "-c", client, str(mine), str(theirs)]
+            subprocess.run(proxy.session_command(mine, cmd, claude=True), check=True, timeout=5)
+
     def test_claude_allows_local_tools_and_blocks_direct_web(self):
         client = """\
 import errno, socket, sys
