@@ -136,13 +136,13 @@ def tty_of(pid):
 
 
 def jump(s):
-    import claude_notify
+    import notify
     rec = next((r for r in records() if r.get("sid") == s.get("sessionId")), {})
     tty = rec.get("tty") or tty_of(s["pid"])
-    bundles = [rec["bundle"]] if rec.get("bundle") else list(claude_notify.TERMINALS)
+    bundles = [rec["bundle"]] if rec.get("bundle") else list(notify.TERMINALS)
     for bundle in bundles:
-        term = claude_notify.TERMINALS.get(bundle)
-        if term and tty and claude_notify.osascript(claude_notify.FOCUS[term], tty) == "ok":
+        term = notify.TERMINALS.get(bundle)
+        if term and tty and notify.osascript(notify.FOCUS[term], tty) == "ok":
             return True
     return False
 
