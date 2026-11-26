@@ -142,6 +142,9 @@ extension LaunchSpec {
     func routeLabel(_ l: L, proxy: AppState.Proxy? = nil) -> String {
         guard proxied else { return l.direct }
         let subs = proxy?.subscriptions ?? []
+        if proxy?.isBlocked(subscription) == true {
+            return ([l.proxy, subscription, l.t("закрыто", "closed")].compactMap { $0 }).joined(separator: " ")
+        }
         let name = subscription ?? (subs.count > 1 ? proxy?.current : nil)
         let exit = name.flatMap { n in subs.first { $0.name == n }?.exit } ?? (subscription == nil ? proxy?.exit : nil)
         return ([l.proxy, name, exit].compactMap { $0 }).joined(separator: " ")
