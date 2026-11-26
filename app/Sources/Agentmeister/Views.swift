@@ -953,23 +953,27 @@ struct TabChip: View {
         } label: {
             HStack(spacing: 9) {
                 // крестик при наведении встает на место значка агента того же размера, как в Safari: ширина
-                // вкладки не меняется, и соседние вкладки не прыгают
+                // вкладки не меняется, и соседние вкладки не прыгают. Значок и крестик плавно сменяют друг друга,
+                // как в Finder
                 ZStack {
-                    if hover {
-                        Button {
-                            workspace.close(tab.id)
-                        } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 9, weight: .bold))
-                                .frame(width: 20, height: 20)
-                                .background(Circle().fill(Ink.chip))
-                        }
-                        .buttonStyle(.hoverCircle(.overlay))
-                        .shortcutHelp(l.closeTab, .closeTab)
-                        .accessibilityLabel(l.closeTab)
-                    } else {
-                        AgentBadge(agent: tab.spec.utility == nil ? tab.spec.agent : nil, size: 20)
+                    AgentBadge(agent: tab.spec.utility == nil ? tab.spec.agent : nil, size: 20)
+                        .opacity(hover ? 0 : 1)
+                        .scaleEffect(hover ? 0.8 : 1)
+                    Button {
+                        workspace.close(tab.id)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .frame(width: 20, height: 20)
+                            .background(Circle().fill(Ink.chip))
                     }
+                    .buttonStyle(.hoverCircle(.overlay))
+                    .shortcutHelp(l.closeTab, .closeTab)
+                    .accessibilityLabel(l.closeTab)
+                    .opacity(hover ? 1 : 0)
+                    .scaleEffect(hover ? 1 : 0.8)
+                    .allowsHitTesting(hover)
+                    .accessibilityHidden(!hover)
                 }
                 .frame(width: 20, height: 20)
                 // название сессии, под ним мелко проект с иконкой и маршрут, как в варианте B макета вкладок
@@ -1017,11 +1021,12 @@ struct TabChip: View {
             .padding(.leading, 12)
             .padding(.trailing, 14)
             .frame(minWidth: 160, maxWidth: 240, minHeight: 44, maxHeight: 44)
-            .background(Capsule().fill(selected ? Ink.thumb : .clear).shadow(color: .black.opacity(selected ? 0.25 : 0), radius: 4, y: 2))
+            // невыбранная вкладка под курсором получает светлую подложку, как в Finder
+            .background(Capsule().fill(selected ? Ink.thumb : hover ? Ink.chip : .clear).shadow(color: .black.opacity(selected ? 0.25 : 0), radius: 4, y: 2))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .onHover { hover = $0 }
+        .onHover { inside in withAnimation(.easeOut(duration: 0.15)) { hover = inside } }
         // полное имя сессии, если в вкладку оно не влезло, и под ним проект
         .help(tab.title + "\n" + tab.spec.projectName)
         .contextMenu { TabMenu(tab: tab) }
