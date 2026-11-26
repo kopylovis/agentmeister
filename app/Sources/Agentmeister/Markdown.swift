@@ -15,6 +15,13 @@ struct MarkdownText: View {
             }
         }
         .textSelection(.enabled)
+        // ссылки идут тем же путем, что клик в терминале: окно Agentmeister через proxy, Chrome через proxy
+        // или браузер системы, по настройке или с вопросом. Иначе SwiftUI отдал бы их браузеру системы напрямую
+        .environment(\.openURL, OpenURLAction { url in
+            guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return .systemAction }
+            LinkOpener.open(url, place: BrowserSettings.linkPlace, window: NSApp.keyWindow)
+            return .handled
+        })
     }
 
     @ViewBuilder
