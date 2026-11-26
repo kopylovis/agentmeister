@@ -269,7 +269,13 @@ struct SidebarRail: View {
                             }
                         } label: {
                             Group {
-                                if let image = icons.icon(for: project.path) {
+                                if project.isHome {
+                                    Image(systemName: "house.fill")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundStyle(Ink.text2)
+                                        .frame(width: 32, height: 32)
+                                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Ink.chip))
+                                } else if let image = icons.icon(for: project.path) {
                                     Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fill)
                                         .frame(width: 32, height: 32)
                                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))

@@ -298,7 +298,7 @@ struct UsageView: View {
     private func resume(_ h: UsageData.Heavy) {
         let session = backend.state.sessions.first { $0.id == h.id }
         let home = session?.cwd ?? ""
-        let project = backend.state.projects.first { $0.name == h.project || (!home.isEmpty && (home == $0.path || home.hasPrefix($0.path + "/"))) }
+        let project = backend.state.projects.first { $0.name == h.project || (!home.isEmpty && $0.contains(home)) }
         guard let project else { return }
         workspace.open(LaunchSpec.resume(h.id, cwd: session?.cwd, project: project))
         openWindow(id: "main")

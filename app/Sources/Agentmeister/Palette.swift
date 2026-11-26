@@ -73,7 +73,7 @@ struct PaletteView: View {
         }
         let open = Set(workspace.tabs.compactMap(\.sessionId))
         for session in backend.state.sessions.prefix(40) where !open.contains(session.id) {
-            let project = backend.state.projects.first { session.cwd == $0.path || session.cwd.hasPrefix($0.path + "/") }
+            let project = backend.state.project(containing: session.cwd)
             guard let project else { continue }
             out.append(PaletteItem(id: "s-\(session.id)", group: .sessions,
                                    title: session.title.isEmpty ? l.untitled : session.title,

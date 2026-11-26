@@ -461,7 +461,7 @@ struct ProjectsFolderPicker: View {
             return
         }
         // первая настройка: ~/Developer по умолчанию заменяется выбранной папкой, если в нем нет проектов
-        let replaceDefault = folders == [NSHomeDirectory() + "/Developer"] && backend.state.projects.isEmpty
+        let replaceDefault = folders == [NSHomeDirectory() + "/Developer"] && backend.state.projects.allSatisfy(\.isHome)
         run(["projects-dir"] + (replaceDefault ? [] : ["add"]) + [url.path])
     }
 }
