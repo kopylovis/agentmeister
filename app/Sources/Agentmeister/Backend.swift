@@ -546,6 +546,31 @@ final class Backend: ObservableObject {
         }.value
     }
 
+    /// Команда agentmeister ради результата для человека: удалось ли и что она напечатала (stdout и stderr вместе,
+    /// без цветов). Для действий, у которых вывод в терминале не нужен, а ошибку показать надо.
+    nonisolated static func runForText(_ args: [String]) -> (ok: Bool, text: String) {
+        if Demo.active { return (true, "") }
+        guard LoginEnvironment.found else { return (false, "agentmeister isn't in PATH") }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: LoginEnvironment.agentmeister)
+        task.arguments = args
+        task.environment = LoginEnvironment.shared
+        let out = Pipe()
+        task.standardOutput = out
+        task.standardError = out
+        task.standardInput = FileHandle.nullDevice
+        do {
+            try task.run()
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            task.waitUntilExit()
+            let text = String(decoding: data, as: UTF8.self)
+                .replacingOccurrences(of: "\u{1b}\\[[0-9;]*m", with: "", options: .regularExpression)
+            return (task.terminationStatus == 0, text.trimmingCharacters(in: .whitespacesAndNewlines))
+        } catch {
+            return (false, error.localizedDescription)
+        }
+    }
+
     nonisolated static func run(_ args: [String]) -> Result<Data, Error> {
         if Demo.active { return Demo.response(args) }  // демо для скриншотов: готовые ответы, ничего не запускается
         guard LoginEnvironment.found else {

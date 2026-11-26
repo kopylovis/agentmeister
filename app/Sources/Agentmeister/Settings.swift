@@ -674,7 +674,7 @@ struct ProxyHostRunPane: View {
                 if p.configured {
                     // действия плитками с пояснением: по одному названию кнопки было непонятно, что она сделает
                     ProxyActions(reload: reload)
-                    ProxySubscriptions(subscriptions: p.subscriptions ?? [], mainCountry: p.country)
+                    ProxySubscriptions(subscriptions: p.subscriptions ?? [], mainCountry: p.country, reload: reload)
                 }
                 HStack(spacing: 8) {
                     if p.configured {
@@ -974,8 +974,12 @@ struct ProxySubscriptions: View {
     @Environment(\.utilityRunner) private var runner
     let subscriptions: [AppState.Proxy.Subscription]
     let mainCountry: String?
+    let reload: () async -> Void
     @State private var adding = false
     @State private var removing: String?
+    /// Подписка, которую удаляет proxy remove прямо сейчас: mihomo перезапускается, это несколько секунд.
+    @State private var deleting: String?
+    @State private var problem: String?
 
     var l: L { L(backend.state.lang) }
 
@@ -993,44 +997,91 @@ struct ProxySubscriptions: View {
                  : l.t("Сейчас одна подписка. Вторая пригодится как запасная, когда у основной не отвечает ни один сервер, или для сессий, которые должны идти только через нее.",
                        "There's one subscription now. A second one works as a fallback when no server of the main one answers, or for sessions that must go only through it."))
             ForEach(subscriptions, id: \.name) { s in
-                HStack(spacing: 10) {
-                    Text(s.name).font(.system(size: 13, weight: .medium, design: .monospaced))
-                    Text([s.exit ?? s.country, s.port.map { "127.0.0.1:\($0)" }].compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 12, design: .monospaced)).foregroundStyle(Ink.muted)
-                    Text(s.inCascade != false ? l.t("в очереди", "in order") : l.t("только отдельно", "on its own only"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(s.inCascade != false ? Ink.teal : Ink.direct)
-                        .padding(.horizontal, 8)
-                        .frame(height: 20)
-                        .background(Capsule().fill(s.inCascade != false ? Ink.tealChip : Ink.amberDot.opacity(0.14)))
-                    Spacer()
-                    if s.name == "main" {
-                        Text(l.t("основная", "main")).font(.system(size: 11)).foregroundStyle(Ink.faint)
-                    } else {
-                        Button(l.t("Удалить", "Remove"), role: .destructive) { removing = s.name }
-                            .buttonStyle(.textLink(Ink.red))
-                            .foregroundStyle(Ink.red)
-                            .font(.system(size: 12))
-                    }
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 34)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
+                row(s)
+            }
+            if let problem {
+                Text(problem).font(.system(size: 12)).foregroundStyle(Ink.red).fixedSize(horizontal: false, vertical: true)
             }
         }
         .sheet(isPresented: $adding) {
-            AddSubscriptionSheet(mainCountry: mainCountry, taken: subscriptions.map(\.name)) { args in utility(args) }
+            AddSubscriptionSheet(mainCountry: mainCountry, taken: subscriptions.map(\.name)) { args in
+                utility(args)
+                watchForChange()
+            }
         }
         .confirmationDialog(l.t("Удалить подписку \(removing ?? "")?", "Remove the \(removing ?? "") subscription?"),
                             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
                             presenting: removing) { name in
             Button(l.t("Удалить", "Remove"), role: .destructive) {
-                utility(["proxy", "remove", name])
                 removing = nil
+                remove(name)
             }
         } message: { _ in
             Text(l.t("Ссылка и скачанная подписка удалятся, mihomo перезапустится. Пока через нее идут сессии, удалить ее нельзя.",
                      "The link and the downloaded subscription go away and mihomo restarts. It can't be removed while sessions go through it."))
+        }
+    }
+
+    private func row(_ s: AppState.Proxy.Subscription) -> some View {
+        let ordered = s.inCascade != false
+        let place = [s.exit ?? s.country, s.port.map { "127.0.0.1:\($0)" }].compactMap { $0 }.joined(separator: " · ")
+        return HStack(spacing: 10) {
+            Text(s.name).font(.system(size: 13, weight: .medium, design: .monospaced))
+            Text(place).font(.system(size: 12, design: .monospaced)).foregroundStyle(Ink.muted)
+            Text(ordered ? l.t("в очереди", "in order") : l.t("только отдельно", "on its own only"))
+                .font(.system(size: 11))
+                .foregroundStyle(ordered ? Ink.teal : Ink.direct)
+                .padding(.horizontal, 8)
+                .frame(height: 20)
+                .background(Capsule().fill(ordered ? Ink.tealChip : Ink.amberDot.opacity(0.14)))
+            Spacer()
+            action(s.name)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 34)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
+    }
+
+    @ViewBuilder private func action(_ name: String) -> some View {
+        if name == "main" {
+            Text(l.t("основная", "main")).font(.system(size: 11)).foregroundStyle(Ink.faint)
+        } else if deleting == name {
+            ProgressView().controlSize(.small)
+        } else {
+            Button(l.t("Удалить", "Remove"), role: .destructive) { removing = name }
+                .buttonStyle(.textLink(Ink.red))
+                .foregroundStyle(Ink.red)
+                .font(.system(size: 12))
+                .disabled(deleting != nil)
+        }
+    }
+
+    /// proxy remove без терминала: ссылку вводить не нужно, а ошибку (через подписку идут сессии) показываем здесь.
+    private func remove(_ name: String) {
+        deleting = name
+        problem = nil
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { Backend.runForText(["proxy", "remove", name]) }.value
+            await reload()
+            deleting = nil
+            if !result.ok {
+                // последняя строка вывода и есть причина, значок в начале не нужен
+                let line = result.text.split(separator: "\n").last.map(String.init) ?? ""
+                problem = line.replacingOccurrences(of: "^[✗!✓] ", with: "", options: .regularExpression)
+            }
+        }
+    }
+
+    /// Подписку добавляет вкладка-утилита, и когда она закончит, неизвестно. Список перечитывается, пока в нем
+    /// не появится новое имя, но не дольше трех минут.
+    private func watchForChange() {
+        let before = Set(subscriptions.map(\.name))
+        Task {
+            for _ in 0..<60 {
+                try? await Task.sleep(for: .seconds(3))
+                await reload()
+                if Set(subscriptions.map(\.name)) != before { return }
+            }
         }
     }
 
