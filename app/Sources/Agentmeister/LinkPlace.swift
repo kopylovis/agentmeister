@@ -21,7 +21,12 @@ enum ChromeProfile {
         }
         var args = ["--user-data-dir=" + NSHomeDirectory() + "/.cache/mnrh/app/" + profile,
                     "--no-first-run", "--no-default-browser-check"]
-        if let proxyPort { args.append("--proxy-server=http://127.0.0.1:\(proxyPort)") }
+        if let proxyPort {
+            args.append("--proxy-server=http://127.0.0.1:\(proxyPort)")
+            // WebRTC иначе шлет UDP напрямую, мимо proxy, и сайт видит настоящий IP. Флаг действует на новый процесс
+            // Chrome: окно профиля, открытое до него, надо закрыть
+            args.append("--force-webrtc-ip-handling-policy=disable_non_proxied_udp")
+        }
         args.append(link.absoluteString)
         let config = NSWorkspace.OpenConfiguration()
         config.arguments = args
