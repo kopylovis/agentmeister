@@ -766,14 +766,60 @@ final class Workspace: ObservableObject {
         return (open.filter { here($0.spec.projectPath) }, others.filter { here($0.cwd) })
     }
 
-    /// Проекты для боковой панели и рельсы: с открытыми сессиями сверху. Внутри обеих групп прежний порядок,
-    /// поэтому смена статуса (работает, ждет ответа) проекты не переставляет, двигает только открытие и закрытие.
+    /// Проекты для боковой панели и рельсы: сверху проекты с вкладками в порядке вкладок, за ними проекты,
+    /// открытые в других окнах, затем остальные. Смена статуса (работает, ждет ответа) проекты не
+    /// переставляет, двигают открытие, закрытие и перетаскивание вкладок.
     func sidebarProjects(_ state: AppState) -> [AppState.Project] {
         let (open, others) = openSessions(state)
-        let paths = open.compactMap(\.spec.projectPath) + others.compactMap(\.cwd)
-        let active = Set(paths.compactMap { state.project(containing: $0)?.path })
-        if active.isEmpty { return state.projects }
-        return state.projects.filter { active.contains($0.path) } + state.projects.filter { !active.contains($0.path) }
+        var order: [String] = []
+        let add = { (path: String?) in
+            if let p = path.flatMap({ state.project(containing: $0)?.path }), !order.contains(p) { order.append(p) }
+        }
+        // сначала агенты общей полосы, потом подзадачи: проект встает туда, где его вкладка в полосе
+        let openRoots = roots.filter { tab in open.contains { $0 === tab } }
+        for tab in openRoots { add(tab.spec.projectPath) }
+        for tab in open { add(tab.spec.projectPath) }
+        let elsewhere = Set(others.compactMap { $0.cwd.flatMap { state.project(containing: $0)?.path } })
+        for p in state.projects where elsewhere.contains(p.path) { add(p.path) }
+        if order.isEmpty { return state.projects }
+        let byPath = Dictionary(state.projects.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
+        return order.compactMap { byPath[$0] } + state.projects.filter { !order.contains($0.path) }
+    }
+
+    /// Есть ли у проекта вкладки в этом окне: только такие проекты можно переставлять.
+    func hasTabs(in project: AppState.Project, state: AppState) -> Bool {
+        roots.contains { state.project(containing: $0.spec.projectPath)?.path == project.path }
+    }
+
+    /// Переставить вкладку общей полосы на место другой: правее цели при движении вправо, левее при движении
+    /// влево. Подзадачи остаются в своем ряду под агентом.
+    func move(_ id: UUID, to target: UUID) {
+        guard id != target, let from = tabs.firstIndex(where: { $0.id == id }),
+              let to = tabs.firstIndex(where: { $0.id == target }) else { return }
+        var next = tabs
+        let tab = next.remove(at: from)
+        next.insert(tab, at: min(to, next.count))
+        tabs = next
+    }
+
+    /// Переставить проект в рельсе и боковой панели. Их порядок повторяет порядок вкладок, поэтому
+    /// двигаются сами вкладки: все вкладки проекта встают вместе на место вкладок проекта-цели.
+    /// Проект без вкладок в этом окне не двигается.
+    func moveProject(_ path: String, to target: String, state: AppState) {
+        guard path != target else { return }
+        let key = { (tab: TerminalTab) in state.project(containing: tab.spec.projectPath)?.path ?? tab.spec.projectPath }
+        let rootTabs = roots
+        var groups: [(path: String, tabs: [TerminalTab])] = []
+        for tab in rootTabs {
+            let k = key(tab)
+            if let i = groups.firstIndex(where: { $0.path == k }) { groups[i].tabs.append(tab) } else { groups.append((k, [tab])) }
+        }
+        guard let from = groups.firstIndex(where: { $0.path == path }),
+              let to = groups.firstIndex(where: { $0.path == target }) else { return }
+        let group = groups.remove(at: from)
+        groups.insert(group, at: min(to, groups.count))
+        let rest = tabs.filter { tab in !rootTabs.contains { $0 === tab } }
+        tabs = groups.flatMap(\.tabs) + rest
     }
 
     /// Новая вкладка в проекте текущей: новая сессия с тем же агентом и маршрутом. Без вкладок ничего не делает.
