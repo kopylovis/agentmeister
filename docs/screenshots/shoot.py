@@ -30,6 +30,9 @@ function run(argv) {
 '''
 
 
+ACTIVATE_JS = "ObjC.import('AppKit'); function run(argv) { $.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(argv[0])).activateWithOptions(1 << 1); }"
+
+
 def windows(pid):
     r = subprocess.run(["osascript", "-l", "JavaScript", "-e", LIST_JS, str(pid)], capture_output=True, text=True)
     return [w for w in json.loads(r.stdout or "[]") if w["layer"] == 0 and w["w"] > 200]
@@ -43,6 +46,9 @@ def shoot(scene):
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         time.sleep(wait)
+        # неактивное окно снялось бы с серыми кнопками и меньшей тенью
+        subprocess.run(["osascript", "-l", "JavaScript", "-e", ACTIVATE_JS, str(proc.pid)], capture_output=True)
+        time.sleep(1)
         ws = windows(proc.pid)
         main = next((w for w in ws if w["title"] == "Agentmeister Demo"), None)
         if kind == "main":

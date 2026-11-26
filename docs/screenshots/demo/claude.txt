@@ -1,4 +1,4 @@
-[38;5;173m✻[0m [1mClaude Code[0m [38;5;245mv2.3.1 · Opus 5.5 · ~/Developer/ledger-api[0m
+]0;Webhook retries[38;5;173m✻[0m [1mClaude Code[0m [38;5;245mv2.3.1 · Opus 5.5 · ~/Developer/ledger-api[0m
 
 [38;5;245m>[0m [38;5;252mAdd retry with backoff to the payment webhook handler and cover it with tests[0m
 
@@ -28,7 +28,7 @@
   five tries in total. A 4xx answer fails at once, so a bad signature doesn't
   hammer the provider. All 17 webhook tests pass.
 
-[38;5;245m╭──────────────────────────────────────────────────────────────────────────────────╮[0m
-[38;5;245m│[0m [38;5;245m>[0m [2mTry "open a PR for this"[0m                                                      [38;5;245m│[0m
-[38;5;245m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+[38;5;245m╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮[0m
+[38;5;245m│[0m [38;5;245m>[0m [2mTry "open a PR for this"[0m                                                                          [38;5;245m│[0m
+[38;5;245m╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯[0m
   [38;5;117mledger-api[0m [38;5;245m·[0m [38;5;245mwebhook-retries[0m [38;5;245m·[0m [38;5;245mOpus 5.5[0m [38;5;245m·[0m [38;5;245mctx 31%[0m [38;5;245m·[0m [38;5;245m5h 18%[0m [38;5;245m·[0m [38;5;114mproxy main KZ[0m
