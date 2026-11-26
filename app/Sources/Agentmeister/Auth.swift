@@ -53,8 +53,6 @@ final class AuthFlow: ObservableObject {
         self.agent = agent
     }
 
-    static var chrome: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome") }
-
     func load() async {
         let data = await backend?.settings()
         before = agent == .claude ? data?.claude : data?.codex
@@ -134,23 +132,12 @@ final class AuthFlow: ObservableObject {
         return ["claude.ai", "claude.com", "anthropic.com", "openai.com", "chatgpt.com"].contains { host == $0 || host.hasSuffix("." + $0) }
     }
 
-    /// Chrome с отдельным чистым профилем: через proxy с --proxy-server на mihomo, напрямую без него. Профили
-    /// у маршрутов разные: Chrome берет флаги только при первом запуске профиля. 127.0.0.1 Chrome и с proxy
-    /// открывает напрямую, туда агент принимает ответ входа.
+    /// Chrome с отдельным чистым профилем. Профили у маршрутов разные: Chrome берет флаги только при первом
+    /// запуске профиля.
     private func openChrome(_ link: URL) {
-        guard let app = Self.chrome else {
-            NSWorkspace.shared.open(link)
-            return
-        }
         let proxied = route == .proxy
-        let profile = NSHomeDirectory() + "/.cache/mnrh/app/chrome-signin-" + (proxied ? "proxy" : "direct")
-        var args = ["--user-data-dir=" + profile, "--no-first-run", "--no-default-browser-check"]
-        if proxied { args.append("--proxy-server=http://127.0.0.1:\(ProxyBrowser.shared.port)") }
-        args.append(link.absoluteString)
-        let config = NSWorkspace.OpenConfiguration()
-        config.arguments = args
-        config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: app, configuration: config) { _, _ in }
+        ChromeProfile.open(link, profile: "chrome-signin-" + (proxied ? "proxy" : "direct"),
+                           proxyPort: proxied ? ProxyBrowser.shared.port : nil)
     }
 
     /// Из встроенного окна в Chrome через proxy: вход продолжается, страница открывается заново.
@@ -406,10 +393,10 @@ struct AuthDialog: View {
                       proxied ? l.t("страница идет через тот же proxy, что и агенты", "the page goes through the same proxy as the agents")
                               : l.t("страница идет напрямую", "the page goes direct"))
                 place(.chrome, l.t("Отдельный профиль Chrome", "Separate Chrome profile"),
-                      AuthFlow.chrome == nil ? l.t("Chrome не найден", "Chrome isn't installed")
+                      ChromeProfile.app == nil ? l.t("Chrome не найден", "Chrome isn't installed")
                           : proxied ? l.t("Chrome с proxy и чистым профилем", "Chrome with the proxy and a clean profile")
                           : l.t("Chrome с чистым профилем", "Chrome with a clean profile"))
-                    .disabled(AuthFlow.chrome == nil)
+                    .disabled(ChromeProfile.app == nil)
                 place(.system, l.t("Браузер по умолчанию", "Default browser"),
                       l.t("по сети системы, мимо proxy", "over the system network, bypassing the proxy"))
             }
@@ -444,7 +431,7 @@ struct AuthDialog: View {
                 LinkButton(title: proxied ? l.t("Открыть в Chrome через proxy", "Open in Chrome through the proxy") : l.t("Открыть в Chrome", "Open in Chrome")) {
                     flow.moveToChrome()
                 }
-                .disabled(AuthFlow.chrome == nil)
+                .disabled(ChromeProfile.app == nil)
                 Spacer()
                 PillButton(title: l.t("Отмена", "Cancel")) { flow.back() }
                     .keyboardShortcut(.cancelAction)
@@ -700,8 +687,8 @@ private struct AuthWebPanel: View {
 }
 
 /// Вариант с кружком выбора из макета: название и пояснение, выбранный светлее и с синей рамкой. compact для
-/// "Где открыть вход": меньше, пояснение в той же строке.
-private struct OptionRow: View {
+/// "Где открыть вход" и диалога ссылки: меньше, пояснение в той же строке.
+struct OptionRow: View {
     let on: Bool
     let title: String
     let desc: String
