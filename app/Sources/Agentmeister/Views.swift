@@ -1333,7 +1333,7 @@ struct SubscriptionSwitchMenu: View {
 
     var body: some View {
         let l = L(backend.state.lang)
-        if tab.spec.utility == nil, !(backend.state.proxy?.choices ?? []).isEmpty {
+        if tab.spec.utility == nil, !Self.options(tab: tab, proxy: backend.state.proxy).isEmpty {
             if inline {
                 items(l)
             } else {
@@ -1342,8 +1342,17 @@ struct SubscriptionSwitchMenu: View {
         }
     }
 
+    /// Из чего выбирать: подписки, когда их больше одной, и все оставшиеся, если подписку вкладки удалили.
+    /// Иначе вкладка с удаленной подпиской не запустилась бы, а сменить подписку было бы негде.
+    static func options(tab: TerminalTab, proxy: AppState.Proxy?) -> [AppState.Proxy.Subscription] {
+        let all = proxy?.subscriptions ?? []
+        if all.count > 1 { return all }
+        if let mine = tab.spec.subscription, !all.contains(where: { $0.name == mine }) { return all }
+        return []
+    }
+
     @ViewBuilder private func items(_ l: L) -> some View {
-        let subs = backend.state.proxy?.choices ?? []
+        let subs = Self.options(tab: tab, proxy: backend.state.proxy)
         let cascade = subs.filter { $0.inCascade != false }.map(\.name)
         // напрямую не отмечен ни один пункт
         let current: String?? = tab.spec.proxied ? .some(tab.spec.subscription) : .none
@@ -1488,7 +1497,7 @@ struct InfoBar: View {
                 .buttonStyle(ChipStyle())
                 .help(tab.spec.proxied ? l.t("Та же сессия, но без песочницы и proxy", "The same session without the sandbox and proxy")
                                        : l.t("Та же сессия в песочнице, сеть через mihomo", "The same session in the sandbox, network through mihomo"))
-                if !(backend.state.proxy?.choices ?? []).isEmpty {
+                if !SubscriptionSwitchMenu.options(tab: tab, proxy: backend.state.proxy).isEmpty {
                     Menu {
                         SubscriptionSwitchMenu(tab: tab, inline: true)
                     } label: {

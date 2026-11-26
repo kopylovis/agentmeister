@@ -1001,14 +1001,16 @@ def send_op(request, path=SOCK, out=None, err=None):
 
 
 def open_usage():
-    return tr("""agentmeister host-run open <проект> [-k | -n] [-i] -- [аргументы claude]
+    return tr("""agentmeister host-run open <проект> [-k | -n] [-i] [--proxy=<подписка>] -- [аргументы claude]
 
 Открыть вкладку в текущем окне iTerm2 и запустить в ней agentmeister open <проект> -k -x --new -- [аргументы].
-Вкладку открывает исполнитель вне песочницы. Сессия идет через proxy, флаг -d не принимается.""",
-              """agentmeister host-run open <project> [-k | -n] [-i] -- [claude arguments]
+Вкладку открывает исполнитель вне песочницы. Сессия идет через proxy, флаг -d не принимается.
+Из сессии только через одну подписку новая идет через нее же, --proxy=<подписка> выбирает другую.""",
+              """agentmeister host-run open <project> [-k | -n] [-i] [--proxy=<subscription>] -- [claude arguments]
 
 Open a tab in the current iTerm2 window and run agentmeister open <project> -k -x --new -- [arguments] in it.
-The runner outside the sandbox opens the tab. The session goes through the proxy, -d is not accepted.""")
+The runner outside the sandbox opens the tab. The session goes through the proxy, -d is not accepted.
+From a session tied to one subscription the new one uses it too, --proxy=<subscription> picks another.""")
 
 
 def show_list():
@@ -1116,6 +1118,16 @@ You can also edit the file by hand in a regular terminal:
 "args": true lets sessions append arguments to the command.""")
 
 
+def with_session_proxy(argv):
+    """Сессия только через одну подписку открывает новую через нее же: --proxy=<имя> перед --, если маршрут
+    не задан. Каскадная сессия ничего не добавляет, и новая тоже идет по очереди."""
+    cut = argv.index("--") if "--" in argv else len(argv)
+    sub = os.environ.get("MNRH_PROXY_SUB", "") if os.environ.get("MNRH_PROXY") else ""
+    if not re.fullmatch(r"[a-z][a-z0-9-]{0,19}", sub) or any(a.startswith("--proxy=") for a in argv[:cut]):
+        return argv
+    return argv[:cut] + [f"--proxy={sub}"] + argv[cut:]
+
+
 def main(argv):
     cmd = argv[0] if argv else "status"
     if cmd in ("-h", "--help", "help"):
@@ -1134,7 +1146,7 @@ def main(argv):
             print(open_usage())
             return 0 if argv[1:] else 2
         signal.signal(signal.SIGINT, lambda *_: sys.exit(130))
-        return send_op({"op": "open", "argv": argv[1:]})
+        return send_op({"op": "open", "argv": with_session_proxy(argv[1:])})
     if cmd in EDITS:
         try:
             request = parse_add(argv[1:]) if cmd == "add" else parse_remove(argv[1:])
