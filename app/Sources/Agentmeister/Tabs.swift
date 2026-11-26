@@ -10,6 +10,8 @@ struct LaunchSpec: Hashable {
     var projectPath: String
     var agent: Agent = .claude
     var direct = false
+    /// Подписка proxy, только через которую идет вкладка (agentmeister -x <имя>). Nil значит каскад по всем.
+    var subscription: String? = nil
     /// id сессии Claude Code или треда Codex, который продолжить. nil значит новая сессия.
     var resumeId: String?
     var firstPrompt = ""
@@ -48,7 +50,7 @@ struct LaunchSpec: Hashable {
     var arguments: [String] {
         if let utility { return utility }
         var args = agent == .codex ? ["--harness", "codex"] : []
-        args += [projectPath, "-n", direct ? "-d" : "-x"]
+        args += [projectPath, "-n", direct ? "-d" : subscription.map { "--proxy=" + $0 } ?? "-x"]
         // флаги после -- agentmeister передает самому агенту
         var agentArgs: [String] = resumeId == nil ? extraFlags : []
         if remoteControl && agent == .claude { agentArgs += ["--remote-control", projectName] }
@@ -99,8 +101,9 @@ extension LaunchSpec {
     @MainActor
     /// Вкладка терминала в папке path. Без настроенного proxy только напрямую. command выполняется первым в
     /// интерактивном shell (с алиасами из .zshrc), потом вкладка остается в обычном shell входа.
-    static func terminal(name: String, path: String, direct: Bool, command: String = "") -> LaunchSpec {
-        var spec = LaunchSpec(projectName: name, projectPath: path, direct: direct)
+    static func terminal(name: String, path: String, direct: Bool, command: String = "",
+                         subscription: String? = nil) -> LaunchSpec {
+        var spec = LaunchSpec(projectName: name, projectPath: path, direct: direct, subscription: direct ? nil : subscription)
         spec.terminal = true
         let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
         var shell = [loginShell, "-l"]
@@ -109,7 +112,7 @@ extension LaunchSpec {
             spec.utility = shell
             spec.bare = true
         } else {
-            spec.utility = ["proxy", "run", "--"] + shell
+            spec.utility = ["proxy", "run"] + (spec.subscription.map { ["--via", $0] } ?? []) + ["--"] + shell
         }
         return spec
     }
@@ -123,9 +126,16 @@ extension LaunchSpec {
         return "/bin/zsh"
     }
 
-    static func quick(_ project: AppState.Project, route: String? = nil) -> LaunchSpec {
+    static func quick(_ project: AppState.Project, state: AppState) -> LaunchSpec {
         LaunchSpec(projectName: project.name, projectPath: project.path,
-                   agent: AgentPrefs.defaultAgent == "codex" ? .codex : .claude, direct: route == "direct")
+                   agent: AgentPrefs.defaultAgent == "codex" ? .codex : .claude, direct: state.proxy?.defaultRoute == "direct",
+                   subscription: state.defaultSubscription)
+    }
+
+    /// Маршрут для подписи: proxy, proxy home или напрямую.
+    func routeLabel(_ l: L) -> String {
+        guard proxied else { return l.direct }
+        return subscription.map { "proxy " + $0 } ?? l.proxy
     }
 }
 
@@ -633,6 +643,8 @@ final class Workspace: ObservableObject {
         var projectPath: String
         var agent: String
         var direct: Bool
+        /// Подписка proxy вкладки. Nil у каскада и в tabs.json старых версий.
+        var subscription: String?
         var sessionId: String?
         var selected: Bool
         var awake: Bool?
@@ -653,7 +665,8 @@ final class Workspace: ObservableObject {
         guard restored else { return }
         let saved = tabs.filter { $0.spec.utility == nil }.map {
             SavedTab(projectName: $0.spec.projectName, projectPath: $0.spec.projectPath, agent: $0.spec.agent.rawValue,
-                     direct: $0.spec.direct, sessionId: $0.sessionId, selected: $0.id == selected,
+                     direct: $0.spec.direct, subscription: $0.spec.subscription, sessionId: $0.sessionId,
+                     selected: $0.id == selected,
                      awake: $0.spec.awake, remoteControl: $0.spec.remoteControl, id: $0.id.uuidString.lowercased(),
                      parent: $0.spec.parent?.uuidString.lowercased())
         }
@@ -709,7 +722,8 @@ final class Workspace: ObservableObject {
             guard known.contains(item.projectPath) || FileManager.default.fileExists(atPath: item.projectPath) else { continue }
             if let sid = item.sessionId, busy.contains(sid) { continue }
             let agent = LaunchSpec.Agent(rawValue: item.agent) ?? .claude
-            var spec = LaunchSpec(projectName: item.projectName, projectPath: item.projectPath, agent: agent, direct: item.direct)
+            var spec = LaunchSpec(projectName: item.projectName, projectPath: item.projectPath, agent: agent, direct: item.direct,
+                                  subscription: item.subscription)
             spec.awake = item.awake ?? false
             spec.remoteControl = item.remoteControl ?? false
             spec.parent = item.parent.flatMap(UUID.init(uuidString:))
@@ -775,18 +789,21 @@ final class Workspace: ObservableObject {
     }
 
     /// Вкладка терминала. Маршрут через proxy, только если proxy настроен.
-    func openTerminal(name: String, path: String, direct: Bool, state: AppState, command: String = "") {
-        open(.terminal(name: name, path: path, direct: direct || state.proxy?.configured != true, command: command))
+    func openTerminal(name: String, path: String, direct: Bool, state: AppState, command: String = "",
+                      subscription: String? = nil) {
+        open(.terminal(name: name, path: path, direct: direct || state.proxy?.configured != true, command: command,
+                       subscription: subscription))
     }
 
     /// Терминал в папке текущей вкладки и с ее маршрутом. Без вкладок в домашней папке с маршрутом по умолчанию.
     func openTerminalHere(state: AppState) {
         if let spec = current?.spec {
-            openTerminal(name: spec.projectName, path: spec.projectPath, direct: !spec.proxied, state: state)
+            openTerminal(name: spec.projectName, path: spec.projectPath, direct: !spec.proxied, state: state,
+                         subscription: spec.subscription)
         } else {
             let home = NSHomeDirectory()
             openTerminal(name: (home as NSString).lastPathComponent, path: home,
-                         direct: state.proxy?.defaultRoute == "direct", state: state)
+                         direct: state.proxy?.defaultRoute == "direct", state: state, subscription: state.defaultSubscription)
         }
     }
 
@@ -954,7 +971,8 @@ final class Workspace: ObservableObject {
     /// Новая вкладка Claude Code в том же проекте и маршруте с контекстом треда Codex: /import-codex <id>.
     func moveToClaude(_ tab: TerminalTab) {
         guard tab.spec.agent == .codex, tab.spec.utility == nil, let sid = tab.sessionId else { return }
-        var spec = LaunchSpec(projectName: tab.spec.projectName, projectPath: tab.spec.projectPath, direct: tab.spec.direct)
+        var spec = LaunchSpec(projectName: tab.spec.projectName, projectPath: tab.spec.projectPath, direct: tab.spec.direct,
+                              subscription: tab.spec.subscription)
         spec.firstPrompt = "/import-codex " + sid
         open(spec)
     }

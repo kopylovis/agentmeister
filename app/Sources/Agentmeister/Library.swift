@@ -326,7 +326,8 @@ struct SessionDetail: View {
         let home = preview.home ?? ""
         let project = backend.state.project(containing: home)
         var spec = LaunchSpec(projectName: project?.name ?? (home as NSString).lastPathComponent, projectPath: project?.path ?? home,
-                              direct: backend.state.proxy?.defaultRoute == "direct")
+                              direct: backend.state.proxy?.defaultRoute == "direct",
+                              subscription: backend.state.defaultSubscription)
         spec.firstPrompt = "/import-codex " + id
         workspace.open(spec)
         onOpened()

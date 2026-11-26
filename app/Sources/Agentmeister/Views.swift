@@ -666,7 +666,8 @@ struct ProjectRow: View {
                     } else {
                         workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path,
                                                   agent: AgentPrefs.defaultAgent == "codex" ? .codex : .claude,
-                                                  direct: backend.state.proxy?.defaultRoute == "direct"))
+                                                  direct: backend.state.proxy?.defaultRoute == "direct",
+                                                  subscription: backend.state.defaultSubscription))
                     }
                 } label: {
                     Image(systemName: "plus").frame(width: 22, height: 22)
@@ -685,7 +686,7 @@ struct ProjectRow: View {
                            : hover ? RoundedRectangle(cornerRadius: 10).fill(Ink.hover).padding(.horizontal, 10) : nil)
         .contextMenu {
             Button(l.newSession) {
-                workspace.open(LaunchSpec.quick(project))
+                workspace.open(LaunchSpec.quick(project, state: backend.state))
             }
             Button(l.t("Новая сессия…", "New session…")) {
                 ui.newSessionProject = project.path
@@ -699,7 +700,8 @@ struct ProjectRow: View {
             Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
             Button(l.openTerminalHere) {
                 workspace.openTerminal(name: project.name, path: project.path,
-                                       direct: backend.state.proxy?.defaultRoute == "direct", state: backend.state)
+                                       direct: backend.state.proxy?.defaultRoute == "direct", state: backend.state,
+                                       subscription: backend.state.defaultSubscription)
             }
             Divider()
             Button(l.t("Показать в Finder", "Show in Finder")) {
@@ -945,10 +947,11 @@ struct TabStrip: View {
         let path = project?.path ?? spec.projectPath
         let direct = state.proxy?.defaultRoute == "direct"
         guard let agent else {
-            workspace.openTerminal(name: name, path: path, direct: direct, state: state)
+            workspace.openTerminal(name: name, path: path, direct: direct, state: state, subscription: state.defaultSubscription)
             return
         }
-        workspace.open(LaunchSpec(projectName: name, projectPath: path, agent: agent, direct: direct))
+        workspace.open(LaunchSpec(projectName: name, projectPath: path, agent: agent, direct: direct,
+                                  subscription: state.defaultSubscription))
     }
 
     /// Отпустили: вкладка сразу встает на свое место в ряду.
@@ -1027,7 +1030,7 @@ struct TabChip: View {
                             .layoutPriority(-1)
                         if tab.spec.proxied || tab.spec.utility == nil || tab.spec.terminal {
                             Text("·").foregroundStyle(Ink.faint)
-                            Text(tab.spec.proxied ? l.proxy : l.direct)
+                            Text(tab.spec.routeLabel(l))
                                 .foregroundStyle(tab.spec.proxied ? Ink.teal : Ink.direct)
                                 .fixedSize()
                         }
@@ -1265,7 +1268,8 @@ struct TabMenu: View {
             }
         }
         Button(l.openTerminalHere) {
-            workspace.openTerminal(name: tab.spec.projectName, path: tab.spec.projectPath, direct: !tab.spec.proxied, state: backend.state)
+            workspace.openTerminal(name: tab.spec.projectName, path: tab.spec.projectPath, direct: !tab.spec.proxied, state: backend.state,
+                                   subscription: tab.spec.subscription)
         }
         Divider()
         Button(l.closeTab) { workspace.close(tab.id) }
@@ -1960,6 +1964,7 @@ struct NewSessionSheet: View {
     /// Вместо агента вкладка терминала: проект и маршрут те же, остальное не нужно.
     @State private var terminal = false
     @State private var direct = false
+    @State private var subscription: String?
     @State private var mode: StartMode = .new
     @State private var fork = false
     @State private var remoteControl = true
@@ -2008,6 +2013,13 @@ struct NewSessionSheet: View {
                         (false, l.t("Через proxy", "Via proxy") + (exit.map { " " + $0 } ?? ""), Ink.teal),
                         (true, l.directly, Ink.direct),
                     ])
+                }
+                if !direct, let subs = backend.state.proxy?.choices, !subs.isEmpty {
+                    GridRow {
+                        Text(l.t("Подписка", "Subscription")).foregroundStyle(Ink.muted)
+                        SubscriptionPicker(selection: $subscription, subscriptions: subs)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 if !terminal {
                     GridRow(alignment: .top) {
@@ -2099,6 +2111,7 @@ struct NewSessionSheet: View {
                 ?? (projects.first { !$0.isHome } ?? projects.first)?.path ?? ""
             if AgentPrefs.defaultAgent == "codex" { agent = .codex }
             direct = backend.state.proxy?.defaultRoute == "direct"
+            subscription = backend.state.defaultSubscription
         }
         .onChange(of: agent) {
             if agent == .codex && mode == .parallel { mode = .new }
@@ -2115,11 +2128,13 @@ struct NewSessionSheet: View {
     private func open(project: AppState.Project?, last: AppState.Session?) {
         guard let project else { return }
         if terminal {
-            workspace.openTerminal(name: project.name, path: project.path, direct: direct, state: backend.state)
+            workspace.openTerminal(name: project.name, path: project.path, direct: direct, state: backend.state,
+                                   subscription: subscription)
             dismiss()
             return
         }
-        var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: agent, direct: direct)
+        var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: agent, direct: direct,
+                              subscription: direct ? nil : subscription)
         spec.remoteControl = remoteControl && agent == .claude
         switch mode {
         case .new:
@@ -2157,6 +2172,7 @@ struct ParallelSheet: View {
 
     @State private var projectPath = ""
     @State private var direct = false
+    @State private var subscription: String?
     @State private var fork = false
     @State private var task = ""
     @State private var busy = false
@@ -2200,6 +2216,13 @@ struct ParallelSheet: View {
                         (false, l.t("Через proxy", "Via proxy") + (exit.map { " " + $0 } ?? ""), Ink.teal),
                         (true, l.directly, Ink.direct),
                     ])
+                }
+                if !direct, let subs = backend.state.proxy?.choices, !subs.isEmpty {
+                    GridRow {
+                        Text(l.t("Подписка", "Subscription")).foregroundStyle(Ink.muted)
+                        SubscriptionPicker(selection: $subscription, subscriptions: subs)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
             }
             VStack(alignment: .leading, spacing: 6) {
@@ -2260,6 +2283,7 @@ struct ParallelSheet: View {
             projectPath = initialProject.flatMap { p in backend.state.project(containing: p) }.flatMap { $0.isHome ? nil : $0.path }
                 ?? projects.first?.path ?? ""
             direct = backend.state.proxy?.defaultRoute == "direct"
+            subscription = backend.state.defaultSubscription
             taskFocused = true
         }
         .onChange(of: projectPath) { if forkSource == nil { fork = false } }
@@ -2267,7 +2291,8 @@ struct ParallelSheet: View {
 
     private func start() {
         guard let project else { return }
-        var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: .claude, direct: direct)
+        var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: .claude, direct: direct,
+                              subscription: direct ? nil : subscription)
         spec.remoteControl = true
         busy = true
         error = nil
@@ -2339,6 +2364,31 @@ struct SegmentedCapsule<T: Hashable>: View {
         }
         .padding(3)
         .background(Capsule().fill(Ink.chip))
+    }
+}
+
+
+/// Через какую подписку proxy идет новая сессия: по очереди по всем (просто -x) или только одна (-x <имя>).
+/// Показывается, только когда подписок больше одной.
+struct SubscriptionPicker: View {
+    @EnvironmentObject var backend: Backend
+    @Binding var selection: String?
+    let subscriptions: [AppState.Proxy.Subscription]
+
+    var body: some View {
+        let l = L(backend.state.lang)
+        let cascade = subscriptions.filter { $0.inCascade != false }.map(\.name)
+        Picker(l.t("Подписка", "Subscription"), selection: $selection) {
+            Text(l.t("По очереди: ", "In order: ") + cascade.joined(separator: ", ")).tag(String?.none)
+            Divider()
+            ForEach(subscriptions, id: \.name) { s in
+                Text(l.t("Только ", "Only ") + s.name + ((s.exit ?? s.country).map { " " + $0 } ?? "")).tag(Optional(s.name))
+            }
+        }
+        .labelsHidden()
+        .fixedSize()
+        .help(l.t("По очереди: следующая подписка, когда в прошлой нет живых серверов. Только одна: без перехода на другие.",
+                  "In order: the next subscription when the previous has no live servers. Only one: no switching."))
     }
 }
 

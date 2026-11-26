@@ -65,7 +65,7 @@ struct RestoreSheet: View {
                     Text(tilde(spec.projectPath)).font(.system(size: 11, design: .monospaced)).foregroundStyle(Ink.faint).lineLimit(1)
                 }
                 Spacer()
-                Text(spec.direct ? l.direct : "proxy")
+                Text(spec.direct ? l.direct : "proxy" + (spec.subscription.map { " " + $0 } ?? ""))
                     .font(.system(size: 11))
                     .foregroundStyle(spec.direct ? Ink.direct : Ink.teal)
                     .padding(.horizontal, 8)

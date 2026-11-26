@@ -336,6 +336,22 @@ def proxy():
         info = {}
     loc = info.get("loc")
     held = len(claude_proxy.holders()) if configured else 0
+    names = claude_proxy.sub_names() if configured else []
+    cascade = claude_proxy.cascade_subs() if configured else []
+    remembered = claude_proxy.last() if os.path.exists(claude_proxy.LAST) else ""
+    default_sub = remembered[4:] if remembered.startswith("vps:") and remembered[4:] in names and len(names) > 1 else None
+    subs = []
+    for n in names if len(names) > 1 else []:
+        # выход через порт только этой подписки, записан при запуске mihomo
+        try:
+            with open(claude_proxy.exit_file(n)) as f:
+                one = json.load(f)
+        except (OSError, ValueError):
+            one = {}
+        where = one.get("loc")
+        subs.append({"name": n, "port": claude_proxy.sub_port(n), "country": claude_proxy.sub_country(n) or None,
+                     "exit": where.upper() if isinstance(where, str) and len(where) == 2 else None,
+                     "inCascade": n in cascade})
     return {"configured": configured, "running": running, "port": p,
             "exit": loc.upper() if isinstance(loc, str) and len(loc) == 2 else None,
             "protocol": info.get("proto") if isinstance(info.get("proto"), str) else None,
@@ -344,9 +360,9 @@ def proxy():
             # без сохраненного выбора новая сессия идет через proxy, как в правилах пользователя и в меню
             "defaultRoute": "direct" if os.path.exists(claude_proxy.LAST) and claude_proxy.last() == "direct" else "proxy",
             "sessions": held,
-            # по очереди для просто -x; у каждой еще свой порт для -x <имя>, пока подписок больше одной
-            "subscriptions": [{"name": n, "port": claude_proxy.sub_port(n), "country": claude_proxy.sub_country(n) or None}
-                              for n in claude_proxy.sub_names()] if configured else []}
+            # подписка новых сессий, если в меню или настройках выбрана одна: last() хранит vps:<имя>
+            "defaultSubscription": default_sub,
+            "subscriptions": subs}
 
 
 def modes():
