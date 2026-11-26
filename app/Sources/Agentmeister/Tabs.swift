@@ -1285,15 +1285,20 @@ enum ProcessTree {
 /// Настройки встроенного браузера. Хранятся в UserDefaults, переключаются в Настройки → Proxy.
 enum BrowserSettings {
     static let forAgentKey = "browserForAgent"
-    static let forLinksKey = "browserForLinks"
+    static let linkPlaceKey = "browserLinkPlace"
     /// Страницы, которые открывает агент во вкладке через proxy. По умолчанию включено.
     static var forAgent: Bool { UserDefaults.standard.object(forKey: forAgentKey) as? Bool ?? true }
-    /// Ссылки, по которым кликаешь во вкладке через proxy. По умолчанию браузер системы.
-    static var forLinks: Bool { UserDefaults.standard.bool(forKey: forLinksKey) }
+    /// Где открыть ссылку, по которой кликнули во вкладке через proxy. По умолчанию спросить. До выбора места
+    /// был переключатель browserForLinks, включенный значил встроенный браузер.
+    static var linkPlace: LinkPlace {
+        if let raw = UserDefaults.standard.string(forKey: linkPlaceKey), let place = LinkPlace(rawValue: raw) { return place }
+        return UserDefaults.standard.bool(forKey: "browserForLinks") ? .builtin : .ask
+    }
 }
 
 /// Терминал вкладки. Отличается от SwiftTerm одним: ссылки http и https из вкладки через proxy может открыть
-/// во встроенном браузере. Во вкладке входа так всегда, пока включен браузер для агента, иначе по настройке.
+/// во встроенном браузере. Во вкладке входа так всегда, пока включен браузер для агента. В остальных вкладках
+/// место берется из настройки, по умолчанию приложение спрашивает (LinkPlaceSheet).
 final class AppTerminalView: LocalProcessTerminalView {
     weak var tab: TerminalTab?
 
@@ -1344,10 +1349,16 @@ final class AppTerminalView: LocalProcessTerminalView {
             return
         }
         if let spec = tab?.spec, spec.proxied,
-           spec.signIn ? BrowserSettings.forAgent : BrowserSettings.forLinks,
            let url = URL(string: request.link), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
-            ProxyBrowser.shared.open(url)
-            return
+            if spec.signIn {
+                if BrowserSettings.forAgent {
+                    ProxyBrowser.shared.open(url)
+                    return
+                }
+            } else {
+                LinkOpener.open(url, place: BrowserSettings.linkPlace, window: window)
+                return
+            }
         }
         super.requestOpenLink(source: source, request: request)
     }
