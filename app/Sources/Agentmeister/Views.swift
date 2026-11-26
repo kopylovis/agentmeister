@@ -868,7 +868,7 @@ struct TabStrip: View {
             .accessibilityLabel(l.newTab)
         }
         .padding(4)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 }
 
@@ -889,12 +889,30 @@ struct TabChip: View {
             workspace.selected = tab.id
             tab.rang = false
         } label: {
-            HStack(spacing: 8) {
-                AgentBadge(agent: tab.spec.utility == nil ? tab.spec.agent : nil)
-                Text(tab.title)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 9) {
+                AgentBadge(agent: tab.spec.utility == nil ? tab.spec.agent : nil, size: 20)
+                // название сессии, под ним мелко проект с иконкой и маршрут, как в варианте B макета вкладок
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tab.title)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    HStack(spacing: 5) {
+                        ProjectIconView(path: backend.state.project(containing: tab.spec.projectPath)?.path ?? tab.spec.projectPath, size: 12)
+                        Text(tab.spec.projectName)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .layoutPriority(-1)
+                        if tab.spec.proxied || tab.spec.utility == nil {
+                            Text("·").foregroundStyle(Ink.faint)
+                            Text(tab.spec.proxied ? l.proxy : l.direct)
+                                .foregroundStyle(tab.spec.proxied ? Ink.teal : Ink.direct)
+                                .fixedSize()
+                        }
+                    }
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(selected ? Ink.label : Ink.faint)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if subtasks > 0 {
                     Text("\(subtasks)")
                         .font(.system(size: 10, weight: .semibold))
@@ -904,11 +922,6 @@ struct TabChip: View {
                         .frame(minWidth: 16, minHeight: 16)
                         .background(Capsule().fill(Ink.chip))
                         .help(l.t("Подзадач у агента: \(subtasks)", "Agent's subtasks: \(subtasks)"))
-                }
-                if tab.spec.proxied || tab.spec.utility == nil {
-                    Text(tab.spec.proxied ? l.proxy : l.direct)
-                        .font(.system(size: 11))
-                        .foregroundStyle(tab.spec.proxied ? Ink.teal : Ink.direct)
                 }
                 if hover {
                     Button {
@@ -932,8 +945,9 @@ struct TabChip: View {
             }
             .font(.system(size: 12))
             .foregroundStyle(selected ? Ink.strong : Ink.muted)
-            .padding(.horizontal, 12)
-            .frame(minWidth: 150, maxWidth: 230, minHeight: 32, maxHeight: 32)
+            .padding(.leading, 12)
+            .padding(.trailing, 14)
+            .frame(minWidth: 160, maxWidth: 240, minHeight: 44, maxHeight: 44)
             .background(Capsule().fill(selected ? Ink.thumb : .clear).shadow(color: .black.opacity(selected ? 0.25 : 0), radius: 4, y: 2))
             .contentShape(Capsule())
         }
