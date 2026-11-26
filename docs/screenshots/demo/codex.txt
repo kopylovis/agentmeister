@@ -13,3 +13,4 @@
 [38;5;245m•[0m Four snapshots cover the list in light and dark mode, with and without a delay.
 
   [38;5;117morbit-ios[0m [38;5;245m·[0m [38;5;245mgpt-5.5[0m [38;5;245m·[0m [38;5;245m41% context left[0m [38;5;245m·[0m [38;5;114mproxy work SE[0m
+[?25l

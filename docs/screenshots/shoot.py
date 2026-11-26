@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 APP = os.path.join(ROOT, "app", ".build", "out", "Products", "Debug", "Agentmeister")
 # сцена: (что снимать, через сколько секунд)
-SCENES = {"main": ("main", 6), "new-session": ("sheet", 7), "project": ("main", 7), "settings": ("settings", 8)}
+SCENES = {"main": ("main", 7), "new-session": ("sheet", 8), "project": ("main", 8), "settings": ("settings", 9)}
 LIST_JS = r'''
 ObjC.import('CoreGraphics');
 function run(argv) {
@@ -57,6 +57,11 @@ def shoot(scene):
         out = os.path.join(HERE, f"{scene}.png")
         subprocess.run(["screencapture", "-x", "-l", str(target["id"]), out], check=True)
         subprocess.run(["sips", "-Z", "2200", out], capture_output=True)
+        main_png = os.path.join(HERE, "main.png")
+        if kind == "sheet" and os.path.exists(main_png):
+            # под листом macOS рисует кнопку закрытия серой, красную берем со снимка главного окна
+            subprocess.run(["osascript", "-l", "JavaScript", os.path.join(HERE, "close_button.js"), main_png, out],
+                           capture_output=True, check=True)
         print(out)
     finally:
         proc.send_signal(signal.SIGTERM)

@@ -83,6 +83,9 @@ struct MainView: View {
             if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true || $0.title == "Agentmeister" }) {
                 window.title = "Agentmeister Demo"
                 window.setFrame(NSRect(x: 40, y: 40, width: 1440, height: 880), display: true)
+                // снимок с активным окном: цветные кнопки, даже если фокус был у другого приложения
+                NSApp.activate(ignoringOtherApps: true)
+                window.makeKeyAndOrderFront(nil)
             }
             try? await Task.sleep(for: .seconds(1))
             switch Demo.scene {
@@ -104,6 +107,12 @@ struct MainView: View {
                 }
             default:
                 break
+            }
+            // у окна настроек нет свертывания и масштаба, и их кнопки серые. На скриншоте они цветные, как у
+            // обычного окна. Кнопку закрытия под листом macOS гасит в любом случае, ее перекрашивает shoot.py
+            if Demo.scene == "settings",
+               let settings = NSApp.windows.first(where: { $0.isVisible && $0.title != "Agentmeister Demo" && $0.frame.width > 300 }) {
+                settings.styleMask.formUnion([.miniaturizable, .resizable])
             }
         }
     }
