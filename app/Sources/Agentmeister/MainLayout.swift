@@ -304,6 +304,10 @@ struct SidebarRail: View {
                                 workspace.open(LaunchSpec.quick(project))
                             }
                             Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
+                            Button(l.openTerminalHere) {
+                                workspace.openTerminal(name: project.name, path: project.path,
+                                                       direct: backend.state.proxy?.defaultRoute == "direct", state: backend.state)
+                            }
                         }
                         // перетаскивание двигает вкладки проекта, поэтому тащить можно только проект с вкладками
                         .onDrag {
