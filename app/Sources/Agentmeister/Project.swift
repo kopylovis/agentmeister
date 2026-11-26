@@ -336,13 +336,11 @@ struct ProjectView: View {
         VStack(alignment: .leading, spacing: 6) {
             actionButton(l.t("Новая сессия…", "New session…"), icon: "plus", shortcut: .newSession, prominent: true) {
                 ui.newSessionProject = path
-                ui.newSessionParallel = false
                 ui.showNewSession = true
             }
             actionButton(l.t("Параллельная задача…", "Parallel task…"), icon: "arrow.triangle.branch", shortcut: .parallel) {
                 ui.newSessionProject = path
-                ui.newSessionParallel = true
-                ui.showNewSession = true
+                ui.showParallel = true
             }
             SectionCaption(text: l.t("ИНСТРУМЕНТЫ", "TOOLS"))
                 .padding(.top, 14)

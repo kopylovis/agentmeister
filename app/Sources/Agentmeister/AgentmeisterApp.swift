@@ -155,8 +155,7 @@ struct AgentmeisterApp: App {
                 Divider()
                 Button(l.t("Параллельная задача…", "Parallel task…")) {
                     ui.newSessionProject = workspace.current?.spec.projectPath
-                    ui.newSessionParallel = true
-                    ui.showNewSession = true
+                    ui.showParallel = true
                 }
                 .shortcut(.parallel)
                 Button(l.t("Спросить другой проект", "Ask another project")) { workspace.typeInClaude("/ask ") }

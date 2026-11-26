@@ -118,8 +118,7 @@ struct PaletteView: View {
         out.append(PaletteItem(id: "a-parallel", group: .thisSession, title: l.t("Параллельная задача", "Parallel task"),
                                detail: l.t("своя ветка и worktree", "own branch and worktree"), shortcut: keys.label(.parallel)) {
             ui.newSessionProject = workspace.current?.spec.projectPath
-            ui.newSessionParallel = true
-            ui.showNewSession = true
+            ui.showParallel = true
         })
 
         out.append(slash("t-ask", l.t("Спросить другой проект", "Ask another project"),
