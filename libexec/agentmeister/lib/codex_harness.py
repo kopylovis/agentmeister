@@ -140,9 +140,9 @@ def launch_args(argv):
 def via_args(argv):
     """-x home и --proxy=home в --via=home: argparse не умеет флаг с необязательным значением перед проектом.
     -x берет имя, только если такая подписка есть, иначе следующее слово остается проектом."""
-    import claude_proxy
+    import proxy
 
-    names = claude_proxy.sub_names() if claude_proxy.configured() else []
+    names = proxy.sub_names() if proxy.configured() else []
     out, i = [], 0
     while i < len(argv):
         arg = argv[i]
@@ -158,7 +158,7 @@ def via_args(argv):
 
 
 def launch(codex, args, passthrough):
-    import claude_proxy
+    import proxy
 
     project = args.project
     cwd = None
@@ -191,12 +191,12 @@ def launch(codex, args, passthrough):
     proxied = bool(net) and net.split(":")[0] == "vps"
     via = net[4:] if proxied and net.startswith("vps:") else None
     if proxied:
-        if not claude_proxy.configured():
+        if not proxy.configured():
             raise ValueError(tr("Прокси не настроен. Запусти agentmeister proxy setup.",
                                 "Set up the proxy with agentmeister proxy setup."))
         try:
-            probe = claude_proxy.session_command(claude_proxy.sub_port(claude_proxy.resolve_sub(via)), cmd)
-        except claude_proxy.ProxyError as e:
+            probe = proxy.session_command(proxy.sub_port(proxy.resolve_sub(via)), cmd)
+        except proxy.ProxyError as e:
             raise ValueError(str(e))
     if "--no-daemon" not in passthrough and supports_no_daemon(probe, proxy=proxied):
         cmd.append("--no-daemon")
@@ -204,7 +204,7 @@ def launch(codex, args, passthrough):
     if mode == "caffeinate":
         cmd = ["caffeinate", "-is"] + cmd
     if proxied:
-        cmd = [sys.executable, str(Path(__file__).with_name("claude_proxy.py")), "run"] + \
+        cmd = [sys.executable, str(Path(__file__).with_name("proxy.py")), "run"] + \
             (["--via", via] if via else []) + ["--"] + cmd
     if cwd:
         os.chdir(cwd)

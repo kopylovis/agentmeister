@@ -6,7 +6,7 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
-import claude_proxy as p  # noqa: E402
+import proxy as p  # noqa: E402
 
 
 class Version(unittest.TestCase):

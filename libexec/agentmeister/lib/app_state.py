@@ -322,35 +322,35 @@ def live():
              "name": s.get("name"), "statusUpdatedAt": s.get("statusUpdatedAt")} for s in claude_live.live()]
 
 
-def proxy():
-    import claude_proxy
-    configured = claude_proxy.configured()
-    p = claude_proxy.port() if configured else None
+def proxy_state():
+    import proxy
+    configured = proxy.configured()
+    p = proxy.port() if configured else None
     # read_pid спрашивает ps, из песочницы proxy-сессии ps не запустить: тогда он сам проверяет, жив ли процесс
-    pid = claude_proxy.read_pid() if configured else None
-    running = bool(pid and claude_proxy.listening(p))
+    pid = proxy.read_pid() if configured else None
+    running = bool(pid and proxy.listening(p))
     try:
-        with open(claude_proxy.EXIT) as f:
+        with open(proxy.EXIT) as f:
             info = json.load(f)
     except (OSError, ValueError):
         info = {}
     loc = info.get("loc")
-    held = len(claude_proxy.holders()) if configured else 0
-    names = claude_proxy.sub_names() if configured else []
-    cascade = claude_proxy.cascade_subs() if configured else []
-    remembered = claude_proxy.last() if os.path.exists(claude_proxy.LAST) else ""
+    held = len(proxy.holders()) if configured else 0
+    names = proxy.sub_names() if configured else []
+    cascade = proxy.cascade_subs() if configured else []
+    remembered = proxy.last() if os.path.exists(proxy.LAST) else ""
     default_sub = remembered[4:] if remembered.startswith("vps:") and remembered[4:] in names and len(names) > 1 else None
     subs = []
     for n in names:
         # выход через порт только этой подписки, записан при запуске mihomo
         try:
             # у основной без дополнительных своего порта нет, ее выход и есть общий
-            with open(claude_proxy.exit_file(claude_proxy.resolve_sub(n))) as f:
+            with open(proxy.exit_file(proxy.resolve_sub(n))) as f:
                 one = json.load(f)
         except (OSError, ValueError):
             one = {}
         where = one.get("loc")
-        subs.append({"name": n, "port": claude_proxy.sub_port(n), "country": claude_proxy.sub_country(n) or None,
+        subs.append({"name": n, "port": proxy.sub_port(n), "country": proxy.sub_country(n) or None,
                      "exit": where.upper() if isinstance(where, str) and len(where) == 2 else None,
                      "inCascade": n in cascade})
     return {"configured": configured, "running": running, "port": p,
@@ -359,7 +359,7 @@ def proxy():
             "ip": info.get("ip") if isinstance(info.get("ip"), str) else None,
             "node": info.get("node") if isinstance(info.get("node"), str) else None,
             # без сохраненного выбора новая сессия идет через proxy, как в правилах пользователя и в меню
-            "defaultRoute": "direct" if os.path.exists(claude_proxy.LAST) and claude_proxy.last() == "direct" else "proxy",
+            "defaultRoute": "direct" if os.path.exists(proxy.LAST) and proxy.last() == "direct" else "proxy",
             "sessions": held,
             # подписка новых сессий, если в меню или настройках выбрана одна: last() хранит vps:<имя>
             "defaultSubscription": default_sub,
@@ -400,7 +400,7 @@ def collect():
              "projectsDirs": mnrhlib.projects_dirs(),
              "generatedAt": time.time(), "errors": {}}
     for name, part, empty in (("projects", projects, []), ("sessions", sessions, []), ("live", live, []),
-                              ("proxy", proxy, None), ("modes", modes, {}), ("hostRun", host_run_summary, None),
+                              ("proxy", proxy_state, None), ("modes", modes, {}), ("hostRun", host_run_summary, None),
                               ("signedIn", lambda: {b: signed_in(b)["signedIn"] for b in ("claude", "codex")}, None),
                               ("retentionDays", retention_days, None),
                               # модель из настроек агентов для панели сессии: два маленьких файла, без запуска бинарников
@@ -658,9 +658,9 @@ def settings():
                 "commands": cmds}
 
     def proxy_settings():
-        import claude_proxy
-        base = proxy()
-        base["country"] = claude_proxy.setting("country") or None if claude_proxy.configured() else None
+        import proxy
+        base = proxy_state()
+        base["country"] = proxy.setting("country") or None if proxy.configured() else None
         return base
 
     part("notify", notify)

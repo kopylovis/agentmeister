@@ -858,7 +858,8 @@ def is_watcher(pid):
     except OSError:
         return None
     args = line.split()
-    return args[-1:] == ["watch"] and any(os.path.basename(a) == "claude_proxy.py" for a in args[:-1])
+    # claude_proxy.py: сторож, запущенный до переименования файла, тоже наш
+    return args[-1:] == ["watch"] and any(os.path.basename(a) in ("proxy.py", "claude_proxy.py") for a in args[:-1])
 
 
 def watcher_alive():
