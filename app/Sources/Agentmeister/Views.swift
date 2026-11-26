@@ -22,8 +22,8 @@ final class UIState: ObservableObject {
         didSet { UserDefaults.standard.set(sidebarCollapsed, forKey: "layout.sidebarCollapsed") }
     }
     @Published var newSessionProject: String?
-    /// Лист новой сессии открыть сразу на "параллельно, своя ветка и worktree".
-    @Published var newSessionParallel = false
+    /// Лист параллельной задачи: Claude Code в своей ветке и worktree, проект из newSessionProject.
+    @Published var showParallel = false
     /// Путь проекта, чей экран открыт вместо терминала. Nil, когда видны вкладки.
     /// Экран проекта и превью сессии взаимоисключающие, а projectScreen = nil везде значит "вернуться к вкладкам",
     /// поэтому это убирает и превью.
@@ -93,6 +93,9 @@ struct MainView: View {
         .onChange(of: backend.state.lang) { UserDefaults.standard.set(backend.state.lang, forKey: "lastLang") }
         .sheet(isPresented: $ui.showNewSession) {
             NewSessionSheet(initialProject: ui.newSessionProject)
+        }
+        .sheet(isPresented: $ui.showParallel) {
+            ParallelSheet(initialProject: ui.newSessionProject)
         }
         .sheet(isPresented: $ui.showPalette) {
             PaletteView()
@@ -1141,8 +1144,7 @@ struct SubtaskRow: View {
                     Button {
                         workspace.selected = root.id
                         ui.newSessionProject = backend.state.project(containing: root.spec.projectPath)?.path ?? root.spec.projectPath
-                        ui.newSessionParallel = true
-                        ui.showNewSession = true
+                        ui.showParallel = true
                     } label: {
                         Label(l.t("задача", "task"), systemImage: "plus")
                             .font(.system(size: 11))
@@ -2097,8 +2099,6 @@ struct NewSessionSheet: View {
                 ?? (projects.first { !$0.isHome } ?? projects.first)?.path ?? ""
             if AgentPrefs.defaultAgent == "codex" { agent = .codex }
             direct = backend.state.proxy?.defaultRoute == "direct"
-            if ui.newSessionParallel { mode = .parallel }
-            ui.newSessionParallel = false
         }
         .onChange(of: agent) {
             if agent == .codex && mode == .parallel { mode = .new }
@@ -2144,6 +2144,139 @@ struct NewSessionSheet: View {
         }
         workspace.open(spec)
         dismiss()
+    }
+}
+
+/// Лист параллельной задачи: только Claude Code, своя ветка и worktree, вкладка встает подзадачей агента
+/// этого проекта. Агента здесь не выбрать: Codex подзадачей не бывает, а терминалу worktree не нужен.
+struct ParallelSheet: View {
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var workspace: Workspace
+    @Environment(\.dismiss) private var dismiss
+    let initialProject: String?
+
+    @State private var projectPath = ""
+    @State private var direct = false
+    @State private var fork = false
+    @State private var task = ""
+    @State private var busy = false
+    @State private var error: String?
+    @FocusState private var taskFocused: Bool
+
+    var l: L { L(backend.state.lang) }
+
+    private var project: AppState.Project? { backend.state.projects.first { $0.path == projectPath } }
+
+    /// Сессия текущей вкладки, если это Claude в этом проекте: задача может начать с копией ее разговора.
+    private var forkSource: String? {
+        guard let tab = workspace.current.map({ workspace.root(of: $0) }), tab.spec.utility == nil, tab.spec.agent == .claude,
+              backend.state.project(containing: tab.spec.projectPath)?.path == projectPath else { return nil }
+        return tab.sessionId
+    }
+
+    var body: some View {
+        let exit = backend.state.proxy?.exit
+        let trimmed = task.trimmingCharacters(in: .whitespacesAndNewlines)
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(l.t("Параллельная задача", "Parallel task")).font(.system(size: 17, weight: .semibold))
+                Text(l.t("Claude Code в своей ветке и worktree. Вкладка встанет подзадачей агента этого проекта.",
+                         "Claude Code in its own branch and worktree. The tab joins this project's agent as a subtask."))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.muted)
+            }
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 14) {
+                GridRow {
+                    Text(l.project).foregroundStyle(Ink.muted).frame(width: 104, alignment: .leading)
+                    Picker(l.project, selection: $projectPath) {
+                        ForEach(backend.state.projects.filter { !$0.isHome }) { p in Text(p.name).tag(p.path) }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                GridRow {
+                    Text(l.route).foregroundStyle(Ink.muted)
+                    SegmentedCapsule(selection: $direct, options: [
+                        (false, l.t("Через proxy", "Via proxy") + (exit.map { " " + $0 } ?? ""), Ink.teal),
+                        (true, l.directly, Ink.direct),
+                    ])
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(l.t("Задача", "Task")).foregroundStyle(Ink.muted)
+                TextEditor(text: $task)
+                    .font(.system(size: 12, design: .monospaced))
+                    .scrollContentBackground(.hidden)
+                    .focused($taskFocused)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(height: 96)
+                    .background(RoundedRectangle(cornerRadius: 16).fill(Ink.card))
+                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Ink.buttonBorder))
+                    .overlay(alignment: .topLeading) {
+                        if task.isEmpty {
+                            Text(l.t("Что сделать в своей ветке", "What to do in its own branch"))
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(Ink.faint)
+                                .padding(.horizontal, 15)
+                                .padding(.vertical, 8)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                Toggle(l.t("С копией этого разговора, второй Claude знает все, что уже обсудили",
+                           "With a copy of this conversation, so the second Claude knows everything said so far"),
+                       isOn: $fork)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.muted)
+                    .disabled(forkSource == nil)
+                    .help(forkSource == nil ? l.t("Нужна открытая вкладка Claude в этом проекте", "Needs an open Claude tab in this project") : "")
+            }
+            if direct {
+                Text(l.directWarning)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.amber)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(Ink.amberDot.opacity(0.14)))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Ink.amberDot.opacity(0.35)))
+            }
+            if let error {
+                Text(error).font(.system(size: 12)).foregroundStyle(Ink.red)
+            }
+            HStack(spacing: 8) {
+                Spacer()
+                PillButton(title: l.cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                PillButton(title: l.t("Начать  ⌘↩", "Start  ⌘↩"), prominent: true, busy: busy) { start() }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(project == nil || busy || trimmed.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 560)
+        .onAppear {
+            let projects = backend.state.projects.filter { !$0.isHome }
+            projectPath = initialProject.flatMap { p in backend.state.project(containing: p) }.flatMap { $0.isHome ? nil : $0.path }
+                ?? projects.first?.path ?? ""
+            direct = backend.state.proxy?.defaultRoute == "direct"
+            taskFocused = true
+        }
+        .onChange(of: projectPath) { if forkSource == nil { fork = false } }
+    }
+
+    private func start() {
+        guard let project else { return }
+        var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: .claude, direct: direct)
+        spec.remoteControl = true
+        busy = true
+        error = nil
+        let forkSid = fork ? forkSource : nil
+        Task {
+            error = await workspace.openParallel(spec, project: project, task: task, forkSid: forkSid, state: backend.state, l: l)
+            busy = false
+            if error == nil { dismiss() }
+        }
     }
 }
 
