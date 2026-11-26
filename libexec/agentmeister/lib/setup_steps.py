@@ -292,5 +292,5 @@ if __name__ == "__main__":
         steps, fresh = pending()
         print(("fresh " if fresh else "") + " ".join(steps))
         sys.exit(0)
-    print("claude_setup.py check | pending", file=sys.stderr)
+    print("setup_steps.py check | pending", file=sys.stderr)
     sys.exit(2)

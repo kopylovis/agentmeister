@@ -144,7 +144,7 @@ class CodexHarness(unittest.TestCase):
         with tempfile.TemporaryDirectory() as queue, \
                 patch.dict(os.environ, {"CODEX_THREAD_ID": sid, "MNRH_RESTART_HOOK": "2", "MNRH_PROXY": "1"}), \
                 patch.object(codex_harness, "RESTART_QUEUE", queue), \
-                patch("claude_notify.codex_terminal", return_value="/dev/ttys123"):
+                patch("notify.codex_terminal", return_value="/dev/ttys123"):
             self.assertEqual(codex_harness.restart("codex", ["--after-exit", "--update"]), 0)
             self.assertEqual(codex_harness.restart("codex", ["--after-exit", "--update"]), 0)
             job = json.loads((Path(queue) / "ttys123").read_text())

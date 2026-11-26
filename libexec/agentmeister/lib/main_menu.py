@@ -125,8 +125,8 @@ def mode_on(name):
     """Включен ли режим сейчас. Модули грузятся по требованию: меню не должно падать из-за одного из них."""
     try:
         if name == "humanize":
-            import claude_humanize
-            return claude_humanize.enabled()
+            import humanize
+            return humanize.enabled()
         if name == "guard":
             import claude_guard
             return claude_guard.enabled()
@@ -134,14 +134,14 @@ def mode_on(name):
             import claude_buildlog
             return claude_buildlog.enabled()
         if name == "notify":
-            import claude_notify
-            return claude_notify.enabled()
+            import notify
+            return notify.enabled()
         if name == "lid":
             import claude_lid
             return claude_lid.active()
         if name == "alias":
-            import claude_alias
-            return claude_alias.enabled()
+            import alias
+            return alias.enabled()
     except Exception:
         pass
     return False

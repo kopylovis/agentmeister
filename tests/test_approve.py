@@ -10,7 +10,7 @@ from unittest import mock
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
-import claude_notify  # noqa: E402
+import notify  # noqa: E402
 import telegram  # noqa: E402
 import telegram_approve as ta  # noqa: E402
 from mnrhlib import HOOK_TIMEOUTS, HOOKS  # noqa: E402
@@ -338,12 +338,12 @@ class Wiring(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         with mock.patch.object(ta, "DIR", d):
             prompt = {"notification_type": "permission_prompt"}
-            self.assertFalse(claude_notify.approval_pending(prompt, SID))
+            self.assertFalse(notify.approval_pending(prompt, SID))
             with open(os.path.join(d, "abc.pending"), "w") as f:
                 json.dump({"sid": SID, "message_id": 1, "at": ta.time.time()}, f)
-            self.assertTrue(claude_notify.approval_pending(prompt, SID))
-            self.assertFalse(claude_notify.approval_pending({"notification_type": "idle_prompt"}, SID))
-            self.assertFalse(claude_notify.approval_pending(prompt, "other"))
+            self.assertTrue(notify.approval_pending(prompt, SID))
+            self.assertFalse(notify.approval_pending({"notification_type": "idle_prompt"}, SID))
+            self.assertFalse(notify.approval_pending(prompt, "other"))
 
 
 if __name__ == "__main__":

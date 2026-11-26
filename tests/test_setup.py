@@ -83,7 +83,7 @@ DONE = {"done": ALL, "skipped": []}
 class Pending(unittest.TestCase):
     def pending(self, files, promptsill=False):
         out, _ = sandbox(files, """
-            import claude_setup as c
+            import setup_steps as c
             steps, fresh = c.pending()
             print(("fresh " if fresh else "") + " ".join(steps))
         """, promptsill)
@@ -171,14 +171,14 @@ class Pending(unittest.TestCase):
 class Check(unittest.TestCase):
     def check(self, files, answer):
         return sandbox(files, f"""
-            import sys, claude_setup as c
+            import sys, setup_steps as c
             sys.stdin.isatty = sys.stdout.isatty = lambda: True
             c.ask = lambda *a, **k: {answer!r}
             c.check()
         """)
 
     def test_not_a_terminal_is_silent(self):
-        out, _ = sandbox({}, "import claude_setup as c; print(c.check())")
+        out, _ = sandbox({}, "import setup_steps as c; print(c.check())")
         self.assertEqual(out, "0\n")
 
     def test_later_records_nothing(self):
@@ -232,24 +232,24 @@ class Setup(unittest.TestCase):
 
     def test_failed_setup_steps_are_retried(self):
         sandbox({}, """
-            import claude_notify, claude_setup, setup_cmd as s
+            import notify, setup_steps, setup_cmd as s
             s.CLAUDE_BIN = "sh"
             s.configure_mcp = lambda remove: []
-            claude_notify.ensure_app = lambda: False
-            claude_setup.proxy_step = lambda *args: "failed"
-            claude_setup.write({"notify-app", "proxy"}, set())
+            notify.ensure_app = lambda: False
+            setup_steps.proxy_step = lambda *args: "failed"
+            setup_steps.write({"notify-app", "proxy"}, set())
             assert s.setup([]) == 1
-            assert {"notify-app", "proxy"} <= set(claude_setup.pending()[0])
+            assert {"notify-app", "proxy"} <= set(setup_steps.pending()[0])
         """, promptsill=True)
 
-    def test_codex_hint_in_help_and_after_claude_setup(self):
+    def test_codex_hint_in_help_and_after_setup_steps(self):
         out, _ = sandbox({}, """
-            import claude_notify
+            import notify
             import setup_cmd as s
 
             s.CLAUDE_BIN = "sh"
             s.configure_mcp = lambda remove: []
-            claude_notify.ensure_app = lambda: True
+            notify.ensure_app = lambda: True
 
             assert s.setup(["--help"]) == 0
             print("---")

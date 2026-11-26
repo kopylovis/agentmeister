@@ -236,7 +236,7 @@ def configure_mcp(remove=False):
 
 
 def setup(args):
-    import claude_setup
+    import setup_steps
     if any(a in ("-h", "--help", "help") for a in args):
         print(SETUP_USAGE)
         return 0
@@ -266,7 +266,7 @@ def setup(args):
         print("Убрал /restart, /forget, /fresh, /slim, /todo, /where, /release-notes, /parallel, /shot, /ask, "
               f"/humanize, /import-codex, MCP-сервер {MCP_NAME} и хук из {tilde(ZSHRC)}.")
         # agentmeister больше не предлагает setup при запуске; вернуть все: agentmeister setup
-        claude_setup.write(set(), set(claude_setup.IDS))
+        setup_steps.write(set(), set(setup_steps.IDS))
         return 0
     os.makedirs(os.path.dirname(COMMAND_FILE), exist_ok=True)
     if os.path.exists(OLD_FORGET_FILE):
@@ -279,22 +279,22 @@ def setup(args):
         print(f"✓ /{os.path.basename(path)[:-3]} → {tilde(path)}")
 
     # до хуков: если promptsill поставится сейчас, notice_hook сразу пропишет его в statusLine
-    promptsill = claude_setup.promptsill_step()
+    promptsill = setup_steps.promptsill_step()
     notice_hook(True, legacy_names)
     install_restart_hook()
     print(f"✓ MCP {MCP_NAME}")
-    import claude_notify
-    notify_ready = claude_notify.ensure_app()
+    import notify
+    notify_ready = notify.ensure_app()
     if notify_ready:
-        print("✓ " + tr(f"приложение уведомлений → {tilde(claude_notify.AGENT.app)} (agentmeister notify test)",
-                        f"notification app → {tilde(claude_notify.AGENT.app)} (agentmeister notify test)"))
+        print("✓ " + tr(f"приложение уведомлений → {tilde(notify.AGENT.app)} (agentmeister notify test)",
+                        f"notification app → {tilde(notify.AGENT.app)} (agentmeister notify test)"))
     else:
         print("✗ " + tr("не собрал приложение уведомлений: нужен swiftc (xcode-select --install)",
                         "couldn't build the notification app: swiftc is needed (xcode-select --install)"))
-    proxy = claude_setup.proxy_step(opts["country"], opts["only"])
+    proxy = setup_steps.proxy_step(opts["country"], opts["only"])
     results = {"proxy": proxy, "promptsill": promptsill, "notify-app": "done" if notify_ready else "failed"}
-    done, skipped = claude_setup.current()
-    done.update(claude_setup.AUTO)
+    done, skipped = setup_steps.current()
+    done.update(setup_steps.AUTO)
     for step, result in results.items():
         if result is None:
             continue
@@ -304,7 +304,7 @@ def setup(args):
             done.add(step)
         elif result == "skipped":
             skipped.add(step)
-    claude_setup.write(done, skipped, legacy_declined=False)
+    setup_steps.write(done, skipped, legacy_declined=False)
     if not shutil.which("agentmeister"):
         print("! " + tr(f"agentmeister нет в PATH, а /restart, /todo и другие команды вызывают его по имени. "
                         f"Поставь его: brew install kopylovis/tap/agentmeister или make install в {tilde(ROOT)}",
