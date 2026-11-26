@@ -190,6 +190,14 @@ enum BackgroundShells {
             guard let value = pid_t(line.dropFirst()) else { continue }
             if line.hasPrefix("p") { pids.append(value) } else if line.hasPrefix("g") { groups.append(value) }
         }
+        guard !pids.isEmpty else { return false }
+        // уведомление Claude Code скажет только, что команда упала с кодом 143 или 144. Агент после этого читает
+        // файл вывода, и строка в нем объясняет, что остановил человек и перезапускать не надо.
+        if let handle = FileHandle(forWritingAtPath: file) {
+            handle.seekToEndOfFile()
+            handle.write(Data("\n[Agentmeister: stopped by the user from the app. This is not a failure, do not rerun it unless the user asks.]\n".utf8))
+            try? handle.close()
+        }
         let own = getpgrp()
         let leaders = Set(groups).filter { $0 != own && pids.contains($0) }
         if leaders.isEmpty {
@@ -197,7 +205,6 @@ enum BackgroundShells {
         } else {
             leaders.forEach { killpg($0, SIGTERM) }
         }
-        guard !pids.isEmpty else { return false }
         lock.lock()
         stoppedHere.insert(shell.id)
         lock.unlock()
@@ -332,8 +339,8 @@ struct ShellSheet: View {
                     }
                     .buttonStyle(PillStyle())
                     .disabled(stopping)
-                    .help(l.t("Остановить команду. Агент получит уведомление, что она прервана.",
-                              "Stop the command. The agent gets a notice that it was interrupted."))
+                    .help(l.t("Остановить команду. Агенту придет уведомление, что она упала, а в ее выводе будет строка, что остановил ты и перезапускать не надо.",
+                              "Stop the command. The agent gets a notice that it failed, and its output says you stopped it and it shouldn't be rerun."))
                 }
             }
             .padding(14)
