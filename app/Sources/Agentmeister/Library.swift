@@ -59,7 +59,9 @@ struct LibraryView: View {
         case nil: return all
         case "!open": return all.filter { liveIds.contains($0.id) }
         case "!gone": return all.filter { goneIds.contains($0.id) }
-        case let path?: return all.filter { $0.home == path || $0.home.hasPrefix(path + "/") }
+        case let path?:
+            let project = backend.state.projects.first { $0.path == path } ?? AppState.Project(name: "", path: path)
+            return all.filter { project.contains($0.home) }
         }
     }
 
@@ -307,7 +309,7 @@ struct SessionDetail: View {
     private func resume(awake: Bool) {
         guard case let (preview, id)? = shown else { return }
         let home = preview.home ?? ""
-        let project = backend.state.projects.first { home == $0.path || home.hasPrefix($0.path + "/") }
+        let project = backend.state.project(containing: home)
         let path = project?.path ?? home
         let name = project?.name ?? (home as NSString).lastPathComponent
         let agent: LaunchSpec.Agent = preview.agent == "codex" ? .codex : .claude
@@ -322,7 +324,7 @@ struct SessionDetail: View {
     private func moveToClaude(_ id: String) {
         guard case let (preview, shownId)? = shown, shownId == id else { return }
         let home = preview.home ?? ""
-        let project = backend.state.projects.first { home == $0.path || home.hasPrefix($0.path + "/") }
+        let project = backend.state.project(containing: home)
         var spec = LaunchSpec(projectName: project?.name ?? (home as NSString).lastPathComponent, projectPath: project?.path ?? home,
                               direct: backend.state.proxy?.defaultRoute == "direct")
         spec.firstPrompt = "/import-codex " + id
