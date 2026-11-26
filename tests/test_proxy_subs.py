@@ -177,12 +177,12 @@ class AppState(Folder):
                          [("main", True), ("home", True), ("se", False)])
         self.assertEqual(out["subscriptions"][2]["exit"], "SE")
 
-    def test_one_subscription_gives_nothing_to_choose(self):
+    def test_one_subscription_is_listed_without_a_default(self):
         import app_state
         self.main()
         with patch.object(claude_proxy, "read_pid", return_value=None):
             out = app_state.proxy()
-        self.assertEqual(out["subscriptions"], [])
+        self.assertEqual([s["name"] for s in out["subscriptions"]], ["main"])
         self.assertIsNone(out["defaultSubscription"])
 
 

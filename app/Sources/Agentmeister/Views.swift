@@ -1241,6 +1241,7 @@ struct TabMenu: View {
                 Text(tab.spec.proxied ? l.t("Перейти напрямую", "Switch to direct") : l.t("Перейти на proxy", "Switch to proxy"))
                 Text(l.t("перезапуск той же сессии", "restarts the same session"))
             }
+            SubscriptionSwitchMenu(tab: tab)
         }
         if tab.spec.agent == .codex && tab.spec.utility == nil {
             Button {
@@ -1318,6 +1319,40 @@ struct RenameSheet: View {
 }
 
 /// Строка над терминалом: папка, ветка, песочница, Remote Control, "не спать" и смена маршрута.
+/// Подменю смены подписки у открытой вкладки: перезапуск той же сессии через выбранную подписку.
+/// inline рисует пункты без своего подменю, для меню, которое уже открыто кнопкой.
+struct SubscriptionSwitchMenu: View {
+    @EnvironmentObject var backend: Backend
+    @ObservedObject var tab: TerminalTab
+    var inline = false
+
+    var body: some View {
+        let l = L(backend.state.lang)
+        if tab.spec.utility == nil, !(backend.state.proxy?.choices ?? []).isEmpty {
+            if inline {
+                items(l)
+            } else {
+                Menu(l.t("Подписка proxy", "Proxy subscription")) { items(l) }
+            }
+        }
+    }
+
+    @ViewBuilder private func items(_ l: L) -> some View {
+        let subs = backend.state.proxy?.choices ?? []
+        let cascade = subs.filter { $0.inCascade != false }.map(\.name)
+        // напрямую не отмечен ни один пункт
+        let current: String?? = tab.spec.proxied ? .some(tab.spec.subscription) : .none
+        Toggle(l.t("По очереди: ", "In order: ") + cascade.joined(separator: ", "), isOn: Binding(
+            get: { current == .some(nil) }, set: { if $0 && current != .some(nil) { tab.switchSubscription(nil) } }))
+        ForEach(subs, id: \.name) { s in
+            Toggle(l.t("Только ", "Only ") + s.name + ((s.exit ?? s.country).map { " " + $0 } ?? ""), isOn: Binding(
+                get: { current == .some(s.name) }, set: { if $0 && current != .some(s.name) { tab.switchSubscription(s.name) } }))
+        }
+        Divider()
+        Text(l.t("перезапуск той же сессии", "restarts the same session"))
+    }
+}
+
 struct InfoBar: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
@@ -1448,6 +1483,18 @@ struct InfoBar: View {
                 .buttonStyle(ChipStyle())
                 .help(tab.spec.proxied ? l.t("Та же сессия, но без песочницы и proxy", "The same session without the sandbox and proxy")
                                        : l.t("Та же сессия в песочнице, сеть через mihomo", "The same session in the sandbox, network through mihomo"))
+                if !(backend.state.proxy?.choices ?? []).isEmpty {
+                    Menu {
+                        SubscriptionSwitchMenu(tab: tab, inline: true)
+                    } label: {
+                        Label(tab.spec.proxied ? tab.spec.routeLabel(l) : l.t("Подписка", "Subscription"), systemImage: "point.3.connected.trianglepath.dotted")
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(ChipStyle())
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .help(l.t("Перезапустить ту же сессию через другую подписку proxy", "Restart the same session through another proxy subscription"))
+                }
             } else {
                 Button { tab.restart() } label: { Label(l.restart, systemImage: "arrow.clockwise") }
                     .buttonStyle(ChipStyle())
