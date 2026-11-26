@@ -1218,7 +1218,10 @@ struct SubtaskRow: View {
                         SubAgentChip(agent: agent, l: l)
                     }
                     ForEach(root.shells) { shell in
-                        ShellChip(shell: shell, l: l)
+                        ShellChip(shell: shell, l: l) {
+                            BackgroundShells.hide(shell.id)
+                            root.shells.removeAll { $0.id == shell.id }
+                        }
                     }
                     Button {
                         workspace.selected = root.id
