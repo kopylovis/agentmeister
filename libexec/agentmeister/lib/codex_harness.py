@@ -150,7 +150,11 @@ def via_args(argv):
             out.append(f"--via={argv[i + 1]}")
             i += 2
             continue
-        if arg.startswith(("-x=", "--proxy=")):
+        if arg.startswith(("-x=", "--proxy=", "--via=")):
+            if not arg.partition("=")[2]:
+                # пустое имя иначе молча дало бы запуск без proxy
+                raise ValueError(tr(f"После {arg} нужно имя подписки, список: agentmeister proxy list",
+                                    f"{arg} needs a subscription name, see agentmeister proxy list"))
             arg = "--via=" + arg.partition("=")[2]
         out.append(arg)
         i += 1
@@ -559,7 +563,11 @@ def main(argv):
     if configuring and any(arg in ("-h", "--help") for arg in argv[1:]):
         return setup(None, argv[1:])
     if not configuring and not restarting:
-        args, passthrough = launch_args(argv)
+        try:
+            args, passthrough = launch_args(argv)
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+            return 2
     codex = executable()
     if not codex:
         print(tr("Команда codex не найдена в PATH.", "The codex command is missing from PATH."), file=sys.stderr)

@@ -375,11 +375,14 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// и claude update или codex update для остальных, последней строкой печатает итог. Через proxy
     /// (agentmeister proxy run), если не сказано идти напрямую: скачивание не должно уходить мимо mihomo.
     /// tail: false отдает весь вывод, а код выхода остается кодом обновления, а не tail.
-    nonisolated static func updateCommand(direct: Bool, agent: LaunchSpec.Agent = .claude, tail: Bool = true) -> String {
+    nonisolated static func updateCommand(direct: Bool, agent: LaunchSpec.Agent = .claude, tail: Bool = true,
+                                          subscription: String? = nil) -> String {
         let am = "'" + LoginEnvironment.agentmeister.replacingOccurrences(of: "'", with: "'\\''") + "'"
         let update = "\(am) agent-update \(agent == .codex ? "codex" : "claude")"
-        // через mihomo, но без песочницы: brew upgrade распаковывает в своей песочнице macOS, а вложенную macOS не дает
-        let proxy = "\(am) proxy run --no-sandbox -- "
+        // через mihomo, но без песочницы: brew upgrade распаковывает в своей песочнице macOS, а вложенную macOS не дает.
+        // Имя подписки проверено при выборе: строчные латинские буквы, цифры и дефис, кавычки не нужны.
+        let via = subscription.flatMap { $0.range(of: "^[a-z][a-z0-9-]{0,19}$", options: .regularExpression) != nil ? "--via \($0) " : nil } ?? ""
+        let proxy = "\(am) proxy run --no-sandbox \(via)-- "
         return (direct ? update : proxy + update) + " 2>&1" + (tail ? " | tail -3" : "")
     }
 
@@ -424,7 +427,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     private func updateThenRestart(note: String) {
         view.feed(text: "\r\n\u{1b}[2m" + note + "\u{1b}[0m\r\n")
         updateFailed = nil
-        let command = TerminalTab.updateCommand(direct: spec.direct, agent: .claude, tail: false)
+        let command = TerminalTab.updateCommand(direct: spec.direct, agent: .claude, tail: false, subscription: spec.subscription)
         Task.detached(priority: .userInitiated) {
             let (code, out) = Self.shell(command)
             // версия, на которой откроется сессия, если обновление не встало
@@ -1177,7 +1180,9 @@ final class Workspace: ObservableObject {
             }
         }
         let name = (o["name"] as? String).flatMap { $0.isEmpty ? nil : String($0.prefix(80)) } ?? (folder as NSString).lastPathComponent
-        var spec = LaunchSpec(projectName: name, projectPath: folder, agent: .claude, direct: false)
+        // через ту же подписку, что у вкладки, которая просит: из сессии только через home и подзадача только через home
+        var spec = LaunchSpec(projectName: name, projectPath: folder, agent: .claude, direct: false,
+                              subscription: requester.spec.proxied ? requester.spec.subscription : nil)
         spec.firstPrompt = (o["prompt"] as? String) ?? ""
         spec.extraFlags = flags
         spec.awake = (o["awake"] as? Bool) ?? false

@@ -1046,7 +1046,8 @@ struct ProxySubscriptions: View {
     }
 }
 
-/// Новая подписка: имя, ссылка и страна выхода. Запускает agentmeister proxy add во вкладке-утилите.
+/// Новая подписка: имя, страна выхода и отбор серверов. Запускает agentmeister proxy add во вкладке-утилите, а
+/// ссылку спрашивает уже она, скрытым вводом: в аргументах ее видно в ps и в заголовке вкладки.
 struct AddSubscriptionSheet: View {
     @EnvironmentObject var backend: Backend
     @Environment(\.dismiss) private var dismiss
@@ -1054,8 +1055,8 @@ struct AddSubscriptionSheet: View {
     let taken: [String]
     let run: ([String]) -> Void
     @State private var name = ""
-    @State private var link = ""
     @State private var country = ""
+    @State private var only = ""
 
     var l: L { L(backend.state.lang) }
 
@@ -1073,7 +1074,8 @@ struct AddSubscriptionSheet: View {
         let nameOK = name.range(of: "^[a-z][a-z0-9-]{0,19}$", options: .regularExpression) != nil
             && !["main", "vps", "direct", "reject", "all"].contains(name)
         let countryOK = country.isEmpty || country.range(of: "^[A-Za-z]{2}$", options: .regularExpression) != nil
-        return nameOK && countryOK && link.hasPrefix("http")
+        let onlyOK = only.isEmpty || (try? NSRegularExpression(pattern: only)) != nil
+        return nameOK && countryOK && onlyOK
     }
 
     var body: some View {
@@ -1088,12 +1090,13 @@ struct AddSubscriptionSheet: View {
                     }
                 }
                 GridRow {
-                    Text(l.t("Ссылка", "Link")).foregroundStyle(Ink.muted)
-                    TextField("https://example.com/sub/…", text: $link).textFieldStyle(.roundedBorder)
-                }
-                GridRow {
                     Text(l.t("Страна", "Country")).foregroundStyle(Ink.muted)
                     TextField(mainCountry ?? "KZ", text: $country).textFieldStyle(.roundedBorder).frame(width: 80)
+                }
+                GridRow {
+                    Text(l.t("Серверы", "Servers")).foregroundStyle(Ink.muted)
+                    TextField(l.t("все, или выражение для имени, например KZ", "all, or a name pattern such as KZ"), text: $only)
+                        .textFieldStyle(.roundedBorder)
                 }
             }
             Note(text: mainCountry.map { c in
@@ -1101,14 +1104,14 @@ struct AddSubscriptionSheet: View {
                     "Plain -x uses this subscription in order only if its country is \(c), like the main one. With another country it's used only when chosen on its own.")
             } ?? l.t("Если страна задана, а выход через подписку окажется в другой стране, подписка не добавится.",
                      "If a country is set and the subscription exits elsewhere, it won't be added."))
-            Note(text: l.t("Ссылка хранится в ~/.config/mnrh/proxy/subs/, читать ее можешь только ты.",
-                           "The link is kept in ~/.config/mnrh/proxy/subs/, readable only by you."))
+            Note(text: l.t("Ссылку на подписку спросит вкладка, которая откроется, на экране ее видно не будет. Хранится она в ~/.config/mnrh/proxy/subs/, читать ее можешь только ты.",
+                           "The tab that opens asks for the subscription link and doesn't show it. It's kept in ~/.config/mnrh/proxy/subs/, readable only by you."))
             HStack {
                 Spacer()
                 Button(l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(l.t("Добавить", "Add")) {
+                Button(l.t("Дальше", "Continue")) {
                     let code = country.trimmingCharacters(in: .whitespaces).uppercased()
-                    run(["proxy", "add", name, link.trimmingCharacters(in: .whitespaces)] + (code.isEmpty ? [] : ["--country", code]))
+                    run(["proxy", "add", name] + (code.isEmpty ? [] : ["--country", code]) + (only.isEmpty ? [] : ["--only", only]))
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

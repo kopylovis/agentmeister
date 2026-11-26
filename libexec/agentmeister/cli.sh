@@ -129,8 +129,9 @@ esac
 
 # подписка proxy для -x <имя>: main или та, что добавлена через agentmeister proxy add
 proxy_sub() {
-  case "$1" in ''|*[!a-z0-9-]*|[!a-z]*) return 1 ;; main) return 0 ;; esac
-  [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/mnrh/proxy/subs/$1.url" ]
+  case "$1" in ''|*[!a-z0-9-]*|[!a-z]*) return 1 ;; esac
+  # тот же список, что у proxy list: subs.json, а не файлы ссылок
+  /usr/bin/python3 "$LIB/proxy.py" names 2>/dev/null | grep -qx -- "$1"
 }
 
 target="" mode="" net="" new=0 passthrough=()
@@ -142,7 +143,9 @@ while [ $# -gt 0 ]; do
     -x|--proxy) net=vps
       # -x home: только через подписку home. Имя проекта, совпавшее с подпиской, пиши до -x или путем
       if [ $# -gt 1 ] && proxy_sub "$2"; then net="vps:$2"; shift; fi ;;
-    -x=*|--proxy=*) net="vps:${1#*=}" ;;
+    -x=*|--proxy=*)
+      [ -n "${1#*=}" ] || { echo "agentmeister: после $1 нужно имя подписки, список: agentmeister proxy list" >&2; exit 2; }
+      net="vps:${1#*=}" ;;
     -d|--direct) net=direct ;;
     --new) new=1 ;;
     -i|--incognito) new=1; export CLAUDE_CODE_SKIP_PROMPT_HISTORY=1 ;;
