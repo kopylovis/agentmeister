@@ -26,6 +26,7 @@ agentmeister --harness claude install    установить Claude Code с с�
 agentmeister kcalm          сразу в проекте (достаточно начала имени)
 agentmeister root           в домашней папке
 agentmeister ... -x         эта сессия через proxy
+agentmeister ... -x home    только через подписку home (agentmeister proxy add)
 agentmeister ... -i         без истории запросов Claude Code
 agentmeister sessions       сохраненные сессии: продолжить, перенести, удалить
 agentmeister ps             запущенные сессии и кто ждет ответа
@@ -337,6 +338,24 @@ agentmeister proxy test                                    # выход напр
 `--only <выражение>` оставляет из подписки
 только серверы с подходящим именем. Зашифрованные ссылки `happ://crypt…` читает только Happ,
 нужна обычная `https://`.
+
+Кроме основной подписки можно добавить еще. У каждой свое имя и свой порт:
+
+```bash
+agentmeister proxy add home 'https://…/sub/…' --country KZ   # --country и --only как у setup
+agentmeister proxy list                                       # имена, порты и флаги -x
+agentmeister kcalm -x home                                    # только через home, без перехода на другие
+agentmeister kcalm -x                                         # через все по очереди
+```
+
+Просто `-x` идет по подпискам по очереди. Сначала основная, а следующая берется, только когда у
+прошлой не отвечает ни один сервер. Если у основной задан `--country`, в очередь попадают только
+подписки с той же страной, и сессия посреди работы не уйдет в другую страну. Остальные доступны
+только через `-x <имя>`. `-x main` идет только через основную. У Codex те же флаги. Перезапуск,
+`/fresh`, `agentmeister restore` и новые окна из сессии сохраняют ее подписку.
+`agentmeister proxy remove home` удаляет одну подписку, а просто `agentmeister proxy remove` всю
+настройку. Когда подписку добавляют или удаляют, mihomo перезапускается, а сессии через другие
+подписки продолжают работать. Если проект называется так же, как подписка, пиши проект до `-x`.
 
 `agentmeister proxy` показывает версию mihomo и, если в Homebrew есть новее, подсказывает
 `agentmeister proxy update`. Эта команда делает `brew upgrade mihomo`. Если mihomo запущен, а сессий
