@@ -35,7 +35,9 @@ enum LinkOpener {
     /// Открыть ссылку из вкладки через proxy там, где выбрано. ask спрашивает в листе поверх окна вкладки.
     static func open(_ url: URL, place: LinkPlace, window: NSWindow?) {
         switch place {
-        case .ask: ask(url, window: window)
+        // лист открывается после клика, а не внутри mouseUp терминала: модальный лист посреди обработки события
+        // ронял AppKit на пересчете constraints
+        case .ask: DispatchQueue.main.async { ask(url, window: window) }
         case .builtin: ProxyBrowser.shared.open(url)
         // свой профиль, не профиль входа: куки сайтов из ссылок живут отдельно от чистого входа в агента
         case .chrome: ChromeProfile.open(url, profile: "chrome-links-proxy", proxyPort: ProxyBrowser.shared.port)
@@ -47,24 +49,28 @@ enum LinkOpener {
     private static var asking: [NSPanel] = []
 
     private static func ask(_ url: URL, window: NSWindow?) {
+        // без fullSizeContentView: у листа safe area менялась на ходу, и AppKit падал на бесконечном пересчете
+        // constraints
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
-                            styleMask: [.titled, .fullSizeContentView], backing: .buffered, defer: false)
+                            styleMask: [.titled], backing: .buffered, defer: false)
         panel.isReleasedWhenClosed = false
         panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
         let close = { [weak panel] in
             guard let panel else { return }
             if let parent = panel.sheetParent { parent.endSheet(panel) } else { panel.close() }
             asking.removeAll { $0 === panel }
         }
-        let host = NSHostingController(rootView: LinkPlaceSheet(url: url, l: L(ProxyBrowser.shared.lang)) { place, remember in
+        let host = NSHostingView(rootView: LinkPlaceSheet(url: url, l: L(ProxyBrowser.shared.lang)) { place, remember in
             close()
             guard let place else { return }
             if remember { UserDefaults.standard.set(place.rawValue, forKey: BrowserSettings.linkPlaceKey) }
             open(url, place: place, window: nil)
         })
-        host.sizingOptions = .preferredContentSize
-        panel.contentViewController = host
+        // размер считается один раз: лист, который сам меняет размер окна во время layout, роняет приложение
+        let size = host.fittingSize
+        host.sizingOptions = []
+        panel.setContentSize(NSSize(width: 480, height: max(size.height, 240)))
+        panel.contentView = host
         asking.append(panel)
         // на окне уже висит лист (переименование, вход): тогда отдельным окном по центру
         if let window, window.attachedSheet == nil {
