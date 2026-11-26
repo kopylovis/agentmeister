@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         Appearance.apply(UserDefaults.standard.string(forKey: Appearance.key) ?? "system")
+        // демо для скриншотов не трогает систему: ни горячей клавиши, ни команды в PATH, ни обновлений
+        if Demo.active { return }
         // ⌃⌥Space (или свое сочетание из настроек) из любого приложения показывает Agentmeister
         HotKey.shared.apply()
         // команда agentmeister в терминале из встроенного CLI, если ее еще нигде нет
@@ -55,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        if Demo.active { return }
         // обычный выход: при следующем запуске вкладки откроются без вопроса
         UserDefaults.standard.set(true, forKey: Workspace.cleanExitKey)
         // окно закрылось: уведомления снова нужны для всех вкладок
@@ -112,7 +115,7 @@ struct AgentmeisterApp: App {
         // привязка только для чтения: MenuBarExtra сам пишет в isInserted при каждом обновлении сцены, запись
         // в @AppStorage снова перестраивает сцену, и главный поток крутился в этом цикле без конца. Значок
         // включает и выключает только переключатель в Настройках.
-        MenuBarExtra(isInserted: Binding(get: { showMenuBar }, set: { _ in })) {
+        MenuBarExtra(isInserted: Binding(get: { showMenuBar && !Demo.active }, set: { _ in })) {
             MenuBarPanel()
                 .environmentObject(backend)
                 .environmentObject(workspace)

@@ -72,8 +72,41 @@ struct MainView: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var ui: UIState
+    @Environment(\.openSettings) private var openSettings
 
     var l: L { L(backend.state.lang) }
+
+    /// Демо для скриншотов: открыть экран из --scene, когда вкладки уже на месте.
+    private func showDemoScene() {
+        Task { @MainActor in
+            // окно демо отличается от настоящего заголовком, и снимки одного размера
+            if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true || $0.title == "Agentmeister" }) {
+                window.title = "Agentmeister Demo"
+                window.setFrame(NSRect(x: 40, y: 40, width: 1440, height: 880), display: true)
+            }
+            try? await Task.sleep(for: .seconds(1))
+            switch Demo.scene {
+            case "new-session":
+                ui.newSessionProject = workspace.current?.spec.projectPath
+                ui.showNewSession = true
+            case "project":
+                ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
+            case "settings":
+                UserDefaults.standard.set("proxy", forKey: "settingsSection")
+                openSettings()
+                // окно настроек высокое, чтобы раздел proxy с подписками поместился целиком
+                try? await Task.sleep(for: .seconds(1))
+                if let screen = NSScreen.main?.visibleFrame,
+                   let settings = NSApp.windows.first(where: { $0.isVisible && $0.title != "Agentmeister Demo" && $0.frame.width > 300 }) {
+                    // высота по разделу proxy: ниже уже начинается следующий раздел
+                    let height = min(screen.height, 800)
+                    settings.setFrame(NSRect(x: screen.minX + 60, y: screen.maxY - height, width: 1040, height: height), display: true)
+                }
+            default:
+                break
+            }
+        }
+    }
 
     var body: some View {
         CardsLayout {
@@ -164,9 +197,19 @@ struct MainView: View {
                      "It runs in iTerm2, Terminal or another Agentmeister window. A second Claude on the same transcript would mix up the replies. Close it there and open it here."))
         }
         .onReceive(backend.$state) { state in workspace.sync(with: state.live) }
+        // демо: состояние из файла приходит раньше, чем окно начинает следить за ready
+        .onAppear {
+            guard Demo.active, backend.ready else { return }
+            workspace.restore(live: [], projects: backend.state.projects, sessions: backend.state.sessions)
+            showDemoScene()
+        }
         .onChange(of: backend.ready) {
             guard backend.ready else { return }
             workspace.restore(live: backend.state.live, projects: backend.state.projects, sessions: backend.state.sessions)
+            if Demo.active {
+                showDemoScene()
+                return
+            }
             // клик по уведомлению мог и запустить приложение: запрос ждет в focus.json
             workspace.takeFocusRequest(state: backend.state)
             // мастер один раз, при первом запуске, и снова, если он сам перезапустил приложение ради разрешений

@@ -36,6 +36,8 @@ struct LaunchSpec: Hashable {
     /// песочнице, как у Codex: сеть только через mihomo и сокет ssh-agent, напрямую не уходит ничего. git по ssh
     /// идет через mihomo (GIT_SSH_COMMAND). Напрямую это сам shell. Собирает ее LaunchSpec.terminal.
     var terminal = false
+    /// Только демо для скриншотов: вместо агента вкладка печатает этот файл.
+    var demoScreen: String?
 
     /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
     var proxied: Bool {
@@ -276,6 +278,12 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         running = true
         status = nil
         startedAt = Date()
+        if let screen = spec.demoScreen {
+            view.startProcess(executable: "/bin/sh", args: ["-c", "cat \"$0\"; exec sleep 86400", screen],
+                              environment: ["TERM=xterm-256color", "LANG=en_US.UTF-8"], execName: "sh",
+                              currentDirectory: NSHomeDirectory())
+            return
+        }
         // "$0" в shellScript: agentmeister или, у вкладки bare, сама команда
         let program = spec.bare ? spec.arguments.first ?? "true" : LoginEnvironment.agentmeister
         let args = ["-l", "-c", Self.shellScript, program] + (spec.bare ? Array(spec.arguments.dropFirst()) : spec.arguments)
@@ -737,6 +745,20 @@ final class Workspace: ObservableObject {
     /// После обычного выхода вкладки открываются сразу, после сбоя или перезагрузки сначала лист с вопросом.
     func restore(live: [AppState.Live], projects: [AppState.Project], sessions: [AppState.Session]) {
         guard !restored else { return }
+        if Demo.active {
+            guard tabs.isEmpty else { return }
+            // вкладки демо из tabs.json папки демо; restored не ставится, поэтому save() ничего не пишет
+            for item in Demo.tabs() {
+                var spec = LaunchSpec(projectName: item.project, projectPath: item.path,
+                                      agent: LaunchSpec.Agent(rawValue: item.agent ?? "") ?? .claude,
+                                      direct: item.direct ?? false, subscription: item.subscription)
+                spec.terminal = item.terminal ?? false
+                if spec.terminal { spec.utility = ["proxy", "run", "--", "zsh"] }
+                spec.demoScreen = Demo.screenPath(item.screen)
+                open(spec, select: item.selected ?? false)
+            }
+            return
+        }
         let defaults = UserDefaults.standard
         let clean = defaults.object(forKey: Self.cleanExitKey) as? Bool ?? true
         defaults.set(false, forKey: Self.cleanExitKey)
@@ -1052,7 +1074,9 @@ final class Workspace: ObservableObject {
 
     // MARK: Уведомления
 
-    static let appDir = (NSHomeDirectory() as NSString).appendingPathComponent(".cache/mnrh/app")
+    /// В демо своя папка: front.json, focus.json и запросы настоящего приложения демо не трогает.
+    static let appDir = Demo.active ? (NSTemporaryDirectory() as NSString).appendingPathComponent("agentmeister-demo-app")
+        : (NSHomeDirectory() as NSString).appendingPathComponent(".cache/mnrh/app")
     static let frontFile = (appDir as NSString).appendingPathComponent("front.json")
     static let focusFile = (appDir as NSString).appendingPathComponent("focus.json")
 
