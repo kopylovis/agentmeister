@@ -40,6 +40,8 @@ enum LinkOpener {
         case .ask: DispatchQueue.main.async { ask(url, window: window) }
         case .builtin: ProxyBrowser.shared.open(url)
         // свой профиль, не профиль входа: куки сайтов из ссылок живут отдельно от чистого входа в агента
+        // Chrome запомнили, а потом удалили: спросить заново, Chrome в вопросе уже не будет
+        case .chrome where ChromeProfile.app == nil: DispatchQueue.main.async { ask(url, window: window) }
         case .chrome: ChromeProfile.open(url, profile: "chrome-links-proxy", proxyPort: ProxyBrowser.shared.port)
         case .system: NSWorkspace.shared.open(url)
         }
@@ -107,10 +109,10 @@ struct LinkPlaceSheet: View {
             VStack(spacing: 6) {
                 row(.builtin, l.t("Окно Agentmeister", "Agentmeister window"),
                     l.t("через тот же proxy, что и агенты", "through the same proxy as the agents"))
-                row(.chrome, l.t("Отдельный профиль Chrome", "Separate Chrome profile"),
-                    ChromeProfile.app == nil ? l.t("Chrome не найден", "Chrome isn't installed")
-                        : l.t("через proxy, свои cookie", "through the proxy, own cookies"))
-                    .disabled(ChromeProfile.app == nil)
+                if ChromeProfile.app != nil {
+                    row(.chrome, l.t("Отдельный профиль Chrome", "Separate Chrome profile"),
+                        l.t("через proxy, свои cookie", "through the proxy, own cookies"))
+                }
                 row(.system, l.t("Браузер по умолчанию", "Default browser"),
                     l.t("по сети системы, мимо proxy", "over the system network, bypassing the proxy"))
             }

@@ -392,11 +392,11 @@ struct AuthDialog: View {
                 place(.embedded, l.t("Окно Agentmeister", "Agentmeister window"),
                       proxied ? l.t("страница идет через тот же proxy, что и агенты", "the page goes through the same proxy as the agents")
                               : l.t("страница идет напрямую", "the page goes direct"))
-                place(.chrome, l.t("Отдельный профиль Chrome", "Separate Chrome profile"),
-                      ChromeProfile.app == nil ? l.t("Chrome не найден", "Chrome isn't installed")
-                          : proxied ? l.t("Chrome с proxy и чистым профилем", "Chrome with the proxy and a clean profile")
-                          : l.t("Chrome с чистым профилем", "Chrome with a clean profile"))
-                    .disabled(ChromeProfile.app == nil)
+                if ChromeProfile.app != nil {
+                    place(.chrome, l.t("Отдельный профиль Chrome", "Separate Chrome profile"),
+                          proxied ? l.t("Chrome с proxy и чистым профилем", "Chrome with the proxy and a clean profile")
+                              : l.t("Chrome с чистым профилем", "Chrome with a clean profile"))
+                }
                 place(.system, l.t("Браузер по умолчанию", "Default browser"),
                       l.t("по сети системы, мимо proxy", "over the system network, bypassing the proxy"))
             }
@@ -423,15 +423,19 @@ struct AuthDialog: View {
             Text(l.t("Куки этого окна не смешиваются с Safari и Chrome. Адреса 127.0.0.1 открываются мимо proxy, на них агент принимает ответ входа.",
                      "This window keeps its cookies apart from Safari and Chrome. 127.0.0.1 addresses bypass the proxy, that is where the agent receives the sign-in reply."))
                 .font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
-            Text(l.t("Google может не пустить вход через Google во встроенном окне. Тогда открой страницу в Chrome через proxy.",
-                     "Google may refuse \"Sign in with Google\" in an embedded window. If it does, open the page in Chrome through the proxy."))
-                .font(.system(size: 12)).foregroundStyle(Ink.warn).fixedSize(horizontal: false, vertical: true)
+            // без Chrome совет про Chrome не нужен, как и кнопка ниже
+            if ChromeProfile.app != nil {
+                Text(l.t("Google может не пустить вход через Google во встроенном окне. Тогда открой страницу в Chrome через proxy.",
+                         "Google may refuse \"Sign in with Google\" in an embedded window. If it does, open the page in Chrome through the proxy."))
+                    .font(.system(size: 12)).foregroundStyle(Ink.warn).fixedSize(horizontal: false, vertical: true)
+            }
             output
             HStack(spacing: 8) {
-                LinkButton(title: proxied ? l.t("Открыть в Chrome через proxy", "Open in Chrome through the proxy") : l.t("Открыть в Chrome", "Open in Chrome")) {
-                    flow.moveToChrome()
+                if ChromeProfile.app != nil {
+                    LinkButton(title: proxied ? l.t("Открыть в Chrome через proxy", "Open in Chrome through the proxy") : l.t("Открыть в Chrome", "Open in Chrome")) {
+                        flow.moveToChrome()
+                    }
                 }
-                .disabled(ChromeProfile.app == nil)
                 Spacer()
                 PillButton(title: l.t("Отмена", "Cancel")) { flow.back() }
                     .keyboardShortcut(.cancelAction)
