@@ -30,6 +30,9 @@ function run(argv) {
 '''
 
 
+ACTIVATE_JS = "ObjC.import('AppKit'); function run(argv) { $.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(argv[0])).activateWithOptions(1 << 1); }"
+
+
 def windows(pid):
     r = subprocess.run(["osascript", "-l", "JavaScript", "-e", LIST_JS, str(pid)], capture_output=True, text=True)
     return [w for w in json.loads(r.stdout or "[]") if w["layer"] == 0 and w["w"] > 200]
@@ -43,6 +46,9 @@ def shoot(scene):
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
         time.sleep(wait)
+        # неактивное окно снялось бы с серыми кнопками и меньшей тенью
+        subprocess.run(["osascript", "-l", "JavaScript", "-e", ACTIVATE_JS, str(proc.pid)], capture_output=True)
+        time.sleep(1)
         ws = windows(proc.pid)
         main = next((w for w in ws if w["title"] == "Agentmeister Demo"), None)
         if kind == "main":
@@ -55,13 +61,18 @@ def shoot(scene):
         if not target:
             sys.exit(f"{scene}: окно не нашлось среди {ws}")
         out = os.path.join(HERE, f"{scene}.png")
-        subprocess.run(["screencapture", "-x", "-l", str(target["id"]), out], check=True)
-        subprocess.run(["sips", "-Z", "2200", out], capture_output=True)
-        main_png = os.path.join(HERE, "main.png")
-        if kind == "sheet" and os.path.exists(main_png):
-            # под листом macOS рисует кнопку закрытия серой, красную берем со снимка главного окна
-            subprocess.run(["osascript", "-l", "JavaScript", os.path.join(HERE, "close_button.js"), main_png, out],
-                           capture_output=True, check=True)
+        lights = ["osascript", "-l", "JavaScript", os.path.join(HERE, "lights.js"), out]
+        for attempt in range(4):
+            subprocess.run(["screencapture", "-x", "-l", str(target["id"]), out], check=True)
+            subprocess.run(["sips", "-Z", "2200", out], capture_output=True)
+            # три серые кнопки: окно снялось неактивным, macOS не всегда отдает фокус, пока человек работает
+            # в другом приложении. Пробуем еще раз
+            if subprocess.run(lights + ["check"], capture_output=True, text=True).stdout.strip() != "3":
+                break
+            subprocess.run(["osascript", "-l", "JavaScript", "-e", ACTIVATE_JS, str(proc.pid)], capture_output=True)
+            time.sleep(2)
+        # что осталось серым (кнопка закрытия под листом, неактивное окно), перекрашивается по образцу lights.png
+        print(scene, subprocess.run(lights + ["fix"], capture_output=True, text=True).stdout.strip())
         print(out)
     finally:
         proc.send_signal(signal.SIGTERM)
