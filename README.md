@@ -97,7 +97,9 @@ PATH, or a git checkout of this repository with the same version, takes preceden
 
 The app updates itself through Sparkle. Once a day it reads `appcast.xml` from the latest GitHub release, downloads
 the new version and installs it when you quit, so agents in open tabs keep running. The "Restart to Update to"
-item with the new version in the Agentmeister menu installs a downloaded update right away and reopens the tabs. What the
+item with the new version in the Agentmeister menu installs a downloaded update right away and reopens the tabs. After an update, if agentmeister or promptsill came from Homebrew, the app runs `brew update` and `brew upgrade` for
+them in the background, so the terminal and the status line get the new version too. The log is in
+`~/Library/Logs/Agentmeister/brew-upgrade.log`. What the
 app does and how to build it is described in [app/README.md](app/README.md), in Russian.
 
 <table>

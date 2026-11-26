@@ -105,6 +105,13 @@ Application или Apple Development из связки (или `AGENTMEISTER_SIG
 выходе из приложения, чтобы не остановить агентов во вкладках. Скачанную версию сразу можно поставить из меню
 Agentmeister, пункт "Перезапустить и обновить до <версия>", вкладки вернутся сами.
 
+После обновления приложение подтягивает и Homebrew. Если agentmeister или promptsill стоят из kopylovis/tap, при
+первом запуске новой версии в фоне идут `brew update` и `brew upgrade` для них (`BrewSync.swift`). Иначе терминал и
+строка состояния остались бы на старой версии: promptsill из Homebrew стоит в PATH раньше встроенного. Формула в tap
+обновляется через несколько минут после релиза, поэтому, пока brew не отдал agentmeister той же версии, что у
+приложения, попытка повторяется раз в час, не больше 24 раз на версию. Вывод brew пишется в
+`~/Library/Logs/Agentmeister/brew-upgrade.log`.
+
 Обновления включаются только у сборки с подписью Developer ID, если в `app/sparkle-public-key` лежит публичный ключ.
 Секретная половина живет в связке ключей Mac под именем agentmeister. Ее создает один раз
 `generate_keys --account agentmeister` из архива Sparkle (`app/build/cache/sparkle-2.10.0/bin`), резервную копию делает
