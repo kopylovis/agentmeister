@@ -881,8 +881,11 @@ struct TabStrip: View {
                 .coordinateSpace(name: "tabstrip")
                 .onPreferenceChange(TabFramesKey.self) { frames = $0 }
             }
-            Button {
-                if !workspace.newTab() { ui.showNewSession = true }
+            // "+" спрашивает, что открыть в проекте текущей вкладки. Маршрут берется из настроек proxy
+            Menu {
+                Button("Claude Code") { openNew(.claude) }
+                Button("Codex") { openNew(.codex) }
+                Button(l.t("Терминал", "Terminal")) { openNew(nil) }
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .medium))
@@ -890,8 +893,11 @@ struct TabStrip: View {
                     .frame(width: 32, height: 32)
                     .contentShape(Circle())
             }
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
             .buttonStyle(.hoverCircle())
-            .shortcutHelp(l.newTab, .newTab)
+            .fixedSize()
+            .help(l.newTab)
             .accessibilityLabel(l.newTab)
         }
         .padding(4)
@@ -922,6 +928,24 @@ struct TabStrip: View {
             dragShift -= prev.width + Self.spacing
         }
         dragOffset = translation - dragShift
+    }
+
+    /// Новая вкладка из меню "+": агент или терминал (nil) в проекте текущей вкладки, маршрут по умолчанию.
+    private func openNew(_ agent: LaunchSpec.Agent?) {
+        guard let spec = workspace.current.map({ workspace.root(of: $0).spec }) else {
+            ui.showNewSession = true
+            return
+        }
+        let state = backend.state
+        let project = state.project(containing: spec.projectPath)
+        let name = project?.name ?? spec.projectName
+        let path = project?.path ?? spec.projectPath
+        let direct = state.proxy?.defaultRoute == "direct"
+        guard let agent else {
+            workspace.openTerminal(name: name, path: path, direct: direct, state: state)
+            return
+        }
+        workspace.open(LaunchSpec(projectName: name, projectPath: path, agent: agent, direct: direct))
     }
 
     /// Отпустили: вкладка сразу встает на свое место в ряду.
