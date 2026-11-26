@@ -74,6 +74,12 @@ struct AgentmeisterApp: App {
     /// Значок в строке меню, выключается в Настройках > Основные.
     @AppStorage(MenuBarPrefs.showKey) private var showMenuBar = true
 
+    /// Есть ли куда переходить ⌘↑ и ⌘↓: впереди главное окно с вкладкой Claude Code, а не экран проекта.
+    private var promptsReady: Bool {
+        guard let tab = workspace.current, ui.mainKey, !ui.screenOpen else { return false }
+        return tab.spec.agent == .claude && tab.spec.utility == nil
+    }
+
     var body: some Scene {
         Window("Agentmeister", id: "main") {
             MainView()
@@ -152,6 +158,13 @@ struct AgentmeisterApp: App {
                 Button(l.restart) { workspace.current?.restartPreferred(note: l.updating) }
                     .shortcut(.restart)
                     .disabled(workspace.current == nil || !ui.mainKey || ui.screenOpen)
+                // переход между запросами в выводе Claude Code, как метки в Terminal и iTerm2
+                Button(l.t("Предыдущий запрос", "Previous prompt")) { workspace.current?.jumpPrompt(forward: false) }
+                    .shortcut(.previousPrompt)
+                    .disabled(!promptsReady)
+                Button(l.t("Следующий запрос", "Next prompt")) { workspace.current?.jumpPrompt(forward: true) }
+                    .shortcut(.nextPrompt)
+                    .disabled(!promptsReady)
                 Divider()
                 Button(l.t("Параллельная задача…", "Parallel task…")) {
                     ui.newSessionProject = workspace.current?.spec.projectPath

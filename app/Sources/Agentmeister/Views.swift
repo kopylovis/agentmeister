@@ -806,6 +806,11 @@ struct DetailView: View {
                 }
                 TerminalHost(tab: workspace.current)
                     .clipShape(.windowCard)
+                    .overlay {
+                        if let tab = workspace.current, tab.spec.agent == .claude, tab.spec.utility == nil {
+                            StickyPromptBar(tab: tab).clipShape(.windowCard)
+                        }
+                    }
                     .overlay(alignment: .topTrailing) {
                         if let tab = workspace.current { TerminalFindOverlay(tab: tab) }
                     }
