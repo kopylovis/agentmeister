@@ -51,7 +51,7 @@ EDITS = ("add", "remove")
 OPS = (*EDITS, "open")
 # Переменные proxy сессии: команда из списка ходит в сеть напрямую, как в обычном терминале.
 PROXY_VARS = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "all_proxy",
-              "no_proxy", "MNRH_PROXY", "MNRH_PROXY_SUB", "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL")
+              "no_proxy", "MNRH_PROXY", "MNRH_PROXY_SUB", "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL", "PROMPTSILL_PROXY_FILE")
 MAX_REQUEST = 256 * 1024
 EXAMPLE = """{
   "commands": {

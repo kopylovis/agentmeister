@@ -216,7 +216,7 @@ def launch(codex, args, passthrough):
     if net == "direct":
         for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
                      "http_proxy", "https_proxy", "all_proxy", "no_proxy", "MNRH_PROXY", "MNRH_PROXY_SUB",
-                     "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL"):
+                     "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL", "PROMPTSILL_PROXY_FILE"):
             env.pop(name, None)
     os.execvpe(cmd[0], cmd, env)
 

@@ -240,7 +240,7 @@ if [ "${net%%:*}" = vps ]; then
   pre=(/usr/bin/python3 "$PROXY" run --claude ${via:+--via "$via"} --)
 else
   unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
-  unset MNRH_PROXY MNRH_PROXY_SUB PROMPTSILL_PROXY_LABEL PROMPTSILL_PROXY_DETAIL PROMPTSILL_PROXY_URL
+  unset MNRH_PROXY MNRH_PROXY_SUB PROMPTSILL_PROXY_LABEL PROMPTSILL_PROXY_DETAIL PROMPTSILL_PROXY_URL PROMPTSILL_PROXY_FILE
 fi
 
 cd "$dir" || exit 1
