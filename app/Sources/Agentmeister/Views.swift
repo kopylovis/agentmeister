@@ -835,6 +835,9 @@ struct TabStrip: View {
     /// системной копии: системный drag and drop отставал от курсора, после отпускания доигрывал анимацию и
     /// зависал, если вкладку бросали мимо полосы.
     @State private var dragged: UUID?
+    /// Поднятая вкладка: стекло и тень. Снимается сразу при отпускании, а не вместе с возвратом на место,
+    /// иначе тень отставала от вкладки.
+    @State private var lifted: UUID?
     @State private var dragOffset: CGFloat = 0
     /// Сколько ряд уже сдвинул вкладку под курсором перестановками: вычитается из пути курсора.
     @State private var dragShift: CGFloat = 0
@@ -856,7 +859,7 @@ struct TabStrip: View {
                     let current = workspace.current.map { workspace.root(of: $0).id }
                     ForEach(workspace.roots) { tab in
                         let isDragged = tab.id == dragged
-                        TabChip(tab: tab, selected: tab.id == current, subtasks: workspace.subtasks(of: tab).count)
+                        TabChip(tab: tab, selected: tab.id == current, subtasks: workspace.subtasks(of: tab).count, lifted: tab.id == lifted)
                             .background(GeometryReader { proxy in
                                 Color.clear.preference(key: TabFramesKey.self, value: [tab.id: proxy.frame(in: .named("tabstrip"))])
                             })
@@ -896,6 +899,7 @@ struct TabStrip: View {
     private func drag(_ id: UUID, by translation: CGFloat) {
         if dragged != id {
             dragged = id
+            lifted = id
             dragShift = 0
             staleX = nil
         }
@@ -918,6 +922,7 @@ struct TabStrip: View {
 
     /// Отпустили: вкладка сразу встает на свое место в ряду.
     private func endDrag() {
+        lifted = nil
         withAnimation(.snappy(duration: 0.15)) {
             dragOffset = 0
             dragged = nil
@@ -942,6 +947,8 @@ struct TabChip: View {
     let selected: Bool
     /// Сколько у агента подзадач. Число стоит после имени, сами подзадачи в ряду под полосой.
     var subtasks = 0
+    /// Вкладку тащат: она идет поверх соседей на стекле, как в Finder, и их текст под ней размыт.
+    var lifted = false
     @State private var hover = false
 
     var l: L { L(backend.state.lang) }
@@ -1022,7 +1029,12 @@ struct TabChip: View {
             .padding(.trailing, 14)
             .frame(minWidth: 160, maxWidth: 240, minHeight: 44, maxHeight: 44)
             // невыбранная вкладка под курсором получает светлую подложку, как в Finder
-            .background(Capsule().fill(selected ? Ink.thumb : hover ? Ink.chip : .clear).shadow(color: .black.opacity(selected ? 0.25 : 0), radius: 4, y: 2))
+            .background {
+                Capsule().fill(selected || lifted ? Ink.thumb : hover ? Ink.chip : .clear)
+                    .shadow(color: .black.opacity(lifted ? 0.35 : selected ? 0.25 : 0), radius: lifted ? 8 : 4, y: 2)
+            }
+            // поднятая вкладка на стекле, как в Finder: соседняя под ней видна размытой, а не просвечивает
+            .glassEffect(lifted ? .regular : .identity, in: Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
