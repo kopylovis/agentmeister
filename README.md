@@ -13,6 +13,10 @@ individual sessions through your proxy.
 In Claude Code, you can restart or slim the current session, get notified when Claude is waiting and review risky
 commands before they run.
 
+<p align="center">
+  <img src="docs/screenshots/main.png" width="900" alt="Agentmeister with Claude Code, Codex and terminal tabs, each through its own proxy subscription">
+</p>
+
 The menu follows the macOS language, Russian or English. Some messages, such as `agentmeister -h` and
 `agentmeister proxy -h`, are in Russian only for now.
 
@@ -95,6 +99,26 @@ The app updates itself through Sparkle. Once a day it reads `appcast.xml` from t
 the new version and installs it when you quit, so agents in open tabs keep running. The "Restart to Update to"
 item with the new version in the Agentmeister menu installs a downloaded update right away and reopens the tabs. What the
 app does and how to build it is described in [app/README.md](app/README.md), in Russian.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/new-session.png" alt="New session sheet with agent, route and subscription"></td>
+    <td width="50%"><img src="docs/screenshots/project.png" alt="Project screen with sessions, tools, backlog and a parallel task"></td>
+  </tr>
+  <tr>
+    <td>A new session: agent, route, proxy subscription and how to start.</td>
+    <td>The project screen: sessions, tools, backlog, parallel tasks and recent commits.</td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/settings.png" alt="Proxy settings with three subscriptions"></td>
+  </tr>
+  <tr>
+    <td colspan="2">Proxy settings: the exit, the default route and subscription, and the subscriptions. main and backup
+    in KZ form the order for plain <code>-x</code>, work in SE is used only on its own.</td>
+  </tr>
+</table>
+
+The screenshots use made-up projects and data from the app's demo mode, see [app/README.md](app/README.md).
 
 ### Codex
 
