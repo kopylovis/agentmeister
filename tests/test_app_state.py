@@ -47,7 +47,7 @@ class AppState(unittest.TestCase):
         with patch.object(app_state, "projects", return_value=[{"name": "kcalm", "path": "/w/kcalm"}]), \
              patch.object(app_state, "sessions", side_effect=RuntimeError("boom")), \
              patch.object(app_state, "live", return_value=[]), \
-             patch.object(app_state, "proxy", return_value={"configured": False}), \
+             patch.object(app_state, "proxy_state", return_value={"configured": False}), \
              patch.object(app_state, "modes", return_value={"humanize": True}):
             state = app_state.collect()
         self.assertEqual(state["projects"], [{"name": "kcalm", "path": "/w/kcalm"}])
@@ -210,7 +210,7 @@ class SettingsAndDoctor(unittest.TestCase):
         import host_run
         with patch.object(app_state, "agent_info", return_value={"installed": False, "path": None, "version": None}), \
              patch.object(host_run, "ping", return_value=None), patch.object(host_run, "load", return_value={}), \
-             patch.object(app_state, "proxy", side_effect=RuntimeError("no proxy")), \
+             patch.object(app_state, "proxy_state", side_effect=RuntimeError("no proxy")), \
              patch.object(app_state, "modes", return_value={"guard": True}), \
              patch.object(claude_guard, "skipped", return_value={"destructive"}):
             out = app_state.settings()
@@ -256,7 +256,7 @@ class Models(unittest.TestCase):
                  patch.object(app_state, "projects", return_value=[]), \
                  patch.object(app_state, "sessions", return_value=[]), \
                  patch.object(app_state, "live", return_value=[]), \
-                 patch.object(app_state, "proxy", return_value=None), \
+                 patch.object(app_state, "proxy_state", return_value=None), \
                  patch.object(app_state, "modes", return_value={}), \
                  patch.object(app_state, "host_run_summary", return_value=None):
                 state = app_state.collect()
@@ -332,7 +332,7 @@ class CodexSessions(unittest.TestCase):
         with patch.object(app_state, "projects", return_value=[]), \
              patch.object(app_state, "sessions", return_value=claude), \
              patch.object(app_state, "live", return_value=[]), \
-             patch.object(app_state, "proxy", return_value=None), \
+             patch.object(app_state, "proxy_state", return_value=None), \
              patch.object(app_state, "modes", return_value={}), \
              patch.object(app_state, "host_run_summary", return_value=None):
             state = app_state.collect()

@@ -100,7 +100,7 @@ EOF
 
 case "${1:-}" in
   open) shift ;;
-  proxy) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_proxy.py" "$@" ;;
+  proxy) shift; exec /usr/bin/python3 "$(dirname "$MENU")/proxy.py" "$@" ;;
   host-run) shift; exec /usr/bin/python3 "$LIB/host_run.py" "$@" ;;
   sessions) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_sessions.py" "$@" ;;
   usage) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_usage.py" "$@" ;;
@@ -216,7 +216,7 @@ for a in ${passthrough[@]+"${passthrough[@]}"}; do
 done
 
 # недостающее (проект, сессия, режим, сеть) спрашивает один процесс на одном экране: между вопросами не мигает
-PROXY="$LIB/claude_proxy.py"
+PROXY="$LIB/proxy.py"
 ask=()
 [ -n "$dir" ] && ask+=(--dir "$dir")
 [ "$new" -eq 1 ] && ask+=(--no-session)

@@ -225,10 +225,10 @@ def humanize_hooks():
 
 
 def proxy_state():
-    import claude_proxy
-    if not claude_proxy.configured():
+    import proxy
+    if not proxy.configured():
         return tr("не настроен", "not set up")
-    _, kind = claude_proxy.active_node()
+    _, kind = proxy.active_node()
     return tr(f"работает, {kind}", f"running, {kind}") if kind else \
         tr("настроен, mihomo не запущен", "set up, mihomo not running")
 

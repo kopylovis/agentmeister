@@ -31,7 +31,7 @@ MODES = ("restart", "forget", "fresh", "slim")
 CLAUDE_KEYS = {"v", "kind", "cwd", "mode", "session", "new_session", "update", "proxy", "caffeinate", "flags"}
 CODEX_KEYS = {"v", "kind", "cwd", "session", "update", "proxy"}
 CAFFEINATE_FLAG = re.compile(r"^-[dimsu]+$")
-# имя подписки proxy, как SUB_NAME в claude_proxy.py: задание пишет сессия из песочницы, лишнего не пропускаем
+# имя подписки proxy, как SUB_NAME в proxy.py: задание пишет сессия из песочницы, лишнего не пропускаем
 SUB_NAME = re.compile(r"[a-z][a-z0-9-]{0,19}")
 # Флаги сессии задает само задание (--resume, --session-id), а имя (-n, --name) оставляем
 SESSION_FLAGS = DROP - {"-n", "--name"}

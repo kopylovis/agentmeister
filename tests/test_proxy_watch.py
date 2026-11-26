@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
-import claude_proxy as p  # noqa: E402
+import proxy as p  # noqa: E402
 
 SERVER = "kz-server"
 
@@ -124,7 +124,7 @@ class WatcherPid(unittest.TestCase):
     def test_a_stale_pid_of_another_process_is_not_the_watcher(self):
         with self.ps("/Applications/Safari.app/Contents/MacOS/Safari\n"):
             self.assertFalse(self.alive(str(os.getpid())))
-        with self.ps("/usr/bin/python3 /opt/other/claude_proxy.py run\n"):
+        with self.ps("/usr/bin/python3 /opt/other/proxy.py run\n"):
             self.assertFalse(self.alive(str(os.getpid())))
         self.assertFalse(self.alive("garbage"))
         self.assertFalse(self.alive("0"))

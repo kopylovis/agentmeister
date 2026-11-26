@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "libexec/agentmeister/lib"))
 import claude_open
-import claude_proxy
+import proxy
 import host_run
 
 
@@ -501,7 +501,7 @@ class PinnedConfirm(unittest.TestCase):
 
 class Profile(unittest.TestCase):
     def test_claude_profile_protects_the_list(self):
-        command = claude_proxy.session_command(17890, ["true"], claude=True)
+        command = proxy.session_command(17890, ["true"], claude=True)
         self.assertIn(f"HOST_RUN_CONF={os.path.realpath(host_run.CONF_DIR)}", command)
         self.assertIn(f"HOST_RUN_STATE={os.path.realpath(host_run.STATE)}", command)
         self.assertIn(f"HOST_RUN_PID={os.path.realpath(host_run.PIDFILE)}", command)
@@ -513,7 +513,7 @@ class Profile(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             real = os.path.realpath(tmp)
             with patch.multiple(host_run, CONF_DIR=f"{real}/a/b/host-run", STATE=f"{real}/s/host-run"):
-                command = claude_proxy.session_command(17890, ["true"], claude=True)
+                command = proxy.session_command(17890, ["true"], claude=True)
                 parents = host_run.protected_parents()
         params = {a.split("=", 1)[1] for a in command if a.startswith("HOST_RUN_UP")}
         for path in (f"{real}/a/b", f"{real}/a", real, f"{real}/s", os.path.dirname(real)):
@@ -564,7 +564,7 @@ open({str(Path(tmp) / 'other')!r}, 'w').close()  # рядом писать мо�
 sys.exit(host_run.call('t', [], {sock!r}))
 """
             with patch.multiple(host_run, CONF_DIR=str(conf), STATE=str(state), PIDFILE=str(state / "host-run.pid")):
-                command = claude_proxy.session_command(17890, [sys.executable, "-c", client], claude=True)
+                command = proxy.session_command(17890, [sys.executable, "-c", client], claude=True)
             subprocess.run(command, check=True, timeout=10)
 
 

@@ -35,7 +35,7 @@ class CodexHarness(unittest.TestCase):
         sid = "11111111-2222-4333-8444-555555555555"
         for network in ("-d", "-x"):
             with self.subTest(network=network), \
-                    patch("claude_proxy.configured", return_value=True), \
+                    patch("proxy.configured", return_value=True), \
                     patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
                         [], 0, stdout="Usage: codex [OPTIONS]\n  --no-daemon\n")), \
                     patch.object(os, "execvpe") as execute:
@@ -89,19 +89,19 @@ class CodexHarness(unittest.TestCase):
 
     def test_proxy_launch_keeps_the_proxy_wrapper(self):
         args, passthrough = codex_harness.launch_args(["-n", "-x", "--", "--version"])
-        with patch("claude_proxy.configured", return_value=True), \
+        with patch("proxy.configured", return_value=True), \
                 patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0, stdout="Usage: codex")), \
                 patch.object(os, "execvpe") as execute, patch.object(os, "execvp"):
             codex_harness.launch("codex", args, passthrough)
         command = execute.call_args.args[1]
         self.assertEqual(command[0], sys.executable)
-        self.assertEqual(Path(command[1]).name, "claude_proxy.py")
+        self.assertEqual(Path(command[1]).name, "proxy.py")
         self.assertEqual(command[2:], ["run", "--", "codex", "--version"])
         self.assertEqual(execute.call_args.args[2], dict(os.environ))
 
     def test_proxy_probe_failure_stops_launch(self):
         args, passthrough = codex_harness.launch_args(["-n", "-x", "--", "--version"])
-        with patch("claude_proxy.configured", return_value=True), \
+        with patch("proxy.configured", return_value=True), \
                 patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired("codex", 5)) as probe, \
                 patch.object(os, "execvpe") as execute:
             with self.assertRaises(ValueError):
