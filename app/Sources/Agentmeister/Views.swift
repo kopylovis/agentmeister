@@ -694,6 +694,10 @@ struct ProjectRow: View {
                 }
             }
             Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
+            Button(l.openTerminalHere) {
+                workspace.openTerminal(name: project.name, path: project.path,
+                                       direct: backend.state.proxy?.defaultRoute == "direct", state: backend.state)
+            }
             Divider()
             Button(l.t("Показать в Finder", "Show in Finder")) {
                 NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: project.path)])
@@ -994,7 +998,7 @@ struct TabChip: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .layoutPriority(-1)
-                        if tab.spec.proxied || tab.spec.utility == nil {
+                        if tab.spec.proxied || tab.spec.utility == nil || tab.spec.terminal {
                             Text("·").foregroundStyle(Ink.faint)
                             Text(tab.spec.proxied ? l.proxy : l.direct)
                                 .foregroundStyle(tab.spec.proxied ? Ink.teal : Ink.direct)
@@ -1225,6 +1229,9 @@ struct TabMenu: View {
                 Text(l.forget)
                 Text(l.t("удалить без следа", "delete without a trace"))
             }
+        }
+        Button(l.openTerminalHere) {
+            workspace.openTerminal(name: tab.spec.projectName, path: tab.spec.projectPath, direct: !tab.spec.proxied, state: backend.state)
         }
         Divider()
         Button(l.closeTab) { workspace.close(tab.id) }
@@ -1916,6 +1923,8 @@ struct NewSessionSheet: View {
 
     @State private var projectPath = ""
     @State private var agent: LaunchSpec.Agent = .claude
+    /// Вместо агента вкладка терминала: проект и маршрут те же, остальное не нужно.
+    @State private var terminal = false
     @State private var direct = false
     @State private var mode: StartMode = .new
     @State private var fork = false
@@ -1954,7 +1963,10 @@ struct NewSessionSheet: View {
                 }
                 GridRow {
                     Text(l.agent).foregroundStyle(Ink.muted)
-                    SegmentedCapsule(selection: $agent, options: [(.claude, "Claude Code", nil), (.codex, "Codex", nil)])
+                    SegmentedCapsule(selection: Binding(get: { terminal ? "terminal" : agent.rawValue }, set: { value in
+                        terminal = value == "terminal"
+                        if let picked = LaunchSpec.Agent(rawValue: value) { agent = picked }
+                    }), options: [("claude", "Claude Code", nil), ("codex", "Codex", nil), ("terminal", l.t("Терминал", "Terminal"), nil)])
                 }
                 GridRow {
                     Text(l.route).foregroundStyle(Ink.muted)
@@ -1963,57 +1975,61 @@ struct NewSessionSheet: View {
                         (true, l.directly, Ink.direct),
                     ])
                 }
-                GridRow(alignment: .top) {
-                    Text(l.start).foregroundStyle(Ink.muted).padding(.top, 1)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Picker(l.start, selection: $mode) {
-                            Text(l.startNew).tag(StartMode.new)
-                            Text(l.t("Продолжить последнюю", "Continue the last one")
-                                 + (last.map { ", \"" + ($0.title.isEmpty ? l.untitled : $0.title) + "\"" } ?? ""))
-                                .tag(StartMode.resume)
-                                .disabled(last == nil)
-                            Text(l.t("Параллельно, своя ветка и worktree", "In parallel, own branch and worktree"))
-                                .tag(StartMode.parallel)
-                                .disabled(agent != .claude)
+                if !terminal {
+                    GridRow(alignment: .top) {
+                        Text(l.start).foregroundStyle(Ink.muted).padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Picker(l.start, selection: $mode) {
+                                Text(l.startNew).tag(StartMode.new)
+                                Text(l.t("Продолжить последнюю", "Continue the last one")
+                                     + (last.map { ", \"" + ($0.title.isEmpty ? l.untitled : $0.title) + "\"" } ?? ""))
+                                    .tag(StartMode.resume)
+                                    .disabled(last == nil)
+                                Text(l.t("Параллельно, своя ветка и worktree", "In parallel, own branch and worktree"))
+                                    .tag(StartMode.parallel)
+                                    .disabled(agent != .claude)
+                            }
+                            .pickerStyle(.radioGroup)
+                            .labelsHidden()
+                            Toggle(l.t("С копией этого разговора, второй Claude знает все, что уже обсудили",
+                                       "With a copy of this conversation, so the second Claude knows everything said so far"),
+                                   isOn: $fork)
+                                .font(.system(size: 12))
+                                .foregroundStyle(Ink.muted)
+                                .padding(.leading, 26)
+                                .disabled(mode != .parallel || forkSource == nil)
+                                .help(forkSource == nil ? l.t("Нужна открытая вкладка Claude в этом проекте", "Needs an open Claude tab in this project") : "")
                         }
-                        .pickerStyle(.radioGroup)
-                        .labelsHidden()
-                        Toggle(l.t("С копией этого разговора, второй Claude знает все, что уже обсудили",
-                                   "With a copy of this conversation, so the second Claude knows everything said so far"),
-                               isOn: $fork)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Ink.muted)
-                            .padding(.leading, 26)
-                            .disabled(mode != .parallel || forkSource == nil)
-                            .help(forkSource == nil ? l.t("Нужна открытая вкладка Claude в этом проекте", "Needs an open Claude tab in this project") : "")
                     }
                 }
             }
-            VStack(alignment: .leading, spacing: 6) {
-                Text(mode == .parallel ? l.t("Задача", "Task") : l.firstPrompt).foregroundStyle(Ink.muted)
-                TextEditor(text: $prompt)
-                    .font(.system(size: 12, design: .monospaced))
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .frame(height: 84)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Ink.card))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Ink.buttonBorder))
-                    .overlay(alignment: .topLeading) {
-                        if prompt.isEmpty {
-                            Text(l.t("Что сделать в этой сессии", "What this session should do"))
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundStyle(Ink.faint)
-                                .padding(.horizontal, 15)
-                                .padding(.vertical, 8)
-                                .allowsHitTesting(false)
+            if !terminal {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(mode == .parallel ? l.t("Задача", "Task") : l.firstPrompt).foregroundStyle(Ink.muted)
+                    TextEditor(text: $prompt)
+                        .font(.system(size: 12, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .frame(height: 84)
+                        .background(RoundedRectangle(cornerRadius: 16).fill(Ink.card))
+                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Ink.buttonBorder))
+                        .overlay(alignment: .topLeading) {
+                            if prompt.isEmpty {
+                                Text(l.t("Что сделать в этой сессии", "What this session should do"))
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(Ink.faint)
+                                    .padding(.horizontal, 15)
+                                    .padding(.vertical, 8)
+                                    .allowsHitTesting(false)
+                            }
                         }
-                    }
-                    .disabled(mode == .resume)
-            }
-            if agent == .claude {
-                Toggle(l.t("Remote Control, чтобы продолжить с телефона", "Remote Control, to continue from your phone"), isOn: $remoteControl)
-                    .foregroundStyle(Ink.text2)
+                        .disabled(mode == .resume)
+                }
+                if agent == .claude {
+                    Toggle(l.t("Remote Control, чтобы продолжить с телефона", "Remote Control, to continue from your phone"), isOn: $remoteControl)
+                        .foregroundStyle(Ink.text2)
+                }
             }
             if direct {
                 Text(l.directWarning)
@@ -2036,8 +2052,8 @@ struct NewSessionSheet: View {
                     open(project: project, last: last)
                 }
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(project == nil || busy || (mode == .resume && last == nil)
-                          || (mode == .parallel && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                .disabled(project == nil || busy || (!terminal && ((mode == .resume && last == nil)
+                          || (mode == .parallel && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))))
             }
         }
         .padding(24)
@@ -2066,6 +2082,11 @@ struct NewSessionSheet: View {
 
     private func open(project: AppState.Project?, last: AppState.Session?) {
         guard let project else { return }
+        if terminal {
+            workspace.openTerminal(name: project.name, path: project.path, direct: direct, state: backend.state)
+            dismiss()
+            return
+        }
         var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: agent, direct: direct)
         spec.remoteControl = remoteControl && agent == .claude
         switch mode {

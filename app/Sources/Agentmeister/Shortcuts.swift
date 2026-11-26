@@ -157,7 +157,7 @@ struct KeyCombo: Codable, Hashable {
 
 /// Действия с горячей клавишей, которую можно поменять в Настройки → Горячие клавиши.
 enum ShortcutAction: String, CaseIterable, Identifiable {
-    case newSession, newTab, closeTab, nextTab, previousTab, waitingTab, restart, parallel
+    case newSession, newTab, newTerminal, closeTab, nextTab, previousTab, waitingTab, restart, parallel
     case palette, library, usage, ask, shot, inspector, sidebar, showApp
 
     var id: String { rawValue }
@@ -166,6 +166,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         switch self {
         case .newSession: return KeyCombo("n", .command, code: kVK_ANSI_N)
         case .newTab: return KeyCombo("t", .command, code: kVK_ANSI_T)
+        case .newTerminal: return KeyCombo("t", [.command, .control], code: kVK_ANSI_T)
         case .closeTab: return KeyCombo("w", .command, code: kVK_ANSI_W)
         case .nextTab: return KeyCombo("tab", .control, code: kVK_Tab)
         case .previousTab: return KeyCombo("tab", [.control, .shift], code: kVK_Tab)
@@ -188,6 +189,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         switch self {
         case .newSession: return l.newSession
         case .newTab: return l.t("Новая вкладка в этом проекте", "New tab in this project")
+        case .newTerminal: return l.newTerminal
         case .closeTab: return l.closeTab
         case .nextTab: return l.t("Следующая вкладка", "Next tab")
         case .previousTab: return l.t("Предыдущая вкладка", "Previous tab")

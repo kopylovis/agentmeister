@@ -30,6 +30,9 @@ struct LaunchSpec: Hashable {
     /// Вкладка агента, чьей подзадачей открыта эта: параллельная задача в своем worktree. Подзадачи показываются
     /// рядом под вкладкой агента, а не в общей полосе.
     var parent: UUID?
+    /// Вкладка терминала без агента: shell входа в папке проекта. Через proxy это agentmeister proxy run --claude,
+    /// та же песочница, что у сессий Claude Code, напрямую сам shell. Собирает ее LaunchSpec.terminal.
+    var terminal = false
 
     /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
     var proxied: Bool {
@@ -93,6 +96,28 @@ extension LaunchSpec {
 
     /// Новая сессия в один клик: агент и маршрут по умолчанию из настроек.
     @MainActor
+    /// Вкладка терминала в папке path. Без настроенного proxy только напрямую.
+    static func terminal(name: String, path: String, direct: Bool) -> LaunchSpec {
+        var spec = LaunchSpec(projectName: name, projectPath: path, direct: direct)
+        spec.terminal = true
+        if direct {
+            spec.utility = [loginShell, "-l"]
+            spec.bare = true
+        } else {
+            spec.utility = ["proxy", "run", "--claude", "--", loginShell, "-l"]
+        }
+        return spec
+    }
+
+    /// Shell входа пользователя из его записи в системе, как у Terminal. Приложение из Finder может не знать SHELL.
+    static var loginShell: String {
+        if let pw = getpwuid(getuid()), let raw = pw.pointee.pw_shell {
+            let shell = String(cString: raw)
+            if shell.hasPrefix("/") && FileManager.default.isExecutableFile(atPath: shell) { return shell }
+        }
+        return "/bin/zsh"
+    }
+
     static func quick(_ project: AppState.Project, route: String? = nil) -> LaunchSpec {
         LaunchSpec(projectName: project.name, projectPath: project.path,
                    agent: AgentPrefs.defaultAgent == "codex" ? .codex : .claude, direct: route == "direct")
@@ -136,7 +161,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     init(spec: LaunchSpec, id: UUID? = nil) {
         self.id = id ?? UUID()
         self.spec = spec
-        self.title = spec.utility.map { (spec.bare ? "" : "agentmeister ") + $0.joined(separator: " ") } ?? spec.projectName
+        self.title = spec.terminal ? (LaunchSpec.loginShell as NSString).lastPathComponent
+            : spec.utility.map { (spec.bare ? "" : "agentmeister ") + $0.joined(separator: " ") } ?? spec.projectName
         self.sessionId = spec.resumeId
         view = AppTerminalView(frame: NSRect(x: 0, y: 0, width: 960, height: 640))
         super.init()
@@ -736,6 +762,22 @@ final class Workspace: ObservableObject {
         if select || selected == nil { selected = tab.id }
     }
 
+    /// Вкладка терминала. Маршрут через proxy, только если proxy настроен.
+    func openTerminal(name: String, path: String, direct: Bool, state: AppState) {
+        open(.terminal(name: name, path: path, direct: direct || state.proxy?.configured != true))
+    }
+
+    /// Терминал в папке текущей вкладки и с ее маршрутом. Без вкладок в домашней папке с маршрутом по умолчанию.
+    func openTerminalHere(state: AppState) {
+        if let spec = current?.spec {
+            openTerminal(name: spec.projectName, path: spec.projectPath, direct: !spec.proxied, state: state)
+        } else {
+            let home = NSHomeDirectory()
+            openTerminal(name: (home as NSString).lastPathComponent, path: home,
+                         direct: state.proxy?.defaultRoute == "direct", state: state)
+        }
+    }
+
     // MARK: Подзадачи
 
     /// Агент вкладки: та, чьей подзадачей она открыта, если она еще открыта, иначе сама вкладка.
@@ -822,10 +864,11 @@ final class Workspace: ObservableObject {
         tabs = groups.flatMap(\.tabs) + rest
     }
 
-    /// Новая вкладка в проекте текущей: новая сессия с тем же агентом и маршрутом. Без вкладок ничего не делает.
+    /// Новая вкладка в проекте текущей: новая сессия с тем же агентом и маршрутом, у терминала еще один терминал.
+    /// Без вкладок ничего не делает.
     @discardableResult
     func newTab() -> Bool {
-        guard var spec = current?.spec, spec.utility == nil else { return false }
+        guard var spec = current?.spec, spec.utility == nil || spec.terminal else { return false }
         spec.resumeId = nil
         spec.firstPrompt = ""
         open(spec)
