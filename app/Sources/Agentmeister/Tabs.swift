@@ -152,8 +152,10 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     @Published var shells: [BackgroundShell] = []
     /// Закрепленный запрос над терминалом (Prompts.swift) и то, из чего он посчитан.
     @Published var sticky: StickyPrompt?
+    /// Все запросы вкладки для списка и меток на полосе прокрутки: из переписки и из вывода.
+    @Published var promptEntries: [PromptEntry] = []
     let promptIndex = PromptIndex()
-    var promptScan: PromptScan?
+    @Published var promptScan: PromptScan?
     @Published var title: String
     @Published var running = true
     @Published var exitCode: Int32?
