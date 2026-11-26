@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CryptoKit
 import Network
 import SwiftUI
 import WebKit
@@ -16,9 +17,9 @@ final class ProxyBrowser {
     var port = 17890
     var lang = "en"
 
-    private var window: NSWindow?
-    private var model: BrowserModel?
-    private var titleWatch: AnyCancellable?
+    /// Окно на каждый порт mihomo: страница из вкладки только через home идет через порт home и в своем окне,
+    /// чтобы следующая страница каскада не переключила ее на другой выход.
+    private var windows: [Int: (window: NSWindow, model: BrowserModel, watch: AnyCancellable)] = [:]
 
     /// Перехват страниц для диалога входа: пока он ждет страницу входа, он забирает ее себе и открывает там,
     /// где выбрано (в своем окне, в Chrome или в браузере системы). true значит, что ссылка взята.
@@ -45,16 +46,25 @@ final class ProxyBrowser {
     /// Отдельное постоянное хранилище: куки входа живут между запусками и не смешиваются с другими WKWebView.
     private static let storeId = UUID(uuidString: "5E3C1B2A-7D4F-4C61-9B0E-A6E1D2F3C4B5")!
 
-    func open(_ url: URL) {
+    /// Хранилище окна подписки: у каждой свои куки, сайт не связывает выходы разных подписок.
+    private static func storeId(for subscription: String) -> UUID {
+        var bytes = Array(Insecure.MD5.hash(data: Data(("agentmeister-browser-" + subscription).utf8)))
+        bytes[6] = (bytes[6] & 0x0F) | 0x30
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        return NSUUID(uuidBytes: bytes) as UUID
+    }
+
+    /// port и via: порт и подписка вкладки, от которой пришла ссылка. Без них порт каскада.
+    func open(_ url: URL, port: Int? = nil, via: String? = nil) {
         if offer(url) { return }
-        if let model, let window {
-            model.port = port
-            model.load(url)
-            window.makeKeyAndOrderFront(nil)
+        let port = port ?? self.port
+        if let entry = windows[port] {
+            entry.model.load(url)
+            entry.window.makeKeyAndOrderFront(nil)
             NSApp.activate()
             return
         }
-        let store = WKWebsiteDataStore(forIdentifier: Self.storeId)
+        let store = WKWebsiteDataStore(forIdentifier: via.map(Self.storeId(for:)) ?? Self.storeId)
         let model = BrowserModel(store: store, port: port)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 780),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -63,14 +73,13 @@ final class ProxyBrowser {
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         window.contentView = NSHostingView(rootView: BrowserView(model: model, l: L(lang)))
-        window.setFrameAutosaveName("ProxyBrowser")
+        window.setFrameAutosaveName(via.map { "ProxyBrowser-" + $0 } ?? "ProxyBrowser")
         if window.frame.origin == .zero { window.center() }
-        self.model = model
-        self.window = window
-        let fallback = L(lang).t("Браузер через proxy", "Proxy browser")
+        let fallback = L(lang).t("Браузер через proxy", "Proxy browser") + (via.map { " " + $0 } ?? "")
         window.title = fallback
         // NSHostingView в своем NSWindow не берет navigationTitle, заголовок для меню Window ставим сами
-        titleWatch = model.$title.sink { [weak window] title in window?.title = title.isEmpty ? fallback : title }
+        let watch = model.$title.sink { [weak window] title in window?.title = title.isEmpty ? fallback : title }
+        windows[port] = (window, model, watch)
         model.load(url)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
@@ -104,7 +113,8 @@ final class ProxyBrowser {
         # Его ставит BROWSER во вкладках через proxy. Файл пишет приложение при запуске.
         for u in "$@"; do
           enc=$(/usr/bin/python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$u") || exit 1
-          /usr/bin/open "agentmeister://browse?url=$enc" || exit 1
+          # вкладка, из которой ссылка: приложение откроет ее через подписку этой вкладки
+          /usr/bin/open "agentmeister://browse?url=$enc&tab=${AGENTMEISTER_TAB:-}" || exit 1
         done
 
         """

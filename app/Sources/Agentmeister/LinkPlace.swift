@@ -38,16 +38,19 @@ enum ChromeProfile {
 @MainActor
 enum LinkOpener {
     /// Открыть ссылку из вкладки через proxy там, где выбрано. ask спрашивает в листе поверх окна вкладки.
-    static func open(_ url: URL, place: LinkPlace, window: NSWindow?) {
+    /// port и via: порт mihomo и подписка вкладки. Без них порт каскада.
+    static func open(_ url: URL, place: LinkPlace, window: NSWindow?, port: Int? = nil, via: String? = nil) {
         switch place {
         // лист открывается после клика, а не внутри mouseUp терминала: модальный лист посреди обработки события
         // ронял AppKit на пересчете constraints
-        case .ask: DispatchQueue.main.async { ask(url, window: window) }
-        case .builtin: ProxyBrowser.shared.open(url)
+        case .ask: DispatchQueue.main.async { ask(url, window: window, port: port, via: via) }
+        case .builtin: ProxyBrowser.shared.open(url, port: port, via: via)
         // свой профиль, не профиль входа: куки сайтов из ссылок живут отдельно от чистого входа в агента
         // Chrome запомнили, а потом удалили: спросить заново, Chrome в вопросе уже не будет
-        case .chrome where ChromeProfile.app == nil: DispatchQueue.main.async { ask(url, window: window) }
-        case .chrome: ChromeProfile.open(url, profile: "chrome-links-proxy", proxyPort: ProxyBrowser.shared.port)
+        case .chrome where ChromeProfile.app == nil: DispatchQueue.main.async { ask(url, window: window, port: port, via: via) }
+        // у каждой подписки свой профиль Chrome: --proxy-server Chrome берет только при первом запуске профиля
+        case .chrome: ChromeProfile.open(url, profile: "chrome-links-proxy" + (via.map { "-" + $0 } ?? ""),
+                                         proxyPort: port ?? ProxyBrowser.shared.port)
         case .system: NSWorkspace.shared.open(url)
         }
     }
@@ -55,7 +58,7 @@ enum LinkOpener {
     /// Открытые вопросы. Лист держит окно-родитель, отдельное окно держим сами, пока его не закрыли.
     private static var asking: [NSPanel] = []
 
-    private static func ask(_ url: URL, window: NSWindow?) {
+    private static func ask(_ url: URL, window: NSWindow?, port: Int?, via: String?) {
         // без fullSizeContentView: у листа safe area менялась на ходу, и AppKit падал на бесконечном пересчете
         // constraints
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 480, height: 300),
@@ -71,7 +74,7 @@ enum LinkOpener {
             close()
             guard let place else { return }
             if remember { UserDefaults.standard.set(place.rawValue, forKey: BrowserSettings.linkPlaceKey) }
-            open(url, place: place, window: nil)
+            open(url, place: place, window: nil, port: port, via: via)
         })
         // размер считается один раз: лист, который сам меняет размер окна во время layout, роняет приложение
         let size = host.fittingSize

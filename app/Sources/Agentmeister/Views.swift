@@ -179,9 +179,19 @@ struct MainView: View {
         .onOpenURL { url in
             // agentmeister://browse?url=<ссылка> от помощника BROWSER во вкладке через proxy
             if url.host() == "browse" {
-                if let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "url" })?.value,
+                let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                if let raw = items.first(where: { $0.name == "url" })?.value,
                    let target = URL(string: raw), ["http", "https"].contains(target.scheme?.lowercased() ?? "") {
-                    ProxyBrowser.shared.open(target)
+                    // через подписку вкладки, из которой ссылка. Подписки этой вкладки больше нет: не открывать
+                    let tabId = items.first(where: { $0.name == "tab" })?.value.flatMap { UUID(uuidString: $0) }
+                    let spec = workspace.tabs.first { $0.id == tabId }?.spec
+                    let via = spec?.proxied == true ? spec?.subscription : nil
+                    if let proxy = backend.state.proxy {
+                        guard let port = proxy.port(for: via) else { return }
+                        ProxyBrowser.shared.open(target, port: port, via: via)
+                    } else {
+                        ProxyBrowser.shared.open(target)
+                    }
                 }
                 return
             }
@@ -1241,7 +1251,8 @@ struct TabMenu: View {
         }
         if tab.spec.utility == nil {
             Button {
-                tab.switchRoute()
+                // напрямую только после того же вопроса, что у кнопки под вкладкой
+                if tab.spec.proxied { ui.confirmingDirect = tab } else { tab.switchRoute() }
             } label: {
                 Text(tab.spec.proxied ? l.t("Перейти напрямую", "Switch to direct") : l.t("Перейти на proxy", "Switch to proxy"))
                 Text(l.t("перезапуск той же сессии", "restarts the same session"))
@@ -1409,7 +1420,8 @@ struct InfoBar: View {
     var body: some View {
         // ветка из истории сессии осталась бы той, на которой она началась, поэтому сначала .git/HEAD
         let branch = head ?? backend.state.sessions.first { $0.id == tab.sessionId }?.branch ?? ""
-        let port = backend.state.proxy?.port ?? 17890
+        // порт этой вкладки: у вкладки только через одну подписку он свой
+        let port = backend.state.proxy?.port(for: tab.spec.subscription) ?? backend.state.proxy?.port ?? 17890
         HStack(spacing: 8) {
             if let parent = tab.spec.parent, workspace.tabs.contains(where: { $0.id == parent }) {
                 Chip(action: { workspace.selected = parent }) {

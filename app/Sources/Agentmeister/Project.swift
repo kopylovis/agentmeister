@@ -490,7 +490,8 @@ struct ProjectView: View {
                         .font(.system(size: 11)).foregroundStyle(Ink.muted)
                     HStack(spacing: 6) {
                         Button(l.t("Открыть вкладку", "Open tab")) {
-                            workspace.open(LaunchSpec(projectName: name + " · " + e.branch, projectPath: e.path))
+                            workspace.open(LaunchSpec(projectName: name + " · " + e.branch, projectPath: e.path,
+                                                      subscription: backend.state.defaultSubscription))
                             ui.projectScreen = nil
                         }
                         .buttonStyle(PillStyle(small: true))
@@ -530,7 +531,7 @@ struct ProjectView: View {
     // MARK: - Запуск
 
     private func openWithPrompt(_ prompt: String) {
-        var spec = LaunchSpec(projectName: name, projectPath: path)
+        var spec = LaunchSpec(projectName: name, projectPath: path, subscription: backend.state.defaultSubscription)
         spec.firstPrompt = prompt
         workspace.open(spec)
         ui.projectScreen = nil
