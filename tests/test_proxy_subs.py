@@ -53,7 +53,8 @@ class Config(Folder):
         self.main("KZ", "KZ")
         text = self.config()
         self.assertIn("use: [vps]", text)
-        self.assertNotIn("listeners:", text)
+        self.assertNotIn("in-main", text)
+        self.assertIn("proxy: PROBE", text)
         self.assertFalse(os.path.exists(proxy.subs_meta()))
         self.assertEqual(proxy.main_only(), "KZ")
         self.assertEqual(proxy.all_ports(), {None: 17890})
@@ -64,8 +65,8 @@ class Config(Folder):
         text = self.config()
         self.assertIn("use: [vps, home]", text)
         self.assertIn("path: ./subs/home.txt\n    filter: \"^se\"", text)
-        self.assertIn("proxy: VPS-home", text)
-        self.assertIn("proxy: VPS-main", text)
+        self.assertIn("proxy: GATE-home", text)
+        self.assertIn("proxy: GATE-main", text)
         ports = proxy.all_ports()
         self.assertEqual(ports[None], 17890)
         self.assertEqual(ports["home"], 17895)
@@ -80,7 +81,7 @@ class Config(Folder):
         self.assertEqual(proxy.cascade_subs(), ["main", "kz2"])
         self.assertEqual(proxy.sub_providers(None), ["vps", "kz2"])
         self.assertEqual(proxy.sub_providers("se"), ["se"])
-        self.assertIn("proxy: VPS-se", self.config())
+        self.assertIn("proxy: GATE-se", self.config())
 
     def test_resolve_sub(self):
         self.main()
@@ -101,7 +102,7 @@ class Config(Folder):
         self.extra("home", 17895)
         self.main("KZ")
         self.assertIn("home", proxy.extra_subs())
-        self.assertIn("proxy: VPS-home", self.config())
+        self.assertIn("proxy: GATE-home", self.config())
 
     def test_bad_names_in_subs_json_are_ignored(self):
         self.main()
@@ -159,6 +160,81 @@ class Country(Folder):
             with self.assertRaises(proxy.ProxyError):
                 proxy.start(sub="se")
             self.assertIn("SE", proxy.start(strict=False, sub="se"))
+
+
+class FakeMihomo:
+    def __init__(self, groups, providers):
+        self.groups, self.providers, self.puts = dict(groups), providers, []
+
+    def __call__(self, path, method="GET", body=None, timeout=2):
+        kind, _, name = path.strip("/").partition("/")
+        if path.startswith("/providers/proxies/"):
+            return {"proxies": self.providers.get(path.rsplit("/", 1)[1], [])}
+        if method == "PUT":
+            self.groups[name] = body["name"]
+            self.puts.append((name, body["name"]))
+            return {}
+        return {"now": self.groups[name]} if name in self.groups else {}
+
+
+class CountryGuard(Folder):
+    def guard(self, groups, servers, exits):
+        os.makedirs(proxy.STATE, exist_ok=True)
+        self.api = FakeMihomo(groups, {"vps": [{"name": "kz-1", "alive": True}],
+                                       "home": [{"name": n, "alive": alive} for n, alive in servers]})
+        self.probed = []
+
+        def probe(node):
+            self.probed.append(node)
+            return exits.get(node)
+
+        return proxy.Guard(api=self.api, probe=probe, log=lambda text: None)
+
+    def setUp(self):
+        super().setUp()
+        self.main("KZ")
+        self.extra("home", 17895, "SE")
+
+    def test_new_server_in_the_right_country_opens(self):
+        g = self.guard({"VPS-home": "se-1", "GATE-home": "VPS-home"}, [("se-1", True)], {"se-1": "SE"})
+        g.step("home")
+        self.assertEqual(self.api.groups["GATE-home"], "VPS-home")
+        self.assertEqual(self.api.puts, [("GATE-home", "REJECT"), ("GATE-home", "VPS-home")])
+        g.step("home")
+        self.assertEqual(self.probed, ["se-1"])  # тот же сервер второй раз не проверяется
+
+    def test_wrong_country_pins_a_good_server(self):
+        g = self.guard({"VPS-home": "us-1", "GATE-home": "VPS-home"}, [("us-1", True), ("se-2", True)],
+                       {"us-1": "US", "se-2": "SE"})
+        g.step("home")
+        self.assertEqual(self.api.groups["GATE-home"], "se-2")
+        self.assertIsNone(proxy.country_problem("home"))
+
+    def test_no_server_in_the_right_country_closes_the_subscription(self):
+        g = self.guard({"VPS-home": "us-1", "GATE-home": "VPS-home"}, [("us-1", True), ("de-1", True)],
+                       {"us-1": "US", "de-1": "DE"})
+        g.step("home")
+        self.assertEqual(self.api.groups["GATE-home"], "REJECT")
+        self.assertIn("закрыл", proxy.country_problem("home"))
+        # fallback вернулся на сервер нужной страны: ворота открываются
+        self.api.providers["home"].append({"name": "se-1", "alive": True})
+        self.api.groups["VPS-home"] = "se-1"
+        g.probe_fn = lambda node: "SE"
+        g.step("home")
+        self.assertEqual(self.api.groups["GATE-home"], "VPS-home")
+        self.assertIsNone(proxy.country_problem("home"))
+
+    def test_gate_stays_closed_while_unchecked(self):
+        """Пока сервер проверяется, ворота закрыты: первый PUT всегда REJECT."""
+        g = self.guard({"VPS-home": "us-1", "GATE-home": "VPS-home"}, [("us-1", True)], {"us-1": "US"})
+        g.step("home")
+        self.assertEqual(self.api.puts[0], ("GATE-home", "REJECT"))
+        self.assertNotIn(("GATE-home", "VPS-home"), self.api.puts)
+
+    def test_cascade_uses_the_main_country(self):
+        g = self.guard({"VPS": "kz-1", "GATE": "VPS"}, [], {"kz-1": "RU"})
+        g.step(None)
+        self.assertEqual(self.api.groups["GATE"], "REJECT")
 
 
 class Owner(Folder):
@@ -266,7 +342,7 @@ class Sessions(Folder):
             self.assertEqual(proxy.remove_sub("home"), 0)
         self.assertEqual(proxy.extra_subs(), {})
         self.assertFalse(os.path.exists(proxy.subs_meta()))
-        self.assertNotIn("listeners:", self.config())
+        self.assertNotIn("in-main", self.config())
 
 
 class AppState(Folder):

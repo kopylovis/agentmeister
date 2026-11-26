@@ -236,6 +236,14 @@ struct AppState: Decodable {
         /// Подписка, на которой каскад (просто -x) сейчас, по ответу mihomo. Nil, если подписка одна, mihomo не
         /// запущен или живых серверов нет.
         let current: String?
+        /// Сторож закрыл очередь подписок: ни один живой сервер не выходит в стране основной.
+        let blocked: Bool?
+
+        /// Закрыта ли вкладка с этой подпиской (nil у каскада).
+        func isBlocked(_ subscription: String?) -> Bool {
+            guard let subscription else { return blocked == true }
+            return subscriptions?.first { $0.name == subscription }?.blocked == true
+        }
 
         struct Subscription: Decodable, Hashable {
             let name: String
@@ -246,6 +254,8 @@ struct AppState: Decodable {
             let exit: String?
             /// Идет ли подписка в каскад просто -x. Не идет, если ее страна не совпала со страной основной.
             let inCascade: Bool?
+            /// Сторож закрыл порт подписки: ни один живой сервер не выходит в ее стране.
+            let blocked: Bool?
         }
 
         /// Порт mihomo для вкладки: каскад или порт ее подписки. Nil, если подписки больше нет: открывать
