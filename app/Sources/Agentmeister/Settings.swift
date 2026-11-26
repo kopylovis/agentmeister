@@ -674,6 +674,7 @@ struct ProxyHostRunPane: View {
                 if p.configured {
                     // действия плитками с пояснением: по одному названию кнопки было непонятно, что она сделает
                     ProxyActions(reload: reload)
+                    ProxySubscriptions(subscriptions: p.subscriptions ?? [], mainCountry: p.country)
                 }
                 HStack(spacing: 8) {
                     if p.configured {
@@ -960,5 +961,161 @@ struct ProxyActions: View {
         spec.utility = args
         workspace.open(spec)
         openWindow(id: "main")
+    }
+}
+
+
+/// Подписки proxy: основная из proxy setup и добавленные через proxy add. Добавление и удаление идут во
+/// вкладке-утилите, как proxy test: mihomo перезапускается и проверяет выход, это видно в выводе.
+struct ProxySubscriptions: View {
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var workspace: Workspace
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.utilityRunner) private var runner
+    let subscriptions: [AppState.Proxy.Subscription]
+    let mainCountry: String?
+    @State private var adding = false
+    @State private var removing: String?
+
+    var l: L { L(backend.state.lang) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(l.t("Подписки", "Subscriptions")).font(.system(size: 13, weight: .semibold))
+                Spacer()
+                Button { adding = true } label: { Label(l.t("Добавить подписку", "Add subscription"), systemImage: "plus") }
+                    .buttonStyle(PillStyle(small: true))
+            }
+            Note(text: subscriptions.count > 1
+                 ? l.t("Через proxy по очереди сессия идет по подпискам сверху вниз. Следующая берется, когда у прошлой не отвечает ни один сервер. Подписка с другой страной в очередь не попадает, через нее можно идти только выбрав ее отдельно.",
+                       "Via proxy in order, a session goes through the subscriptions from top to bottom. The next one is used when no server of the previous one answers. A subscription with another country isn't in that order and is used only when chosen on its own.")
+                 : l.t("Сейчас одна подписка. Вторая пригодится как запасная, когда у основной не отвечает ни один сервер, или для сессий, которые должны идти только через нее.",
+                       "There's one subscription now. A second one works as a fallback when no server of the main one answers, or for sessions that must go only through it."))
+            ForEach(subscriptions, id: \.name) { s in
+                HStack(spacing: 10) {
+                    Text(s.name).font(.system(size: 13, weight: .medium, design: .monospaced))
+                    Text([s.exit ?? s.country, s.port.map { "127.0.0.1:\($0)" }].compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 12, design: .monospaced)).foregroundStyle(Ink.muted)
+                    Text(s.inCascade != false ? l.t("в очереди", "in order") : l.t("только отдельно", "on its own only"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(s.inCascade != false ? Ink.teal : Ink.direct)
+                        .padding(.horizontal, 8)
+                        .frame(height: 20)
+                        .background(Capsule().fill(s.inCascade != false ? Ink.tealChip : Ink.amberDot.opacity(0.14)))
+                    Spacer()
+                    if s.name == "main" {
+                        Text(l.t("основная", "main")).font(.system(size: 11)).foregroundStyle(Ink.faint)
+                    } else {
+                        Button(l.t("Удалить", "Remove"), role: .destructive) { removing = s.name }
+                            .buttonStyle(.textLink(Ink.red))
+                            .foregroundStyle(Ink.red)
+                            .font(.system(size: 12))
+                    }
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 34)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
+            }
+        }
+        .sheet(isPresented: $adding) {
+            AddSubscriptionSheet(mainCountry: mainCountry, taken: subscriptions.map(\.name)) { args in utility(args) }
+        }
+        .confirmationDialog(l.t("Удалить подписку \(removing ?? "")?", "Remove the \(removing ?? "") subscription?"),
+                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            presenting: removing) { name in
+            Button(l.t("Удалить", "Remove"), role: .destructive) {
+                utility(["proxy", "remove", name])
+                removing = nil
+            }
+        } message: { _ in
+            Text(l.t("Ссылка и скачанная подписка удалятся, mihomo перезапустится. Пока через нее идут сессии, удалить ее нельзя.",
+                     "The link and the downloaded subscription go away and mihomo restarts. It can't be removed while sessions go through it."))
+        }
+    }
+
+    private func utility(_ args: [String]) {
+        if let runner {
+            runner(args)
+            return
+        }
+        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
+        spec.utility = args
+        workspace.open(spec)
+        openWindow(id: "main")
+    }
+}
+
+/// Новая подписка: имя, ссылка и страна выхода. Запускает agentmeister proxy add во вкладке-утилите.
+struct AddSubscriptionSheet: View {
+    @EnvironmentObject var backend: Backend
+    @Environment(\.dismiss) private var dismiss
+    let mainCountry: String?
+    let taken: [String]
+    let run: ([String]) -> Void
+    @State private var name = ""
+    @State private var link = ""
+    @State private var country = ""
+
+    var l: L { L(backend.state.lang) }
+
+    private var nameError: String? {
+        if name.isEmpty { return nil }
+        if name.range(of: "^[a-z][a-z0-9-]{0,19}$", options: .regularExpression) == nil {
+            return l.t("Латинские строчные буквы, цифры и дефис, до 20 знаков, с буквы", "Lowercase Latin letters, digits and dashes, up to 20, starting with a letter")
+        }
+        if ["main", "vps", "direct", "reject", "all"].contains(name) { return l.t("Это имя занято", "This name is reserved") }
+        if taken.contains(name) { return l.t("Такая подписка уже есть, ее ссылка заменится", "This subscription exists, its link will be replaced") }
+        return nil
+    }
+
+    private var ready: Bool {
+        let nameOK = name.range(of: "^[a-z][a-z0-9-]{0,19}$", options: .regularExpression) != nil
+            && !["main", "vps", "direct", "reject", "all"].contains(name)
+        let countryOK = country.isEmpty || country.range(of: "^[A-Za-z]{2}$", options: .regularExpression) != nil
+        return nameOK && countryOK && link.hasPrefix("http")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(l.t("Новая подписка", "New subscription")).font(.system(size: 20, weight: .semibold))
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                GridRow {
+                    Text(l.t("Имя", "Name")).foregroundStyle(Ink.muted)
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("home", text: $name).textFieldStyle(.roundedBorder)
+                        if let nameError { Text(nameError).font(.system(size: 11)).foregroundStyle(Ink.direct) }
+                    }
+                }
+                GridRow {
+                    Text(l.t("Ссылка", "Link")).foregroundStyle(Ink.muted)
+                    TextField("https://example.com/sub/…", text: $link).textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text(l.t("Страна", "Country")).foregroundStyle(Ink.muted)
+                    TextField(mainCountry ?? "KZ", text: $country).textFieldStyle(.roundedBorder).frame(width: 80)
+                }
+            }
+            Note(text: mainCountry.map { c in
+                l.t("В очередь просто -x подписка попадет, только если ее страна \(c), как у основной. С другой страной через нее можно идти только выбрав ее отдельно.",
+                    "Plain -x uses this subscription in order only if its country is \(c), like the main one. With another country it's used only when chosen on its own.")
+            } ?? l.t("Если страна задана, а выход через подписку окажется в другой стране, подписка не добавится.",
+                     "If a country is set and the subscription exits elsewhere, it won't be added."))
+            Note(text: l.t("Ссылка хранится в ~/.config/mnrh/proxy/subs/, читать ее можешь только ты.",
+                           "The link is kept in ~/.config/mnrh/proxy/subs/, readable only by you."))
+            HStack {
+                Spacer()
+                Button(l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(l.t("Добавить", "Add")) {
+                    let code = country.trimmingCharacters(in: .whitespaces).uppercased()
+                    run(["proxy", "add", name, link.trimmingCharacters(in: .whitespaces)] + (code.isEmpty ? [] : ["--country", code]))
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!ready)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
     }
 }

@@ -461,6 +461,16 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         view.send(txt: text)
     }
 
+    /// Та же сессия через proxy, но через другую подписку: nil значит по очереди по всем.
+    func switchSubscription(_ name: String?) {
+        afterStop {
+            self.spec.direct = false
+            self.spec.subscription = name
+            Workspace.main?.save()
+            self.relaunch()
+        }
+    }
+
     /// Та же сессия, другой маршрут: через proxy или напрямую.
     func switchRoute() {
         afterStop {
