@@ -625,10 +625,15 @@ struct MessageView: View {
             Text(who)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(color)
-            Text(message.text)
-                .font(message.role == "tool" ? .system(.callout, design: .monospaced) : .callout)
-                .foregroundStyle(message.role == "tool" ? .secondary : .primary)
-                .textSelection(.enabled)
+            if message.role == "tool" || message.role == "error" {
+                Text(message.text)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(message.role == "tool" ? .secondary : .primary)
+                    .textSelection(.enabled)
+            } else {
+                // ответы агентов и запросы приходят с разметкой Markdown
+                MarkdownText(text: message.text, size: 12)
+            }
         }
     }
 }
