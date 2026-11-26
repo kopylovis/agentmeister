@@ -1,7 +1,11 @@
 """Данные демо для скриншотов README: выдуманные проекты, сессии, подписки proxy и текст во вкладках.
 Пишет docs/screenshots/demo/*.json и *.txt. Приложение читает их в отладочной сборке с --demo (Demo.swift)."""
+import importlib.machinery
+import importlib.util
 import json
 import os
+import shutil
+import tempfile
 import time
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demo")
@@ -29,7 +33,68 @@ def box(hint):
             f"{GY}╰{'─' * (W - 2)}╯{R}\n")
 
 
+def load_promptsill():
+    """Настоящий promptsill: строка состояния на скриншотах та же, что в Claude Code. Путь можно задать в
+    PROMPTSILL_SRC, иначе берется соседний репозиторий ~/Developer/promptsill или promptsill из PATH."""
+    path = next(p for p in (os.environ.get("PROMPTSILL_SRC"), os.path.expanduser("~/Developer/promptsill/promptsill"),
+                            shutil.which("promptsill")) if p and os.path.isfile(p))
+    loader = importlib.machinery.SourceFileLoader("promptsill", path)
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("promptsill", loader))
+    loader.exec_module(module)
+    return module
+
+
+PS = load_promptsill()
+PS_NOW = 1_791_381_600
+
+
+def sill(project, branch, model, ctx, five_hour, week, proxy, detail="vless 203.0.113.24", changed=0, ahead=0,
+         tokens=None):
+    """Две строки promptsill для вкладки, как это делает docs/preview.py в репозитории promptsill: данные Claude Code
+    выдуманы, сеть, git, память и бейджи подменены, чтобы снимок не зависел от этого мака."""
+    root = f"{D}/{project}"
+    demo = {"project": {"root": root, "kinds": [], "ports": [], "node_dir": None,
+                        "repo": f"https://github.com/example/{project}"},
+            "git": {"branch": branch, "ahead": ahead, "behind": 0, "upstream": True, "changed": changed},
+            "listeners": [], "node": None, "disk": 210 * PS.GB, "power": {}, "size": 0, "proxy": True,
+            "machine": {"total": 32 * PS.GB, "used": 17.8 * PS.GB, "swap": 0, "gradle": 0, "kotlin": 0,
+                        "daemon_mem": 0, "sims": 0, "emulator": False},
+            "sessions": [{"sessionId": "demo", "status": "busy"}]}
+    data = {"session_id": "demo", "model": {"display_name": model}, "effort": {"level": "high"},
+            "workspace": {"current_dir": root},
+            "context_window": {"used_percentage": ctx, "total_input_tokens": tokens or ctx * 2000,
+                               "context_window_size": 200000},
+            "rate_limits": {"five_hour": {"used_percentage": five_hour, "resets_at": PS_NOW + 3 * 3600 + 1200},
+                            "seven_day": {"used_percentage": week, "resets_at": PS_NOW + 4 * 86400}},
+            "prompt_cache": {"caching_observed": True, "warm": True, "ttl": "5m", "expires_at": PS_NOW + 212,
+                             "requests": 14}}
+    PS.OPTS.update({"lang": "en", "ascii": False, "color": True, "links": False})
+    PS.cached = lambda name, ttl, fn, background=False: demo[name.split("-")[0]]
+    PS.git_op = lambda git_dir: None
+    PS.badges = lambda d, cwd, now=None: []
+    PS.transcript_activity = lambda path: {}
+    PS.peek = lambda name, ttl: None
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+        json.dump({"label": proxy, "detail": detail, "closed": False}, f)
+    keep = {k: os.environ.pop(k, None) for k in ("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy",
+                                                 "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL",
+                                                 "PROMPTSILL_PROXY_URL", "PROMPTSILL_PROXY_FILE")}
+    os.environ.update(HTTPS_PROXY="http://127.0.0.1:17892", PROMPTSILL_PROXY_FILE=f.name)
+    real = PS.time.time
+    PS.time.time = lambda: PS_NOW
+    try:
+        lines = [PS.fit(PS.claude_line(data, PS_NOW), W), PS.fit(PS.work_line(data), W)]
+    finally:
+        PS.time.time = real
+        os.remove(f.name)
+        for k in ("HTTPS_PROXY", "PROMPTSILL_PROXY_FILE"):
+            os.environ.pop(k, None)
+        os.environ.update({k: v for k, v in keep.items() if v is not None})
+    return "".join(line + "\n" for line in lines if line)
+
+
 def status(*parts, proxy):
+    """Нижняя строка Codex: его собственный footer, promptsill в Codex не рисует."""
     return "  " + f" {GY}·{R} ".join([f"{CY}{parts[0]}{R}"] + [f"{GY}{p}{R}" for p in parts[1:]]) + f" {GY}·{R} {GR}{proxy}{R}\n"
 
 
@@ -53,7 +118,7 @@ SCREENS = {
           f"  five tries in total. A 4xx answer fails at once, so a bad signature doesn't\n"
           f"  hammer the provider. All 17 webhook tests pass.\n\n"
         + box('Try "open a PR for this"')
-        + status("ledger-api", "webhook-retries", "Opus 5.5", "ctx 31%", "5h 18%", proxy="proxy main KZ"),
+        + sill("ledger-api", "webhook-retries", "Opus 5.5", 31, 18, 42, "main KZ", changed=3),
     "claude2.txt":
         title("Billing dark mode") + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/atlas-web{R}\n\n"
         f"{GY}>{R} {WH}The billing page ignores dark mode, fix it without touching brand colors{R}\n\n"
@@ -63,7 +128,7 @@ SCREENS = {
         + f"{DOT} The invoice table hard-coded #fff and #111. It now uses the surface and text\n"
           f"  tokens and follows the system theme. Brand colors are untouched.\n\n"
         + box("")
-        + status("atlas-web", "billing-dark", "Opus 5.5", "ctx 12%", proxy="proxy backup KZ"),
+        + sill("atlas-web", "billing-dark", "Opus 5.5", 12, 18, 42, "backup KZ", detail="hysteria2 198.51.100.7", ahead=1),
     "codex.txt":
         title("Launch list snapshots") + f"{B}>_ OpenAI Codex{R} {GY}(v0.98.0) · gpt-5.5 · ~/Developer/orbit-ios{R}\n\n"
         f"{CY}›{R} Add snapshot tests for the launch list in light and dark mode\n\n"
@@ -159,7 +224,8 @@ def main():
             json.dump(data, f, indent=1, ensure_ascii=False)
     for name, text in SCREENS.items():
         with open(os.path.join(OUT, name), "w") as f:
-            f.write(text)
+            # у агента курсор стоит в поле ввода, а не под строкой состояния: прячем курсор терминала
+            f.write(text if name == "terminal.txt" else text + E + "?25l")
 
 
 if __name__ == "__main__":

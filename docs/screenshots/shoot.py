@@ -13,7 +13,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 APP = os.path.join(ROOT, "app", ".build", "out", "Products", "Debug", "Agentmeister")
 # сцена: (что снимать, через сколько секунд)
-SCENES = {"main": ("main", 6), "new-session": ("sheet", 7), "project": ("main", 7), "settings": ("settings", 8)}
+SCENES = {"main": ("main", 7), "new-session": ("sheet", 8), "project": ("main", 8), "settings": ("settings", 9)}
 LIST_JS = r'''
 ObjC.import('CoreGraphics');
 function run(argv) {
@@ -61,8 +61,18 @@ def shoot(scene):
         if not target:
             sys.exit(f"{scene}: окно не нашлось среди {ws}")
         out = os.path.join(HERE, f"{scene}.png")
-        subprocess.run(["screencapture", "-x", "-l", str(target["id"]), out], check=True)
-        subprocess.run(["sips", "-Z", "2200", out], capture_output=True)
+        lights = ["osascript", "-l", "JavaScript", os.path.join(HERE, "lights.js"), out]
+        for attempt in range(4):
+            subprocess.run(["screencapture", "-x", "-l", str(target["id"]), out], check=True)
+            subprocess.run(["sips", "-Z", "2200", out], capture_output=True)
+            # три серые кнопки: окно снялось неактивным, macOS не всегда отдает фокус, пока человек работает
+            # в другом приложении. Пробуем еще раз
+            if subprocess.run(lights + ["check"], capture_output=True, text=True).stdout.strip() != "3":
+                break
+            subprocess.run(["osascript", "-l", "JavaScript", "-e", ACTIVATE_JS, str(proc.pid)], capture_output=True)
+            time.sleep(2)
+        # что осталось серым (кнопка закрытия под листом, неактивное окно), перекрашивается по образцу lights.png
+        print(scene, subprocess.run(lights + ["fix"], capture_output=True, text=True).stdout.strip())
         print(out)
     finally:
         proc.send_signal(signal.SIGTERM)

@@ -6,7 +6,7 @@
  "projectsDirs": [
   "/Users/demo/Developer"
  ],
- "generatedAt": 1795707611.744759,
+ "generatedAt": 1795708325.083615,
  "errors": {},
  "projects": [
   {
@@ -32,7 +32,7 @@
    "cwd": "/Users/demo/Developer/ledger-api",
    "title": "Retry with backoff for payment webhooks",
    "branch": "webhook-retries",
-   "mtime": 1795707491.744759,
+   "mtime": 1795708205.083615,
    "size": 2400000,
    "running": true,
    "cwdExists": true,
@@ -43,7 +43,7 @@
    "cwd": "/Users/demo/Developer/ledger-api",
    "title": "Idempotency keys on POST /transfers",
    "branch": "main",
-   "mtime": 1795696811.744759,
+   "mtime": 1795697525.083615,
    "size": 5100000,
    "running": false,
    "cwdExists": true,
@@ -54,7 +54,7 @@
    "cwd": "/Users/demo/Developer/atlas-web",
    "title": "Dark mode for the billing page",
    "branch": "billing-dark",
-   "mtime": 1795707011.744759,
+   "mtime": 1795707725.083615,
    "size": 1300000,
    "running": true,
    "cwdExists": true,
@@ -65,7 +65,7 @@
    "cwd": "/Users/demo/Developer/atlas-web",
    "title": "Fix the flaky checkout e2e test",
    "branch": "main",
-   "mtime": 1795614011.744759,
+   "mtime": 1795614725.083615,
    "size": 3800000,
    "running": false,
    "cwdExists": true,
@@ -76,7 +76,7 @@
    "cwd": "/Users/demo/Developer/infra",
    "title": "Postgres 17 upgrade plan",
    "branch": "main",
-   "mtime": 1795534811.744759,
+   "mtime": 1795535525.083615,
    "size": 900000,
    "running": false,
    "cwdExists": true,
@@ -87,7 +87,7 @@
    "cwd": "/Users/demo/Developer/orbit-ios",
    "title": "Widget for upcoming launches",
    "branch": "widget",
-   "mtime": 1795275611.744759,
+   "mtime": 1795276325.083615,
    "size": 7200000,
    "running": false,
    "cwdExists": true,
@@ -100,12 +100,12 @@
    "cwd": "/Users/demo/Developer/orbit-ios",
    "title": "Snapshot tests for the launch list",
    "branch": "snapshots",
-   "mtime": 1795707311.744759,
+   "mtime": 1795708025.083615,
    "size": 1100000,
    "running": true,
    "cwdExists": true,
    "agent": "codex",
-   "created": 1795704611.744759
+   "created": 1795705325.083615
   }
  ],
  "live": [],
