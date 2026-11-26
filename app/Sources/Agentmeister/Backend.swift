@@ -248,6 +248,13 @@ struct AppState: Decodable {
             let inCascade: Bool?
         }
 
+        /// Порт mihomo для вкладки: каскад или порт ее подписки. Nil, если подписки больше нет: открывать
+        /// через другую нельзя.
+        func port(for subscription: String?) -> Int? {
+            guard let subscription else { return port }
+            return subscriptions?.first { $0.name == subscription }?.port
+        }
+
         /// Из чего выбирать подписку: только когда их больше одной.
         var choices: [Subscription] { (subscriptions?.count ?? 0) > 1 ? subscriptions ?? [] : [] }
     }

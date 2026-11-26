@@ -214,7 +214,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         let drop = ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ITERM_SESSION_ID", "ITERM_PROFILE",
                     "LC_TERMINAL", "LC_TERMINAL_VERSION", "COLORFGBG", "TMUX", "STY",
                     "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy", "NO_PROXY", "no_proxy",
-                    "MNRH_PROXY"]
+                    "MNRH_PROXY", "MNRH_PROXY_SUB", "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL"]
         for key in drop { env.removeValue(forKey: key) }
         for key in env.keys where key.hasPrefix("CLAUDECODE") || key.hasPrefix("CLAUDE_CODE_") || key.hasPrefix("CODEX_") {
             env.removeValue(forKey: key)
@@ -1453,13 +1453,16 @@ final class AppTerminalView: LocalProcessTerminalView {
         }
         if let spec = tab?.spec, spec.proxied,
            let url = URL(string: request.link), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            // через подписку этой вкладки; подписки больше нет, и ссылка не откроется через другую
+            let proxy = Backend.main?.state.proxy
+            guard let port = proxy?.port(for: spec.subscription) ?? (proxy == nil ? ProxyBrowser.shared.port : nil) else { return }
             if spec.signIn {
                 if BrowserSettings.forAgent {
-                    ProxyBrowser.shared.open(url)
+                    ProxyBrowser.shared.open(url, port: port, via: spec.subscription)
                     return
                 }
             } else {
-                LinkOpener.open(url, place: BrowserSettings.linkPlace, window: window)
+                LinkOpener.open(url, place: BrowserSettings.linkPlace, window: window, port: port, via: spec.subscription)
                 return
             }
         }
