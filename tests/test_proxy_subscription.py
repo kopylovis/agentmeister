@@ -11,7 +11,7 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
-import claude_proxy as p  # noqa: E402
+import proxy as p  # noqa: E402
 
 LINKS = (b"vless://uuid@kz.example.net:443?security=reality#KZ\n"
          b"hysteria2://pass@kz2.example.net:8443/?sni=x#KZ2\n")

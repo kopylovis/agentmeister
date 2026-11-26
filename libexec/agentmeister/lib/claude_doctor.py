@@ -263,8 +263,8 @@ def check_notify():
 
 
 def check_proxy():
-    import claude_proxy
-    if claude_proxy.configured():
+    import proxy
+    if proxy.configured():
         return [("ok", tr("прокси настроен (проверить выход: agentmeister proxy test)",
                           "proxy configured (test the exit: agentmeister proxy test)"))]
     return [("ok", tr("прокси не настроен, agentmeister -x недоступен", "proxy not configured, agentmeister -x is unavailable"))]

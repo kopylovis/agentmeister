@@ -13,7 +13,7 @@ PS = """  101 /bin/zsh -l
   202 caffeinate -is /Users/me/.local/bin/claude --resume 1234
   303 caffeinate -is claude
   404 caffeinate -i make
-  505 /usr/bin/python3 claude_proxy.py run -- caffeinate -is claude
+  505 /usr/bin/python3 proxy.py run -- caffeinate -is claude
   606 caffeinate -is /opt/claude-tools/bin/claude-wrapper
 """
 

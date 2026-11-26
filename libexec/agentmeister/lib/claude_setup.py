@@ -84,8 +84,8 @@ def record(done=(), skipped=()):
 
 
 def proxy_configured():
-    import claude_proxy
-    return claude_proxy.configured()
+    import proxy
+    return proxy.configured()
 
 
 def hooks_outdated():
@@ -162,9 +162,9 @@ def ask(question, options, default=0, back=None):
 
 def proxy_step(country="", only=""):
     """Шаг setup про прокси. Возвращает "done", "skipped" или None (не настроен и не спрашивали)."""
-    import claude_proxy
-    if claude_proxy.configured():
-        want = claude_proxy.setting("country")
+    import proxy
+    if proxy.configured():
+        want = proxy.setting("country")
         print(f"{OK} " + tr("прокси уже настроен", "the proxy is already set up")
               + (tr(f", выход должен быть в {want}", f", the exit must be in {want}") if want else "")
               + tr(" (проверить: agentmeister proxy test)", " (check: agentmeister proxy test)"))
@@ -188,7 +188,7 @@ def proxy_step(country="", only=""):
     if not country:
         country = input(tr("Страна выхода, которую проверять при запуске, например KZ (Enter, не проверять): ",
                            "Exit country to check at start, e.g. KZ (Enter to skip the check): ")).strip()
-    code = claude_proxy.setup((["--country", country] if country else []) + (["--only", only] if only else []))
+    code = proxy.setup((["--country", country] if country else []) + (["--only", only] if only else []))
     return "done" if code == 0 else "failed"
 
 
