@@ -142,6 +142,11 @@ final class BrowserModel: NSObject, ObservableObject, WKNavigationDelegate, WKUI
         self.proxied = proxied
         let config = WKWebViewConfiguration()
         config.websiteDataStore = store
+        // proxy WebKit касается только HTTP, а WebRTC шлет UDP напрямую и выдает сайту настоящий IP. Через proxy
+        // RTCPeerConnection выключен. Публичного ключа нет, скрытый сеттер _setPeerConnectionEnabled: ищет KVC
+        if proxied && config.preferences.responds(to: NSSelectorFromString("_setPeerConnectionEnabled:")) {
+            config.preferences.setValue(false, forKey: "peerConnectionEnabled")
+        }
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
         applyProxy()
