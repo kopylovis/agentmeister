@@ -31,6 +31,7 @@ import sys
 from pathlib import Path
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import secret  # noqa: E402
@@ -99,16 +100,46 @@ proxy-providers:
       enable: true
       url: https://www.gstatic.com/generate_204
       interval: 300
-proxy-groups:
+{providers}proxy-groups:
   - name: VPS
     type: fallback
-    use: [vps]
+    use: [{chain}]
     proxies: [REJECT]
     url: https://www.gstatic.com/generate_204
     interval: 300
-rules:
+{groups}{listeners}rules:
   - MATCH,VPS
 """
+
+# Дополнительная подписка: свой провайдер, своя группа и свой порт. Группа VPS на основном порту идет по всем
+# подпискам по очереди (сначала основная), а порт подписки ведет только через ее серверы.
+PROVIDER = """  {name}:
+    type: file
+    path: ./subs/{name}.txt{filter}
+    health-check:
+      enable: true
+      url: https://www.gstatic.com/generate_204
+      interval: 300
+"""
+
+GROUP = """  - name: {group}
+    type: fallback
+    use: [{provider}]
+    proxies: [REJECT]
+    url: https://www.gstatic.com/generate_204
+    interval: 300
+"""
+
+LISTENER = """  - name: in-{name}
+    type: mixed
+    port: {port}
+    listen: 127.0.0.1
+    proxy: {group}
+"""
+
+MAIN = "main"  # основная подписка (из proxy setup); в mihomo ее провайдер vps
+SUB_NAME = re.compile(r"^[a-z][a-z0-9-]{0,19}$")
+RESERVED = {MAIN, "vps", "direct", "reject", "all"}
 
 
 class ProxyError(Exception):
@@ -145,6 +176,119 @@ def port():
         return int(m.group(1)) if m else DEFAULT_PORT
     except OSError:
         return DEFAULT_PORT
+
+
+def subs_meta():
+    return os.path.join(CONF_DIR, "subs.json")
+
+
+def read_subs():
+    """subs.json: {"main": {"port"}, "<имя>": {"port", "country", "only"}}. Порядок ключей задает каскад."""
+    try:
+        with open(subs_meta()) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def good_port(p):
+    return isinstance(p, int) and not isinstance(p, bool) and 1 <= p <= 65535
+
+
+def extra_subs():
+    """Дополнительные подписки по порядку каскада: {имя: {"port", "country", "only"}}."""
+    out = {}
+    for name, v in read_subs().items():
+        if name in RESERVED or not SUB_NAME.match(name) or not isinstance(v, dict) or not good_port(v.get("port")):
+            continue
+        out[name] = {"port": v["port"], "country": str(v.get("country") or "").upper(), "only": str(v.get("only") or "")}
+    return out
+
+
+def main_strict_port():
+    """Порт только основной подписки. Он есть, пока есть дополнительные: без них каскад и есть основная."""
+    v = read_subs().get(MAIN)
+    p = v.get("port") if isinstance(v, dict) else None
+    return p if good_port(p) and extra_subs() else None
+
+
+def sub_names():
+    return [MAIN] + list(extra_subs())
+
+
+def cascade_subs(extras=None):
+    """Подписки каскада (просто -x) по порядку. Если у основной задана страна, в каскад идут только подписки
+    с той же страной: иначе mihomo посреди сессии перешел бы на запасную в другой стране, а страну проверяют
+    только при запуске. Остальные доступны через -x <имя>."""
+    extras = extra_subs() if extras is None else extras
+    want = setting("country").upper()
+    return [MAIN] + [n for n, v in extras.items() if not want or (v.get("country") or "").upper() == want]
+
+
+def resolve_sub(name):
+    """-x <имя>: None (каскад по всем подпискам), MAIN или имя дополнительной. Основная без дополнительных
+    и есть каскад, поэтому для нее тоже None."""
+    if name in (None, ""):
+        return None
+    if name == MAIN:
+        return MAIN if main_strict_port() else None
+    if name in extra_subs():
+        return name
+    raise ProxyError(f'нет подписки "{name}", есть {", ".join(sub_names())}')
+
+
+def sub_port(sub=None):
+    if sub is None:
+        return port()
+    if sub == MAIN:
+        return main_strict_port() or port()
+    extra = extra_subs().get(sub)
+    if not extra:
+        raise ProxyError(f'нет подписки "{sub}"')
+    return extra["port"]
+
+
+def sub_files(sub=None):
+    """(файл со ссылкой, скачанная подписка)."""
+    if sub in (None, MAIN):
+        return SUB_URL, SUB_FILE
+    folder = os.path.join(CONF_DIR, "subs")
+    return os.path.join(folder, f"{sub}.url"), os.path.join(folder, f"{sub}.txt")
+
+
+def sub_group(sub=None):
+    return "VPS" if sub is None else f"VPS-{sub}"
+
+
+def sub_providers(sub=None):
+    """Провайдеры mihomo, через которые идет sub: у каскада все по порядку."""
+    names = cascade_subs() if sub is None else [sub]
+    return ["vps" if name == MAIN else name for name in names]
+
+
+def sub_country(sub):
+    if sub in (None, MAIN):
+        return setting("country").upper()
+    return (extra_subs().get(sub) or {}).get("country", "")
+
+
+def exit_file(sub=None):
+    return EXIT if sub is None else os.path.join(STATE, f"exit-{sub}.json")
+
+
+def page_file(sub=None):
+    return PAGE if sub is None else os.path.join(STATE, f"exit-{sub}.html")
+
+
+def all_ports():
+    """{подписка: порт} для всех портов mihomo: None (каскад) на mixed-port и порты отдельных подписок."""
+    out = {None: port()}
+    if main_strict_port():
+        out[MAIN] = main_strict_port()
+    for name, v in extra_subs().items():
+        out[name] = v["port"]
+    return out
 
 
 def listening(p):
@@ -192,6 +336,19 @@ def holders():
             except OSError:
                 pass
     return live
+
+
+def held_subs():
+    """Через какие подписки идут сессии: None у каскада, иначе имя. Подписку пишет в запись о сессии лаунчер."""
+    used = set()
+    for pid in holders():
+        try:
+            with open(os.path.join(HOLDERS, str(pid))) as f:
+                name = f.read().strip()
+        except OSError:
+            name = ""
+        used.add(name if name == MAIN or SUB_NAME.match(name) else None)
+    return used
 
 
 class locked:
@@ -298,20 +455,22 @@ def subscription_ok(raw):
 
 
 def subscription_servers():
-    """Имена серверов из скачанной подписки: YAML mihomo (server: ...) или base64 со ссылками vless://, hysteria2://."""
-    try:
-        with open(SUB_FILE, "rb") as f:
-            raw = f.read()
-    except OSError:
-        return []
-    text = subscription_text(raw)
-    names = re.findall(r"\bserver:\s*['\"]?([\w.-]+)", text)
-    for word in text.split():
-        if "://" in word:
-            try:
-                names.append(urllib.parse.urlsplit(word).hostname or "")
-            except ValueError:
-                pass
+    """Имена серверов из скачанных подписок: YAML mihomo (server: ...) или base64 со ссылками vless://, hysteria2://."""
+    names = []
+    for name in sub_names():
+        try:
+            with open(sub_files(name)[1], "rb") as f:
+                raw = f.read()
+        except OSError:
+            continue
+        text = subscription_text(raw)
+        names += re.findall(r"\bserver:\s*['\"]?([\w.-]+)", text)
+        for word in text.split():
+            if "://" in word:
+                try:
+                    names.append(urllib.parse.urlsplit(word).hostname or "")
+                except ValueError:
+                    pass
     found = set()
     for name in names:
         try:
@@ -360,24 +519,36 @@ def mihomo_api(path, method="GET", body=None, timeout=2):
     return data if isinstance(data, dict) else {}
 
 
-def active_node():
-    """(имя сервера, протокол) в группе VPS сейчас; (None, None), если mihomo не ответил или живых нет."""
-    name = mihomo_api("/proxies/VPS").get("now")
+def node_info(sub=None):
+    """Сервер в группе подписки sub сейчас: {"node", "proto", "sub"}, где sub — подписка, из которой он взят.
+    None, если mihomo не ответил или живых серверов нет."""
+    name = mihomo_api(f"/proxies/{sub_group(sub)}").get("now")
     if not isinstance(name, str) or not name or name == "REJECT":
-        return None, None
+        return None
     # серверы из подписки mihomo по /proxies/<имя> не отдает, только списком провайдера
-    nodes = mihomo_api("/providers/proxies/vps").get("proxies")
-    kind = next((n.get("type") for n in nodes if isinstance(n, dict) and n.get("name") == name), None) \
-        if isinstance(nodes, list) else None
-    return name, kind.lower() if isinstance(kind, str) and kind else None
+    for provider in sub_providers(sub):
+        nodes = mihomo_api(f"/providers/proxies/{provider}").get("proxies")
+        for n in nodes if isinstance(nodes, list) else []:
+            if isinstance(n, dict) and n.get("name") == name:
+                kind = n.get("type")
+                return {"node": name, "proto": kind.lower() if isinstance(kind, str) and kind else None,
+                        "sub": MAIN if provider == "vps" else provider}
+    return {"node": name, "proto": None, "sub": None}
+
+
+def active_node(sub=None):
+    """(имя сервера, протокол) в группе подписки сейчас; (None, None), если mihomo не ответил или живых нет."""
+    info = node_info(sub)
+    return (info["node"], info["proto"]) if info else (None, None)
 
 
 def html(text):
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def write_page(info, p):
+def write_page(info, p, path=None):
     rows = [("Страна", info.get("loc")), ("IP выхода", info.get("ip")), ("Протокол", info.get("proto")),
+            ("Подписка", info.get("sub") if info.get("subs", 1) > 1 else None),
             ("Сервер из подписки", info.get("node")), ("Порт на этом Mac", f"127.0.0.1:{p}"),
             ("mihomo запущен", info.get("since"))]
     body = "".join(f"<tr><th>{html(k)}</th><td>{html(v)}</td></tr>" for k, v in rows if v)
@@ -402,7 +573,7 @@ p {{ color: var(--dim); font-size: 13px; line-height: 1.5; }}
 <code>agentmeister proxy</code>, а проверка выхода заново <code>agentmeister proxy test</code>.</p>
 </body></html>
 """
-    with open(PAGE, "w") as f:
+    with open(path or PAGE, "w") as f:
         f.write(page)
 
 
@@ -413,19 +584,21 @@ def write_private(path, data):
     os.replace(path + ".tmp", path)
 
 
-def refresh_subscription():
+def refresh_subscription(sub=None):
     """Скачать подписку мимо VPN (сами, а не mihomo). Не вышло: остаётся прошлая копия, если она есть."""
+    url_file, sub_file = sub_files(sub)
     try:
-        with open(SUB_URL) as f:
+        with open(url_file) as f:
             url = f.read().strip()
     except OSError:
         url = ""
+    label = f"agentmeister proxy ({sub})" if sub not in (None, MAIN) else "agentmeister proxy"
     if url:
         iface = physical_interface()
         cmd = ["curl", "-sf", "--max-time", "15", "-A", "mihomo"] + (["--interface", iface] if iface else []) + [url]
         r = subprocess.run(cmd, capture_output=True)
         if r.returncode == 0 and subscription_ok(r.stdout):
-            write_private(SUB_FILE, r.stdout)
+            write_private(sub_file, r.stdout)
             return True
         if r.returncode == 0:
             why = "по ссылке пришел ответ без серверов (страница входа в Wi-Fi или ошибка?)"
@@ -433,10 +606,16 @@ def refresh_subscription():
             why = "подписка не скачалась"
     else:
         why = "нет ссылки на подписку"
-    if not os.path.exists(SUB_FILE):
-        raise ProxyError(f"{why}, а прошлой копии нет. Проверь ссылку: agentmeister proxy setup")
-    print(f"agentmeister proxy: {why}, беру прошлую копию", file=sys.stderr)
+    if not os.path.exists(sub_file):
+        fix = "agentmeister proxy setup" if sub in (None, MAIN) else f"agentmeister proxy add {sub}"
+        raise ProxyError(f"{why}, а прошлой копии нет. Проверь ссылку: {fix}")
+    print(f"{label}: {why}, беру прошлую копию", file=sys.stderr)
     return False
+
+
+def refresh_all():
+    for name in sub_names():
+        refresh_subscription(name)
 
 
 _sandboxed = None
@@ -456,21 +635,46 @@ def in_session():
 IN_SESSION = "из сессии через proxy это не сделать: песочница закрывает управление mihomo. Выполни в обычном терминале"
 
 
-def start(strict=True):
-    """mihomo на нашем порту: уже запущенный или новый. Вызывать под locked(). strict: если выход не в стране
-    из настройки, остановить mihomo и выдать ProxyError (новую сессию не запускаем). Без strict mihomo
-    остается работать, а start возвращает текст о не той стране: так перезапускают его при живых сессиях."""
+def wait_ready(p, deadline):
+    """Порт открывается раньше, чем mihomo прочитает подписку: ждём первого настоящего ответа через proxy."""
+    while time.time() < deadline:
+        r = subprocess.run(["curl", "-q", "--noproxy", "", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "4",
+                            "-x", f"http://127.0.0.1:{p}", PROBE_URL], capture_output=True, text=True)
+        if r.stdout.strip() == "204":
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def exit_info(sub, p, since, count):
+    """Выход через порт подписки: IP и страна от Cloudflare, сервер и протокол от mihomo."""
+    got = trace(proxy_env(p))
+    node = node_info(sub) or {}
+    return dict({"ip": got[0], "loc": got[1]} if got else {}, node=node.get("node"), proto=node.get("proto"),
+                sub=node.get("sub") or (sub if sub else None), subs=count, since=since)
+
+
+def start(strict=True, sub=None):
+    """mihomo на нашем порту: уже запущенный или новый. Вызывать под locked(). sub: подписка сессии (None — каскад
+    по всем). strict: если выход не в стране из настройки подписки, остановить mihomo и выдать ProxyError (новую
+    сессию не запускаем). Без strict mihomo остается работать, а start возвращает текст о не той стране: так
+    перезапускают его при живых сессиях."""
     p = port()
     if read_pid() and listening(p):
+        if sub is not None and not listening(sub_port(sub)):
+            raise ProxyError(f"mihomo запущен без порта подписки {sub}, перезапусти его: agentmeister proxy restart")
         return None
     if in_session():
         # mihomo из песочницы не смог бы ни поправить свою настройку, ни выйти к серверу напрямую
         raise ProxyError(f"mihomo не запущен. {IN_SESSION}: agentmeister proxy restart")
     pin_config()
-    refresh_subscription()
+    refresh_all()
     pin_hosts()
-    if listening(p):
-        raise ProxyError(f"порт {p} занят другой программой. Поменяй mixed-port в {tilde(CONFIG)}")
+    ports = all_ports()
+    for name, q in ports.items():
+        if listening(q):
+            where = f"mixed-port в {tilde(CONFIG)}" if name is None else f"port у {name} в {tilde(subs_meta())}"
+            raise ProxyError(f"порт {q} занят другой программой. Поменяй {where}")
     exe = mihomo_bin()
     if not exe:
         raise ProxyError("нет mihomo: brew install mihomo")
@@ -486,28 +690,27 @@ def start(strict=True):
         time.sleep(0.1)
     if not listening(p):
         raise ProxyError(f"mihomo не поднялся на порту {p}, смотри {tilde(LOG)}")
-    # порт открывается раньше, чем mihomo прочитает подписку: ждём первого настоящего ответа через proxy
     deadline = time.time() + 15
-    while time.time() < deadline:
-        r = subprocess.run(["curl", "-q", "--noproxy", "", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "4",
-                            "-x", f"http://127.0.0.1:{p}", PROBE_URL], capture_output=True, text=True)
-        if r.stdout.strip() == "204":
-            break
-        time.sleep(0.5)
-    else:
-        print(f"agentmeister proxy: proxy пока не отвечает, запросы могут завершаться ошибкой (лог {tilde(LOG)})", file=sys.stderr)
-    got = trace(proxy_env(p))
-    node, proto = active_node()
-    info = dict({"ip": got[0], "loc": got[1]} if got else {}, node=node, proto=proto,
-                since=time.strftime("%Y-%m-%d %H:%M"))
-    try:
-        with open(EXIT, "w") as f:
-            json.dump(info, f, ensure_ascii=False)
-        write_page(info, p)
-    except OSError:
-        pass
-    want = setting("country").upper()
-    if want and (not got or (got[1] or "").upper() != want):
+    for name, q in ports.items():
+        if not wait_ready(q, deadline) and name == sub:
+            print(f"agentmeister proxy: proxy пока не отвечает, запросы могут завершаться ошибкой (лог {tilde(LOG)})",
+                  file=sys.stderr)
+    since = time.strftime("%Y-%m-%d %H:%M")
+    with ThreadPoolExecutor(max_workers=len(ports)) as pool:
+        infos = dict(zip(ports, pool.map(lambda item: exit_info(item[0], item[1], since, len(sub_names())),
+                                          ports.items())))
+    for name, info in infos.items():
+        try:
+            with open(exit_file(name), "w") as f:
+                json.dump(info, f, ensure_ascii=False)
+            write_page(info, ports[name], page_file(name))
+        except OSError:
+            pass
+    info = infos.get(sub) or {}
+    # у каскада страна та, что задана у подписки, через которую он сейчас выходит
+    want = sub_country(info.get("sub") if sub is None else sub)
+    if want and (info.get("loc") or "").upper() != want:
+        got = (info["ip"], info["loc"]) if info.get("ip") else None
         problem = f"выход через {fmt(got)}, а нужен {want}"
         if strict:
             stop()
@@ -527,7 +730,9 @@ def stop():
             if not alive(pid):
                 break
             time.sleep(0.1)
-    for path in (PIDFILE, EXIT, PAGE):
+    extra = [os.path.join(STATE, n) for n in (os.listdir(STATE) if os.path.isdir(STATE) else [])
+             if re.match(r"^exit-[a-z][a-z0-9-]*\.(json|html)$", n)]
+    for path in [PIDFILE, EXIT, PAGE] + extra:
         try:
             os.remove(path)
         except OSError:
@@ -613,7 +818,10 @@ def watch():
                         break  # mihomo остановлен после последней сессии
                 continue
             route = default_route()
-            group = mihomo_api("/proxies/VPS").get("now") if route else None
+            used = held_subs() or {None}
+            # подписка без живых серверов у одной сессии важна так же, как у всех: REJECT, если такая есть
+            nows = [mihomo_api(f"/proxies/{sub_group(sub)}").get("now") for sub in used] if route else []
+            group = "REJECT" if "REJECT" in nows else next((n for n in nows if n), None)
             for action in watch_step(state, time.time(), route, pinned_interface(), group):
                 try:
                     if action == "repin":
@@ -623,7 +831,8 @@ def watch():
                             mihomo_api("/configs?force=true", "PUT", {"path": CONFIG}, timeout=10)
                         watch_log(f"интерфейс {old} -> {pinned_interface()}, конфиг mihomo перезагружен")
                     elif action == "healthcheck":
-                        mihomo_api("/providers/proxies/vps/healthcheck", timeout=10)
+                        for provider in dict.fromkeys(p for sub in used for p in sub_providers(sub)):
+                            mihomo_api(f"/providers/proxies/{provider}/healthcheck", timeout=10)
                     elif action == "restart":
                         watch_log(f"сеть есть, а сервер недоступен {RESTART_AFTER} с, перезапускаю mihomo")
                         with locked():
@@ -735,7 +944,7 @@ def session_command(p, cmd, *, claude=False):
     return ["/usr/bin/sandbox-exec", *params, "-p", profile + guard, "--", *cmd]
 
 
-def proxy_env(p, *, claude=False):
+def proxy_env(p, *, claude=False, sub=None):
     url = f"http://127.0.0.1:{p}"
     env = dict(os.environ)
     for name in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"):
@@ -743,40 +952,53 @@ def proxy_env(p, *, claude=False):
     env["ALL_PROXY"] = env["all_proxy"] = f"socks5h://127.0.0.1:{p}"
     env["NO_PROXY"] = env["no_proxy"] = "localhost,127.0.0.1,::1" if claude else ""
     env["MNRH_PROXY"] = str(p)
+    # подписка сессии: перезапуск и новые окна из нее пойдут через нее же
+    if sub is None:
+        env.pop("MNRH_PROXY_SUB", None)
+    else:
+        env["MNRH_PROXY_SUB"] = sub
     # promptsill (строка состояния) покажет "proxy KZ", а рядом "vless 203.0.113.7" или, если терминал
     # умеет ссылки, сделает метку ссылкой на страницу с подробностями. Все это проверено при старте mihomo.
     try:
-        with open(EXIT) as f:
+        with open(exit_file(sub)) as f:
             info = json.load(f)
     except (OSError, ValueError):
         info = {}
     loc, ip, proto = info.get("loc"), info.get("ip"), info.get("proto")
+    # подписку в строке состояния видно, только когда их несколько
+    shown = info.get("sub") if isinstance(info.get("subs"), int) and info["subs"] > 1 else None
     for name in ("PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL"):
         env.pop(name, None)
     if isinstance(loc, str) and re.match(r"^[A-Za-z]{2}$", loc):
         env["PROMPTSILL_PROXY_LABEL"] = loc.upper()
-    detail = [v for v in (proto, ip) if isinstance(v, str) and re.match(r"^[\w.:-]{1,40}$", v)]
+    detail = [v for v in (shown, proto, ip) if isinstance(v, str) and re.match(r"^[\w.:-]{1,40}$", v)]
     if detail:
         env["PROMPTSILL_PROXY_DETAIL"] = " ".join(detail)
-    if os.path.exists(PAGE):
-        env["PROMPTSILL_PROXY_URL"] = "file://" + urllib.parse.quote(PAGE)
+    if os.path.exists(page_file(sub)):
+        env["PROMPTSILL_PROXY_URL"] = "file://" + urllib.parse.quote(page_file(sub))
     return env
 
 
-def run(cmd, *, claude=False, sandbox=True):
+def run(cmd, *, claude=False, sandbox=True, sub=None):
     """sandbox=False (proxy run --no-sandbox): mihomo и переменные proxy без sandbox-exec. Для обновления
-    агентов: brew upgrade распаковывает в своей песочнице macOS, а вложенную песочницу macOS не дает."""
+    агентов: brew upgrade распаковывает в своей песочнице macOS, а вложенную песочницу macOS не дает.
+    sub (proxy run --via <имя>): только через эту подписку, без него каскад по всем."""
     if not cmd:
-        print("agentmeister proxy run -- <команда>", file=sys.stderr)
+        print("agentmeister proxy run [--via <подписка>] -- <команда>", file=sys.stderr)
         return 2
     if not configured():
         print(f"agentmeister proxy: прокси не настроен, сначала agentmeister proxy setup", file=sys.stderr)
         return 2
+    try:
+        sub = resolve_sub(sub)
+    except ProxyError as e:
+        print(f"agentmeister proxy: {e}", file=sys.stderr)
+        return 2
     if in_session():
-        return run_inside(cmd, claude=claude)
+        return run_inside(cmd, claude=claude, sub=sub)
     with locked():
         try:
-            start()
+            start(sub=sub)
         except ProxyError as e:
             print(f"agentmeister proxy: {e}", file=sys.stderr)
             return 1
@@ -785,17 +1007,19 @@ def run(cmd, *, claude=False, sandbox=True):
             host_run.ensure()
         os.makedirs(HOLDERS, exist_ok=True)
         mark = os.path.join(HOLDERS, str(os.getpid()))
-        open(mark, "w").close()
+        with open(mark, "w") as f:
+            f.write(sub or "")
     # Ctrl+C и Ctrl+\ достаются Claude Code, а не нам: мы только ждём и убираем за собой.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGQUIT, signal.SIG_IGN)
     try:
-        p = port()
+        p = sub_port(sub)
         if claude and sys.stdin.isatty() and sys.stdout.isatty():
             from claude_proxy_restart import supervised_command
             cmd = supervised_command(cmd)
-        child = subprocess.Popen(session_command(p, cmd, claude=claude) if sandbox else cmd, env=proxy_env(p, claude=claude))
-    except (OSError, ValueError) as e:
+        child = subprocess.Popen(session_command(p, cmd, claude=claude) if sandbox else cmd,
+                                 env=proxy_env(p, claude=claude, sub=sub))
+    except (OSError, ValueError, ProxyError) as e:
         print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
         child = None
 
@@ -823,23 +1047,28 @@ def run(cmd, *, claude=False, sandbox=True):
     return code if code >= 0 else 128 - code
 
 
-def run_inside(cmd, *, claude=False):
+def run_inside(cmd, *, claude=False, sub=None):
     """proxy run изнутри сессии через proxy. mihomo держит лаунчер этой сессии, поэтому ни замок, ни своя
     запись о сессии не нужны (папка состояния для сессии закрыта). Вложенную песочницу macOS не дает:
-    команда остается в песочнице этой сессии."""
+    команда остается в песочнице этой сессии. Без --via она идет через подписку этой сессии."""
+    if sub is None:
+        try:
+            sub = resolve_sub(os.environ.get("MNRH_PROXY_SUB"))
+        except ProxyError:
+            sub = None
     try:
-        start()  # в сессии только проверяет, что mihomo работает
+        start(sub=sub)  # в сессии только проверяет, что mihomo работает
+        p = sub_port(sub)
     except ProxyError as e:
         print(f"agentmeister proxy: {e}", file=sys.stderr)
         return 1
     if not claude:
         print("agentmeister proxy: команда идет в песочнице этой сессии, вложенную macOS не дает", file=sys.stderr)
-    p = port()
     if claude and sys.stdin.isatty() and sys.stdout.isatty():
         from claude_proxy_restart import supervised_command
         cmd = supervised_command(cmd)
     try:
-        os.execvpe(cmd[0], cmd, proxy_env(p, claude=claude))
+        os.execvpe(cmd[0], cmd, proxy_env(p, claude=claude, sub=sub))
     except OSError as e:
         print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
         return 127
@@ -857,50 +1086,124 @@ def trace(env=None):
 
 
 def check():
-    """Запустить mihomo, если надо, и сравнить выход напрямую и через proxy. В сессии mihomo уже держит ее
-    лаунчер: замок не нужен, а запустить или остановить mihomo оттуда все равно нельзя."""
+    """(напрямую, через proxy) для каскада, как check_all без дополнительных подписок."""
+    return check_all()[0][1:]
+
+
+def check_all(subs=(None,)):
+    """Запустить mihomo, если надо, и сравнить выход напрямую и через proxy: [(подписка, напрямую, через нее)].
+    В сессии mihomo уже держит ее лаунчер: замок не нужен, а запустить или остановить mihomo оттуда все равно
+    нельзя."""
     if in_session():
         start()  # только проверяет, что mihomo работает
-        return check_exit()
+        return [(sub,) + check_exit(sub) for sub in subs]
     with locked():
         start()
         was_held = bool(holders())
     try:
-        return check_exit()
+        return [(sub,) + check_exit(sub) for sub in subs]
     finally:
         with locked():
             if not was_held and not holders():
                 stop()
 
 
-def check_exit():
+def check_exit(sub=None):
     direct, via = trace(), None
     for _ in range(3):  # подписку mihomo качает при старте, первая попытка может не успеть
-        via = trace(proxy_env(port()))
+        via = trace(proxy_env(sub_port(sub)))
         if via:
             break
         time.sleep(2)
     return direct, via
 
 
+def main_only(text=None):
+    """Выражение --only основной подписки: строка filter у провайдера vps в конфиге."""
+    if text is None:
+        try:
+            with open(CONFIG) as f:
+                text = f.read()
+        except OSError:
+            return ""
+    block = re.search(r"(?m)^  vps:\n((?:    .*\n?)*)", text)
+    m = re.search(r"(?m)^    filter:[ \t]*(.+?)[ \t]*$", block.group(1)) if block else None
+    if not m:
+        return ""
+    try:
+        value = json.loads(m.group(1))
+    except ValueError:
+        return m.group(1).strip("'\"")
+    return value if isinstance(value, str) else ""
+
+
+def only_line(only):
+    return f"\n    filter: {json.dumps(only)}" if only else ""
+
+
+def render_config(p, country, only, data):
+    want = country.upper()
+    """Конфиг mihomo целиком: основная подписка и дополнительные из data (содержимое subs.json)."""
+    extras = {n: v for n, v in data.items() if n not in RESERVED and SUB_NAME.match(n) and isinstance(v, dict)
+              and good_port(v.get("port"))}
+    strict = (data.get(MAIN) or {}).get("port") if extras else None
+    groups = listeners = ""
+    if extras and good_port(strict):
+        groups = GROUP.format(group=sub_group(MAIN), provider="vps") + \
+            "".join(GROUP.format(group=sub_group(n), provider=n) for n in extras)
+        listeners = "listeners:\n" + LISTENER.format(name=MAIN, port=strict, group=sub_group(MAIN)) + \
+            "".join(LISTENER.format(name=n, port=v["port"], group=sub_group(n)) for n, v in extras.items())
+    return TEMPLATE.format(port=p, country=country.upper(), filter=only_line(only),
+                           providers="".join(PROVIDER.format(name=n, filter=only_line(str(v.get("only") or "")))
+                                             for n, v in extras.items()),
+                           chain=", ".join(["vps"] + [n for n, v in extras.items()
+                                                      if not want or str(v.get("country") or "").upper() == want]),
+                           groups=groups, listeners=listeners)
+
+
+def save_subs(data):
+    """Записать subs.json. Без дополнительных подписок файл не нужен: порт только основной тоже."""
+    if not [n for n in data if n != MAIN]:
+        Path(subs_meta()).unlink(missing_ok=True)
+        return
+    write_private(subs_meta(), (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode())
+
+
+def place_main_port(data, main_port=None):
+    """У основной подписки есть свой порт, пока есть дополнительные: -x main идет только через нее."""
+    if [n for n in data if n != MAIN] and not good_port((data.get(MAIN) or {}).get("port")):
+        taken = {main_port or port()} | {v.get("port") for v in data.values() if isinstance(v, dict)}
+        data[MAIN] = {"port": free_port(taken)}
+    return data
+
+
+def rerender(data=None):
+    """Пересобрать конфиг из основной подписки и subs.json. Правки руками, кроме mixed-port, пропадут, а
+    interface-name, сокет управления и hosts start допишет сам."""
+    data = place_main_port(read_subs() if data is None else data)
+    text = render_config(port(), setting("country"), main_only(), data)
+    write_private(CONFIG, text.encode())
+    return data
+
+
 def write_config(url, p, country="", only=""):
     os.makedirs(CONF_DIR, mode=0o700, exist_ok=True)
     os.chmod(CONF_DIR, 0o700)
-    tmp = CONFIG + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(TEMPLATE.format(port=p, country=country.upper(),
-                                filter=f"\n    filter: {json.dumps(only)}" if only else ""))
-    os.replace(tmp, CONFIG)
+    data = read_subs()
+    if MAIN in data and (data[MAIN] or {}).get("port") == p:
+        data.pop(MAIN)  # основной порт занял порт только основной подписки: выберем ей новый
+    data = place_main_port(data, p)
+    save_subs(data)
+    write_private(CONFIG, render_config(p, country, only, data).encode())
     write_private(SUB_URL, url.encode())
     for old in (SUB_FILE, os.path.join(CONF_DIR, "vps.yaml")):
         if os.path.exists(old):
             os.remove(old)
 
 
-def free_port():
+def free_port(taken=()):
     p = DEFAULT_PORT
-    while listening(p) and p < DEFAULT_PORT + 50:
+    while (p in taken or listening(p)) and p < DEFAULT_PORT + 50:
         p += 1
     return p
 
@@ -920,13 +1223,8 @@ def install_mihomo():
     return bool(mihomo_bin())
 
 
-def setup(args):
-    if in_session():
-        print(f"{WARN} {IN_SESSION}: agentmeister proxy setup")
-        return 1
-    if not mihomo_bin() and not install_mihomo():
-        print(f"{BAD} без mihomo прокси не заработает: brew install mihomo")
-        return 1
+def sub_options(args):
+    """Разобрать [ссылка] --country XX --only RE. -> (rest, country, only) или None, если ошибка уже напечатана."""
     opts, rest, it = {}, [], iter(args)
     for a in it:
         if a in ("--country", "--only"):
@@ -936,26 +1234,60 @@ def setup(args):
     country, only = opts.get("country", "").strip(), opts.get("only", "").strip()
     if country and not re.match(r"^[A-Za-z]{2}$", country):
         print(f"{BAD} --country ждёт код страны из двух букв, например KZ")
-        return 2
+        return None
     if only:
         try:
             re.compile(only)
         except re.error as e:
             print(f"{BAD} --only: неправильное регулярное выражение ({e})")
-            return 2
-    url = rest[0] if rest else ""
+            return None
+    return rest, country, only
+
+
+def ask_url(given, usage):
+    """Ссылка на подписку из аргумента или со скрытым вводом. None, если ее нет или она не подходит."""
+    url = given
     if not url:
         if not sys.stdin.isatty():
-            print("agentmeister proxy setup <ссылка на подписку>", file=sys.stderr)
-            return 2
+            print(usage, file=sys.stderr)
+            return None
         print("Ссылка на подписку из 3x-ui (та же, что в Happ). На экране её видно не будет.")
         url = secret("Подписка: ").strip()
     if url.startswith("happ://"):
         print(f"{BAD} это зашифрованная ссылка Happ (happ://crypt…), её читает только сам Happ. "
               "Нужна обычная https://… ссылка на подписку от того, кто её выдал")
-        return 2
+        return None
     if not re.match(r"^https?://\S+$", url):
         print(f"{BAD} это не ссылка на подписку: нужна https://…, а не vless:// или hysteria2://")
+        return None
+    return url
+
+
+def snapshot(paths):
+    return {Path(path): Path(path).read_bytes() if Path(path).exists() else None for path in paths}
+
+
+def restore(previous):
+    for path, data in previous.items():
+        if data is None:
+            path.unlink(missing_ok=True)
+        else:
+            write_private(str(path), data)
+
+
+def setup(args):
+    if in_session():
+        print(f"{WARN} {IN_SESSION}: agentmeister proxy setup")
+        return 1
+    if not mihomo_bin() and not install_mihomo():
+        print(f"{BAD} без mihomo прокси не заработает: brew install mihomo")
+        return 1
+    parsed = sub_options(args)
+    if parsed is None:
+        return 2
+    rest, country, only = parsed
+    url = ask_url(rest[0] if rest else "", "agentmeister proxy setup <ссылка на подписку>")
+    if not url:
         return 2
     with locked():
         if holders():
@@ -963,9 +1295,9 @@ def setup(args):
             return 1
         stop()
         old = port() if configured() else None
-        p = old if old and not listening(old) else free_port()
-        files = [Path(path) for path in (CONFIG, SUB_URL, SUB_FILE, os.path.join(CONF_DIR, "vps.yaml"))]
-        previous = {path: path.read_bytes() if path.exists() else None for path in files}
+        taken = {v.get("port") for n, v in read_subs().items() if n != MAIN and isinstance(v, dict)}
+        p = old if old and not listening(old) else free_port(taken)
+        previous = snapshot((CONFIG, SUB_URL, SUB_FILE, os.path.join(CONF_DIR, "vps.yaml"), subs_meta()))
         verified = False
         try:
             write_config(url, p, country, only)
@@ -982,15 +1314,141 @@ def setup(args):
                 stop()
             finally:
                 if not verified:
-                    for path, data in previous.items():
-                        if data is None:
-                            path.unlink(missing_ok=True)
-                        else:
-                            write_private(str(path), data)
+                    restore(previous)
     print(f"{OK} настройка в {tilde(CONFIG)} (права 600), порт {p}"
           + (f", только серверы «{only}»" if only else "") + (f", выход должен быть в {country.upper()}" if country else ""))
     print(f"{OK} напрямую {fmt(direct)}, через proxy {fmt(via)}")
     print('Выбери "через proxy" в меню Agentmeister или запусти agentmeister <проект> -x.')
+    return 0
+
+
+def add_sub(args):
+    """proxy add <имя> [ссылка] [--country XX] [--only RE]: еще одна подписка со своим портом. Та же команда
+    с тем же именем меняет ссылку и настройки подписки."""
+    if in_session():
+        print(f"{WARN} {IN_SESSION}: agentmeister proxy add")
+        return 1
+    if not configured():
+        print(f"{WARN} сначала основная подписка: agentmeister proxy setup")
+        return 1
+    parsed = sub_options(args)
+    if parsed is None:
+        return 2
+    rest, country, only = parsed
+    name = rest[0] if rest else ""
+    if not SUB_NAME.match(name) or name in RESERVED:
+        print(f"{BAD} имя подписки: латинские строчные буквы, цифры и дефис, до 20 знаков, с буквы. "
+              f"Нельзя {', '.join(sorted(RESERVED))}")
+        return 2
+    url = ask_url(rest[1] if len(rest) > 1 else "", "agentmeister proxy add <имя> <ссылка на подписку>")
+    if not url:
+        return 2
+    url_file, sub_file = sub_files(name)
+    with locked():
+        if name in held_subs():
+            print(f"{WARN} через {name} идут сессии. Закрой их и повтори.")
+            return 1
+        data = read_subs()
+        known = (data.get(name) or {}).get("port") if isinstance(data.get(name), dict) else None
+        taken = {port()} | {v.get("port") for n, v in data.items() if n != name and isinstance(v, dict)}
+        p = known if good_port(known) and known not in taken else free_port(taken)
+        data[name] = {"port": p, "country": country.upper(), "only": only}
+        running = bool(read_pid() and listening(port()))
+        previous = snapshot((CONFIG, subs_meta(), url_file, sub_file))
+        verified = False
+        try:
+            os.makedirs(os.path.dirname(url_file), mode=0o700, exist_ok=True)
+            write_private(url_file, url.encode())
+            Path(sub_file).unlink(missing_ok=True)
+            save_subs(place_main_port(data))
+            rerender()
+            # сессии через другие подписки переживут перезапуск mihomo, как при proxy restart
+            stop()
+            start(strict=False)
+            direct, via = check_exit(name)
+            if not via:
+                raise ProxyError(f"не удалось подключиться через подписку {name}")
+            if country and (via[1] or "").upper() != country.upper():
+                raise ProxyError(f"через {name} выход {fmt(via)}, а нужен {country.upper()}")
+            verified = True
+        except (OSError, ProxyError) as error:
+            print(f"{BAD} {error}")
+            return 1
+        finally:
+            if not verified:
+                restore(previous)
+            try:
+                if running and not verified:
+                    stop()
+                    start(strict=False)
+                elif not running and not holders():
+                    stop()
+            except (OSError, ProxyError) as error:
+                print(f"{WARN} mihomo после отката: {error}")
+            if running:
+                ensure_watch()
+    print(f"{OK} подписка {name}: порт {p}, напрямую {fmt(direct)}, через нее {fmt(via)}"
+          + (f", только серверы «{only}»" if only else ""))
+    print(f"agentmeister <проект> -x {name} пойдет только через {name}. "
+          f"Просто -x идет по подпискам по очереди: {', '.join(cascade_subs())}.")
+    if name not in cascade_subs():
+        print(paint(f"  {name} не в очереди: у основной подписки выход должен быть в {setting('country')}, "
+                    f"а у {name} {country.upper() or 'страна не задана'}. Иначе сессия посреди работы могла бы "
+                    "сменить страну выхода", "2"))
+    return 0
+
+
+def remove_sub(name):
+    if in_session():
+        print(f"{WARN} {IN_SESSION}: agentmeister proxy remove {name}")
+        return 1
+    if name == MAIN:
+        print(f"{WARN} основную подписку меняет agentmeister proxy setup, а удаляет все agentmeister proxy remove")
+        return 2
+    if name not in extra_subs():
+        print(f"{BAD} нет подписки {name}, есть {', '.join(sub_names())}")
+        return 1
+    with locked():
+        data = read_subs()
+        data.pop(name, None)
+        last = not [n for n in data if n != MAIN]
+        held = held_subs()
+        if name in held or (last and MAIN in held):
+            # без дополнительных подписок пропадет и порт только основной
+            print(f"{WARN} через {name if name in held else MAIN} идут сессии. Закрой их и повтори.")
+            return 1
+        if last:
+            data.pop(MAIN, None)
+        save_subs(data)
+        for path in sub_files(name):
+            Path(path).unlink(missing_ok=True)
+        rerender(data)
+        if read_pid() and listening(port()):
+            try:
+                restart_mihomo()
+                ensure_watch()
+            except ProxyError as error:
+                print(f"{WARN} mihomo: {error}")
+    print(f"{OK} подписка {name} удалена")
+    return 0
+
+
+def list_subs():
+    if not configured():
+        print(f"{WARN} прокси не настроен: agentmeister proxy setup")
+        return 1
+    extras = extra_subs()
+    if not extras:
+        print(f"{OK} одна подписка {MAIN}, порт {port()}"
+              + (f", выход должен быть в {setting('country')}" if setting("country") else ""))
+        print(paint("  Добавить еще: agentmeister proxy add <имя> <ссылка>", "2"))
+        return 0
+    rows = [("-x", f"по очереди: {', '.join(cascade_subs())}", port(), "")]
+    rows += [(f"-x {n}", f"только {n}", sub_port(n), sub_country(n)) for n in sub_names()]
+    width = max(len(r[0]) for r in rows)
+    text = max(len(r[1]) for r in rows)
+    for flag, what, p, want in rows:
+        print(f"  {flag.ljust(width)}  {what.ljust(text)}  порт {p}" + (f", выход {want}" if want else ""))
     return 0
 
 
@@ -1155,6 +1613,12 @@ def status(test=False):
     want = setting("country")
     print(f"{OK} " + tr(f"настроен: {tilde(CONFIG)}, порт {p}", f"set up: {tilde(CONFIG)}, port {p}")
           + (tr(f", выход должен быть в {want}", f", the exit must be in {want}") if want else ""))
+    extras = extra_subs()
+    if extras:
+        print(f"{OK} " + tr(f"подписки по очереди: {', '.join(cascade_subs())}. Только одна: ",
+                            f"subscriptions in order: {', '.join(cascade_subs())}. Just one: ")
+              + ", ".join(f"-x {n} ({tr('порт', 'port')} {sub_port(n)}"
+                          + (f", {sub_country(n)}" if n != MAIN and sub_country(n) else "") + ")" for n in sub_names()))
     if not mihomo_bin():
         print(f"{BAD} " + tr("нет mihomo: brew install mihomo", "mihomo is missing: brew install mihomo"))
     else:
@@ -1168,10 +1632,16 @@ def status(test=False):
         print(f"{OK} " + tr("сторож сети работает", "the network watcher is running") if watcher_alive() else
               f"{WARN} " + tr("сторожа сети нет, он запустится с новой сессией через proxy или agentmeister proxy restart",
                               "the network watcher isn't running, it starts with a new proxied session or agentmeister proxy restart"))
-        node, proto = active_node()
+        node = node_info()
         if node:
-            print(f"{OK} " + tr(f"сейчас сервер {node}", f"current server {node}")
-                  + (tr(f", протокол {proto}", f", protocol {proto}") if proto else ""))
+            print(f"{OK} " + tr(f"сейчас сервер {node['node']}", f"current server {node['node']}")
+                  + (tr(f" из {node['sub']}", f" from {node['sub']}") if extras and node["sub"] else "")
+                  + (tr(f", протокол {node['proto']}", f", protocol {node['proto']}") if node["proto"] else ""))
+            for name in sub_names() if extras else []:
+                one = node_info(name)
+                print(paint(f"  -x {name}: " + (tr(f"сервер {one['node']}", f"server {one['node']}")
+                                                 + (f", {one['proto']}" if one["proto"] else "") if one else
+                                                 tr("живых серверов нет", "no live servers")), "2"))
         elif in_session():
             print(paint("  " + started_node() + tr(". Текущий сервер из сессии не виден: песочница закрывает "
                                                    "сокет управления mihomo, смотри agentmeister proxy в обычном терминале",
@@ -1181,16 +1651,20 @@ def status(test=False):
         print(paint("  " + tr("mihomo не запущен: он поднимется вместе с первой сессией через proxy",
                               "mihomo isn't running: it starts with the first proxied session"), "2"))
     if os.environ.get("MNRH_PROXY"):
-        print(f"{OK} " + tr("эта сессия идёт через proxy", "this session goes through the proxy"))
+        mine = os.environ.get("MNRH_PROXY_SUB")
+        print(f"{OK} " + (tr(f"эта сессия идёт только через {mine}", f"this session goes through {mine} only") if mine
+                          else tr("эта сессия идёт через proxy", "this session goes through the proxy")))
     if test:
         try:
-            direct, via = check()
+            results = check_all([None] + (sub_names() if extras else []))
         except ProxyError as e:
             print(f"{BAD} {e}")
             return 1
-        print(f"{OK if via else BAD} " + tr(f"напрямую {fmt(direct)}, через proxy {fmt(via)}",
-                                            f"direct {fmt(direct)}, via proxy {fmt(via)}"))
-        return 0 if via else 1
+        for sub, direct, via in results:
+            label = tr("через proxy", "via proxy") if sub is None else f"-x {sub}"
+            print(f"{OK if via else BAD} " + tr(f"напрямую {fmt(direct)}, {label} {fmt(via)}",
+                                                f"direct {fmt(direct)}, {label} {fmt(via)}"))
+        return 0 if results and results[0][2] else 1
     return 0
 
 
@@ -1210,7 +1684,7 @@ def remove():
 
 
 def remember(choice):
-    if choice not in ("vps", "direct"):
+    if choice not in ("vps", "direct") and not (choice.startswith("vps:") and choice[4:] in sub_names()):
         return 2
     try:
         os.makedirs(STATE, exist_ok=True)
@@ -1235,10 +1709,16 @@ agentmeister proxy setup [ссылка] [--country KZ] [--only KZ]
                                   настроить по ссылке на подписку (https://…, как в Happ).
                                   --country: если выход окажется в другой стране, сессия не запустится;
                                   --only: брать из подписки только серверы, чьё имя подходит под это выражение
+agentmeister proxy add <имя> [ссылка] [--country SE] [--only RE]
+                                  еще одна подписка. agentmeister <проект> -x <имя> идет только через нее,
+                                  а просто -x по всем по очереди: следующая, когда в прошлой нет живых серверов
+agentmeister proxy list            подписки, их порты и флаги -x
+agentmeister proxy remove <имя>    удалить одну дополнительную подписку
 agentmeister proxy update          обновить mihomo через Homebrew и перезапустить, если он запущен
 agentmeister proxy restart         перезапустить mihomo, не закрывая сессии через proxy
 agentmeister proxy remove          удалить настройку
-agentmeister proxy run -- <cmd>    запустить команду с доступом к сети только через mihomo
+agentmeister proxy run [--via <имя>] -- <cmd>
+                                  запустить команду с доступом к сети только через mihomo
 
 Claude Code с -x обращается к API Anthropic через mihomo. При обрыве proxy запросы завершаются
 ошибкой. Обычный SSH и локальные сервисы доступны. Внешние HTTP и HTTPS на портах 80 и 443 требуют proxy.
@@ -1262,7 +1742,15 @@ def main(argv):
     if cmd == "setup":
         return setup(rest)
     if cmd == "remove":
-        return remove()
+        return remove_sub(rest[0]) if rest else remove()
+    if cmd == "add":
+        return add_sub(rest)
+    if cmd == "list":
+        return list_subs()
+    if cmd == "names":
+        # для claude.sh и меню: имена подписок, по одному в строке
+        print("\n".join(sub_names()) if configured() else "")
+        return 0
     if cmd == "update":
         return update()
     if cmd == "restart":
@@ -1271,13 +1759,18 @@ def main(argv):
         watch()
         return 0
     if cmd == "run":
-        claude = rest[:1] == ["--claude"]
-        if claude:
-            rest = rest[1:]
-        sandbox = rest[:1] != ["--no-sandbox"]
-        if not sandbox:
-            rest = rest[1:]
-        return run(rest[1:] if rest[:1] == ["--"] else rest, claude=claude, sandbox=sandbox)
+        claude, sandbox, via = False, True, None
+        while rest[:1] and rest[0] in ("--claude", "--no-sandbox", "--via") or rest[:1] and rest[0].startswith("--via="):
+            flag = rest.pop(0)
+            if flag == "--claude":
+                claude = True
+            elif flag == "--no-sandbox":
+                sandbox = False
+            elif flag == "--via":
+                via = rest.pop(0) if rest else ""
+            else:
+                via = flag.partition("=")[2]
+        return run(rest[1:] if rest[:1] == ["--"] else rest, claude=claude, sandbox=sandbox, sub=via)
     if cmd == "configured":
         return 0 if configured() and mihomo_bin() else 1
     if cmd == "remember":

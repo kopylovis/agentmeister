@@ -115,7 +115,16 @@ def mode_options():
     ]
 
 
-def network_options(harness):
+def proxy_subs():
+    """(все подписки, подписки каскада по порядку)."""
+    try:
+        import claude_proxy
+        return (claude_proxy.sub_names(), claude_proxy.cascade_subs()) if claude_proxy.configured() else ([], [])
+    except Exception:
+        return [], []
+
+
+def network_options(harness, subs=None, cascade=None):
     if harness == "claude":
         detail = tr("Запросы Claude к Anthropic идут через mihomo. При обрыве proxy они завершаются ошибкой. "
                     "SSH и локальные сервисы доступны.",
@@ -128,11 +137,25 @@ def network_options(harness):
                     "Requests fail if the proxy goes down. Direct SSH is blocked.")
     direct, proxy = tr("Напрямую", "Direct"), tr("Через proxy", "Through proxy")
     hint = dim(tr("БЕЗ ВОПРОСА", "COMMAND"))
-    return [
+    if subs is None:
+        subs, cascade = proxy_subs()
+    cascade = subs if cascade is None else cascade
+    options = [
         ("direct", f"🔌 {direct}", [bold(direct), "", tr("Сессия подключается напрямую.", "Connect directly."),
                                     "", hint, "agentmeister ... -d"]),
-        ("vps", f"🌐 {proxy}", [bold(proxy), "", detail, "", hint, "agentmeister ... -x"]),
     ]
+    if len(subs) < 2:
+        return options + [("vps", f"🌐 {proxy}", [bold(proxy), "", detail, "", hint, "agentmeister ... -x"])]
+    chain = tr(f"Подписки по очереди: {', '.join(cascade)}. Следующая берется, когда в прошлой нет живых серверов.",
+               f"Subscriptions in order: {', '.join(cascade)}. The next one is used when the previous has no live servers.")
+    options.append(("vps", f"🌐 {proxy}, {tr('по очереди', 'in order')}",
+                    [bold(proxy), "", chain, "", detail, "", hint, "agentmeister ... -x"]))
+    for name in subs:
+        only = tr(f"Только серверы подписки {name}, без перехода на другие.",
+                  f"Only servers from {name}, no switching to other subscriptions.")
+        options.append((f"vps:{name}", f"🌐 {proxy}, {tr('только', 'only')} {name}",
+                        [bold(f"{proxy}: {name}"), "", only, "", detail, "", hint, f"agentmeister ... -x {name}"]))
+    return options
 
 
 def choose(screen, options, title, current):
@@ -168,10 +191,12 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
         steps.append("mode")
     if net is None and proxy_ready():
         steps.append("net")
-    state = {"dir": dir, "sid": "new", "mode": mode or "caffeinate",
-             "net": net or (claude_proxy.last() if "net" in steps else "direct")}
-    if state["net"] not in ("vps", "direct"):
-        state["net"] = "direct"
+    state = {"dir": dir, "sid": "new", "mode": mode or "caffeinate", "net": net or "direct"}
+    if "net" in steps:
+        # подписку, которую с тех пор удалили, заменяет каскад по оставшимся
+        remembered = claude_proxy.last()
+        keys = [k for k, _, _ in network_options(harness)]
+        state["net"] = remembered if remembered in keys else "vps" if remembered.startswith("vps") else "direct"
     projects, session_lists, skipped, k = None, {}, {}, 0
     while k < len(steps):
         step = steps[k]
@@ -214,9 +239,10 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
 
 def command(state, harness="claude"):
     """Аргументы agentmeister, которые запустят выбранное без вопросов."""
+    net = state["net"]
     args = ["root" if state["dir"] == HOME else state["dir"],
-            "-k" if state["mode"] == "caffeinate" else "-n",
-            "-x" if state["net"] == "vps" else "-d"]
+            "-k" if state["mode"] == "caffeinate" else "-n"] + \
+        (["-x"] if net == "vps" else [f"--proxy={net[4:]}"] if net.startswith("vps:") else ["-d"])
     if harness == "codex":
         resume = codex_resume_args(state["sid"], state["dir"])
         return ["--harness", "codex"] + args + (["--", *resume] if resume else ["--new"])
@@ -236,7 +262,7 @@ def main(argv=None):
     p.add_argument("--dir")
     p.add_argument("--no-session", action="store_true")
     p.add_argument("--mode", choices=("caffeinate", "normal"))
-    p.add_argument("--net", choices=("vps", "direct"))
+    p.add_argument("--net")
     a = p.parse_args(argv)
     screen = Screen()
     try:

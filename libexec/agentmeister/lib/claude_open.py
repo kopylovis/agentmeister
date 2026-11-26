@@ -231,8 +231,11 @@ def host_open_command(argv):
         head, tail = argv[:cut], argv[cut + 1:]
     else:
         head, tail = argv, []
-    project, mode, incognito = None, None, False
+    project, mode, incognito, route = None, None, False, "-x"
     for arg in head:
+        if re.fullmatch(r"--proxy=[a-z][a-z0-9-]{0,19}", arg):
+            route = arg  # только через эту подписку; без proxy сессию отсюда все равно не открыть
+            continue
         if arg in ("-d", "--direct"):
             raise ValueError(tr("host-run open открывает сессию только через proxy, -d нельзя",
                                 "host-run open only opens proxied sessions, -d is not allowed"))
@@ -252,7 +255,7 @@ def host_open_command(argv):
     if not project:
         raise ValueError(tr("нужен проект: host-run open <проект> [флаги agentmeister open] -- [аргументы claude]",
                             "a project is required: host-run open <project> [agentmeister open flags] -- [claude arguments]"))
-    cmd = [LOCAL_CLI, "open", project, mode or "-k", "-x", "--new"] + (["-i"] if incognito else [])
+    cmd = [LOCAL_CLI, "open", project, mode or "-k", route, "--new"] + (["-i"] if incognito else [])
     return cmd + (["--", *tail] if tail else [])
 
 
@@ -398,7 +401,10 @@ def open_claude(args, cm):
     name = "~" if target == HOME else os.path.basename(target)
     # из сессии через proxy новое окно тоже идёт через proxy, иначе напрямую, без вопроса в меню
     net = "-x" if os.environ.get("MNRH_PROXY") else "-d"
-    cmd = [LOCAL_CLI if net == "-x" else cm, "open", target if direct else name, MODES[mode], net, "--new"]
+    # сессия только через одну подписку открывает новые окна через нее же
+    sub = os.environ.get("MNRH_PROXY_SUB", "") if net == "-x" else ""
+    route = [f"--proxy={sub}"] if re.fullmatch(r"[a-z][a-z0-9-]{0,19}", sub) else [net]
+    cmd = [LOCAL_CLI if net == "-x" else cm, "open", target if direct else name, MODES[mode], *route, "--new"]
     rc = args.get("remote_control", True) is not False
     # имя у --remote-control необязательное: без него первый запрос принялся бы за имя
     extra = (["--remote-control", "home" if name == "~" else name] if rc else []) + \
