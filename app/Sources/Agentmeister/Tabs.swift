@@ -97,15 +97,19 @@ extension LaunchSpec {
 
     /// Новая сессия в один клик: агент и маршрут по умолчанию из настроек.
     @MainActor
-    /// Вкладка терминала в папке path. Без настроенного proxy только напрямую.
-    static func terminal(name: String, path: String, direct: Bool) -> LaunchSpec {
+    /// Вкладка терминала в папке path. Без настроенного proxy только напрямую. command выполняется первым в
+    /// интерактивном shell (с алиасами из .zshrc), потом вкладка остается в обычном shell входа.
+    static func terminal(name: String, path: String, direct: Bool, command: String = "") -> LaunchSpec {
         var spec = LaunchSpec(projectName: name, projectPath: path, direct: direct)
         spec.terminal = true
+        let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        var shell = [loginShell, "-l"]
+        if !command.isEmpty { shell += ["-i", "-c", command + "\nexec " + loginShell + " -l"] }
         if direct {
-            spec.utility = [loginShell, "-l"]
+            spec.utility = shell
             spec.bare = true
         } else {
-            spec.utility = ["proxy", "run", "--", loginShell, "-l"]
+            spec.utility = ["proxy", "run", "--"] + shell
         }
         return spec
     }
@@ -769,8 +773,8 @@ final class Workspace: ObservableObject {
     }
 
     /// Вкладка терминала. Маршрут через proxy, только если proxy настроен.
-    func openTerminal(name: String, path: String, direct: Bool, state: AppState) {
-        open(.terminal(name: name, path: path, direct: direct || state.proxy?.configured != true))
+    func openTerminal(name: String, path: String, direct: Bool, state: AppState, command: String = "") {
+        open(.terminal(name: name, path: path, direct: direct || state.proxy?.configured != true, command: command))
     }
 
     /// Терминал в папке текущей вкладки и с ее маршрутом. Без вкладок в домашней папке с маршрутом по умолчанию.

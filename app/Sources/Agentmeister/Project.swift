@@ -64,7 +64,7 @@ struct ProjectView: View {
     // поле новой сессии
     @State private var prompt = ""
     @State private var agent: LaunchSpec.Agent = .claude
-    /// Вместо агента вкладка терминала в папке проекта. Запроса у нее нет, поле ввода выключено.
+    /// Вместо агента вкладка терминала в папке проекта. Текст из поля она выполняет первой командой.
     @State private var terminal = false
     @State private var direct = false
     @State private var asParallel = false
@@ -174,15 +174,15 @@ struct ProjectView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Ink.muted)
             TextEditor(text: $prompt)
-                .font(.system(size: 14))
+                .font(terminal ? .system(size: 13, design: .monospaced) : .system(size: 14))
                 .scrollContentBackground(.hidden)
                 .focused($promptFocused)
                 .frame(height: 64)
-                .disabled(terminal)
                 .overlay(alignment: .topLeading) {
-                    if prompt.isEmpty || terminal {
+                    if prompt.isEmpty {
                         Text(terminal
-                             ? l.t("Откроется shell в папке проекта, без агента.", "A shell opens in the project folder, without an agent.")
+                             ? l.t("Команда, которую выполнить в папке проекта. Можно оставить пустым, тогда просто shell.",
+                                   "A command to run in the project folder. Leave it empty for a plain shell.")
                              : asParallel
                              ? l.t("Что сделать в своей ветке. Без задачи параллельную не начать.",
                                    "What to do in its own branch. A parallel task needs one.")
@@ -269,7 +269,8 @@ struct ProjectView: View {
     private func start() {
         guard let project else { return }
         if terminal {
-            workspace.openTerminal(name: project.name, path: project.path, direct: direct, state: backend.state)
+            workspace.openTerminal(name: project.name, path: project.path, direct: direct, state: backend.state, command: prompt)
+            prompt = ""
             ui.projectScreen = nil
             return
         }
