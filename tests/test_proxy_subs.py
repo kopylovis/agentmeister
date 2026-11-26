@@ -253,6 +253,16 @@ class AppState(Folder):
                          [("main", True), ("home", True), ("se", False)])
         self.assertEqual(out["subscriptions"][2]["exit"], "SE")
 
+    def test_app_state_reports_where_the_cascade_is_now(self):
+        import app_state
+        self.main()
+        self.extra("home", 17895)
+        with patch.object(proxy, "read_pid", return_value=1), patch.object(proxy, "listening", return_value=True), \
+                patch.object(proxy, "node_info", return_value={"node": "se-1", "proto": "vless", "sub": "home"}):
+            self.assertEqual(app_state.proxy_state()["current"], "home")
+        with patch.object(proxy, "read_pid", return_value=None):
+            self.assertIsNone(app_state.proxy_state()["current"])
+
     def test_one_subscription_is_listed_without_a_default(self):
         import app_state
         self.main()

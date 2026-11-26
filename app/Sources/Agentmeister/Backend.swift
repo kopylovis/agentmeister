@@ -231,8 +231,11 @@ struct AppState: Decodable {
         let defaultRoute: String?
         /// Подписка новых сессий, если по умолчанию выбрана одна (agentmeister -x <имя>). Nil у каскада.
         let defaultSubscription: String?
-        /// Подписки proxy, когда их больше одной. Пусто или nil, если выбирать не из чего.
+        /// Подписки proxy: основная и добавленные через proxy add.
         let subscriptions: [Subscription]?
+        /// Подписка, на которой каскад (просто -x) сейчас, по ответу mihomo. Nil, если подписка одна, mihomo не
+        /// запущен или живых серверов нет.
+        let current: String?
 
         struct Subscription: Decodable, Hashable {
             let name: String
