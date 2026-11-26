@@ -13,6 +13,8 @@ struct L {
     var modes: String { t("Режимы", "Modes") }
     var newSession: String { t("Новая сессия", "New session") }
     var newTab: String { t("Новая вкладка", "New tab") }
+    var newTerminal: String { t("Новая вкладка терминала", "New terminal tab") }
+    var openTerminalHere: String { t("Открыть терминал здесь", "Open terminal here") }
     var closeTab: String { t("Закрыть вкладку", "Close tab") }
     var restart: String { t("Перезапустить", "Restart") }
     var resumeLast: String { t("Продолжить последнюю", "Resume last") }

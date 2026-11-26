@@ -137,6 +137,8 @@ struct AgentmeisterApp: App {
                     if !workspace.newTab() { ui.showNewSession = true }
                 }
                 .shortcut(.newTab)
+                Button(l.newTerminal) { workspace.openTerminalHere(state: backend.state) }
+                    .shortcut(.newTerminal)
                 // только когда впереди главное окно: в Настройках, Сессиях и других окнах ⌘W закрывает само окно,
                 // а не вкладку с агентом. Пока открыт экран проекта, выбранная вкладка скрыта под ним,
                 // поэтому ⌘W закрывает сам экран и возвращает к вкладке, а ⌘R выключен, чтобы не перезапустить
