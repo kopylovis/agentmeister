@@ -711,7 +711,7 @@ def project(path):
     out["git"] = None
     if is_git:
         commits = []
-        for line in git("log", "-3", "--format=%h%x09%ct%x09%s").splitlines():
+        for line in git("log", "-3", "--no-merges", "--format=%h%x09%ct%x09%s").splitlines():
             sha, ts, subject = (line.split("\t", 2) + ["", ""])[:3]
             commits.append({"sha": sha, "time": int(ts) if ts.isdigit() else None, "subject": subject})
         out["git"] = {"branch": git("branch", "--show-current") or None,
