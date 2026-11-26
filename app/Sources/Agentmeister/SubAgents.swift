@@ -142,8 +142,7 @@ struct SubAgentSheet: View {
                                     }
                                     .font(.system(size: 12, design: .monospaced))
                                 } else {
-                                    Text(entry.text).font(.system(size: 13)).foregroundStyle(Ink.text)
-                                        .fixedSize(horizontal: false, vertical: true)
+                                    MarkdownText(text: entry.text)
                                 }
                             }
                             Color.clear.frame(height: 1).id("end")
