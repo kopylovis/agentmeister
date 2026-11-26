@@ -118,8 +118,8 @@ def mode_options():
 def proxy_subs():
     """(все подписки, подписки каскада по порядку)."""
     try:
-        import claude_proxy
-        return (claude_proxy.sub_names(), claude_proxy.cascade_subs()) if claude_proxy.configured() else ([], [])
+        import proxy
+        return (proxy.sub_names(), proxy.cascade_subs()) if proxy.configured() else ([], [])
     except Exception:
         return [], []
 
@@ -168,8 +168,8 @@ def choose(screen, options, title, current):
 
 def proxy_ready():
     try:
-        import claude_proxy
-        return claude_proxy.configured()
+        import proxy
+        return proxy.configured()
     except Exception:
         return False
 
@@ -177,7 +177,7 @@ def proxy_ready():
 def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claude"):
     """Пройти недостающие шаги. Ответ: {"dir", "sid", "mode", "net"} или None, если Esc на первом шаге.
     sid: "new" или id сессии. Шаги без вопроса (сессий нет) Esc тоже перескакивает."""
-    import claude_proxy
+    import proxy
     if harness == "codex":
         from codex_sessions import session_list
     else:
@@ -194,7 +194,7 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
     state = {"dir": dir, "sid": "new", "mode": mode or "caffeinate", "net": net or "direct"}
     if "net" in steps:
         # подписку, которую с тех пор удалили, заменяет каскад по оставшимся
-        remembered = claude_proxy.last()
+        remembered = proxy.last()
         keys = [k for k, _, _ in network_options(harness)]
         state["net"] = remembered if remembered in keys else "vps" if remembered.startswith("vps") else "direct"
     projects, session_lists, skipped, k = None, {}, {}, 0
@@ -233,7 +233,7 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
             state[{"project": "dir", "session": "sid"}.get(step, step)] = got
         k += 1
     if "net" in steps:
-        claude_proxy.remember(state["net"])
+        proxy.remember(state["net"])
     return state
 
 
