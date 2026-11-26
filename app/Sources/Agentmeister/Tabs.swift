@@ -138,6 +138,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     @Published var spec: LaunchSpec
     /// Фоновые агенты внутри сессии вкладки, идущие и недавно законченные. Обновляет ряд подзадач.
     @Published var agents: [SubAgent] = []
+    /// Фоновые команды сессии (Bash в фоне), идущие и недавно законченные. Тоже в ряду подзадач.
+    @Published var shells: [BackgroundShell] = []
     @Published var title: String
     @Published var running = true
     @Published var exitCode: Int32?

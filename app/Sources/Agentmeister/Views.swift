@@ -1079,7 +1079,7 @@ struct SubtaskRowHost: View {
     let subtasks: [TerminalTab]
 
     var body: some View {
-        if !subtasks.isEmpty || !root.agents.isEmpty { SubtaskRow(root: root, subtasks: subtasks) }
+        if !subtasks.isEmpty || !root.agents.isEmpty || !root.shells.isEmpty { SubtaskRow(root: root, subtasks: subtasks) }
     }
 }
 
@@ -1091,10 +1091,15 @@ struct SubAgentPoller: View {
 
     var body: some View {
         Color.clear.task(id: root.sessionId) {
-            guard let sid = root.sessionId, root.spec.agent == .claude else { root.agents = []; return }
+            guard let sid = root.sessionId, root.spec.agent == .claude, root.spec.utility == nil else {
+                root.agents = []
+                root.shells = []
+                return
+            }
             while !Task.isCancelled {
-                let now = await Task.detached(priority: .utility) { SubAgents.list(sid) }.value
-                if root.agents != now { root.agents = now }
+                let (agents, shells) = await Task.detached(priority: .utility) { (SubAgents.list(sid), BackgroundShells.list(sid)) }.value
+                if root.agents != agents { root.agents = agents }
+                if root.shells != shells { root.shells = shells }
                 try? await Task.sleep(for: .seconds(3))
             }
         }
@@ -1129,6 +1134,9 @@ struct SubtaskRow: View {
                     }
                     ForEach(root.agents) { agent in
                         SubAgentChip(agent: agent, l: l)
+                    }
+                    ForEach(root.shells) { shell in
+                        ShellChip(shell: shell, l: l)
                     }
                     Button {
                         workspace.selected = root.id
