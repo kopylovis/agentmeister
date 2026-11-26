@@ -85,6 +85,15 @@ struct TabAlert: View {
                               primary: (l.t("Запустить", "Start"), { startHostRun() }),
                               secondary: h.log.map { log in (l.t("Журнал", "Log"), { NSWorkspace.shared.open(URL(fileURLWithPath: log)) }) }))
         }
+        if tab.spec.proxied, tab.spec.utility == nil || tab.spec.terminal, backend.state.proxy?.isBlocked(tab.spec.subscription) == true {
+            let who = tab.spec.subscription ?? l.t("очередь подписок", "the subscription order")
+            items.append(Item(id: "blocked-\(who)", tone: .amber, icon: "lock",
+                              title: l.t("Proxy закрыт: \(who)", "Proxy closed: \(who)"),
+                              body: l.t("Сервер вывел бы не в ту страну, а живого сервера нужной страны в подписке нет. Запросы отклоняются, пока такой сервер не появится, сторож проверяет раз в 5 минут.",
+                                        "A server would exit in the wrong country and the subscription has no live server in the right one. Requests are refused until one shows up; the watcher checks every 5 minutes."),
+                              primary: (l.t("Подробнее", "Details"), { utility(["proxy"]) }),
+                              secondary: nil))
+        }
         if tab.spec.proxied, let change = backend.exitChange {
             items.append(Item(id: "exit-\(change.from)-\(change.to)", tone: .teal, icon: "info.circle",
                               title: l.t("Выход сменился с \(change.from) на \(change.to)", "Exit switched from \(change.from) to \(change.to)"),

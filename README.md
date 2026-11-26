@@ -373,6 +373,16 @@ can't take a port over while mihomo restarts, and a launch checks that the ports
 Pages the agent opens and links clicked in a tab go through that tab's subscription, each subscription in its
 own browser window and Chrome profile.
 
+The network watcher also keeps the exit country during a session. Every 2 seconds it looks at the server
+mihomo picked for each subscription in use. When mihomo moves to another server (inside the same
+subscription, or to the next one in the order), the watcher closes that subscription right away, checks the new
+server's exit through a separate probe port that sessions can't reach, and opens it again only if the country is
+right. Otherwise it pins a live server of the right country from the same subscription, or, if there is none,
+keeps the subscription closed: requests are refused as if the servers were down, and the watcher looks again
+every 5 minutes. A closed subscription shows up in `agentmeister proxy`, as "closed" under the tab and as a
+warning in the app. Requests sent in the up to 2 seconds before the watcher notices a switch still go through the
+new server. `--only` with the country's server names avoids such switches altogether.
+
 `agentmeister proxy` shows the mihomo version and suggests `agentmeister proxy update` when Homebrew has a
 newer one. That command runs `brew upgrade mihomo`. If mihomo is running with no proxied sessions, it stops it
 and the new version starts with the next session. If sessions are running, it asks whether to restart mihomo
