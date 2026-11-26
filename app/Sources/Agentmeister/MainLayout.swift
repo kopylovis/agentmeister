@@ -307,12 +307,13 @@ struct SidebarRail: View {
                               : s.status == "busy" ? l.t("работает", "working") : l.t("открыто \(s.count)", "\(s.count) open"))))
                         .contextMenu {
                             Button(l.newSession) {
-                                workspace.open(LaunchSpec.quick(project))
+                                workspace.open(LaunchSpec.quick(project, state: backend.state))
                             }
                             Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
                             Button(l.openTerminalHere) {
                                 workspace.openTerminal(name: project.name, path: project.path,
-                                                       direct: backend.state.proxy?.defaultRoute == "direct", state: backend.state)
+                                                       direct: backend.state.proxy?.defaultRoute == "direct", state: backend.state,
+                                                       subscription: backend.state.defaultSubscription)
                             }
                         }
                         // перетаскивание двигает вкладки проекта, поэтому тащить можно только проект с вкладками
