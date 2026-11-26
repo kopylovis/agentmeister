@@ -136,10 +136,15 @@ extension LaunchSpec {
                    subscription: state.defaultSubscription)
     }
 
-    /// Маршрут для подписи: proxy, proxy home или напрямую.
-    func routeLabel(_ l: L) -> String {
+    /// Маршрут для подписи: через что вкладка выходит сейчас. Только через одну подписку это "proxy home SE",
+    /// по очереди "proxy main KZ" (подписка, на которой каскад сейчас, и ее страна), с одной подпиской "proxy GE".
+    /// Напрямую это "напрямую".
+    func routeLabel(_ l: L, proxy: AppState.Proxy? = nil) -> String {
         guard proxied else { return l.direct }
-        return subscription.map { "proxy " + $0 } ?? l.proxy
+        let subs = proxy?.subscriptions ?? []
+        let name = subscription ?? (subs.count > 1 ? proxy?.current : nil)
+        let exit = name.flatMap { n in subs.first { $0.name == n }?.exit } ?? (subscription == nil ? proxy?.exit : nil)
+        return ([l.proxy, name, exit].compactMap { $0 }).joined(separator: " ")
     }
 }
 
