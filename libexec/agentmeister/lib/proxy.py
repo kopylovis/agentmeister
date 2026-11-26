@@ -766,12 +766,25 @@ def wait_ready(p, deadline):
     return False
 
 
+def promptsill_view(key, info):
+    """Поля для promptsill (PROMPTSILL_PROXY_FILE): подпись, подробности и закрыта ли подписка. promptsill читает
+    файл выхода при каждой отрисовке, так что подпись каскада меняется вместе с его подпиской."""
+    loc = info.get("loc")
+    country = loc.upper() if isinstance(loc, str) and re.match(r"^[A-Za-z]{2}$", loc) else None
+    many = isinstance(info.get("subs"), int) and info["subs"] > 1
+    name = (key if key is not None else info.get("sub")) if many else None
+    detail = [v for v in (info.get("proto"), info.get("ip")) if isinstance(v, str) and re.match(r"^[\w.:-]{1,40}$", v)]
+    return {"label": " ".join(v for v in (name, country) if v), "detail": " ".join(detail),
+            "closed": bool(info.get("blocked"))}
+
+
 def exit_info(sub, p, since, count):
     """Выход через порт подписки: IP и страна от Cloudflare, сервер и протокол от mihomo."""
     got = trace(proxy_env(p))
     node = node_info(sub) or {}
-    return dict({"ip": got[0], "loc": got[1]} if got else {}, node=node.get("node"), proto=node.get("proto"),
+    info = dict({"ip": got[0], "loc": got[1]} if got else {}, node=node.get("node"), proto=node.get("proto"),
                 sub=node.get("sub") or (sub if sub else None), subs=count, since=since)
+    return dict(info, **promptsill_view(sub, info))
 
 
 def start(strict=True, sub=None):
@@ -1005,6 +1018,7 @@ class Guard:
         info = dict(read_exit(key), node=node, sub=sub, loc=loc, blocked=blocked, checked=time.strftime("%H:%M:%S"))
         if blocked:
             info.pop("ip", None)
+        info.update(promptsill_view(key, info))
         try:
             with open(exit_file(key), "w") as f:
                 json.dump(info, f, ensure_ascii=False)
@@ -1042,6 +1056,8 @@ class Guard:
             sub = self.node_sub(key, chosen)
             want = self.want(key, sub)
             if not want:
+                # страна не задана: закрывать нечего, но подпись в promptsill должна показать новый сервер
+                self.record(key, chosen, sub, self.country(chosen))
                 return
             if self.cache.get(chosen, (None, 0))[0] == want and self.clock() - self.cache[chosen][1] < GUARD_TTL:
                 return
@@ -1287,6 +1303,10 @@ def proxy_env(p, *, claude=False, sub=None):
         env["PROMPTSILL_PROXY_DETAIL"] = " ".join(detail)
     if os.path.exists(page_file(sub)):
         env["PROMPTSILL_PROXY_URL"] = "file://" + urllib.parse.quote(page_file(sub))
+    # promptsill читает этот файл при каждой отрисовке: подпись следует за каскадом и показывает закрытую подписку
+    env.pop("PROMPTSILL_PROXY_FILE", None)
+    if os.path.exists(exit_file(sub)):
+        env["PROMPTSILL_PROXY_FILE"] = os.path.abspath(exit_file(sub))
     return env
 
 
