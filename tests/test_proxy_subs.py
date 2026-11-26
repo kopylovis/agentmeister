@@ -160,6 +160,32 @@ class Sessions(Folder):
         self.assertNotIn("listeners:", self.config())
 
 
+class AppState(Folder):
+    def test_app_state_lists_subscriptions_and_the_default(self):
+        import app_state
+        self.main("KZ")
+        self.extra("home", 17895, "KZ")
+        self.extra("se", 17896, "SE")
+        os.makedirs(claude_proxy.STATE)
+        Path(claude_proxy.exit_file("se")).write_text(json.dumps({"loc": "se"}))
+        claude_proxy.remember("vps:se")
+        with patch.object(claude_proxy, "read_pid", return_value=None):
+            out = app_state.proxy()
+        self.assertEqual(out["defaultRoute"], "proxy")
+        self.assertEqual(out["defaultSubscription"], "se")
+        self.assertEqual([(s["name"], s["inCascade"]) for s in out["subscriptions"]],
+                         [("main", True), ("home", True), ("se", False)])
+        self.assertEqual(out["subscriptions"][2]["exit"], "SE")
+
+    def test_one_subscription_gives_nothing_to_choose(self):
+        import app_state
+        self.main()
+        with patch.object(claude_proxy, "read_pid", return_value=None):
+            out = app_state.proxy()
+        self.assertEqual(out["subscriptions"], [])
+        self.assertIsNone(out["defaultSubscription"])
+
+
 class Launch(unittest.TestCase):
     def test_menu_offers_each_subscription(self):
         keys = [k for k, _, _ in open_flow.network_options("claude", ["main", "home"], ["main"])]

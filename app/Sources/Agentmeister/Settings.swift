@@ -60,6 +60,8 @@ struct SettingsData: Decodable {
         let country: String?
         let ip: String?
         let defaultRoute: String?
+        let defaultSubscription: String?
+        let subscriptions: [AppState.Proxy.Subscription]?
     }
 
     struct Agent: Decodable {
@@ -658,6 +660,14 @@ struct ProxyHostRunPane: View {
                         ), options: [("proxy", l.viaProxy, Ink.teal), ("direct", l.directly, Ink.direct)])
                         .font(.system(size: 12))
                         .accessibilityLabel(l.t("Маршрут по умолчанию", "Default route"))
+                        if p.defaultRoute != "direct", let subs = p.subscriptions, subs.count > 1 {
+                            SubscriptionPicker(selection: Binding(
+                                get: { p.defaultSubscription },
+                                set: { name in Task { _ = await backend.perform(["proxy", "remember", name.map { "vps:" + $0 } ?? "vps"]); await reload() } }
+                            ), subscriptions: subs)
+                            .font(.system(size: 12))
+                            .accessibilityLabel(l.t("Подписка по умолчанию", "Default subscription"))
+                        }
                     }
                 }
                 .fixedSize(horizontal: false, vertical: true)
