@@ -192,6 +192,16 @@ struct MainView: View {
                 Workspace.bringMainWindowForward()
                 return
             }
+            // agentmeister://project?path=<папка> открывает экран проекта, в котором лежит эта папка
+            if url.host() == "project" {
+                if let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "path" })?.value,
+                   let project = backend.state.project(containing: (raw as NSString).expandingTildeInPath) {
+                    ui.sessionPreview = nil
+                    ui.projectScreen = project.path
+                }
+                Workspace.bringMainWindowForward()
+                return
+            }
             // agentmeister://focus?tab=<id>&session=<id> из клика по уведомлению
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
             guard url.host() == "focus", let tab = query?.first(where: { $0.name == "tab" })?.value else { return }
