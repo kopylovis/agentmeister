@@ -691,9 +691,13 @@ struct ProxyHostRunPane: View {
                 Picker(l.t("Ссылки по клику из вкладки", "Links you click in a tab"), selection: $linkPlace) {
                     Text(l.t("Спрашивать", "Ask")).tag(LinkPlace.ask.rawValue)
                     Text(l.t("Окно Agentmeister", "Agentmeister window")).tag(LinkPlace.builtin.rawValue)
-                    Text(l.t("Отдельный профиль Chrome", "Separate Chrome profile")).tag(LinkPlace.chrome.rawValue)
+                    if ChromeProfile.app != nil {
+                        Text(l.t("Отдельный профиль Chrome", "Separate Chrome profile")).tag(LinkPlace.chrome.rawValue)
+                    }
                     Text(l.t("Браузер по умолчанию", "Default browser")).tag(LinkPlace.system.rawValue)
                 }
+                // запомненный Chrome без Chrome: в списке его нет, ссылка все равно спросит
+                .onAppear { if linkPlace == LinkPlace.chrome.rawValue && ChromeProfile.app == nil { linkPlace = LinkPlace.ask.rawValue } }
                 Note(text: l.t("Вход в агента, OAuth для MCP и другие страницы, которые агент во вкладке через proxy открывает сам, грузятся во встроенном браузере через тот же mihomo. Если mihomo не запущен, браузер ничего не грузит. Ссылку, по которой кликнули во вкладке через proxy, приложение открывает там, где выбрано, или спрашивает. В вопросе можно запомнить выбор.",
                                "Agent sign-in, MCP OAuth and other pages a proxied tab opens by itself load in the built-in browser through the same mihomo. With mihomo stopped the browser loads nothing. A link you click in a proxied tab opens where you picked, or the app asks. The question can remember your choice."))
             }
