@@ -1,0 +1,29 @@
+[
+ {
+  "project": "ledger-api",
+  "path": "/Users/demo/Developer/ledger-api",
+  "agent": "claude",
+  "screen": "claude.txt",
+  "selected": true
+ },
+ {
+  "project": "orbit-ios",
+  "path": "/Users/demo/Developer/orbit-ios",
+  "agent": "codex",
+  "subscription": "work",
+  "screen": "codex.txt"
+ },
+ {
+  "project": "atlas-web",
+  "path": "/Users/demo/Developer/atlas-web",
+  "agent": "claude",
+  "subscription": "backup",
+  "screen": "claude2.txt"
+ },
+ {
+  "project": "infra",
+  "path": "/Users/demo/Developer/infra",
+  "terminal": true,
+  "screen": "terminal.txt"
+ }
+]
