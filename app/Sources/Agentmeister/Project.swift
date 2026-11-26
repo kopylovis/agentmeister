@@ -647,6 +647,6 @@ struct ProjectSessionRow: View {
 
     private func resume() {
         ui.projectScreen = nil
-        workspace.open(LaunchSpec.resume(session, project: project))
+        workspace.open(LaunchSpec.resume(session, project: project, state: backend.state))
     }
 }

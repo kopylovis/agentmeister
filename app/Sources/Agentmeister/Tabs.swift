@@ -86,15 +86,19 @@ extension LaunchSpec {
 
     /// Продолжить сессию в ее собственной папке: claude --resume ищет сессию по cwd, а сессия могла начаться
     /// в подпапке проекта.
-    static func resume(_ id: String, cwd: String?, project: AppState.Project, agent: Agent = .claude) -> LaunchSpec {
+    /// state: подписка по умолчанию из Настроек. Если там выбрана одна подписка, продолжение идет только
+    /// через нее, а не по очереди: какой подписка была у сессии раньше, сохраненная переписка не помнит.
+    static func resume(_ id: String, cwd: String?, project: AppState.Project, agent: Agent = .claude,
+                       state: AppState? = nil) -> LaunchSpec {
         var isDir: ObjCBool = false
         let path = cwd.flatMap { FileManager.default.fileExists(atPath: $0, isDirectory: &isDir) && isDir.boolValue ? $0 : nil } ?? project.path
-        return LaunchSpec(projectName: project.name, projectPath: path, agent: agent, resumeId: id)
+        return LaunchSpec(projectName: project.name, projectPath: path, agent: agent, subscription: state?.defaultSubscription,
+                          resumeId: id)
     }
 
     /// Продолжить сохраненную сессию любого агента.
-    static func resume(_ session: AppState.Session, project: AppState.Project) -> LaunchSpec {
-        resume(session.id, cwd: session.cwd, project: project, agent: session.kind)
+    static func resume(_ session: AppState.Session, project: AppState.Project, state: AppState? = nil) -> LaunchSpec {
+        resume(session.id, cwd: session.cwd, project: project, agent: session.kind, state: state)
     }
 
     /// Новая сессия в один клик: агент и маршрут по умолчанию из настроек.
@@ -1071,7 +1075,7 @@ final class Workspace: ObservableObject {
                   let saved = state.sessions.first(where: { $0.id == sid }),
                   let project = state.project(containing: saved.cwd) {
             // агент из сохраненной сессии: id треда Codex иначе ушел бы в claude --resume
-            open(LaunchSpec.resume(saved, project: project))
+            open(LaunchSpec.resume(saved, project: project, state: state))
         } else {
             return false
         }

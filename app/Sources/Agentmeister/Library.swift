@@ -313,7 +313,7 @@ struct SessionDetail: View {
         let path = project?.path ?? home
         let name = project?.name ?? (home as NSString).lastPathComponent
         let agent: LaunchSpec.Agent = preview.agent == "codex" ? .codex : .claude
-        var spec = project.map { LaunchSpec.resume(id, cwd: home, project: $0, agent: agent) }
+        var spec = project.map { LaunchSpec.resume(id, cwd: home, project: $0, agent: agent, state: backend.state) }
             ?? LaunchSpec(projectName: name, projectPath: path, agent: agent, resumeId: id)
         spec.awake = awake
         workspace.open(spec)

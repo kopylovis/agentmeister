@@ -694,7 +694,7 @@ struct ProjectRow: View {
             }
             if let last = backend.state.sessions(in: project).first {
                 Button(l.resumeLast) {
-                    workspace.open(LaunchSpec.resume(last, project: project))
+                    workspace.open(LaunchSpec.resume(last, project: project, state: backend.state))
                 }
             }
             Button(l.t("Обзор проекта", "Project overview")) { ui.projectScreen = project.path }
@@ -732,7 +732,7 @@ struct SessionRow: View {
             // открытая во вкладке сессия сразу переключает на вкладку, закрытая сначала показывает превью
             if tab != nil {
                 ui.projectScreen = nil
-                workspace.open(LaunchSpec.resume(session, project: project))
+                workspace.open(LaunchSpec.resume(session, project: project, state: backend.state))
             } else {
                 ui.sessionPreview = ui.sessionPreview == session.id ? nil : session.id
             }
@@ -764,7 +764,7 @@ struct SessionRow: View {
         .contextMenu {
             Button(l.resume) {
                 ui.projectScreen = nil
-                workspace.open(LaunchSpec.resume(session, project: project))
+                workspace.open(LaunchSpec.resume(session, project: project, state: backend.state))
             }
             Button(l.t("Показать переписку", "Show the conversation")) { ui.sessionPreview = session.id }
         }
