@@ -2085,8 +2085,8 @@ struct NewSessionSheet: View {
         .onAppear {
             // путь вкладки может быть worktree или подпапкой: берем проект, в котором он лежит
             let projects = backend.state.projects
-            projectPath = initialProject.flatMap { p in projects.first { p == $0.path || p.hasPrefix($0.path + "/") }?.path }
-                ?? projects.first?.path ?? ""
+            projectPath = initialProject.flatMap { p in backend.state.project(containing: p)?.path }
+                ?? (projects.first { !$0.isHome } ?? projects.first)?.path ?? ""
             if AgentPrefs.defaultAgent == "codex" { agent = .codex }
             direct = backend.state.proxy?.defaultRoute == "direct"
             if ui.newSessionParallel { mode = .parallel }

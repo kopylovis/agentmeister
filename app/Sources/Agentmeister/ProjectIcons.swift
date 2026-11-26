@@ -10,6 +10,8 @@ final class ProjectIcons: ObservableObject {
     private var looked: Set<String> = []
 
     func icon(for path: String) -> NSImage? {
+        // домашнюю папку не обходим: там все проекты и библиотеки, иконки у нее нет
+        if path == NSHomeDirectory() { return nil }
         if !looked.contains(path) {
             looked.insert(path)
             Task.detached(priority: .utility) {
@@ -104,7 +106,13 @@ struct ProjectIconView: View {
     var size: CGFloat = 16
 
     var body: some View {
-        if let image = icons.icon(for: path) {
+        // домашнюю папку не обходим в поисках иконки: там все проекты и библиотеки
+        if path == NSHomeDirectory() {
+            Image(systemName: "house")
+                .font(.system(size: size * 0.75))
+                .foregroundStyle(Ink.muted)
+                .frame(width: size, height: size)
+        } else if let image = icons.icon(for: path) {
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)
