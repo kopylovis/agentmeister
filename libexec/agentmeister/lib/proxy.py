@@ -327,7 +327,7 @@ def guarded_ports(own):
     которого proxy add берет порты новым подпискам. Иначе сессия только через home вышла бы через каскад, а
     каскадная через подписку другой страны."""
     ports = set(range(DEFAULT_PORT, DEFAULT_PORT + PORT_WINDOW)) | set(all_ports().values())
-    return sorted(ports - {own})
+    return sorted(ports - {own} if own else ports)
 
 
 def all_ports():
@@ -338,6 +338,25 @@ def all_ports():
     for name, v in extra_subs().items():
         out[name] = v["port"]
     return out
+
+
+def owned_by_mihomo(q, pid):
+    """Порт слушает именно mihomo с этим pid, а не программа, которая заняла его, пока mihomo перезапускался.
+    None: lsof не запустился, проверить нечем."""
+    try:
+        r = subprocess.run(["/usr/sbin/lsof", "-nP", "-a", "-p", str(pid), f"-iTCP:{q}", "-sTCP:LISTEN", "-t"],
+                           capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout.split() == [str(pid)]
+
+
+def check_owner(sub):
+    """Порт каскада и порт подписки сессии слушает mihomo. Иначе трафик сессии ушел бы чужой программе."""
+    pid = read_pid()
+    for q in sorted({port(), sub_port(sub)}):
+        if pid and owned_by_mihomo(q, pid) is False:
+            raise ProxyError(f"порт {q} слушает не mihomo. Сессию через proxy не запускаю: agentmeister proxy restart")
 
 
 def listening(p):
@@ -644,8 +663,10 @@ def refresh_subscription(sub=None):
     label = f"agentmeister proxy ({sub})" if sub not in (None, MAIN) else "agentmeister proxy"
     if url:
         iface = physical_interface()
-        cmd = ["curl", "-sf", "--max-time", "15", "-A", "mihomo"] + (["--interface", iface] if iface else []) + [url]
-        r = subprocess.run(cmd, capture_output=True)
+        # ссылку curl читает из stdin (-K -), а не из аргументов: их видит ps любого процесса на этом Mac
+        cmd = ["curl", "-sf", "--max-time", "15", "-A", "mihomo"] + (["--interface", iface] if iface else []) + ["-K", "-"]
+        quoted = url.replace("\\", "\\\\").replace('"', '\\"')
+        r = subprocess.run(cmd, input=f'url = "{quoted}"\n'.encode(), capture_output=True)
         if r.returncode == 0 and subscription_ok(r.stdout):
             write_private(sub_file, r.stdout)
             return True
@@ -725,6 +746,8 @@ def start(strict=True, sub=None):
     if read_pid() and listening(p):
         if sub is not None and not listening(sub_port(sub)):
             raise ProxyError(f"mihomo запущен без порта подписки {sub}, перезапусти его: agentmeister proxy restart")
+        if not in_session():
+            check_owner(sub)
         # страну проверяем и у запущенного: подписка могла начать выходить не там после прошлого запуска
         problem = country_problem(sub)
         if problem and strict:
@@ -760,6 +783,12 @@ def start(strict=True, sub=None):
         time.sleep(0.1)
     if not listening(p):
         raise ProxyError(f"mihomo не поднялся на порту {p}, смотри {tilde(LOG)}")
+    try:
+        check_owner(sub)
+    except ProxyError:
+        if not holders():
+            stop()
+        raise
     since = time.strftime("%Y-%m-%d %H:%M")
 
     def ready_and_exit(item):
@@ -968,8 +997,10 @@ def both_forms(path):
 def guarded_paths():
     """Что закрыто для сессии, как есть и после раскрытия ссылок: сокет управления mihomo, папки настройки
     и состояния, замок и папки над ними."""
+    secrets = [f for path in (SUB_URL, SUB_FILE, os.path.join(CONF_DIR, "vps.yaml")) for f in both_forms(path)]
     return {"SOCK": both_forms(SOCK), "CONF": both_forms(CONF_DIR), "STATE": both_forms(STATE),
-            "LOCK": both_forms(LOCK), "UP": host_run.parents(CONF_DIR, STATE)}
+            "LOCK": both_forms(LOCK), "UP": host_run.parents(CONF_DIR, STATE),
+            "SECRET": secrets, "SUBS": both_forms(os.path.join(CONF_DIR, "subs"))}
 
 
 def sandbox_profile_lines():
@@ -983,10 +1014,12 @@ def sandbox_profile_lines():
     def refs(kind, kind_filter):
         return " ".join(f'({kind_filter} (param "MIHOMO_{kind}{i}"))' for i in range(len(paths[kind])))
 
+    # ссылки на подписки и скачанные подписки с ключами серверов сессии не нужны: читать их нельзя.
+    # config.yaml и subs.json читать можно, по ним сессия узнает свой порт и имена подписок
     lines = [f"(deny network-outbound {refs('SOCK', 'literal')})",
              f"(deny file-write* file-link {refs('SOCK', 'literal')} {refs('CONF', 'subpath')} "
              f"{refs('STATE', 'subpath')})",
-             f"(deny file-read* {refs('LOCK', 'literal')})"]
+             f"(deny file-read* {refs('LOCK', 'literal')} {refs('SECRET', 'literal')} {refs('SUBS', 'subpath')})"]
     if paths["UP"]:
         lines.append(f"(deny file-write* {refs('UP', 'literal')})")
     return lines
@@ -1004,11 +1037,15 @@ def session_command(p, cmd, *, claude=False):
     if claude:
         # Список команд host-run и его сокет сессия видит, но поменять не может. mihomo ей не подвластен.
         # Чужие порты mihomo закрыты: сессия идет только через свою подписку или свой каскад.
-        ports = "".join(f'(deny network-outbound (remote ip "localhost:{q}"))\n' for q in guarded_ports(p))
+        # "*:" а не "localhost:": адрес ::ffff:127.0.0.1 тоже ведет на mihomo. Занять порты mihomo сессия тоже
+        # не может, свой в том числе: пока mihomo перезапускается, на порту оказалась бы ее программа
+        ports = "".join(f'(deny network-outbound (remote ip "*:{q}"))\n' for q in guarded_ports(p)) + \
+            "".join(f'(deny network-bind (local ip "*:{q}"))\n' for q in guarded_ports(None))
         profile = CLAUDE_PROFILE + "\n".join(host_run.sandbox_profile_lines()) + "\n" + ports + guard
         return ["/usr/bin/sandbox-exec", *host_run.sandbox_params(), *sandbox_params(), "-p", profile, "--", *cmd]
-    profile = SESSION_PROFILE.format(port=p)
-    params = sandbox_params()
+    # список команд host-run исполнитель выполняет вне песочницы с прямой сетью: менять его нельзя и здесь
+    profile = SESSION_PROFILE.format(port=p) + "\n".join(host_run.sandbox_profile_lines()) + "\n"
+    params = host_run.sandbox_params() + sandbox_params()
     agent = os.environ.get("SSH_AUTH_SOCK", "")
     if os.path.isabs(agent):
         path = os.path.realpath(agent)
