@@ -343,7 +343,10 @@ def proxy():
             "node": info.get("node") if isinstance(info.get("node"), str) else None,
             # без сохраненного выбора новая сессия идет через proxy, как в правилах пользователя и в меню
             "defaultRoute": "direct" if os.path.exists(claude_proxy.LAST) and claude_proxy.last() == "direct" else "proxy",
-            "sessions": held}
+            "sessions": held,
+            # по очереди для просто -x; у каждой еще свой порт для -x <имя>, пока подписок больше одной
+            "subscriptions": [{"name": n, "port": claude_proxy.sub_port(n), "country": claude_proxy.sub_country(n) or None}
+                              for n in claude_proxy.sub_names()] if configured else []}
 
 
 def modes():

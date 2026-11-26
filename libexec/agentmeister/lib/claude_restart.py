@@ -74,6 +74,18 @@ def no_hook_reason(pid, term):
             "и запусти claude там")
 
 
+def proxy_sub_args():
+    """Подписка, через которую строго идет эта сессия (agentmeister -x home), для команды перезапуска."""
+    sub = os.environ.get("MNRH_PROXY_SUB", "") if os.environ.get("MNRH_PROXY") else ""
+    return [sub] if restart_job.SUB_NAME.fullmatch(sub) else []
+
+
+def proxy_job_value():
+    """proxy в задании перезапуска: имя подписки, true для каскада или false без proxy."""
+    sub = proxy_sub_args()
+    return sub[0] if sub else bool(os.environ.get("MNRH_PROXY"))
+
+
 def plan(update=True, forget=False, slim=False, fresh=False):
     if os.environ.get("CLAUDE_CODE_SKIP_PROMPT_HISTORY") == "1" and not (forget or fresh):
         # agentmeister -i: переписка не пишется на диск, открывать заново нечего
@@ -105,7 +117,7 @@ def plan(update=True, forget=False, slim=False, fresh=False):
             tty = given
     if not tty or tty in ("??", "-"):
         if proxy_restart:
-            command = shlex.join(["agentmeister", "-x", cwd, "--", "--resume", sid])
+            command = shlex.join(["agentmeister", "-x", *proxy_sub_args(), cwd, "--", "--resume", sid])
             raise RestartError(f"не удалось определить терминал этой прокси-сессии. Введи /exit, "
                                f"затем выполни в терминале:\n{command}")
         raise RestartError("у Claude нет терминала, перезапускать некуда")
@@ -137,7 +149,7 @@ def plan(update=True, forget=False, slim=False, fresh=False):
     try:
         # сессия через proxy (agentmeister -x): её окружение досталось и нам, перезапускаем тоже через proxy
         job = restart_job.claude_job(cwd, mode, sid, new_sid, update=update and not new and not slim,
-                                     proxy=bool(os.environ.get("MNRH_PROXY")), caffeinate=caffeinate, flags=flags)
+                                     proxy=proxy_job_value(), caffeinate=caffeinate, flags=flags)
     except restart_job.JobError as e:
         raise RestartError(f"не собрал команду перезапуска: {e}")
     line = restart_job.shell_line(job)
@@ -329,7 +341,7 @@ def remember_open(sid, payload):
     import claude_live
     tty = tty if tty.startswith("/dev/") else "/dev/" + tty
     background(claude_live.remember, sid, payload.get("cwd") or os.getcwd(), pid, tty,
-               os.environ.get("__CFBundleIdentifier", ""), bool(os.environ.get("MNRH_PROXY")))
+               os.environ.get("__CFBundleIdentifier", ""), proxy_job_value())
 
 
 def session_end():

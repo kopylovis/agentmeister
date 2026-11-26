@@ -31,6 +31,8 @@ MODES = ("restart", "forget", "fresh", "slim")
 CLAUDE_KEYS = {"v", "kind", "cwd", "mode", "session", "new_session", "update", "proxy", "caffeinate", "flags"}
 CODEX_KEYS = {"v", "kind", "cwd", "session", "update", "proxy"}
 CAFFEINATE_FLAG = re.compile(r"^-[dimsu]+$")
+# имя подписки proxy, как SUB_NAME в claude_proxy.py: задание пишет сессия из песочницы, лишнего не пропускаем
+SUB_NAME = re.compile(r"[a-z][a-z0-9-]{0,19}")
 # Флаги сессии задает само задание (--resume, --session-id), а имя (-n, --name) оставляем
 SESSION_FLAGS = DROP - {"-n", "--name"}
 
@@ -127,9 +129,12 @@ def validate(job):
         raise JobError("cwd должен быть полным путем")
     if not os.path.isdir(cwd):
         raise JobError(f"папки {cwd} нет")
-    for name in ("update", "proxy"):
-        if not isinstance(job.get(name, False), bool):
-            raise JobError(f"{name} должен быть true или false")
+    if not isinstance(job.get("update", False), bool):
+        raise JobError("update должен быть true или false")
+    proxy = job.get("proxy", False)
+    # proxy: true (каскад по подпискам) или имя подписки, через которую шла сессия
+    if not isinstance(proxy, bool) and not (isinstance(proxy, str) and SUB_NAME.fullmatch(proxy)):
+        raise JobError("proxy должен быть true, false или именем подписки")
     out = {"v": FORMAT, "kind": kind, "cwd": cwd, "session": check_session(job.get("session"), "session"),
            "update": job.get("update", False), "proxy": job.get("proxy", False)}
     if kind == "codex":
@@ -160,11 +165,12 @@ def codex_job(cwd, session, update=False, proxy=False):
 
 def steps(job):
     """Что выполнить по порядку: список (argv, тихо), последний шаг заменяет процесс."""
+    via = ["--via", job["proxy"]] if isinstance(job["proxy"], str) else []
     if job["kind"] == "codex":
         program = LOCAL_CLI if job["proxy"] else shutil.which("agentmeister") or LOCAL_CLI
         return [([program, "--harness", "codex", "restart", job["session"]]
-                 + (["--update"] if job["update"] else []) + (["--proxy"] if job["proxy"] else []), False)]
-    proxy = [LOCAL_CLI, "proxy", "run", "--claude", "--"] if job["proxy"] else []
+                 + (["--update"] if job["update"] else []) + ((via or ["--proxy"]) if job["proxy"] else []), False)]
+    proxy = [LOCAL_CLI, "proxy", "run", "--claude", *via, "--"] if job["proxy"] else []
     new = job["mode"] in ("forget", "fresh")
     out = []
     if job["caffeinate"] is not None:
@@ -173,7 +179,7 @@ def steps(job):
     if job["update"]:
         # claude update у установки из Homebrew ничего не ставит, agent-update выбирает brew upgrade или claude update
         # без песочницы, но через mihomo: brew upgrade распаковывает в своей песочнице, а вложенную macOS не дает
-        update_proxy = [LOCAL_CLI, "proxy", "run", "--no-sandbox", "--"] if job["proxy"] else []
+        update_proxy = [LOCAL_CLI, "proxy", "run", "--no-sandbox", *via, "--"] if job["proxy"] else []
         out.append((update_proxy + [LOCAL_CLI, "agent-update", "claude"], False))
     if new:
         out.append((["clear"], False))

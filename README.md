@@ -30,6 +30,7 @@ agentmeister --harness claude install    install the Claude Code CLI from Anthro
 agentmeister kcalm          straight into a project (a name prefix is enough)
 agentmeister root           in the home folder
 agentmeister ... -x         this session through the proxy
+agentmeister ... -x home    only through the home subscription (agentmeister proxy add)
 agentmeister ... -i         skip Claude Code prompt history
 agentmeister sessions       saved sessions: resume, move, delete, search, slim
 agentmeister ps             running sessions and who is waiting; jump to a tab
@@ -340,6 +341,24 @@ restarts mihomo under running sessions, a wrong exit is only reported (the watch
 `~/.local/state/mnrh/proxy/watch.log`) and mihomo keeps running, so those sessions don't lose the network.
 `--only <pattern>` keeps only the servers whose names
 match. Encrypted `happ://crypt…` links can only be read by Happ, so use the plain `https://` one.
+
+More subscriptions can be added next to the main one. Each gets its own name and port:
+
+```bash
+agentmeister proxy add home 'https://…/sub/…' --country KZ   # same --country and --only as setup
+agentmeister proxy list                                       # names, ports and -x flags
+agentmeister kcalm -x home                                    # only through home, no switching
+agentmeister kcalm -x                                         # through all of them in order
+```
+
+Plain `-x` uses the subscriptions in order: the main one first, and the next one only when no server of the
+previous one answers. If the main subscription has `--country`, only subscriptions with the same country join
+that order, so a session can't move to another country halfway through. The others are used only through
+`-x <name>`. `-x main` goes only through the main subscription. Codex takes the same flags. Restarts,
+`/fresh`, `agentmeister restore` and new windows from a session keep its subscription.
+`agentmeister proxy remove home` removes one subscription, and plain `agentmeister proxy remove` removes the
+whole setup. Adding or removing a subscription restarts mihomo, and sessions through other subscriptions
+keep running. If a project has the same name as a subscription, put the project before `-x`.
 
 `agentmeister proxy` shows the mihomo version and suggests `agentmeister proxy update` when Homebrew has a
 newer one. That command runs `brew upgrade mihomo`. If mihomo is running with no proxied sessions, it stops it

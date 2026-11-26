@@ -119,6 +119,7 @@ def launch_args(argv):
     if "--" in argv:
         sep = argv.index("--")
         before, after = argv[:sep], argv[sep + 1:]
+    before = via_args(before)
     parser = argparse.ArgumentParser(prog="agentmeister --harness codex",
                                      description=tr("Запуск и настройка Codex", "Launch and set up Codex"),
                                      epilog=tr("Установка Codex: install. Перезапуск сессии: restart [ID].",
@@ -128,8 +129,32 @@ def launch_args(argv):
     parser.add_argument("-n", "--normal", dest="mode", action="store_const", const="normal")
     parser.add_argument("-x", "--proxy", dest="net", action="store_const", const="vps")
     parser.add_argument("-d", "--direct", dest="net", action="store_const", const="direct")
+    parser.add_argument("--via", help=tr("только через эту подписку proxy", "only through this proxy subscription"))
     parser.add_argument("--new", action="store_true")
-    return parser.parse_args(before), after
+    args = parser.parse_args(before)
+    if args.via:
+        args.net = f"vps:{args.via}"
+    return args, after
+
+
+def via_args(argv):
+    """-x home и --proxy=home в --via=home: argparse не умеет флаг с необязательным значением перед проектом.
+    -x берет имя, только если такая подписка есть, иначе следующее слово остается проектом."""
+    import claude_proxy
+
+    names = claude_proxy.sub_names() if claude_proxy.configured() else []
+    out, i = [], 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-x", "--proxy") and i + 1 < len(argv) and argv[i + 1] in names:
+            out.append(f"--via={argv[i + 1]}")
+            i += 2
+            continue
+        if arg.startswith(("-x=", "--proxy=")):
+            arg = "--via=" + arg.partition("=")[2]
+        out.append(arg)
+        i += 1
+    return out
 
 
 def launch(codex, args, passthrough):
@@ -163,24 +188,30 @@ def launch(codex, args, passthrough):
         passthrough = open_flow.codex_resume_args(state["sid"], cwd)
     cmd = [codex]
     probe = cmd
-    if net == "vps":
+    proxied = bool(net) and net.split(":")[0] == "vps"
+    via = net[4:] if proxied and net.startswith("vps:") else None
+    if proxied:
         if not claude_proxy.configured():
             raise ValueError(tr("Прокси не настроен. Запусти agentmeister proxy setup.",
                                 "Set up the proxy with agentmeister proxy setup."))
-        probe = claude_proxy.session_command(claude_proxy.port(), cmd)
-    if "--no-daemon" not in passthrough and supports_no_daemon(probe, proxy=net == "vps"):
+        try:
+            probe = claude_proxy.session_command(claude_proxy.sub_port(claude_proxy.resolve_sub(via)), cmd)
+        except claude_proxy.ProxyError as e:
+            raise ValueError(str(e))
+    if "--no-daemon" not in passthrough and supports_no_daemon(probe, proxy=proxied):
         cmd.append("--no-daemon")
     cmd += passthrough
     if mode == "caffeinate":
         cmd = ["caffeinate", "-is"] + cmd
-    if net == "vps":
-        cmd = [sys.executable, str(Path(__file__).with_name("claude_proxy.py")), "run", "--"] + cmd
+    if proxied:
+        cmd = [sys.executable, str(Path(__file__).with_name("claude_proxy.py")), "run"] + \
+            (["--via", via] if via else []) + ["--"] + cmd
     if cwd:
         os.chdir(cwd)
     env = dict(os.environ)
     if net == "direct":
         for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-                     "http_proxy", "https_proxy", "all_proxy", "no_proxy", "MNRH_PROXY",
+                     "http_proxy", "https_proxy", "all_proxy", "no_proxy", "MNRH_PROXY", "MNRH_PROXY_SUB",
                      "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL"):
             env.pop(name, None)
     os.execvpe(cmd[0], cmd, env)
@@ -193,13 +224,15 @@ def restart(codex, argv):
     parser.add_argument("--after-exit", action="store_true")
     parser.add_argument("--update", action="store_true")
     parser.add_argument("-x", "--proxy", action="store_true")
+    parser.add_argument("--via")
     options = parser.parse_args(argv)
     current = os.environ.get("CODEX_THREAD_ID")
     session = options.session or current
     if session and not UUID_RE.fullmatch(session):
         raise ValueError(tr("Нужен UUID сессии Codex.", "Expected a Codex session UUID."))
     cwd = os.getcwd()
-    proxy = options.proxy or bool(os.environ.get("MNRH_PROXY"))
+    proxy = options.proxy or bool(options.via) or bool(os.environ.get("MNRH_PROXY"))
+    via = options.via or (os.environ.get("MNRH_PROXY_SUB") if os.environ.get("MNRH_PROXY") else None)
 
     if options.after_exit:
         from claude_notify import codex_terminal
@@ -209,7 +242,7 @@ def restart(codex, argv):
                                 "Restart after exit needs the current Codex session."))
         import restart_job
 
-        job = restart_job.codex_job(cwd, session, update=options.update, proxy=proxy)
+        job = restart_job.codex_job(cwd, session, update=options.update, proxy=via or proxy)
         line = restart_job.shell_line(job)
         hook = os.environ.get("MNRH_RESTART_HOOK")
         tty = codex_terminal(session) if hook == restart_job.HOOK_VERSION else None
@@ -240,9 +273,9 @@ def restart(codex, argv):
     if options.update:
         update = [LOCAL_CLI, "agent-update", "codex"]  # brew upgrade или codex update, по способу установки
         if proxy:
-            update = [LOCAL_CLI, "proxy", "run", "--no-sandbox", "--", *update]
+            update = [LOCAL_CLI, "proxy", "run", "--no-sandbox", *(["--via", via] if via else []), "--", *update]
         subprocess.run(update, check=True)
-    flags = ["-x", "--"] if proxy else ["--"]
+    flags = ([f"--via={via}"] if via else ["-x"] if proxy else []) + ["--"]
     resume = ["resume", "-C", cwd, session or "--last"]
     args, passthrough = launch_args(flags + resume)
     return launch(codex, args, passthrough)

@@ -206,17 +206,20 @@ def reopen(r):
                   f"Open Claude Code in {where} and trust the folder before restoring."), True
     flags = [f for f in r.get("flags") or [] if f != "--remote-control"]
     rc = "--remote-control" in (r.get("flags") or [])
-    saved = os.environ.pop("MNRH_PROXY", None)
+    saved = {name: os.environ.pop(name, None) for name in ("MNRH_PROXY", "MNRH_PROXY_SUB")}
     if r.get("proxy"):
         os.environ["MNRH_PROXY"] = "1"
+        if isinstance(r["proxy"], str):
+            os.environ["MNRH_PROXY_SUB"] = r["proxy"]  # сессия шла только через эту подписку
     try:
         return claude_open.open_claude({"placement": "window", "path": r["cwd"], "mode": "caffeinate" if r.get("caffeinate") else "normal",
                                         "flags": ["--resume", r["sid"]] + flags,
                                         "remote_control": rc}, CM)
     finally:
-        os.environ.pop("MNRH_PROXY", None)
-        if saved is not None:
-            os.environ["MNRH_PROXY"] = saved
+        for name, value in saved.items():
+            os.environ.pop(name, None)
+            if value is not None:
+                os.environ[name] = value
 
 
 def restore_cmd(args):
