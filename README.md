@@ -13,7 +13,8 @@ individual sessions through your proxy.
 In Claude Code, you can restart or slim the current session, get notified when Claude is waiting and review risky
 commands before they run.
 
-The menu follows the macOS language, Russian or English. Other messages are in Russian for now.
+The menu follows the macOS language, Russian or English. Some messages, such as `agentmeister -h` and
+`agentmeister proxy -h`, are in Russian only for now.
 
 ```
 # Open the menu for Claude Code or Codex
@@ -42,6 +43,7 @@ agentmeister restart        quit, update Claude Code, reopen the same session
 agentmeister forget         delete this session and open a clean one
 agentmeister fresh          new session, this one stays in /resume
 agentmeister slim           slim this session down and reopen it
+agentmeister agent-update claude|codex  update an agent the way it was installed
 
 # Modes: on, off
 agentmeister humanize       writing rules for Claude Code and Codex
@@ -51,7 +53,8 @@ agentmeister notify         tell you when Claude is waiting; telegram, phone
 agentmeister lid            stay awake with the lid closed; setup, remove
 
 # Session proxy
-agentmeister proxy          status; setup, test, update, restart, remove
+agentmeister proxy          status; setup, add, list, test, update, restart, remove, run
+agentmeister host-run <name>  a listed command outside the proxy sandbox
 
 # Project tools
 agentmeister brief          where we left off: git, last session, backlog
@@ -65,6 +68,9 @@ agentmeister deps           outdated Gradle dependencies
 # Install
 agentmeister setup          commands, hooks, MCP server, zsh hook, promptsill
 agentmeister doctor         check the install
+agentmeister projects-dir   folders of projects; add, remove
+agentmeister lang           interface language: ru, en, auto
+agentmeister alias          short name am; on, off
 ```
 
 ## Install
@@ -80,9 +86,15 @@ agentmeister
 
 Download `Agentmeister-<version>.dmg` from the [latest release](https://github.com/kopylovis/agentmeister/releases/latest),
 open it and drag Agentmeister to Applications. The app is signed with Developer ID and notarized. It needs macOS 26
-on Apple Silicon and the Xcode Command Line Tools (`xcode-select --install`). The `agentmeister` CLI ships inside the
-app. On first launch the app links `~/.local/bin/agentmeister` to it if the command isn't installed yet, so Homebrew
-is optional. A newer CLI from your PATH or a git checkout of this repository takes precedence.
+on Apple Silicon or Intel and the Xcode Command Line Tools (`xcode-select --install`). The `agentmeister` CLI and
+promptsill ship inside the app. When the app runs from Applications, it links `~/.local/bin/agentmeister` and
+`~/.local/bin/promptsill` to them if the commands aren't installed yet, so Homebrew is optional. A newer CLI from your
+PATH, or a git checkout of this repository with the same version, takes precedence.
+
+The app updates itself through Sparkle. Once a day it reads `appcast.xml` from the latest GitHub release, downloads
+the new version and installs it when you quit, so agents in open tabs keep running. The "Restart to Update to"
+item with the new version in the Agentmeister menu installs a downloaded update right away and reopens the tabs. What the
+app does and how to build it is described in [app/README.md](app/README.md), in Russian.
 
 ### Codex
 
@@ -114,8 +126,8 @@ $agentmeister release-notes since v1.13.0
 To reopen the same session in Codex CLI, choose "Restart Codex" in `/presets` or enter
 `$agentmeister restart`. Enter `/quit` when prompted.
 "Update and restart Codex" runs `agentmeister agent-update codex` after `/quit` and then reopens the session.
-`agent-update` updates an agent the way it was installed: `brew upgrade --cask` for Homebrew, `claude update`
-or `codex update` for the official installer, npm and the rest. You can also enter
+`agent-update` updates an agent the way it was installed: `brew upgrade` (with `--cask` for a cask) for
+Homebrew, `claude update` or `codex update` for the official installer, npm and the rest. You can also enter
 `$agentmeister restart --update`. The shell command is
 `agentmeister --harness codex restart <id>`. If Agentmeister can identify the session's terminal and its
 zsh hook is active, it queues the restart for that tab.
@@ -166,8 +178,9 @@ its own window with `--resume`, the same mode, proxy and flags. Sessions started
 
 `agentmeister doctor` checks all of it in one go: Claude Code on PATH, the commands and whether they match this
 version, the hooks, transcript retention, the status line, the MCP server answering `tools/list`, the zsh hook,
-the notification app and the proxy. If the hooks still call the old iTerm2 `cc-status`, it warns that iTerm2 3.7.7
-installs `it2 handle-agent-hook` instead. It exits with 1 when something is broken and says what fixes it.
+the notification app, the proxy, the lid mode and which modes are on. If the hooks still call the old iTerm2
+`cc-status`, it warns that iTerm2 3.7.7 installs `it2 handle-agent-hook` instead. It exits with 1 when something
+is broken and says what fixes it.
 For Codex it checks the CLI, humanize hook trust, MCP response, the `$agentmeister` skill and footer fields.
 
 Update with `brew upgrade agentmeister`. Open sessions pick up the new version on their own: before each
@@ -202,6 +215,10 @@ It adds `am` next to it unless `~/.local/bin/am` already belongs to another prog
 2. Put a signed tag on the commit in `main` (`git tag -s v$(cat VERSION) -m v$(cat VERSION)`) and push it.
 3. In `kopylovis/homebrew-tap`, update `tag:` and `revision:` in `Formula/agentmeister.rb`
    (`git rev-parse v$(cat VERSION)^{commit}`).
+4. Run `make dmg` from a normal terminal, not from a proxied session. `app/release.sh` builds the app for Apple
+   Silicon and Intel, signs it with Developer ID, notarizes the app and the DMG and writes
+   `app/build/release/Agentmeister-<version>.dmg` with `appcast.xml` next to it. Attach both files to the GitHub
+   release of the tag. Installed apps find the update through `appcast.xml` of the latest release.
 
 ## Requirements
 
@@ -229,7 +246,8 @@ in the terminal. Only Claude Code itself runs outside. Esc goes one step back,
 Ctrl+C quits.
 `MNRH_PLAIN_MENU=1` brings back the plain inline lists. The menu
 follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in `~/.config/mnrh/config` picks
-one explicitly. `MNRH_NO_MENU=1` skips the menu and goes straight to the project list.
+one explicitly. `agentmeister lang en` or `ru` writes that line, and `lang auto` removes it. `MNRH_NO_MENU=1`
+skips the menu and goes straight to the project list.
 
 `agentmeister open` lists the folders in the projects folder with their current branch and last commit date.
 Move with ↑↓ and press Enter. A digit jumps to that item (`0` is the home folder, `1` then `0` is the tenth),
@@ -270,7 +288,7 @@ connections to external ports 80 and 443, including HTTPS over TCP and QUIC over
 HTTPS clients in the session, such as `gh`, also use mihomo. SSH on its usual port, local
 servers and Unix sockets are available. Browser sign-in uses the browser's network settings.
 
-Codex with `-x` and `agentmeister proxy run -- <command>` use the strict profile. Network access
+Codex with `-x` and `agentmeister proxy run [--via <name>] -- <command>` use the strict profile. Network access
 is limited to the local mihomo TCP port. Git can sign through the Unix socket named by
 `SSH_AUTH_SOCK` if it belongs to the current user. In either profile, commands that apply a
 second macOS sandbox can fail with `sandbox_apply: Operation not permitted`.
@@ -358,7 +376,11 @@ that order, so a session can't move to another country halfway through. The othe
 `/fresh`, `agentmeister restore` and new windows from a session keep its subscription.
 `agentmeister proxy remove home` removes one subscription, and plain `agentmeister proxy remove` removes the
 whole setup. Adding or removing a subscription restarts mihomo, and sessions through other subscriptions
-keep running. If a project has the same name as a subscription, put the project before `-x`.
+keep running. If a project has the same name as a subscription, put the project before `-x`. A name is
+lowercase Latin letters, digits and hyphens, up to 20 characters, starting with a letter; `main`, `vps`,
+`direct`, `reject` and `all` are reserved. `proxy add` with a name that already exists replaces that
+subscription's link and settings. With `--country`, `proxy add` checks the exit and keeps nothing if it is in
+another country. `proxy setup` refuses while proxied sessions are running.
 
 The exit country is checked on every proxied launch, not only when mihomo starts: a session that would go out
 through the wrong country doesn't start. For plain `-x` that covers the cascade exit and every subscription in
@@ -366,7 +388,7 @@ the order that has its own port. A Claude Code session reaches only its own miho
 other subscriptions' ports and the whole 17890-17939 range mihomo takes ports from, so local servers on those
 ports aren't reachable from proxied Claude Code sessions. A subscription that no longer exists (removed, or a
 typo in `--proxy=`) stops the launch instead of falling back to the cascade. While sessions run only through
-`main` and it has no port of its own yet, `proxy add` waits until they close.
+`main` and it has no port of its own yet, `proxy add` refuses and asks you to close them first.
 Sessions can't read subscription links or the downloaded server lists, and agentmeister passes the link to
 curl on stdin, so it doesn't show up in `ps`. A Claude Code session can't listen on mihomo's ports either, so it
 can't take a port over while mihomo restarts, and a launch checks that the ports it needs belong to mihomo.
@@ -380,8 +402,9 @@ server's exit through a separate probe port that sessions can't reach, and opens
 right. Otherwise it pins a live server of the right country from the same subscription, or, if there is none,
 keeps the subscription closed: requests are refused as if the servers were down, and the watcher looks again
 every 5 minutes. A closed subscription shows up in `agentmeister proxy`, as "closed" under the tab and as a
-warning in the app. Requests sent in the up to 2 seconds before the watcher notices a switch still go through the
-new server. `--only` with the country's server names avoids such switches altogether.
+warning in the app, and new sessions through it don't start. Requests sent in the up to 2 seconds before the
+watcher notices a switch still go through the new server. `--only` with the country's server names avoids such
+switches altogether.
 
 `agentmeister proxy` shows the mihomo version and suggests `agentmeister proxy update` when Homebrew has a
 newer one. That command runs `brew upgrade mihomo`. If mihomo is running with no proxied sessions, it stops it
@@ -389,17 +412,19 @@ and the new version starts with the next session. If sessions are running, it as
 now. Requests in flight at that moment break and Claude Code retries them. Without a restart the new version
 takes over after the last session.
 
-While mihomo runs, a network watcher runs next to it. Every 10 seconds it looks at the default route and the
-VPS group. When the network comes back on another interface (Wi-Fi instead of Ethernet, a hotspot), it writes
-the new interface into the config and reloads mihomo. When the group sits on REJECT after a drop, it asks mihomo
-to check the server right away instead of waiting for the five-minute check. When the server stays unreachable
-for 30 seconds while the network is up, it restarts mihomo, at most once every five minutes. Its log is
-`~/.local/state/mnrh/proxy/watch.log`. `agentmeister proxy restart` restarts mihomo by hand and keeps the
-proxied sessions open.
+While mihomo runs, a network watcher runs next to it. Every 2 seconds it looks at the default route and the
+group of each subscription in use. When the network comes back on another interface (Wi-Fi instead of Ethernet,
+a hotspot), it writes the new interface into the config and reloads mihomo. A subscription left without a live
+server gets its servers checked right away instead of waiting for mihomo's five-minute check. When every
+subscription in use stays without a live server for 30 seconds while the network is up, it restarts mihomo,
+at most once every five minutes. If mihomo itself exits while proxied sessions run, the watcher starts it
+again, at most once every 30 seconds. Its log is `~/.local/state/mnrh/proxy/watch.log`.
+`agentmeister proxy restart` restarts mihomo by hand and keeps the proxied sessions open.
 
-mihomo listens on `127.0.0.1:17890`, starts with the first proxied session and stops after the last. The
-session gets `HTTPS_PROXY`, `HTTP_PROXY` and `ALL_PROXY` pointing to mihomo. `/restart` and the windows
-that `open_claude` and `/parallel` open from such a session also go through the server.
+mihomo listens on `127.0.0.1:17890` (or the next free port when 17890 was taken at setup), starts with the
+first proxied session and stops after the last. Each added subscription gets its own port from the same
+17890-17939 range. The session gets `HTTPS_PROXY`, `HTTP_PROXY` and `ALL_PROXY` pointing to its port.
+`/restart` and the windows that `open_claude` and `/parallel` open from such a session also go through the server.
 
 mihomo reaches the server over Wi-Fi or Ethernet, bypassing the TUN tunnel of Happ and other VPNs, so you can
 turn Happ on and off during a session without the session noticing. This matters when Happ is connected to the
@@ -417,9 +442,14 @@ promptsill shows as `proxy KZ` in the status line. It also asks mihomo over the 
 `~/.local/state/mnrh/proxy/mihomo.sock` which server from the subscription is selected and with which protocol,
 and passes the protocol and IP in `PROMPTSILL_PROXY_DETAIL`. In macOS Terminal the status line shows
 `proxy KZ vless 203.0.113.7`. In iTerm2, Ghostty and other terminals with link support it stays `proxy KZ`, and
-Cmd-click opens a page with the details (`exit.html` in the same folder). All of this is captured when mihomo
-starts. If the fallback later switches servers, `agentmeister proxy` shows the current one. If mihomo is
-missing, `setup` offers to install it with brew; the agentmeister formula installs it anyway.
+Cmd-click opens a page with the details (`exit.html` in the same folder). With more than one subscription, a
+session through one of them also shows its name, `proxy home KZ`, and a plain `-x` session shows the
+subscription next to the protocol and IP. These variables are set when the session starts. The session also
+gets `PROMPTSILL_PROXY_FILE`, the exit file of its subscription in the same folder, which the watcher rewrites
+on every server switch. A promptsill that reads this file redraws the label from it, so a plain `-x` session
+shows the subscription it is on now (`proxy backup KZ`) and a closed subscription shows as closed.
+`agentmeister proxy` shows the current server too. If mihomo is missing, `setup` offers to install it
+with brew; the agentmeister formula installs it anyway.
 
 ## How `agentmeister sessions` works
 
@@ -436,6 +466,8 @@ window and won't be touched. Pick one with the arrows, then resume it (caffeinat
 - `rm <id>...` deletes the session together with its `file-history` and its lines in `history.jsonl`.
 - `clean` removes broken symlinks, sessions where Claude never answered, and folders of projects that no longer
   exist on disk (with their `memory`). It asks about each group separately.
+- `resume <id> [-n]` resumes a session in its own folder (caffeinate unless `-n`).
+- `rename <id> <title>` renames it, like `/rename` in Claude Code.
 - `-l` prints a plain list with ids, no menu.
 - `search <words>` searches all sessions of all projects (see below), `show <id> [N]` reads a session from
   message `N`, and `-10` shows the last ten.
@@ -552,6 +584,17 @@ cached for 6 hours. Claude gets the same through the `deps_outdated` tool.
 | `/parallel <task>` | the same task in its own branch in a second window; `--fork` takes this conversation along; `/parallel list` |
 | `/shot <app> [question]` | screenshot of a window that Claude looks at and answers about |
 | `/ask <project> <question>` | an answer from another project by a separate Claude |
+| `/humanize` | switch the writing rules; `on`, `off`, `status` |
+| `/import-codex` | bring the context of a saved Codex session into this conversation |
+
+## Writing rules: `agentmeister humanize`
+
+Off by default. With `agentmeister humanize on` (or `/humanize`), the `SessionStart` hook gives Claude the
+writing rules from `share/agentmeister/humanize.md` at the start of a session and after `/compact`,
+`UserPromptSubmit` reminds of them with every message, and the `Stop` hook checks the reply and passes what it
+found into the next turn. The same setting turns the rules on for Codex (see above). `agentmeister humanize rules`
+prints the rules, `humanize check <file>` (`-` reads stdin) finds obvious AI markers in a text, and
+`humanize log` shows the results of the reply checks.
 
 ## Where we left off
 
@@ -589,7 +632,8 @@ the current commit in `~/Developer/.worktrees/<project>/`, copies local untracke
 opens a second Claude with the task and Remote Control in a new Terminal or iTerm2 window. It works only in its own
 folder and commits to its own branch without merging or pushing. The permission mode is the usual one: questions
 arrive as notifications, and clicking one opens its tab. `--permission-mode auto` skips the questions.
-Uncommitted changes in the main folder don't make it into the worktree.
+Uncommitted changes in the main folder don't make it into the worktree. Started from a tab of the desktop app,
+the second Claude opens in the app as a subtask of that tab instead of a terminal window.
 
 Which files are copied follows Claude Code's own
 [`.worktreeinclude`](https://code.claude.com/docs/en/worktrees#copy-gitignored-files-into-worktrees): if the
@@ -647,7 +691,8 @@ people's things.
 `/ask backend what's the response format of /api/foods` starts a separate `claude -p` in the backend folder with
 only Read, Grep and Glob, no MCP servers and no saved session, and returns a short answer with paths and code
 snippets. Reading another project's files doesn't fill up the current session's context. The default model is
-Sonnet; a simple question costs about 30k tokens and 5 to 10 seconds.
+Sonnet; a simple question costs about 30k tokens and 5 to 10 seconds. `--model opus` or `haiku` picks another
+model. Claude can also ask on its own through the `ask_project` MCP tool.
 
 ## How restarting Claude Code works
 
