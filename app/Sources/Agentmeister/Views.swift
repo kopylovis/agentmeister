@@ -890,7 +890,26 @@ struct TabChip: View {
             tab.rang = false
         } label: {
             HStack(spacing: 9) {
-                AgentBadge(agent: tab.spec.utility == nil ? tab.spec.agent : nil, size: 20)
+                // крестик при наведении встает на место значка агента того же размера, как в Safari: ширина
+                // вкладки не меняется, и соседние вкладки не прыгают
+                ZStack {
+                    if hover {
+                        Button {
+                            workspace.close(tab.id)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .frame(width: 20, height: 20)
+                                .background(Circle().fill(Ink.chip))
+                        }
+                        .buttonStyle(.hoverCircle(.overlay))
+                        .shortcutHelp(l.closeTab, .closeTab)
+                        .accessibilityLabel(l.closeTab)
+                    } else {
+                        AgentBadge(agent: tab.spec.utility == nil ? tab.spec.agent : nil, size: 20)
+                    }
+                }
+                .frame(width: 20, height: 20)
                 // название сессии, под ним мелко проект с иконкой и маршрут, как в варианте B макета вкладок
                 VStack(alignment: .leading, spacing: 2) {
                     Text(tab.title)
@@ -923,19 +942,7 @@ struct TabChip: View {
                         .background(Capsule().fill(Ink.chip))
                         .help(l.t("Подзадач у агента: \(subtasks)", "Agent's subtasks: \(subtasks)"))
                 }
-                if hover {
-                    Button {
-                        workspace.close(tab.id)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .frame(width: 16, height: 16)
-                            .background(Circle().fill(Ink.chip))
-                    }
-                    .buttonStyle(.hoverCircle(.overlay))
-                    .shortcutHelp(l.closeTab, .closeTab)
-                    .accessibilityLabel(l.closeTab)
-                } else if tab.running && (tab.status == "waiting" || tab.status == "busy") {
+                if tab.running && (tab.status == "waiting" || tab.status == "busy") {
                     SessionDot(status: tab.status)
                 } else if tab.rang && !selected {
                     Image(systemName: "bell.fill").font(.system(size: 9)).foregroundStyle(Ink.amber)
