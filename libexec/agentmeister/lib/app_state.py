@@ -341,10 +341,11 @@ def proxy():
     remembered = claude_proxy.last() if os.path.exists(claude_proxy.LAST) else ""
     default_sub = remembered[4:] if remembered.startswith("vps:") and remembered[4:] in names and len(names) > 1 else None
     subs = []
-    for n in names if len(names) > 1 else []:
+    for n in names:
         # выход через порт только этой подписки, записан при запуске mihomo
         try:
-            with open(claude_proxy.exit_file(n)) as f:
+            # у основной без дополнительных своего порта нет, ее выход и есть общий
+            with open(claude_proxy.exit_file(claude_proxy.resolve_sub(n))) as f:
                 one = json.load(f)
         except (OSError, ValueError):
             one = {}
