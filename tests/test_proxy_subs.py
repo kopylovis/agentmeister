@@ -306,6 +306,19 @@ class Sandbox(Folder):
             self.assertEqual(proxy.run(["true"], sub="main"), 2)
 
 
+class Migration(Folder):
+    def test_config_without_gates_is_rebuilt_and_kept_as_bak(self):
+        self.main("KZ")
+        old = "# mnrh-country: KZ\nmixed-port: 17890\nrules:\n  - MATCH,VPS\n  - DOMAIN,example.com,DIRECT\n"
+        Path(proxy.CONFIG).write_text(old)
+        with patch.object(proxy, "read_pid", return_value=None), patch.object(proxy, "in_session", return_value=False), \
+                patch.object(proxy, "pin_config", side_effect=proxy.ProxyError("stop here")), patch("sys.stderr"):
+            with self.assertRaises(proxy.ProxyError):
+                proxy.start()
+        self.assertEqual(Path(proxy.CONFIG + ".bak").read_text(), old)
+        self.assertIn("MATCH,GATE", self.config())
+
+
 class Sessions(Folder):
     def test_holders_remember_the_subscription(self):
         os.makedirs(proxy.HOLDERS)
