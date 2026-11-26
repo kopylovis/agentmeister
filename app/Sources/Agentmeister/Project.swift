@@ -298,8 +298,10 @@ struct ProjectView: View {
             .padding(.bottom, 6)
             if let project, !all.isEmpty {
                 ForEach(shown) { session in
+                    // хвост переписки только у закрытой: у идущей во вкладке он меняется на глазах и ничего не говорит
+                    let open = workspace.tabs.contains { $0.sessionId == session.id && $0.running }
                     ProjectSessionRow(session: session, project: project,
-                                      summary: session.id == data?.last?.id ? data?.last?.summary : nil)
+                                      summary: !open && session.id == data?.last?.id ? data?.last?.summary : nil)
                 }
             } else {
                 Text(l.t("Сессий в этом проекте пока нет. Напишите задачу выше, чтобы начать первую.",
