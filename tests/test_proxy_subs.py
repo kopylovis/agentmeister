@@ -203,6 +203,16 @@ class CountryGuard(Folder):
         g.step("home")
         self.assertEqual(self.probed, ["se-1"])  # тот же сервер второй раз не проверяется
 
+    def test_switch_to_a_checked_server_updates_the_exit_file(self):
+        g = self.guard({"VPS-home": "se-1", "GATE-home": "VPS-home"}, [("se-1", True), ("se-2", True)],
+                       {"se-1": "SE", "se-2": "SE"})
+        g.step("home")
+        g.cache["se-2"] = ("SE", g.clock())
+        self.api.groups["VPS-home"] = "se-2"
+        g.step("home")
+        self.assertEqual(proxy.read_exit("home")["node"], "se-2")
+        self.assertNotIn("se-2", self.probed)
+
     def test_wrong_country_pins_a_good_server(self):
         g = self.guard({"VPS-home": "us-1", "GATE-home": "VPS-home"}, [("us-1", True), ("se-2", True)],
                        {"us-1": "US", "se-2": "SE"})
