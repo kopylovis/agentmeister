@@ -81,7 +81,7 @@ struct PaletteView: View {
                                    detail: (session.kind == .codex ? "Codex · " : "") + project.name + " · "
                                        + (workspace.liveElsewhere.contains(session.id)
                                        ? l.t("открыта в другом окне", "open in another window") : l.agoLong(session.mtime))) {
-                workspace.open(LaunchSpec.resume(session, project: project))
+                workspace.open(LaunchSpec.resume(session, project: project, state: backend.state))
             })
         }
 

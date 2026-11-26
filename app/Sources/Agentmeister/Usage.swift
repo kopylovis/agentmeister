@@ -300,7 +300,7 @@ struct UsageView: View {
         let home = session?.cwd ?? ""
         let project = backend.state.projects.first { $0.name == h.project || (!home.isEmpty && $0.contains(home)) }
         guard let project else { return }
-        workspace.open(LaunchSpec.resume(h.id, cwd: session?.cwd, project: project))
+        workspace.open(LaunchSpec.resume(h.id, cwd: session?.cwd, project: project, state: backend.state))
         openWindow(id: "main")
     }
 }
