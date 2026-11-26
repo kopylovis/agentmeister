@@ -367,8 +367,8 @@ def proxy_state():
 
 
 def modes():
-    import claude_menu
-    return claude_menu.modes()
+    import main_menu
+    return main_menu.modes()
 
 
 def retention_days():
@@ -676,9 +676,9 @@ def settings():
 
 def doctor():
     """Проверки agentmeister doctor данными: группа, уровень ok, warn или bad, текст."""
-    import claude_doctor
+    import doctor
     rows = []
-    for check in claude_doctor.CHECKS:
+    for check in doctor.CHECKS:
         name = check.__name__[6:]
         try:
             found = check()

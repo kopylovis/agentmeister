@@ -1749,7 +1749,7 @@ def main(argv):
     if cmd == "list":
         return list_subs()
     if cmd == "names":
-        # для claude.sh и меню: имена подписок, по одному в строке
+        # для cli.sh и меню: имена подписок, по одному в строке
         print("\n".join(sub_names()) if configured() else "")
         return 0
     if cmd == "update":

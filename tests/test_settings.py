@@ -147,8 +147,8 @@ class StatusLine(unittest.TestCase):
 
 class Humanize(unittest.TestCase):
     def test_rows_come_from_mnrhlib(self):
-        import claude_humanize
-        self.assertEqual(claude_humanize.HOOK_ROWS, [r for r in HOOKS if r[1] == "humanize-hook"])
+        import humanize
+        self.assertEqual(humanize.HOOK_ROWS, [r for r in HOOKS if r[1] == "humanize-hook"])
 
 
 if __name__ == "__main__":

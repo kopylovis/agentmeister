@@ -112,18 +112,18 @@ case "${1:-}" in
   lang) shift; exec /usr/bin/python3 "$LIB/app_state.py" lang "$@" ;;
   projects-dir) shift; exec /usr/bin/python3 "$LIB/app_state.py" projects-dir "$@" ;;
   restore) exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" "$@" ;;
-  doctor) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_doctor.py" "$@" ;;
+  doctor) shift; exec /usr/bin/python3 "$(dirname "$MENU")/doctor.py" "$@" ;;
   lid) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_lid.py" "$@" ;;
-  alias) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_alias.py" "$@" ;;
+  alias) shift; exec /usr/bin/python3 "$(dirname "$MENU")/alias.py" "$@" ;;
   parallel) exec /usr/bin/python3 "$(dirname "$MENU")/claude_parallel.py" "$@" ;;
   ask) exec /usr/bin/python3 "$(dirname "$MENU")/claude_ask.py" "$@" ;;
   release-notes) exec /usr/bin/python3 "$(dirname "$MENU")/release_notes.py" "$@" ;;
   statusline) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_status.py" "$@" ;;
-  humanize|humanize-hook) exec /usr/bin/python3 "$(dirname "$MENU")/claude_humanize.py" "$@" ;;
+  humanize|humanize-hook) exec /usr/bin/python3 "$(dirname "$MENU")/humanize.py" "$@" ;;
   buildlog|buildlog-hook) exec /usr/bin/python3 "$(dirname "$MENU")/claude_buildlog.py" "$@" ;;
   guard|guard-hook) exec /usr/bin/python3 "$(dirname "$MENU")/claude_guard.py" "$@" ;;
   approve-hook) grep -qsx "telegram_approve=on" "$CONF" || exit 0; exec /usr/bin/python3 "$(dirname "$MENU")/telegram_approve.py" "$@" ;;
-  notify|notify-hook|focus) exec /usr/bin/python3 "$(dirname "$MENU")/claude_notify.py" "$@" ;;
+  notify|notify-hook|focus) exec /usr/bin/python3 "$(dirname "$MENU")/notify.py" "$@" ;;
   restart|forget|fresh|slim|mcp|setup|notice|session-end) exec /usr/bin/python3 "$(dirname "$MENU")/claude_restart.py" "$@" ;;
 esac
 
@@ -159,7 +159,7 @@ if [ ! -t 0 ] || [ ! -t 1 ]; then
 fi
 
 # setup на этом Mac не делали или после обновления в нем появился новый шаг: предложить настроить
-/usr/bin/python3 "$LIB/claude_setup.py" check
+/usr/bin/python3 "$LIB/setup_steps.py" check
 
 DEV=$(projects_dir)
 # папку проектов спрашивает mnrh init, если стоит полный mnrh; без него остаются ~ и пути

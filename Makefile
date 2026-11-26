@@ -37,7 +37,7 @@ test:
 		echo "повторяю:" >&2; \
 		/usr/bin/python3 -m unittest discover -s tests </dev/null; \
 	fi
-	@bash -n libexec/agentmeister/claude.sh
+	@bash -n libexec/agentmeister/cli.sh
 	@for f in libexec/agentmeister/*.py libexec/agentmeister/lib/*.py; do /usr/bin/python3 -m py_compile "$$f" || exit 1; done
 	@./bin/agentmeister --version | grep -qx "$$(cat VERSION)"
 	@./bin/agentmeister help | grep -q 'agentmeister setup'
@@ -60,8 +60,8 @@ test:
 	@./bin/agentmeister setup -h | grep -q -- '--country'
 	@./bin/agentmeister doctor -h | grep -q 'проверить установку'
 	@./bin/agentmeister ps -h | grep -q restore
-	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/agentmeister/lib/claude_setup.py pending | grep -q '^fresh commands .*proxy promptsill$$'
-	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/agentmeister/lib/claude_setup.py check </dev/null | wc -c | grep -q '^ *0$$'
+	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/agentmeister/lib/setup_steps.py pending | grep -q '^fresh commands .*proxy promptsill$$'
+	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/agentmeister/lib/setup_steps.py check </dev/null | wc -c | grep -q '^ *0$$'
 	@./bin/agentmeister buildlog -h | grep -q PostToolUse
 	@echo junk | ./bin/agentmeister buildlog-hook | wc -c | grep -q '^ *0$$'
 	@echo '{"tool_name":"Bash","tool_input":{"command":"ls"},"tool_response":{"stdout":"x"}}' | ./bin/agentmeister buildlog-hook | wc -c | grep -q '^ *0$$'

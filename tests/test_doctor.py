@@ -10,7 +10,7 @@ from unittest.mock import patch
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "libexec", "agentmeister", "lib"))
 
-import claude_doctor  # noqa: E402
+import doctor  # noqa: E402
 
 
 def hooks(*commands):
@@ -26,18 +26,18 @@ class Doctor(unittest.TestCase):
                  dict(base, eventName="stop", enabled=False)]
 
         with patch("mnrhlib.lang", return_value="ru"):
-            level, text = claude_doctor.check_codex_hooks(hooks)
+            level, text = doctor.check_codex_hooks(hooks)
         self.assertEqual(level, "bad")
         self.assertIn("1 из 3", text)
         with patch("mnrhlib.lang", return_value="en"):
-            level, text = claude_doctor.check_codex_hooks(hooks)
+            level, text = doctor.check_codex_hooks(hooks)
         self.assertEqual(level, "bad")
         self.assertIn("1 of 3 hooks trusted", text)
 
     def test_codex_mcp_does_not_start_an_unrelated_command(self):
         config = {"mcp_servers": {"agentmeister": {"command": "/usr/bin/true", "enabled": True}}}
-        with patch.object(claude_doctor, "run") as run:
-            self.assertEqual(claude_doctor.check_codex_mcp(config)[0], "warn")
+        with patch.object(doctor, "run") as run:
+            self.assertEqual(doctor.check_codex_mcp(config)[0], "warn")
         run.assert_not_called()
 
     def doctor_in_fresh_home(self, lang):
@@ -73,29 +73,29 @@ class Doctor(unittest.TestCase):
 
 class ItermHooks(unittest.TestCase):
     def test_no_iterm_integration_says_nothing(self):
-        self.assertEqual(claude_doctor.iterm_rows(hooks("claudemeister notify-hook")), [])
-        self.assertEqual(claude_doctor.iterm_rows({}), [])
+        self.assertEqual(doctor.iterm_rows(hooks("claudemeister notify-hook")), [])
+        self.assertEqual(doctor.iterm_rows({}), [])
 
     def test_new_hook_is_ok(self):
-        rows = claude_doctor.iterm_rows(hooks("~/.config/iterm2/it2 handle-agent-hook", "claudemeister notify-hook"))
+        rows = doctor.iterm_rows(hooks("~/.config/iterm2/it2 handle-agent-hook", "claudemeister notify-hook"))
         self.assertEqual([r[0] for r in rows], ["ok"])
 
     def test_old_hook_that_still_exists_warns(self):
         path = tempfile.mkdtemp(prefix="cm-iterm-")
         binary = os.path.join(path, "cc-status")
         open(binary, "w").close()
-        rows = claude_doctor.iterm_rows(hooks(binary, binary))
+        rows = doctor.iterm_rows(hooks(binary, binary))
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][0], "warn")
         self.assertIn("Install Claude Code Integration", rows[0][1])
 
     def test_old_hook_with_missing_file_is_broken(self):
-        rows = claude_doctor.iterm_rows(hooks("/nonexistent-cm/iterm2/cc-status"))
+        rows = doctor.iterm_rows(hooks("/nonexistent-cm/iterm2/cc-status"))
         self.assertEqual(rows[0][0], "bad")
         self.assertIn("/nonexistent-cm/iterm2/cc-status", rows[0][1])
 
     def test_unparsable_command_is_skipped(self):
-        self.assertEqual(claude_doctor.iterm_rows(hooks("cc-status 'unclosed")), [])
+        self.assertEqual(doctor.iterm_rows(hooks("cc-status 'unclosed")), [])
 
     def test_crashed_check_text_follows_the_language(self):
         def check_boom():
@@ -105,8 +105,8 @@ class ItermHooks(unittest.TestCase):
                                ("ru", "boom: проверка упала (ValueError('x'))")):
             out = io.StringIO()
             with self.subTest(lang=lang), patch("mnrhlib.lang", return_value=lang), \
-                    patch.object(claude_doctor, "CHECKS", [check_boom]), contextlib.redirect_stdout(out):
-                self.assertEqual(claude_doctor.main([]), 1)
+                    patch.object(doctor, "CHECKS", [check_boom]), contextlib.redirect_stdout(out):
+                self.assertEqual(doctor.main([]), 1)
                 self.assertIn(expected, out.getvalue())
 
 

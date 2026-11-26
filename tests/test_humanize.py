@@ -5,7 +5,7 @@ import unittest
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
-import claude_humanize as h  # noqa: E402
+import humanize as h  # noqa: E402
 
 
 def rules(text):

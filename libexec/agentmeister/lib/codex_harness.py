@@ -235,7 +235,7 @@ def restart(codex, argv):
     via = options.via or (os.environ.get("MNRH_PROXY_SUB") if os.environ.get("MNRH_PROXY") else None)
 
     if options.after_exit:
-        from claude_notify import codex_terminal
+        from notify import codex_terminal
 
         if not current or session != current:
             raise ValueError(tr("Для перезапуска нужен ID текущей сессии Codex.",

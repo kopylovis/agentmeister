@@ -18,7 +18,7 @@ case "$ROOT" in */Contents/Resources/*) export PYTHONDONTWRITEBYTECODE=1 ;; esac
 
 # без аргументов в терминале: меню действий, как у mnrh claude; MNRH_NO_MENU=1 сразу выбирает проект
 if [ $# -eq 0 ] && [ -t 0 ] && [ -t 1 ] && [ -z "${MNRH_NO_MENU:-}" ]; then
-  exec /usr/bin/python3 "$LIBEXEC/lib/claude_menu.py"
+  exec /usr/bin/python3 "$LIBEXEC/lib/main_menu.py"
 fi
 
 case "${1:-}" in
@@ -38,7 +38,7 @@ case "${1:-}" in
       *) echo 'agentmeister: --harness требует claude или codex' >&2; exit 2 ;;
     esac ;;
   --version|-v)   cat "$ROOT/VERSION" ;;
-  help|-h|--help) exec /bin/bash "$LIBEXEC/claude.sh" -h ;;
+  help|-h|--help) exec /bin/bash "$LIBEXEC/cli.sh" -h ;;
   todo|shot|deps) cmd="$1"; shift; exec /usr/bin/python3 "$LIBEXEC/$cmd.py" "$@" ;;
-  *)              exec /bin/bash "$LIBEXEC/claude.sh" "$@" ;;
+  *)              exec /bin/bash "$LIBEXEC/cli.sh" "$@" ;;
 esac

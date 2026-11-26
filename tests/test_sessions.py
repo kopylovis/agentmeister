@@ -85,7 +85,7 @@ class Offline(unittest.TestCase):
 class Statusline(unittest.TestCase):
     def run_case(self, settings):
         code = """
-            import json, os, claude_setup as c
+            import json, os, setup_steps as c
             c.promptsill_path = lambda: "/opt/homebrew/bin/promptsill"
             os.makedirs(c.CLAUDE, exist_ok=True)
             path = os.path.join(c.CLAUDE, "settings.json")

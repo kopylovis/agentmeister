@@ -191,7 +191,7 @@ class Usage(unittest.TestCase):
 
 class SettingsAndDoctor(unittest.TestCase):
     def test_doctor_rows_keep_going_after_a_crash(self):
-        import claude_doctor
+        import doctor
 
         def check_ok():
             return [("ok", "все хорошо")]
@@ -199,7 +199,7 @@ class SettingsAndDoctor(unittest.TestCase):
         def check_boom():
             raise RuntimeError("boom")
 
-        with patch.object(claude_doctor, "CHECKS", [check_ok, check_boom]):
+        with patch.object(doctor, "CHECKS", [check_ok, check_boom]):
             rows = app_state.doctor()["rows"]
         self.assertEqual(rows[0], {"check": "ok", "level": "ok", "text": "все хорошо"})
         self.assertEqual(rows[1]["level"], "bad")

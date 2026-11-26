@@ -12,7 +12,7 @@ os.environ["MNRH_ICONS"] = "emoji"  # раскладку проверяем на
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
 import mnrhlib  # noqa: E402
-import claude_menu as m  # noqa: E402
+import main_menu as m  # noqa: E402
 import menu  # noqa: E402
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
