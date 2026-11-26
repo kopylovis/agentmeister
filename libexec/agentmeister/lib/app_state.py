@@ -352,7 +352,9 @@ def proxy_state():
         where = one.get("loc")
         subs.append({"name": n, "port": proxy.sub_port(n), "country": proxy.sub_country(n) or None,
                      "exit": where.upper() if isinstance(where, str) and len(where) == 2 else None,
-                     "inCascade": n in cascade})
+                     "inCascade": n in cascade,
+                     # сторож закрыл подписку: ни один живой сервер не выходит в ее стране
+                     "blocked": bool(one.get("blocked"))})
     current = None
     if running and len(names) > 1:
         # живой ответ mihomo через сокет управления: на какой подписке каскад сейчас. Из песочницы сессии сокет
@@ -360,6 +362,7 @@ def proxy_state():
         now = proxy.node_info(None) or {}
         current = now.get("sub") if now.get("sub") in names else info.get("sub") if info.get("sub") in names else None
     return {"configured": configured, "running": running, "port": p, "current": current,
+            "blocked": bool(info.get("blocked")),
             "exit": loc.upper() if isinstance(loc, str) and len(loc) == 2 else None,
             "protocol": info.get("proto") if isinstance(info.get("proto"), str) else None,
             "ip": info.get("ip") if isinstance(info.get("ip"), str) else None,

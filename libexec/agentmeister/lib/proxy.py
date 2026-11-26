@@ -53,13 +53,16 @@ SOCK = os.path.join(STATE, "mihomo.sock")
 PAGE = os.path.join(STATE, "exit.html")
 WATCH_PID = os.path.join(STATE, "watch.pid")
 WATCH_LOG = os.path.join(STATE, "watch.log")
-WATCH_POLL = 10       # как часто сторож смотрит на сеть и на группу VPS
+WATCH_POLL = 2        # как часто сторож смотрит на сеть, группы и серверы: смену сервера он ловит за эти секунды
+GUARD_TTL = 1800      # столько сторож верит проверке страны сервера
+GUARD_RETRY = 300     # закрытая подписка: так часто сторож заново ищет в ней сервер нужной страны
 RESTART_AFTER = 30    # столько секунд группа может стоять на REJECT при живой сети, потом перезапуск mihomo
 RESTART_GAP = 300     # если сервер и правда лежит, перезапускать не чаще раза в пять минут
 SUB_URL = os.path.join(CONF_DIR, "subscription.url")
 SUB_FILE = os.path.join(CONF_DIR, "subscription.txt")
 DEFAULT_PORT = 17890
 PORT_WINDOW = 50  # порты mihomo выбираются из DEFAULT_PORT..DEFAULT_PORT+49
+PROBE_PORT = DEFAULT_PORT + PORT_WINDOW - 1  # порт проверки сторожа, последний в окне; подпискам его не дают
 CHECK_URL = "https://1.1.1.1/cdn-cgi/trace"
 PROBE_URL = "https://www.gstatic.com/generate_204"
 SESSION_PROFILE = """(version 1)
@@ -93,6 +96,9 @@ mode: rule
 log-level: warning
 interface-name: en0
 ipv6: false
+# выбор в группах после перезапуска сбрасывается: сторож заново проверяет страну, а не верит старому выбору
+profile:
+  store-selected: false
 proxy-providers:
   vps:
     type: file
@@ -108,8 +114,22 @@ proxy-providers:
     proxies: [REJECT]
     url: https://www.gstatic.com/generate_204
     interval: 300
-{groups}{listeners}rules:
-  - MATCH,VPS
+  - name: GATE
+    type: select
+    proxies: [VPS, REJECT]
+    use: [{chain}]
+{groups}  - name: PROBE
+    type: select
+    proxies: [REJECT]
+    use: [{every}]
+listeners:
+{listeners}  - name: in-probe
+    type: mixed
+    port: {probe}
+    listen: 127.0.0.1
+    proxy: PROBE
+rules:
+  - MATCH,GATE
 """
 
 # Дополнительная подписка: свой провайдер, своя группа и свой порт. Группа VPS на основном порту идет по всем
@@ -123,19 +143,26 @@ PROVIDER = """  {name}:
       interval: 300
 """
 
-GROUP = """  - name: {group}
+# Ворота GATE перед каждой группой: обычно в них VPS (выбор fallback), а если сервер вывел не в ту страну, сторож
+# ставит в них сервер нужной страны или REJECT. Выбор в группе fallback mihomo через API закрепить не дает.
+# PROBE со своим портом в закрытом для сессий окне нужен сторожу, чтобы проверить страну сервера без трафика сессий.
+GROUP = """  - name: VPS-{name}
     type: fallback
     use: [{provider}]
     proxies: [REJECT]
     url: https://www.gstatic.com/generate_204
     interval: 300
+  - name: GATE-{name}
+    type: select
+    proxies: [VPS-{name}, REJECT]
+    use: [{provider}]
 """
 
 LISTENER = """  - name: in-{name}
     type: mixed
     port: {port}
     listen: 127.0.0.1
-    proxy: {group}
+    proxy: GATE-{name}
 """
 
 MAIN = "main"  # основная подписка (из proxy setup); в mihomo ее провайдер vps
@@ -266,6 +293,11 @@ def sub_group(sub=None):
     return "VPS" if key is None else f"VPS-{key}"
 
 
+def gate_group(sub=None):
+    key = port_key(sub)
+    return "GATE" if key is None else f"GATE-{key}"
+
+
 def sub_providers(sub=None):
     """Провайдеры mihomo, через которые идет sub: у каскада все по порядку."""
     names = cascade_subs() if sub is None else [sub]
@@ -304,6 +336,9 @@ def country_problem(sub):
     def where(info):
         return fmt((info["ip"], info.get("loc")) if info.get("ip") else None)
 
+    for key in {sub, port_key(sub)}:
+        if read_exit(key).get("blocked"):
+            return f"сторож закрыл {sub or 'очередь подписок'}: ни один живой сервер не выходит в нужной стране"
     if sub is not None:
         want, info = sub_country(sub), read_exit(sub)
         if want and (info.get("loc") or "").upper() != want:
@@ -590,7 +625,9 @@ def mihomo_api(path, method="GET", body=None, timeout=2):
 def node_info(sub=None):
     """Сервер в группе подписки sub сейчас: {"node", "proto", "sub"}, где sub — подписка, из которой он взят.
     None, если mihomo не ответил или живых серверов нет."""
-    name = mihomo_api(f"/proxies/{sub_group(sub)}").get("now")
+    # трафик идет через ворота: в них выбор fallback, закрепленный сторожем сервер или REJECT
+    gate = mihomo_api(f"/proxies/{gate_group(sub)}").get("now")
+    name = mihomo_api(f"/proxies/{sub_group(sub)}").get("now") if gate in (None, "", sub_group(sub)) else gate
     if not isinstance(name, str) or not name or name == "REJECT":
         return None
     # серверы из подписки mihomo по /proxies/<имя> не отдает, только списком провайдера
@@ -756,6 +793,8 @@ def start(strict=True, sub=None):
     if in_session():
         # mihomo из песочницы не смог бы ни поправить свою настройку, ни выйти к серверу напрямую
         raise ProxyError(f"mihomo не запущен. {IN_SESSION}: agentmeister proxy restart")
+    if "GATE" not in Path(CONFIG).read_text():
+        rerender()  # конфиг до ворот и проверки страны: собрать заново, mixed-port и подписки остаются
     pin_config()
     refresh_all(sub)
     pin_hosts()
@@ -900,12 +939,147 @@ def revive(state, now):
     return True
 
 
+class Guard:
+    """Страна выхода во время работы. Сторож видит, что mihomo переключился на другой сервер, сразу закрывает
+    ворота подписки (REJECT), проверяет страну нового сервера через порт PROBE и открывает ворота, только если
+    она та. Если нет, ставит в ворота живой сервер нужной страны из той же подписки, а если такого нет, ворота
+    остаются закрыты, и сессия получает отказ, как при упавших серверах. Между переключением в mihomo и тем,
+    как сторож его увидит, проходит до WATCH_POLL секунд."""
+
+    def __init__(self, api=None, probe=None, clock=time.time, log=None):
+        self.api = api or mihomo_api
+        self.probe_fn = probe or self.probe_exit
+        self.clock = clock
+        self.log = log or watch_log
+        self.seen = {}      # подписка -> сервер, который выбрал fallback при прошлом взгляде
+        self.cache = {}     # сервер -> (страна или None, когда проверен)
+        self.searched = {}  # подписка с закрытыми воротами -> когда искали сервер нужной страны
+        self.pid = None
+
+    def reset(self, pid=None):
+        """mihomo перезапущен или перечитал конфиг: ворота снова на выборе fallback, проверять заново."""
+        self.seen.clear()
+        self.searched.clear()
+        self.pid = pid
+        for key in all_ports():
+            info = read_exit(key)
+            if info.get("node") and info.get("loc") and not info.get("blocked"):
+                self.cache[info["node"]] = (info["loc"].upper(), self.clock())
+
+    def probe_exit(self, node):
+        """Страна выхода сервера: PROBE на этот сервер и запрос через порт PROBE."""
+        self.api("/proxies/PROBE", "PUT", {"name": node})
+        got = trace({"HTTPS_PROXY": f"http://127.0.0.1:{PROBE_PORT}"})
+        return (got[1] or "").upper() or None if got else None
+
+    def country(self, node):
+        loc, at = self.cache.get(node, (None, 0))
+        if node in self.cache and self.clock() - at < GUARD_TTL:
+            return loc
+        loc = self.probe_fn(node)
+        self.cache[node] = (loc, self.clock())
+        return loc
+
+    def nodes(self, key):
+        """Живые серверы подписки (у каскада всех подписок очереди) по порядку: (имя, подписка)."""
+        out = []
+        for provider in sub_providers(key):
+            listed = self.api(f"/providers/proxies/{provider}").get("proxies")
+            for n in listed if isinstance(listed, list) else []:
+                if isinstance(n, dict) and isinstance(n.get("name"), str) and n.get("alive") is not False:
+                    out.append((n["name"], MAIN if provider == "vps" else provider))
+        return out
+
+    def want(self, key, node_sub):
+        return sub_country(key) if key is not None else sub_country(node_sub or MAIN)
+
+    def node_sub(self, key, node):
+        return next((sub for name, sub in self.nodes(key) if name == node), None)
+
+    def record(self, key, node, sub, loc, blocked=False):
+        info = dict(read_exit(key), node=node, sub=sub, loc=loc, blocked=blocked, checked=time.strftime("%H:%M:%S"))
+        if blocked:
+            info.pop("ip", None)
+        try:
+            with open(exit_file(key), "w") as f:
+                json.dump(info, f, ensure_ascii=False)
+        except OSError:
+            pass
+
+    def search(self, key, gate):
+        """Найти живой сервер нужной страны и поставить его в ворота. Не нашелся: ворота закрыты."""
+        self.searched[key] = self.clock()
+        for node, sub in self.nodes(key):
+            want = self.want(key, sub)
+            if want and self.country(node) == want:
+                self.api(f"/proxies/{gate}", "PUT", {"name": node})
+                self.record(key, node, sub, want)
+                self.log(f"{gate}: закреплен сервер {node} ({want})")
+                return True
+        self.api(f"/proxies/{gate}", "PUT", {"name": "REJECT"})
+        self.record(key, None, None, None, blocked=True)
+        self.log(f"{gate}: живого сервера нужной страны нет, подписка закрыта")
+        return False
+
+    def step(self, key):
+        fallback, gate = sub_group(key), gate_group(key)
+        chosen = self.api(f"/proxies/{fallback}").get("now")
+        current = self.api(f"/proxies/{gate}").get("now")
+        if not current or not chosen:
+            return  # mihomo не ответил или конфиг без ворот
+        changed = self.seen.get(key) != chosen
+        self.seen[key] = chosen
+        if chosen == "REJECT" and current in (fallback, "REJECT"):
+            return  # живых серверов нет, трафик и так отклоняется
+        if current == fallback:
+            if not changed:
+                return  # сервер тот же и уже проверен: список серверов каждые 2 секунды не запрашиваем
+            sub = self.node_sub(key, chosen)
+            want = self.want(key, sub)
+            if not want:
+                return
+            if self.cache.get(chosen, (None, 0))[0] == want and self.clock() - self.cache[chosen][1] < GUARD_TTL:
+                return
+            # новый сервер: закрыть, пока не проверен, чтобы трафик сессий не ушел через другую страну
+            self.api(f"/proxies/{gate}", "PUT", {"name": "REJECT"})
+            loc = self.country(chosen)
+            if loc == want:
+                self.api(f"/proxies/{gate}", "PUT", {"name": fallback})
+                self.record(key, chosen, sub, loc)
+                self.log(f"{gate}: сервер {chosen} выходит в {loc}, открыто")
+                return
+            self.log(f"{gate}: сервер {chosen} выходит в {loc or 'неизвестно где'}, а нужен {want}")
+            self.search(key, gate)
+            return
+        # ворота держит сторож: закрыты или на закрепленном сервере. fallback сменил сервер: может, он подходит
+        if changed and chosen != "REJECT":
+            sub = self.node_sub(key, chosen)
+            want = self.want(key, sub)
+            if want and self.country(chosen) == want:
+                self.api(f"/proxies/{gate}", "PUT", {"name": fallback})
+                self.searched.pop(key, None)
+                self.record(key, chosen, sub, want)
+                self.log(f"{gate}: fallback снова на {chosen} ({want}), открыто")
+                return
+        if self.clock() - self.searched.get(key, 0) < (GUARD_RETRY if current == "REJECT" else 30):
+            return
+        if current == "REJECT":
+            self.search(key, gate)
+        elif not any(name == current for name, _ in self.nodes(key)):
+            self.log(f"{gate}: закрепленный сервер {current} перестал отвечать")
+            self.api(f"/proxies/{gate}", "PUT", {"name": "REJECT"})
+            self.search(key, gate)
+        else:
+            self.searched[key] = self.clock()  # закрепленный жив, следующая проверка через 30 секунд
+
+
 def watch():
     """Сторож, пока идут сессии через proxy. mihomo сам не узнает, что сеть вернулась через другой интерфейс,
     а мертвый сервер перепроверяет раз в пять минут, и все это время группа VPS отклоняет запросы."""
     with open(WATCH_PID, "w") as f:
         f.write(str(os.getpid()))
     state = {}
+    guard = Guard()
     watch_log("сторож запущен")
     try:
         while True:
@@ -917,6 +1091,15 @@ def watch():
                 continue
             route = default_route()
             used = held_subs() or {None}
+            pid = read_pid()
+            if pid != guard.pid:
+                guard.reset(pid)
+            if route:
+                for key in {port_key(sub) for sub in used}:
+                    try:
+                        guard.step(key)
+                    except (ProxyError, OSError) as e:
+                        watch_log(f"проверка страны: {e}")
             nows = {sub: mihomo_api(f"/proxies/{sub_group(sub)}").get("now") for sub in used} if route else {}
             dead = {sub for sub, now in nows.items() if now == "REJECT"}
             # подписка только что осталась без живых серверов: перепроверить ее серверы сразу, а не через 5 минут
@@ -935,6 +1118,7 @@ def watch():
                             old = pinned_interface()
                             pin_config()
                             mihomo_api("/configs?force=true", "PUT", {"path": CONFIG}, timeout=10)
+                        guard.reset(read_pid())  # перезагрузка сбросила ворота
                         watch_log(f"интерфейс {old} -> {pinned_interface()}, конфиг mihomo перезагружен")
                     elif action == "healthcheck":
                         for provider in dict.fromkeys(p for sub in used for p in sub_providers(sub)):
@@ -1273,15 +1457,15 @@ def render_config(p, country, only, data):
     strict = (data.get(MAIN) or {}).get("port") if extras else None
     groups = listeners = ""
     if extras and good_port(strict):
-        groups = GROUP.format(group=sub_group(MAIN), provider="vps") + \
-            "".join(GROUP.format(group=sub_group(n), provider=n) for n in extras)
-        listeners = "listeners:\n" + LISTENER.format(name=MAIN, port=strict, group=sub_group(MAIN)) + \
-            "".join(LISTENER.format(name=n, port=v["port"], group=sub_group(n)) for n, v in extras.items())
+        groups = GROUP.format(name=MAIN, provider="vps") + "".join(GROUP.format(name=n, provider=n) for n in extras)
+        listeners = LISTENER.format(name=MAIN, port=strict) + \
+            "".join(LISTENER.format(name=n, port=v["port"]) for n, v in extras.items())
     return TEMPLATE.format(port=p, country=country.upper(), filter=only_line(only),
                            providers="".join(PROVIDER.format(name=n, filter=only_line(str(v.get("only") or "")))
                                              for n, v in extras.items()),
                            chain=", ".join(["vps"] + [n for n, v in extras.items()
                                                       if not want or str(v.get("country") or "").upper() == want]),
+                           every=", ".join(["vps"] + list(extras)), probe=PROBE_PORT,
                            groups=groups, listeners=listeners)
 
 
@@ -1327,7 +1511,7 @@ def write_config(url, p, country="", only=""):
 
 def free_port(taken=()):
     p = DEFAULT_PORT
-    while (p in taken or listening(p)) and p < DEFAULT_PORT + PORT_WINDOW - 1:
+    while (p in taken or listening(p) or p == PROBE_PORT) and p < DEFAULT_PORT + PORT_WINDOW - 2:
         p += 1
     return p
 
@@ -1780,6 +1964,11 @@ def status(test=False):
     else:
         print(paint("  " + tr("mihomo не запущен: он поднимется вместе с первой сессией через proxy",
                               "mihomo isn't running: it starts with the first proxied session"), "2"))
+    for key in [None] + [n for n in sub_names() if port_key(n) is not None]:
+        if read_exit(key).get("blocked"):
+            who = tr("очередь подписок", "the subscription order") if key is None else key
+            print(f"{BAD} " + tr(f"сторож закрыл {who}: ни один живой сервер не выходит в {sub_country(key) or 'нужной стране'}",
+                                 f"the watcher closed {who}: no live server exits in {sub_country(key) or 'the required country'}"))
     if os.environ.get("MNRH_PROXY"):
         mine = os.environ.get("MNRH_PROXY_SUB")
         print(f"{OK} " + (tr(f"эта сессия идёт только через {mine}", f"this session goes through {mine} only") if mine

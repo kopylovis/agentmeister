@@ -60,7 +60,9 @@ class CountryOnRestart(unittest.TestCase):
         proc = MagicMock()
         proc.pid = 4242
         proc.poll.return_value = None
-        files = {name: os.path.join(tmp, name.lower()) for name in ("PIDFILE", "LOG", "EXIT", "PAGE")}
+        files = {name: os.path.join(tmp, name.lower()) for name in ("PIDFILE", "LOG", "EXIT", "PAGE", "CONFIG")}
+        with open(files["CONFIG"], "w") as f:
+            f.write("rules:\n  - MATCH,GATE\n")  # конфиг с воротами: start не пересобирает его
         stop = MagicMock()
         with patch.multiple(p, STATE=tmp, **files), patch.object(p, "read_pid", return_value=None), \
                 patch.object(p, "listening", side_effect=listening), patch.object(p, "port", return_value=17890), \
