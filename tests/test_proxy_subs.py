@@ -347,6 +347,20 @@ class Sessions(Folder):
         self.assertEqual(env["PROMPTSILL_PROXY_DETAIL"], "vless 1.2.3.4")
         self.assertEqual(proxy.proxy_env(17890)["PROMPTSILL_PROXY_LABEL"], "KZ")
 
+    def test_promptsill_file_follows_the_cascade(self):
+        self.main()
+        self.extra("home", 17895)
+        os.makedirs(proxy.STATE, exist_ok=True)
+        info = {"ip": "1.2.3.4", "loc": "kz", "proto": "vless", "sub": "main", "subs": 2}
+        Path(proxy.exit_file(None)).write_text(json.dumps(dict(info, **proxy.promptsill_view(None, info))))
+        env = proxy.proxy_env(17890)
+        self.assertEqual(env["PROMPTSILL_PROXY_FILE"], os.path.abspath(proxy.exit_file(None)))
+        self.assertEqual(json.loads(Path(env["PROMPTSILL_PROXY_FILE"]).read_text())["label"], "main KZ")
+        # сторож перевел каскад на home и закрыл его
+        self.assertEqual(proxy.promptsill_view(None, dict(info, sub="home", loc="se")), {"label": "home SE", "detail": "vless 1.2.3.4", "closed": False})
+        self.assertTrue(proxy.promptsill_view("home", {"blocked": True, "subs": 2})["closed"])
+        self.assertEqual(proxy.promptsill_view(None, {"loc": "ge", "subs": 1, "sub": "main"})["label"], "GE")
+
     def test_remember_accepts_a_known_subscription(self):
         self.main()
         self.extra("home", 17895)
