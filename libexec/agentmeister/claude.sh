@@ -42,6 +42,7 @@ help() {
   agentmeister root                в домашней папке
   agentmeister ... -k | -n         caffeinate или обычная сессия, без вопроса
   agentmeister ... -x | -d         через proxy или напрямую, без вопроса
+  agentmeister ... -x <подписка>   только через эту подписку proxy (agentmeister proxy list)
   agentmeister ... --new           новая сессия, не предлагать сохраненные
   agentmeister ... -i              без записи на диск: ни переписки, ни истории промптов
   agentmeister ... -- <аргументы>  аргументы для claude: agentmeister kcalm -- --continue
@@ -126,13 +127,22 @@ case "${1:-}" in
   restart|forget|fresh|slim|mcp|setup|notice|session-end) exec /usr/bin/python3 "$(dirname "$MENU")/claude_restart.py" "$@" ;;
 esac
 
+# подписка proxy для -x <имя>: main или та, что добавлена через agentmeister proxy add
+proxy_sub() {
+  case "$1" in ''|*[!a-z0-9-]*|[!a-z]*) return 1 ;; main) return 0 ;; esac
+  [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/mnrh/proxy/subs/$1.url" ]
+}
+
 target="" mode="" net="" new=0 passthrough=()
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) help; exit 0 ;;
     -n|--normal) mode=normal ;;
     -k|--caffeinate) mode=caffeinate ;;
-    -x|--proxy) net=vps ;;
+    -x|--proxy) net=vps
+      # -x home: только через подписку home. Имя проекта, совпавшее с подпиской, пиши до -x или путем
+      if [ $# -gt 1 ] && proxy_sub "$2"; then net="vps:$2"; shift; fi ;;
+    -x=*|--proxy=*) net="vps:${1#*=}" ;;
     -d|--direct) net=direct ;;
     --new) new=1 ;;
     -i|--incognito) new=1; export CLAUDE_CODE_SKIP_PROMPT_HISTORY=1 ;;
@@ -220,16 +230,18 @@ fi
 [ -n "$mode" ] || mode=caffeinate
 [ -n "$net" ] || net=direct
 pre=()
-if [ "$net" = vps ]; then
+via=""
+case "$net" in vps:*) via="${net#vps:}" ;; esac
+if [ "${net%%:*}" = vps ]; then
   /usr/bin/python3 "$PROXY" configured || { echo "agentmeister: прокси не настроен или нет mihomo: agentmeister proxy setup" >&2; exit 1; }
-  pre=(/usr/bin/python3 "$PROXY" run --claude --)
+  pre=(/usr/bin/python3 "$PROXY" run --claude ${via:+--via "$via"} --)
 else
   unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
-  unset MNRH_PROXY PROMPTSILL_PROXY_LABEL PROMPTSILL_PROXY_DETAIL PROMPTSILL_PROXY_URL
+  unset MNRH_PROXY MNRH_PROXY_SUB PROMPTSILL_PROXY_LABEL PROMPTSILL_PROXY_DETAIL PROMPTSILL_PROXY_URL
 fi
 
 cd "$dir" || exit 1
-echo "-> ${dir/#$HOME/~} · $mode$([ "$net" = vps ] && echo ' · через proxy')$([ "${CLAUDE_CODE_SKIP_PROMPT_HISTORY:-}" = 1 ] && echo ' · без записи')"
+echo "-> ${dir/#$HOME/~} · $mode$([ "${net%%:*}" = vps ] && echo " · через proxy${via:+ $via}")$([ "${CLAUDE_CODE_SKIP_PROMPT_HISTORY:-}" = 1 ] && echo ' · без записи')"
 # после agentmeister lid setup сторож держит Mac и с закрытой крышкой; без правила шаг молча пропускается
 if [ "$mode" = caffeinate ]; then
   /usr/bin/python3 "$LIB/claude_lid.py" keep >/dev/null 2>&1
