@@ -1270,9 +1270,14 @@ def proxy_env(p, *, claude=False, sub=None):
     shown = info.get("sub") if isinstance(info.get("subs"), int) and info["subs"] > 1 else None
     for name in ("PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL"):
         env.pop(name, None)
-    if isinstance(loc, str) and re.match(r"^[A-Za-z]{2}$", loc):
-        env["PROMPTSILL_PROXY_LABEL"] = loc.upper()
-    detail = [v for v in (shown, proto, ip) if isinstance(v, str) and re.match(r"^[\w.:-]{1,40}$", v)]
+    # сессия только через одну подписку видит ее имя рядом со страной: "proxy test GE". У каскада подписка
+    # меняется на ходу, а переменная задается при запуске, поэтому там только страна
+    strict = sub if sub is not None and shown else None
+    country = loc.upper() if isinstance(loc, str) and re.match(r"^[A-Za-z]{2}$", loc) else None
+    label = " ".join(v for v in (strict, country) if v)
+    if label:
+        env["PROMPTSILL_PROXY_LABEL"] = label
+    detail = [v for v in (None if strict else shown, proto, ip) if isinstance(v, str) and re.match(r"^[\w.:-]{1,40}$", v)]
     if detail:
         env["PROMPTSILL_PROXY_DETAIL"] = " ".join(detail)
     if os.path.exists(page_file(sub)):

@@ -322,6 +322,18 @@ class Sessions(Folder):
         with patch.dict(os.environ, {"MNRH_PROXY_SUB": "home"}):
             self.assertNotIn("MNRH_PROXY_SUB", proxy.proxy_env(17890))
 
+    def test_promptsill_label_names_a_strict_subscription(self):
+        self.main()
+        self.extra("home", 17895)
+        os.makedirs(proxy.STATE, exist_ok=True)
+        info = {"ip": "1.2.3.4", "loc": "se", "proto": "vless", "sub": "home", "subs": 2}
+        Path(proxy.exit_file("home")).write_text(json.dumps(info))
+        Path(proxy.exit_file(None)).write_text(json.dumps(dict(info, sub="main", loc="kz")))
+        env = proxy.proxy_env(17895, sub="home")
+        self.assertEqual(env["PROMPTSILL_PROXY_LABEL"], "home SE")
+        self.assertEqual(env["PROMPTSILL_PROXY_DETAIL"], "vless 1.2.3.4")
+        self.assertEqual(proxy.proxy_env(17890)["PROMPTSILL_PROXY_LABEL"], "KZ")
+
     def test_remember_accepts_a_known_subscription(self):
         self.main()
         self.extra("home", 17895)
