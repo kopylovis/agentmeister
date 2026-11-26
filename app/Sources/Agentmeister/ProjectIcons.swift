@@ -10,6 +10,14 @@ final class ProjectIcons: ObservableObject {
     private var looked: Set<String> = []
 
     func icon(for path: String) -> NSImage? {
+        // демо для скриншотов: иконки выдуманных проектов лежат в папке демо
+        if let dir = Demo.dir {
+            if icons[path] == nil, let image = NSImage(contentsOfFile: "\(dir)/icons/\((path as NSString).lastPathComponent).png") {
+                DispatchQueue.main.async { self.icons[path] = image }
+                return image
+            }
+            return icons[path]
+        }
         // домашнюю папку не обходим: там все проекты и библиотеки, иконки у нее нет
         if path == NSHomeDirectory() { return nil }
         if !looked.contains(path) {

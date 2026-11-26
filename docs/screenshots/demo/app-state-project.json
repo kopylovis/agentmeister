@@ -1,0 +1,69 @@
+{
+ "path": "/Users/demo/Developer/ledger-api",
+ "name": "ledger-api",
+ "errors": {},
+ "git": {
+  "branch": "webhook-retries",
+  "dirty": 3,
+  "commits": [
+   {
+    "sha": "b81d07e",
+    "time": 1795702526,
+    "subject": "webhooks: retry 5xx and timeouts with backoff"
+   },
+   {
+    "sha": "4f1c2a9",
+    "time": 1795686926,
+    "subject": "transfers: idempotency keys on POST /transfers"
+   },
+   {
+    "sha": "9e03b1d",
+    "time": 1795611326,
+    "subject": "ledger: double-entry check runs in one transaction"
+   },
+   {
+    "sha": "71ac5f2",
+    "time": 1795532126,
+    "subject": "api: 429 with Retry-After for bursts"
+   }
+  ]
+ },
+ "last": {
+  "id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000001",
+  "title": "Retry with backoff for payment webhooks",
+  "last": 1795704806.0439901,
+  "size": 2400000,
+  "summary": "Webhook delivery retries 5xx and timeouts, 17 tests pass."
+ },
+ "todos": [
+  {
+   "n": 1,
+   "text": "Alert when a webhook gives up after five tries",
+   "done": false
+  },
+  {
+   "n": 2,
+   "text": "Document the idempotency key header",
+   "done": false
+  },
+  {
+   "n": 3,
+   "text": "Move ledger checks to the nightly job",
+   "done": true
+  }
+ ],
+ "parallel": [
+  {
+   "branch": "rate-limit-headers",
+   "task": "Return Retry-After on 429",
+   "ahead": "2",
+   "dirty": 0,
+   "running": true,
+   "path": "/Users/demo/Developer/ledger-api/.worktrees/rate-limit-headers"
+  }
+ ],
+ "tools": {
+  "releaseSince": "v2.4.0",
+  "gradle": false
+ }
+}

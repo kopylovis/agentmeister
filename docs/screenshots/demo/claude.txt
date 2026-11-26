@@ -1,0 +1,34 @@
+[38;5;173m✻[0m [1mClaude Code[0m [38;5;245mv2.3.1 · Opus 5.5 · ~/Developer/ledger-api[0m
+
+[38;5;245m>[0m [38;5;252mAdd retry with backoff to the payment webhook handler and cover it with tests[0m
+
+[38;5;173m⏺[0m I'll check how webhook delivery works now, then wrap the provider call.
+
+[38;5;173m⏺[0m [1mRead[0m(src/webhooks/payments.ts)
+  [38;5;245m⎿  Read 142 lines[0m
+
+[38;5;173m⏺[0m [1mGrep[0m("deliverWebhook", path: "src")
+  [38;5;245m⎿  Found 3 files[0m
+
+[38;5;173m⏺[0m [1mUpdate[0m(src/webhooks/payments.ts)
+  [38;5;245m⎿  Updated src/webhooks/payments.ts with 21 additions and 6 removals[0m
+     [38;5;245m48[0m [38;5;174m-  const res = await provider.send(event)[0m
+     [38;5;245m48[0m [38;5;114m+  const res = await withRetry(() => provider.send(event), {[0m
+     [38;5;245m49[0m [38;5;114m+    tries: 5, baseMs: 500, maxMs: 8000,[0m
+     [38;5;245m50[0m [38;5;114m+    retryOn: (e) => e.status >= 500 || e.code === 'ETIMEDOUT',[0m
+     [38;5;245m51[0m [38;5;114m+  })[0m
+
+[38;5;173m⏺[0m [1mWrite[0m(test/webhooks/retry.test.ts)
+  [38;5;245m⎿  Wrote 64 lines to test/webhooks/retry.test.ts[0m
+
+[38;5;173m⏺[0m [1mBash[0m(npm test -- webhooks)
+  [38;5;245m⎿  [38;5;114mPASS[0m[38;5;245m payments.test.ts (12)  [38;5;114mPASS[0m[38;5;245m retry.test.ts (5)[0m
+
+[38;5;173m⏺[0m Delivery now retries 5xx answers and timeouts after 0.5, 1, 2 and 4 seconds,
+  five tries in total. A 4xx answer fails at once, so a bad signature doesn't
+  hammer the provider. All 17 webhook tests pass.
+
+[38;5;245m╭──────────────────────────────────────────────────────────────────────────────────╮[0m
+[38;5;245m│[0m [38;5;245m>[0m [2mTry "open a PR for this"[0m                                                      [38;5;245m│[0m
+[38;5;245m╰──────────────────────────────────────────────────────────────────────────────────╯[0m
+  [38;5;117mledger-api[0m [38;5;245m·[0m [38;5;245mwebhook-retries[0m [38;5;245m·[0m [38;5;245mOpus 5.5[0m [38;5;245m·[0m [38;5;245mctx 31%[0m [38;5;245m·[0m [38;5;245m5h 18%[0m [38;5;245m·[0m [38;5;114mproxy main KZ[0m

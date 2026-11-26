@@ -392,6 +392,7 @@ final class Backend: ObservableObject {
     init() {
         Self.main = self
         refresh()
+        if Demo.active { return }  // в демо данные не меняются, опрашивать нечего
         liveTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.pollLive() }
         }
@@ -446,6 +447,7 @@ final class Backend: ObservableObject {
 
     /// Открытые сессии из реестра Claude Code, у которых жив процесс. То же, что claude_live.live() в CLI.
     nonisolated static func readLive() -> [AppState.Live] {
+        if Demo.active { return [] }
         let env = LoginEnvironment.shared
         let home = env["CLAUDE_CONFIG_DIR"] ?? (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
         let dir = (home as NSString).appendingPathComponent("sessions")
@@ -545,6 +547,7 @@ final class Backend: ObservableObject {
     }
 
     nonisolated static func run(_ args: [String]) -> Result<Data, Error> {
+        if Demo.active { return Demo.response(args) }  // демо для скриншотов: готовые ответы, ничего не запускается
         guard LoginEnvironment.found else {
             return .failure(NSError(domain: "agentmeister", code: 127, userInfo: [NSLocalizedDescriptionKey:
                 "agentmeister isn't in PATH. Install it (./install.sh) or check PATH in ~/.zshrc."]))
