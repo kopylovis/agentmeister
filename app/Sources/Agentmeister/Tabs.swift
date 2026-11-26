@@ -1026,7 +1026,7 @@ final class Workspace: ObservableObject {
             selected = target.id
         } else if allowResume, let sid, !liveElsewhere.contains(sid), let state,
                   let saved = state.sessions.first(where: { $0.id == sid }),
-                  let project = state.projects.first(where: { saved.cwd == $0.path || saved.cwd.hasPrefix($0.path + "/") }) {
+                  let project = state.project(containing: saved.cwd) {
             // агент из сохраненной сессии: id треда Codex иначе ушел бы в claude --resume
             open(LaunchSpec.resume(saved, project: project))
         } else {

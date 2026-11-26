@@ -182,6 +182,15 @@ struct AppState: Decodable {
         let name: String
         let path: String
         var id: String { path }
+
+        /// Домашняя папка, как "Открыть в домашней папке" в меню CLI. Приложение добавляет ее само.
+        var isHome: Bool { path == NSHomeDirectory() }
+
+        /// Лежит ли путь в проекте. Домашней папке принадлежит только она сама: иначе в нее попали бы все проекты
+        /// и все сессии.
+        func contains(_ other: String) -> Bool {
+            other == path || (!isHome && other.hasPrefix(path + "/"))
+        }
     }
 
     struct Session: Decodable, Hashable, Identifiable {
@@ -257,11 +266,11 @@ struct AppState: Decodable {
 
     /// Проект, в папке которого лежит путь. Из вложенных проектов берется самый глубокий.
     func project(containing path: String) -> Project? {
-        projects.filter { path == $0.path || path.hasPrefix($0.path + "/") }.max { $0.path.count < $1.path.count }
+        projects.filter { $0.contains(path) }.max { $0.path.count < $1.path.count }
     }
 
     func sessions(in project: Project, agent: LaunchSpec.Agent? = nil) -> [Session] {
-        sessions.filter { ($0.cwd == project.path || $0.cwd.hasPrefix(project.path + "/")) && (agent == nil || $0.kind == agent) }
+        sessions.filter { project.contains($0.cwd) && (agent == nil || $0.kind == agent) }
     }
 }
 
@@ -426,6 +435,11 @@ final class Backend: ObservableObject {
                         if let codex = state.codexSessions, !codex.isEmpty {
                             // один список на все окна, новые первыми, как у Claude Code
                             state.sessions = (state.sessions + codex).sorted { $0.mtime > $1.mtime }
+                        }
+                        // домашняя папка первой, как в меню CLI. В боковой панели она встает после проектов с вкладками
+                        let home = NSHomeDirectory()
+                        if !state.projects.contains(where: { $0.path == home }) {
+                            state.projects.insert(AppState.Project(name: L(state.lang).t("Домашняя папка", "Home"), path: home), at: 0)
                         }
                         self.state = state
                         let watching = Workspace.main?.tabs.contains { $0.running && $0.spec.proxied } ?? false
