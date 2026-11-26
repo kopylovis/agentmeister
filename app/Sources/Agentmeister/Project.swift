@@ -64,6 +64,8 @@ struct ProjectView: View {
     // поле новой сессии
     @State private var prompt = ""
     @State private var agent: LaunchSpec.Agent = .claude
+    /// Вместо агента вкладка терминала в папке проекта. Текст из поля она выполняет первой командой.
+    @State private var terminal = false
     @State private var direct = false
     @State private var asParallel = false
     @State private var starting = false
@@ -166,18 +168,22 @@ struct ProjectView: View {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let exit = backend.state.proxy?.exit
         return VStack(alignment: .leading, spacing: 10) {
-            Text(asParallel ? l.t("Параллельная задача в \(name)", "Parallel task in \(name)")
+            Text(terminal ? l.t("Терминал в \(name)", "Terminal in \(name)")
+                 : asParallel ? l.t("Параллельная задача в \(name)", "Parallel task in \(name)")
                             : l.t("Новая сессия в \(name)", "New session in \(name)"))
                 .font(.system(size: 12))
                 .foregroundStyle(Ink.muted)
             TextEditor(text: $prompt)
-                .font(.system(size: 14))
+                .font(terminal ? .system(size: 13, design: .monospaced) : .system(size: 14))
                 .scrollContentBackground(.hidden)
                 .focused($promptFocused)
                 .frame(height: 64)
                 .overlay(alignment: .topLeading) {
                     if prompt.isEmpty {
-                        Text(asParallel
+                        Text(terminal
+                             ? l.t("Команда, которую выполнить в папке проекта. Можно оставить пустым, тогда просто shell.",
+                                   "A command to run in the project folder. Leave it empty for a plain shell.")
+                             : asParallel
                              ? l.t("Что сделать в своей ветке. Без задачи параллельную не начать.",
                                    "What to do in its own branch. A parallel task needs one.")
                              : l.t("Что сделать агенту. Текст станет первым запросом, можно оставить пустым.",
@@ -190,12 +196,17 @@ struct ProjectView: View {
                 }
             HStack(spacing: 8) {
                 Menu {
-                    Button("Claude Code") { agent = .claude }
-                    Button("Codex") { agent = .codex; asParallel = false }
+                    Button("Claude Code") { agent = .claude; terminal = false }
+                    Button("Codex") { agent = .codex; terminal = false; asParallel = false }
+                    Button(l.t("Терминал", "Terminal")) { terminal = true; asParallel = false }
                 } label: {
-                    chip(agent == .codex ? "Codex" : "Claude Code",
-                         fg: agent == .codex ? Ink.codexBadge : Ink.claudeBadge,
-                         bg: agent == .codex ? Ink.codexBadgeBg : Ink.claudeBadgeBg)
+                    if terminal {
+                        chip(l.t("Терминал", "Terminal"), fg: Ink.text2, bg: Ink.chip)
+                    } else {
+                        chip(agent == .codex ? "Codex" : "Claude Code",
+                             fg: agent == .codex ? Ink.codexBadge : Ink.claudeBadge,
+                             bg: agent == .codex ? Ink.codexBadgeBg : Ink.claudeBadgeBg)
+                    }
                 }
                 .menuStyle(.button)
                 .buttonStyle(.hoverCapsule(.overlay))
@@ -218,8 +229,8 @@ struct ProjectView: View {
                 Toggle(l.t("В своем worktree, параллельной задачей", "In its own worktree, as a parallel task"), isOn: $asParallel)
                     .toggleStyle(.checkbox)
                     .font(.system(size: 12))
-                    .foregroundStyle(agent == .claude ? Ink.text2 : Ink.faint)
-                    .disabled(agent != .claude)
+                    .foregroundStyle(agent == .claude && !terminal ? Ink.text2 : Ink.faint)
+                    .disabled(agent != .claude || terminal)
                     .help(agent == .claude
                           ? l.t("Своя ветка и worktree. Готовую задачу вливают в исходную ветку, через PR или выбрасывают.",
                                 "Its own branch and worktree. Finish by merging into the original branch, through a PR, or by dropping it.")
@@ -257,6 +268,12 @@ struct ProjectView: View {
 
     private func start() {
         guard let project else { return }
+        if terminal {
+            workspace.openTerminal(name: project.name, path: project.path, direct: direct, state: backend.state, command: prompt)
+            prompt = ""
+            ui.projectScreen = nil
+            return
+        }
         var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: agent, direct: direct)
         spec.remoteControl = agent == .claude
         let task = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
