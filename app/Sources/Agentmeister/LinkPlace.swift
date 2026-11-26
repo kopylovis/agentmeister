@@ -109,7 +109,7 @@ struct LinkPlaceSheet: View {
                     l.t("через тот же proxy, что и агенты", "through the same proxy as the agents"))
                 row(.chrome, l.t("Отдельный профиль Chrome", "Separate Chrome profile"),
                     ChromeProfile.app == nil ? l.t("Chrome не найден", "Chrome isn't installed")
-                        : l.t("Chrome с proxy и своим профилем", "Chrome with the proxy and its own profile"))
+                        : l.t("через proxy, свои cookie", "through the proxy, own cookies"))
                     .disabled(ChromeProfile.app == nil)
                 row(.system, l.t("Браузер по умолчанию", "Default browser"),
                     l.t("по сети системы, мимо proxy", "over the system network, bypassing the proxy"))
