@@ -30,8 +30,9 @@ struct LaunchSpec: Hashable {
     /// Вкладка агента, чьей подзадачей открыта эта: параллельная задача в своем worktree. Подзадачи показываются
     /// рядом под вкладкой агента, а не в общей полосе.
     var parent: UUID?
-    /// Вкладка терминала без агента: shell входа в папке проекта. Через proxy это agentmeister proxy run --claude,
-    /// та же песочница, что у сессий Claude Code, напрямую сам shell. Собирает ее LaunchSpec.terminal.
+    /// Вкладка терминала без агента: shell входа в папке проекта. Через proxy это agentmeister proxy run в строгой
+    /// песочнице, как у Codex: сеть только через mihomo и сокет ssh-agent, напрямую не уходит ничего. git по ssh
+    /// идет через mihomo (GIT_SSH_COMMAND). Напрямую это сам shell. Собирает ее LaunchSpec.terminal.
     var terminal = false
 
     /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
@@ -104,7 +105,7 @@ extension LaunchSpec {
             spec.utility = [loginShell, "-l"]
             spec.bare = true
         } else {
-            spec.utility = ["proxy", "run", "--claude", "--", loginShell, "-l"]
+            spec.utility = ["proxy", "run", "--", loginShell, "-l"]
         }
         return spec
     }
@@ -200,6 +201,11 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
             // тот же признак, что ставит restart.zsh: claude_restart пишет задание для хука, а не ищет вкладку iTerm2
             env["MNRH_RESTART_HOOK"] = "2"
             env["MNRH_RESTART_JOB"] = job
+        }
+        // терминал через proxy: в строгой песочнице прямой ssh закрыт, git ходит по ssh через CONNECT mihomo.
+        // MNRH_PROXY с портом ставит proxy run, git раскрывает переменную, когда запускает команду через sh
+        if spec.terminal && spec.proxied {
+            env["GIT_SSH_COMMAND"] = "ssh -o ProxyCommand='/usr/bin/nc -X connect -x 127.0.0.1:$MNRH_PROXY %h %p'"
         }
         // страницы, которые агент открывает сам (вход, OAuth для MCP), идут во встроенный браузер через тот же proxy
         env.removeValue(forKey: "BROWSER")
