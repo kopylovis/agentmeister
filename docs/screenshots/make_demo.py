@@ -13,7 +13,11 @@ E = "\x1b["
 R, B, DIM = E + "0m", E + "1m", E + "2m"
 OR, GR, RD, CY, GY, WH = (E + "38;5;" + c + "m" for c in ("173", "114", "174", "117", "245", "252"))
 DOT = OR + "⏺" + R
-W = 84  # ширина текста во вкладке: длиннее терминал перенес бы строку
+W = 104  # столько колонок у терминала во вкладке демо: длиннее терминал перенес бы строку, короче рамка не дойдет до края
+
+
+def title(text):
+    return f"\x1b]0;{text}\x07"
 
 
 def tool(name, arg, out):
@@ -31,7 +35,7 @@ def status(*parts, proxy):
 
 SCREENS = {
     "claude.txt":
-        f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/ledger-api{R}\n\n"
+        title("Webhook retries") + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/ledger-api{R}\n\n"
         f"{GY}>{R} {WH}Add retry with backoff to the payment webhook handler and cover it with tests{R}\n\n"
         f"{DOT} I'll check how webhook delivery works now, then wrap the provider call.\n\n"
         + tool("Read", "src/webhooks/payments.ts", "Read 142 lines")
@@ -51,7 +55,7 @@ SCREENS = {
         + box('Try "open a PR for this"')
         + status("ledger-api", "webhook-retries", "Opus 5.5", "ctx 31%", "5h 18%", proxy="proxy main KZ"),
     "claude2.txt":
-        f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/atlas-web{R}\n\n"
+        title("Billing dark mode") + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/atlas-web{R}\n\n"
         f"{GY}>{R} {WH}The billing page ignores dark mode, fix it without touching brand colors{R}\n\n"
         + tool("Read", "app/billing/page.tsx", "Read 211 lines")
         + tool("Update", "app/billing/invoice-table.tsx", "Updated with 9 additions and 9 removals")
@@ -61,7 +65,7 @@ SCREENS = {
         + box("")
         + status("atlas-web", "billing-dark", "Opus 5.5", "ctx 12%", proxy="proxy backup KZ"),
     "codex.txt":
-        f"{B}>_ OpenAI Codex{R} {GY}(v0.98.0) · gpt-5.5 · ~/Developer/orbit-ios{R}\n\n"
+        title("Launch list snapshots") + f"{B}>_ OpenAI Codex{R} {GY}(v0.98.0) · gpt-5.5 · ~/Developer/orbit-ios{R}\n\n"
         f"{CY}›{R} Add snapshot tests for the launch list in light and dark mode\n\n"
         f"{GY}•{R} Explored\n  {GY}└ Read LaunchListView.swift, LaunchRow.swift{R}\n\n"
         f"{GY}•{R} Edited Tests/LaunchListSnapshotTests.swift {GR}(+58 -0){R}\n\n"
