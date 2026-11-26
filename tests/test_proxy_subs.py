@@ -154,10 +154,22 @@ class Country(Folder):
         self.main("KZ")
         self.extra("se", 17896, "SE")
         self.exits(se={"ip": "1.2.3.4", "loc": "US"})
-        with patch.object(proxy, "read_pid", return_value=1), patch.object(proxy, "listening", return_value=True):
+        with patch.object(proxy, "read_pid", return_value=1), patch.object(proxy, "listening", return_value=True), \
+                patch.object(proxy, "check_owner"), patch.object(proxy, "in_session", return_value=False):
             with self.assertRaises(proxy.ProxyError):
                 proxy.start(sub="se")
             self.assertIn("SE", proxy.start(strict=False, sub="se"))
+
+
+class Owner(Folder):
+    def test_launch_is_refused_when_another_program_holds_the_port(self):
+        self.main()
+        self.extra("home", 17895)
+        with patch.object(proxy, "read_pid", return_value=4242), \
+                patch.object(proxy, "owned_by_mihomo", side_effect=lambda q, pid: q != 17895):
+            with self.assertRaises(proxy.ProxyError):
+                proxy.check_owner("home")
+            proxy.check_owner(None)
 
 
 class Sandbox(Folder):
@@ -169,7 +181,28 @@ class Sandbox(Folder):
         profile = command[command.index("-p") + 1]
         self.assertNotIn('"localhost:17895"', profile)
         for other in (17890, proxy.sub_port("main"), 18100, 17939):
-            self.assertIn(f'(deny network-outbound (remote ip "localhost:{other}"))', profile)
+            self.assertIn(f'(deny network-outbound (remote ip "*:{other}"))', profile)
+
+    def test_strict_profile_guards_host_run_too(self):
+        self.main()
+        command = proxy.session_command(17890, ["true"], claude=False)
+        profile = command[command.index("-p") + 1]
+        self.assertIn('(subpath (param "HOST_RUN_CONF"))', profile)
+        self.assertTrue(any(a.startswith("HOST_RUN_CONF=") for a in command))
+
+    def test_subscription_link_is_not_on_curl_argv(self):
+        self.main()
+        Path(proxy.SUB_URL).write_text("https://secret.example.test/sub/abc")
+        got = {}
+
+        def run(cmd, input=None, capture_output=False):
+            got["cmd"], got["input"] = cmd, input
+            return subprocess.CompletedProcess(cmd, 0, b"vless://u@a.example.com:443#a", b"")
+
+        with patch.object(proxy.subprocess, "run", side_effect=run), patch.object(proxy, "physical_interface", return_value=None):
+            self.assertTrue(proxy.refresh_subscription())
+        self.assertFalse(any("secret" in a for a in got["cmd"]))
+        self.assertIn(b"secret.example.test", got["input"])
 
     def test_unknown_subscription_is_refused_not_replaced_by_the_cascade(self):
         self.main()

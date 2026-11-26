@@ -367,6 +367,11 @@ other subscriptions' ports and the whole 17890-17939 range mihomo takes ports fr
 ports aren't reachable from proxied Claude Code sessions. A subscription that no longer exists (removed, or a
 typo in `--proxy=`) stops the launch instead of falling back to the cascade. While sessions run only through
 `main` and it has no port of its own yet, `proxy add` waits until they close.
+Sessions can't read subscription links or the downloaded server lists, and agentmeister passes the link to
+curl on stdin, so it doesn't show up in `ps`. A Claude Code session can't listen on mihomo's ports either, so it
+can't take a port over while mihomo restarts, and a launch checks that the ports it needs belong to mihomo.
+Pages the agent opens and links clicked in a tab go through that tab's subscription, each subscription in its
+own browser window and Chrome profile.
 
 `agentmeister proxy` shows the mihomo version and suggests `agentmeister proxy update` when Homebrew has a
 newer one. That command runs `brew upgrade mihomo`. If mihomo is running with no proxied sessions, it stops it

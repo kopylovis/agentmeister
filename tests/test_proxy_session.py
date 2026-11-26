@@ -121,7 +121,8 @@ class StateGuard(unittest.TestCase):
                         self.assertNotIn("/", ups)
                         profile = command[command.index("-p") + 1]
                         self.assertIn('(subpath (param "MIHOMO_STATE0")))', profile)
-                        self.assertIn('(deny file-read* (literal (param "MIHOMO_LOCK0")))', profile)
+                        self.assertIn('(deny file-read* (literal (param "MIHOMO_LOCK0")) ', profile)
+                        self.assertIn('(subpath (param "MIHOMO_SUBS0")))', profile)
                         self.assertIn(f'(literal (param "MIHOMO_UP{len(ups) - 1}"))', profile)
                         # запреты последними: в профиле побеждает последнее подходящее правило
                         self.assertTrue(profile.rstrip().endswith(proxy.sandbox_profile_lines()[-1]))
@@ -327,6 +328,40 @@ for path, expected in zip(sys.argv[1:], (0, errno.EPERM)):
                 with self.subTest(missing=missing), patch.dict(os.environ, SSH_AUTH_SOCK=missing):
                     command = proxy.session_command(17890, ["true"])
                     self.assertFalse(any(a.startswith("SSH_AUTH_SOCK=") for a in command))
+
+    def test_sessions_cannot_read_subscription_links_or_take_mihomo_ports(self):
+        client = """\
+import errno, socket, sys
+
+for path in sys.argv[1:-1]:
+    try:
+        open(path).read()
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("read " + path)
+with socket.socket() as s:
+    try:
+        s.bind(("127.0.0.1", int(sys.argv[-1])))
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("bound a mihomo port")
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = os.path.join(os.path.realpath(tmp), "conf")
+            os.makedirs(os.path.join(conf, "subs"))
+            files = [os.path.join(conf, "subscription.url"), os.path.join(conf, "subscription.txt"),
+                     os.path.join(conf, "subs", "home.url")]
+            for path in files:
+                Path(path).write_text("secret")
+            free = next(p for p in range(proxy.DEFAULT_PORT + 20, proxy.DEFAULT_PORT + proxy.PORT_WINDOW)
+                        if not proxy.listening(p))
+            with patch.multiple(proxy, CONF_DIR=conf, SUB_URL=files[0], SUB_FILE=files[1]):
+                for claude in (True, False):
+                    with self.subTest(claude=claude):
+                        cmd = [sys.executable, "-c", client, *files, str(free)]
+                        subprocess.run(proxy.session_command(17890, cmd, claude=claude), check=True, timeout=5)
 
     def test_claude_session_cannot_reach_another_mihomo_port(self):
         client = """\
