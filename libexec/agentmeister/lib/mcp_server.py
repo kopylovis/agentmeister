@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import CM, HOME, MNRH, tilde  # noqa: E402
 from claude_proc import RestartError, current_sid  # noqa: E402
 from claude_restart import restart, slim_current  # noqa: E402
-import claude_mac  # noqa: E402
+import mac_status  # noqa: E402
 import claude_open  # noqa: E402
 import claude_search  # noqa: E402
 import codex_context  # noqa: E402
@@ -191,8 +191,8 @@ HANDLERS = {
     "usage_report": claude_usage.handle,
     "codex_context": codex_context.handle,
     # без полного mnrh этих инструментов нет и в tools/list
-    **({"mac_status": lambda a: claude_mac.handle("mac_status", a, MNRH),
-        "free_memory": lambda a: claude_mac.handle("free_memory", a, MNRH)} if MNRH else {}),
+    **({"mac_status": lambda a: mac_status.handle("mac_status", a, MNRH),
+        "free_memory": lambda a: mac_status.handle("free_memory", a, MNRH)} if MNRH else {}),
     "deps_outdated": lambda a: gradle_deps.handle(a),
     "todo_list": lambda a: mnrh_todo.handle("todo_list", a, os.getcwd()),
     "todo_add": lambda a: mnrh_todo.handle("todo_add", a, os.getcwd()),
@@ -206,7 +206,7 @@ HANDLERS = {
     "ask_project": lambda a: claude_ask.ask(a.get("project"), a.get("question"), a.get("model")),
 }
 # mac_status и free_memory запускают команды mnrh, поэтому они есть, только когда стоит полный mnrh
-EXTRA_TOOLS = (claude_search.TOOLS + [claude_usage.TOOL, codex_context.TOOL] + (claude_mac.TOOLS if MNRH else []) + [gradle_deps.TOOL] + mnrh_todo.TOOLS + release_notes.TOOLS
+EXTRA_TOOLS = (claude_search.TOOLS + [claude_usage.TOOL, codex_context.TOOL] + (mac_status.TOOLS if MNRH else []) + [gradle_deps.TOOL] + mnrh_todo.TOOLS + release_notes.TOOLS
                + claude_parallel.TOOLS + [window_shot.TOOL, claude_ask.TOOL])
 READ_ONLY = [t["name"] for t in EXTRA_TOOLS if (t.get("annotations") or {}).get("readOnlyHint")] + \
     ["todo_add", "todo_done"]

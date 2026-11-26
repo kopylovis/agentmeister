@@ -253,11 +253,11 @@ def check_codex():
 
 
 def check_notify():
-    import claude_notify
-    if not claude_notify.enabled():
+    import notify
+    if not notify.enabled():
         return [("ok", tr("уведомления выключены (agentmeister notify on)", "notifications off (agentmeister notify on)"))]
-    if os.path.isdir(claude_notify.AGENT.app):
-        return [("ok", tr(f"уведомления: {tilde(claude_notify.AGENT.app)}", f"notifications: {tilde(claude_notify.AGENT.app)}"))]
+    if os.path.isdir(notify.AGENT.app):
+        return [("ok", tr(f"уведомления: {tilde(notify.AGENT.app)}", f"notifications: {tilde(notify.AGENT.app)}"))]
     return [("bad", tr("уведомления включены, но приложения нет: agentmeister setup соберет его (нужен swiftc)",
                        "notifications are on, but the app is missing: agentmeister setup builds it (needs swiftc)"))]
 

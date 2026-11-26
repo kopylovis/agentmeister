@@ -262,8 +262,8 @@ def finish(msg_id, text, outcome):
 
 def session_title(payload):
     try:
-        import claude_notify
-        return claude_notify.session_title(payload.get("session_id"), payload.get("transcript_path"))
+        import notify
+        return notify.session_title(payload.get("session_id"), payload.get("transcript_path"))
     except Exception:
         return ""
 

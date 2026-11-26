@@ -58,7 +58,7 @@ def is_hook(command, sub):
 
 # Хук или statusLine, которые ставил mnrh claude setup: .../mnrh claude <команда>
 # Хуки Claude Code, которые ставит agentmeister setup: (событие, команда agentmeister, async, matcher).
-# Старые хуки mnrh claude <команда> setup заменяет этими. Поменял matcher: claude_setup.pending заметит и предложит setup.
+# Старые хуки mnrh claude <команда> setup заменяет этими. Поменял matcher: setup_steps.pending заметит и предложит setup.
 HOOKS = [("SessionStart", "notice", False, None), ("SessionEnd", "session-end", False, None),
          ("UserPromptSubmit", "notify-hook", True, None), ("Stop", "notify-hook", True, None),
          ("Notification", "notify-hook", True, None),
