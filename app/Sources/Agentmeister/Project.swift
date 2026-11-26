@@ -67,6 +67,7 @@ struct ProjectView: View {
     /// Вместо агента вкладка терминала в папке проекта. Текст из поля она выполняет первой командой.
     @State private var terminal = false
     @State private var direct = false
+    @State private var subscription: String?
     @State private var asParallel = false
     @State private var starting = false
     @State private var startError: String?
@@ -107,6 +108,7 @@ struct ProjectView: View {
             asParallel = false
             agent = AgentPrefs.defaultAgent == "codex" ? .codex : .claude
             direct = backend.state.proxy?.defaultRoute == "direct"
+            subscription = backend.state.defaultSubscription
             await reload()
         }
         // Esc закрывает экран проекта и возвращает вкладки. Листы и поповеры живут в своих окнах,
@@ -214,10 +216,26 @@ struct ProjectView: View {
                 .fixedSize()
                 .help(l.agent)
                 Menu {
-                    Button(l.t("Через proxy", "Via proxy") + (exit.map { " " + $0 } ?? "")) { direct = false }
+                    let subs = backend.state.proxy?.choices ?? []
+                    if subs.isEmpty {
+                        Button(l.t("Через proxy", "Via proxy") + (exit.map { " " + $0 } ?? "")) { direct = false }
+                    } else {
+                        let cascade = subs.filter { $0.inCascade != false }.map(\.name)
+                        Button(l.t("Через proxy по очереди: ", "Via proxy in order: ") + cascade.joined(separator: ", ")) {
+                            direct = false
+                            subscription = nil
+                        }
+                        ForEach(subs, id: \.name) { s in
+                            Button(l.t("Только ", "Only ") + s.name + ((s.exit ?? s.country).map { " " + $0 } ?? "")) {
+                                direct = false
+                                subscription = s.name
+                            }
+                        }
+                        Divider()
+                    }
                     Button(l.directly) { direct = true }
                 } label: {
-                    chip(direct ? l.directly : "proxy" + (exit.map { " " + $0 } ?? ""),
+                    chip(direct ? l.directly : subscription.map { "proxy " + $0 } ?? "proxy" + (exit.map { " " + $0 } ?? ""),
                          fg: direct ? Ink.direct : Ink.teal,
                          bg: direct ? Ink.amberDot.opacity(0.16) : Ink.tealChip)
                 }
@@ -269,12 +287,14 @@ struct ProjectView: View {
     private func start() {
         guard let project else { return }
         if terminal {
-            workspace.openTerminal(name: project.name, path: project.path, direct: direct, state: backend.state, command: prompt)
+            workspace.openTerminal(name: project.name, path: project.path, direct: direct, state: backend.state, command: prompt,
+                                   subscription: subscription)
             prompt = ""
             ui.projectScreen = nil
             return
         }
-        var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: agent, direct: direct)
+        var spec = LaunchSpec(projectName: project.name, projectPath: project.path, agent: agent, direct: direct,
+                              subscription: direct ? nil : subscription)
         spec.remoteControl = agent == .claude
         let task = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         startError = nil

@@ -46,7 +46,8 @@ struct PaletteView: View {
     /// Новая вкладка Claude в проекте текущей вкладки с этим первым запросом.
     private func openWithPrompt(_ prompt: String) {
         guard let spec = workspace.current?.spec, spec.utility == nil else { return }
-        var fresh = LaunchSpec(projectName: spec.projectName, projectPath: spec.projectPath, direct: spec.direct)
+        var fresh = LaunchSpec(projectName: spec.projectName, projectPath: spec.projectPath, direct: spec.direct,
+                               subscription: spec.subscription)
         fresh.firstPrompt = prompt
         workspace.open(fresh)
     }
@@ -144,8 +145,9 @@ struct PaletteView: View {
         for project in backend.state.projects {
             out.append(PaletteItem(id: "p-\(project.path)", group: .projects,
                                    title: l.t("Новая сессия в ", "New session in ") + project.name,
-                                   detail: backend.state.proxy?.defaultRoute == "direct" ? l.t("напрямую", "direct") : l.t("через proxy", "via proxy")) {
-                workspace.open(LaunchSpec.quick(project, route: backend.state.proxy?.defaultRoute))
+                                   detail: backend.state.proxy?.defaultRoute == "direct" ? l.t("напрямую", "direct")
+                                       : l.t("через proxy", "via proxy") + (backend.state.defaultSubscription.map { " " + $0 } ?? "")) {
+                workspace.open(LaunchSpec.quick(project, state: backend.state))
             })
         }
         return out

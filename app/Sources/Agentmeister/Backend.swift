@@ -229,6 +229,30 @@ struct AppState: Decodable {
         let ip: String?
         let node: String?
         let defaultRoute: String?
+        /// Подписка новых сессий, если по умолчанию выбрана одна (agentmeister -x <имя>). Nil у каскада.
+        let defaultSubscription: String?
+        /// Подписки proxy, когда их больше одной. Пусто или nil, если выбирать не из чего.
+        let subscriptions: [Subscription]?
+
+        struct Subscription: Decodable, Hashable {
+            let name: String
+            let port: Int?
+            /// Страна выхода из настройки подписки (--country).
+            let country: String?
+            /// Страна выхода через порт только этой подписки при запуске mihomo.
+            let exit: String?
+            /// Идет ли подписка в каскад просто -x. Не идет, если ее страна не совпала со страной основной.
+            let inCascade: Bool?
+        }
+
+        /// Из чего выбирать подписку: только когда их больше одной.
+        var choices: [Subscription] { (subscriptions?.count ?? 0) > 1 ? subscriptions ?? [] : [] }
+    }
+
+    /// Подписка новых сессий по умолчанию: nil у каскада по всем подпискам и у прямого маршрута.
+    var defaultSubscription: String? {
+        guard let proxy, proxy.defaultRoute != "direct", let name = proxy.defaultSubscription else { return nil }
+        return proxy.choices.contains { $0.name == name } ? name : nil
     }
 
     var version = ""
