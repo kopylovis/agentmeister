@@ -84,8 +84,11 @@ class Config(Folder):
 
     def test_resolve_sub(self):
         self.main()
-        # без дополнительных подписок main и есть каскад
-        self.assertIsNone(proxy.resolve_sub("main"))
+        # -x main запоминается и без дополнительных: порт у нее пока общий с каскадом
+        self.assertEqual(proxy.resolve_sub("main"), "main")
+        self.assertEqual(proxy.sub_port("main"), 17890)
+        self.assertEqual(proxy.sub_group("main"), "VPS")
+        self.assertEqual(proxy.exit_file("main"), proxy.EXIT)
         self.extra("home", 17895)
         self.assertIsNone(proxy.resolve_sub(None))
         self.assertEqual(proxy.resolve_sub("main"), "main")
@@ -119,6 +122,79 @@ class Config(Folder):
         r = subprocess.run(["mihomo", "-t", "-d", self.tmp.name, "-f", proxy.CONFIG],
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
+class Country(Folder):
+    def exits(self, **locs):
+        os.makedirs(proxy.STATE, exist_ok=True)
+        for name, info in locs.items():
+            key = None if name == "cascade" else name
+            Path(proxy.exit_file(key)).write_text(json.dumps(info))
+
+    def test_strict_subscription_with_another_exit_is_refused(self):
+        self.main("KZ")
+        self.extra("se", 17896, "SE")
+        self.exits(se={"ip": "1.2.3.4", "loc": "US"}, cascade={"ip": "5.6.7.8", "loc": "KZ", "sub": "main"})
+        self.assertIn("SE", proxy.country_problem("se"))
+        self.assertIsNone(proxy.country_problem(None))
+
+    def test_cascade_member_with_another_exit_is_refused(self):
+        self.main("KZ")
+        self.extra("kz2", 17895, "KZ")
+        self.exits(cascade={"ip": "5.6.7.8", "loc": "KZ", "sub": "main"}, kz2={"ip": "1.2.3.4", "loc": "RU"})
+        self.assertIn("kz2", proxy.country_problem(None))
+
+    def test_dead_cascade_member_is_not_a_problem(self):
+        self.main("KZ")
+        self.extra("kz2", 17895, "KZ")
+        self.exits(cascade={"ip": "5.6.7.8", "loc": "KZ", "sub": "main"}, kz2={"sub": "kz2"})
+        self.assertIsNone(proxy.country_problem(None))
+
+    def test_running_mihomo_still_checks_the_country(self):
+        self.main("KZ")
+        self.extra("se", 17896, "SE")
+        self.exits(se={"ip": "1.2.3.4", "loc": "US"})
+        with patch.object(proxy, "read_pid", return_value=1), patch.object(proxy, "listening", return_value=True):
+            with self.assertRaises(proxy.ProxyError):
+                proxy.start(sub="se")
+            self.assertIn("SE", proxy.start(strict=False, sub="se"))
+
+
+class Sandbox(Folder):
+    def test_claude_profile_closes_other_mihomo_ports(self):
+        self.main()
+        self.extra("home", 17895)
+        self.extra("far", 18100)
+        command = proxy.session_command(17895, ["true"], claude=True)
+        profile = command[command.index("-p") + 1]
+        self.assertNotIn('"localhost:17895"', profile)
+        for other in (17890, proxy.sub_port("main"), 18100, 17939):
+            self.assertIn(f'(deny network-outbound (remote ip "localhost:{other}"))', profile)
+
+    def test_unknown_subscription_is_refused_not_replaced_by_the_cascade(self):
+        self.main()
+        self.extra("home", 17895)
+        with patch.object(proxy, "in_session", return_value=False), patch.object(proxy, "start") as start, \
+                patch("sys.stderr"):
+            self.assertEqual(proxy.run(["true"], sub="hom"), 2)
+        start.assert_not_called()
+
+    def test_host_run_open_keeps_the_session_subscription(self):
+        import host_run
+        with patch.dict(os.environ, {"MNRH_PROXY": "17895", "MNRH_PROXY_SUB": "home"}):
+            self.assertEqual(host_run.with_session_proxy(["proj", "--", "hi"]), ["proj", "--proxy=home", "--", "hi"])
+            self.assertEqual(host_run.with_session_proxy(["proj", "--proxy=se"]), ["proj", "--proxy=se"])
+        with patch.dict(os.environ, {"MNRH_PROXY": "17890"}, clear=False):
+            os.environ.pop("MNRH_PROXY_SUB", None)
+            self.assertEqual(host_run.with_session_proxy(["proj"]), ["proj"])
+
+    def test_nested_run_cannot_pick_another_subscription(self):
+        self.main()
+        self.extra("home", 17895)
+        with patch.dict(os.environ, {"MNRH_PROXY": "17895", "MNRH_PROXY_SUB": "home"}), \
+                patch.object(proxy, "in_session", return_value=True), \
+                patch("sys.stderr"):
+            self.assertEqual(proxy.run(["true"], sub="main"), 2)
 
 
 class Sessions(Folder):
@@ -196,6 +272,13 @@ class Launch(unittest.TestCase):
     def test_command_passes_the_subscription(self):
         state = {"dir": "/tmp", "mode": "normal", "net": "vps:home", "sid": "new"}
         self.assertEqual(open_flow.command(state), ["/tmp", "-n", "--proxy=home", "--new"])
+
+    def test_empty_subscription_name_is_an_error(self):
+        with patch.object(proxy, "configured", return_value=True), \
+                patch.object(proxy, "sub_names", return_value=["main"]):
+            for arg in ("--proxy=", "-x=", "--via="):
+                with self.subTest(arg=arg), self.assertRaises(ValueError):
+                    codex_harness.via_args([arg, "proj"])
 
     def test_codex_takes_x_with_a_known_name(self):
         with patch.object(proxy, "configured", return_value=True), \
