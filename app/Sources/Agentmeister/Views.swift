@@ -831,28 +831,48 @@ struct TabStrip: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var ui: UIState
-    /// Вкладка, которую сейчас тащат: соседи расступаются под ней.
-    @State private var dragging: String?
+    /// Вкладка, которую сейчас тащат, и ее сдвиг от своего места в ряду. Вкладка едет под курсором сама, без
+    /// системной копии: системный drag and drop отставал от курсора, после отпускания доигрывал анимацию и
+    /// зависал, если вкладку бросали мимо полосы.
+    @State private var dragged: UUID?
+    @State private var dragOffset: CGFloat = 0
+    /// Сколько ряд уже сдвинул вкладку под курсором перестановками: вычитается из пути курсора.
+    @State private var dragShift: CGFloat = 0
+    /// Рамки вкладок в координатах полосы, без сдвига перетаскивания.
+    @State private var frames: [UUID: CGRect] = [:]
+    /// Левый край перетаскиваемой вкладки до последней перестановки. Пока рамка его не сменила, рамки старые,
+    /// и новая перестановка по ним вернула бы вкладку назад.
+    @State private var staleX: CGFloat?
 
     var l: L { L(backend.state.lang) }
+
+    private static let spacing: CGFloat = 2
 
     var body: some View {
         HStack(spacing: 2) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 2) {
+                HStack(spacing: Self.spacing) {
                     // подзадачи живут в своем ряду под агентом, здесь только агенты
                     let current = workspace.current.map { workspace.root(of: $0).id }
                     ForEach(workspace.roots) { tab in
+                        let isDragged = tab.id == dragged
                         TabChip(tab: tab, selected: tab.id == current, subtasks: workspace.subtasks(of: tab).count)
-                            .onDrag {
-                                dragging = tab.id.uuidString
-                                return NSItemProvider(object: tab.id.uuidString as NSString)
-                            }
-                            .onDrop(of: [.text], delegate: ReorderDrop(target: tab.id.uuidString, dragging: $dragging) { from, to in
-                                if let from = UUID(uuidString: from), let to = UUID(uuidString: to) { workspace.move(from, to: to) }
+                            .background(GeometryReader { proxy in
+                                Color.clear.preference(key: TabFramesKey.self, value: [tab.id: proxy.frame(in: .named("tabstrip"))])
                             })
+                            .offset(x: isDragged ? dragOffset : 0)
+                            .zIndex(isDragged ? 1 : 0)
+                            // место под курсором вкладка меняет без анимации, иначе она уезжала бы из-под него
+                            .transaction { if isDragged { $0.animation = nil } }
+                            .highPriorityGesture(
+                                DragGesture(minimumDistance: 5, coordinateSpace: .named("tabstrip"))
+                                    .onChanged { drag(tab.id, by: $0.translation.width) }
+                                    .onEnded { _ in endDrag() }
+                            )
                     }
                 }
+                .coordinateSpace(name: "tabstrip")
+                .onPreferenceChange(TabFramesKey.self) { frames = $0 }
             }
             Button {
                 if !workspace.newTab() { ui.showNewSession = true }
@@ -869,6 +889,48 @@ struct TabStrip: View {
         }
         .padding(4)
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+
+    /// Вкладка идет за курсором. Когда ее середина заходит за середину соседа, они меняются местами, а сдвиг
+    /// уменьшается на ширину соседа, чтобы вкладка осталась под курсором.
+    private func drag(_ id: UUID, by translation: CGFloat) {
+        if dragged != id {
+            dragged = id
+            dragShift = 0
+            staleX = nil
+        }
+        dragOffset = translation - dragShift
+        let order = workspace.roots.map(\.id)
+        guard let i = order.firstIndex(of: id), let frame = frames[id], frame.minX != staleX else { return }
+        staleX = nil
+        let center = frame.midX + dragOffset
+        if dragOffset > 0, i + 1 < order.count, let next = frames[order[i + 1]], center > next.midX {
+            staleX = frame.minX
+            withAnimation(.snappy(duration: 0.18)) { workspace.move(id, to: order[i + 1]) }
+            dragShift += next.width + Self.spacing
+        } else if dragOffset < 0, i > 0, let prev = frames[order[i - 1]], center < prev.midX {
+            staleX = frame.minX
+            withAnimation(.snappy(duration: 0.18)) { workspace.move(id, to: order[i - 1]) }
+            dragShift -= prev.width + Self.spacing
+        }
+        dragOffset = translation - dragShift
+    }
+
+    /// Отпустили: вкладка сразу встает на свое место в ряду.
+    private func endDrag() {
+        withAnimation(.snappy(duration: 0.15)) {
+            dragOffset = 0
+            dragged = nil
+        }
+        dragShift = 0
+        staleX = nil
+    }
+}
+
+private struct TabFramesKey: PreferenceKey {
+    static let defaultValue: [UUID: CGRect] = [:]
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue()) { $1 }
     }
 }
 
