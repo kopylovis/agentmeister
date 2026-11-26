@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // команда agentmeister в терминале из встроенного CLI, если ее еще нигде нет
         DispatchQueue.global(qos: .utility).async { LoginEnvironment.linkCommand() }
         Updates.shared.start()
+        // после обновления приложения подтянуть agentmeister и promptsill из Homebrew, если они оттуда
+        BrewSync.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
