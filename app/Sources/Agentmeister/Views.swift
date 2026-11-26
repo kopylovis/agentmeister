@@ -1035,7 +1035,7 @@ struct TabChip: View {
                             .layoutPriority(-1)
                         if tab.spec.proxied || tab.spec.utility == nil || tab.spec.terminal {
                             Text("·").foregroundStyle(Ink.faint)
-                            Text(tab.spec.routeLabel(l))
+                            Text(tab.spec.routeLabel(l, proxy: backend.state.proxy))
                                 .foregroundStyle(tab.spec.proxied ? Ink.teal : Ink.direct)
                                 .fixedSize()
                         }
@@ -1501,7 +1501,8 @@ struct InfoBar: View {
                     Menu {
                         SubscriptionSwitchMenu(tab: tab, inline: true)
                     } label: {
-                        Label(tab.spec.proxied ? tab.spec.routeLabel(l) : l.t("Подписка", "Subscription"), systemImage: "point.3.connected.trianglepath.dotted")
+                        Label(tab.spec.proxied ? tab.spec.routeLabel(l, proxy: backend.state.proxy) : l.t("Подписка", "Subscription"),
+                              systemImage: "point.3.connected.trianglepath.dotted")
                     }
                     .menuStyle(.button)
                     .buttonStyle(ChipStyle())
