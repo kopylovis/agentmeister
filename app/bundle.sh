@@ -51,8 +51,8 @@ fi
 
 # promptsill, строка состояния Claude Code, тоже едет внутри: ссылку ~/.local/bin/promptsill приложение ставит
 # при первом запуске, если promptsill еще нигде нет. Версия закреплена, файл проверяется по sha256 и кэшируется.
-promptsill_version=0.10.0
-promptsill_sha256=af04564e9c2be3fc5259c9c758e64f5e26483596bb56700bd85c85213ca581e3
+promptsill_version=0.11.0
+promptsill_sha256=1c01827548a5c648027d2dd6cc06841a7425c20a5c3ad5ad5f2e0a118d30c558
 cached=$here/build/cache/promptsill-$promptsill_version
 if [[ ! -f $cached/promptsill ]]; then
   mkdir -p "$cached"
