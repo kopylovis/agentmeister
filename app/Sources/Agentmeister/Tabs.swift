@@ -150,6 +150,10 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     @Published var agents: [SubAgent] = []
     /// Фоновые команды сессии (Bash в фоне), идущие и недавно законченные. Тоже в ряду подзадач.
     @Published var shells: [BackgroundShell] = []
+    /// Закрепленный запрос над терминалом (Prompts.swift) и то, из чего он посчитан.
+    @Published var sticky: StickyPrompt?
+    let promptIndex = PromptIndex()
+    var promptScan: PromptScan?
     @Published var title: String
     @Published var running = true
     @Published var exitCode: Int32?
