@@ -112,3 +112,12 @@ UserDefaults (`shortcuts`), меню читает их из `ShortcutStore` в `
 Codex открывает страницу входа сам, мимо `BROWSER`. Для него ссылку из вкладки входа нужно нажать.
 
 `SPIKE.md` хранит результаты проверки SwiftTerm.
+
+## Скриншоты
+
+Снимки для README делает отладочная сборка в демо-режиме: `Agentmeister --demo docs/screenshots/demo --scene
+main|new-session|project|settings`. Данные выдуманные (`docs/screenshots/make_demo.py`, иконки проектов рисует
+`docs/screenshots/draw_icons.py`). В демо приложение не вызывает agentmeister, не читает настоящие сессии и не
+пишет tabs.json, front.json и focus.json, а горячая клавиша, обновления и мастер первого запуска выключены.
+`python3 docs/screenshots/shoot.py` запускает каждую сцену и снимает ее окно по pid, настоящее приложение рядом
+не мешает.
