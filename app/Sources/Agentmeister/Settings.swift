@@ -598,7 +598,7 @@ struct ProxyHostRunPane: View {
     let data: SettingsData?
     let reload: () async -> Void
     @AppStorage(BrowserSettings.forAgentKey) private var browserForAgent = true
-    @AppStorage(BrowserSettings.forLinksKey) private var browserForLinks = false
+    @AppStorage(BrowserSettings.linkPlaceKey) private var linkPlace = BrowserSettings.linkPlace.rawValue
     @State private var confirmRemove = false
     @State private var adding = false
 
@@ -688,9 +688,14 @@ struct ProxyHostRunPane: View {
             GlassSection(spacing: 10) {
                 Text(l.t("Браузер через proxy", "Proxy browser")).font(.system(size: 13, weight: .semibold))
                 Toggle(l.t("Страницы от агента во встроенном браузере", "Pages the agent opens go to the built-in browser"), isOn: $browserForAgent)
-                Toggle(l.t("Ссылки по клику из вкладки тоже", "Links you click in a tab too"), isOn: $browserForLinks)
-                Note(text: l.t("Вход в агента, OAuth для MCP и другие страницы, которые агент во вкладке через proxy открывает сам, грузятся во встроенном браузере через тот же mihomo. Если mihomo не запущен, браузер ничего не грузит.",
-                               "Agent sign-in, MCP OAuth and other pages a proxied tab opens by itself load in the built-in browser through the same mihomo. With mihomo stopped the browser loads nothing."))
+                Picker(l.t("Ссылки по клику из вкладки", "Links you click in a tab"), selection: $linkPlace) {
+                    Text(l.t("Спрашивать", "Ask")).tag(LinkPlace.ask.rawValue)
+                    Text(l.t("Окно Agentmeister", "Agentmeister window")).tag(LinkPlace.builtin.rawValue)
+                    Text(l.t("Отдельный профиль Chrome", "Separate Chrome profile")).tag(LinkPlace.chrome.rawValue)
+                    Text(l.t("Браузер по умолчанию", "Default browser")).tag(LinkPlace.system.rawValue)
+                }
+                Note(text: l.t("Вход в агента, OAuth для MCP и другие страницы, которые агент во вкладке через proxy открывает сам, грузятся во встроенном браузере через тот же mihomo. Если mihomo не запущен, браузер ничего не грузит. Ссылку, по которой кликнули во вкладке через proxy, приложение открывает там, где выбрано, или спрашивает. В вопросе можно запомнить выбор.",
+                               "Agent sign-in, MCP OAuth and other pages a proxied tab opens by itself load in the built-in browser through the same mihomo. With mihomo stopped the browser loads nothing. A link you click in a proxied tab opens where you picked, or the app asks. The question can remember your choice."))
             }
         } else {
             ProgressView()
