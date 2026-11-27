@@ -487,9 +487,20 @@ struct Sidebar: View {
                     .frame(height: 40)
                     .frame(maxWidth: .infinity)
                     .background(WindowDragArea())
-                CollapsibleHeader(title: l.projects, open: $projectsOpen, summary: openSummary, alwaysShowSummary: true)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 4)
+                HStack(spacing: 6) {
+                    CollapsibleHeader(title: l.projects, open: $projectsOpen, summary: openSummary, alwaysShowSummary: true)
+                    Button(action: backend.refreshProjects) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Ink.muted)
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.hover(6))
+                    .help(l.t("Обновить проекты", "Refresh projects"))
+                    .accessibilityLabel(l.t("Обновить проекты", "Refresh projects"))
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 4)
             }
             // строки под светофором и заголовком размыты
             .blurBar(edge: .top)
