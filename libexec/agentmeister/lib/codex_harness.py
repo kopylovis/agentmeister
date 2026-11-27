@@ -23,8 +23,9 @@ HOOK_COMMANDS = {
     "translate-hook": ("UserPromptSubmit",),
     "guard-hook": ("PreToolUse",),
     "notify-hook": NOTIFY_EVENTS,
+    "buildlog-hook": ("PreToolUse", "PostToolUse"),
 }
-TOOL_MATCHERS = {"guard-hook": "Bash|apply_patch"}
+TOOL_MATCHERS = {"guard-hook": "Bash|apply_patch", "buildlog-hook": "Bash"}
 
 HOOK_LABELS = {
     "approve-hook": "Agentmeister approvals",
@@ -318,7 +319,7 @@ def covers_tools(name, matcher):
 
 
 def requires_sync(name, event):
-    return name in ("guard-hook", "translate-hook")
+    return name in ("guard-hook", "translate-hook") or (name == "buildlog-hook" and event == "PreToolUse")
 
 
 def configured_hooks(name):
