@@ -14,9 +14,10 @@ import host_run
 
 
 class OpenTerminal(unittest.TestCase):
-    def launch(self, term, response, **options):
+    def launch(self, term, response, iterm=True, **options):
         args = {"path": "/tmp/project", "remote_control": False, **options}
         with patch.dict(os.environ, TERM_PROGRAM=term, MNRH_PROXY="1234"), \
+                patch.object(claude_open, "iterm_installed", return_value=iterm), \
                 patch.object(claude_open, "trusted", return_value=True), \
                 patch.object(claude_open, "project_dirs", return_value=("/tmp", [])), \
                 patch.object(claude_open.subprocess, "run", return_value=response) as run, \
@@ -38,6 +39,13 @@ class OpenTerminal(unittest.TestCase):
                     self.assertIn(" -x ", cmd[-2])
                 else:
                     self.assertIn('tell application "Terminal"', cmd[2])
+
+    def test_tab_without_iterm_opens_a_terminal_window(self):
+        ok = subprocess.CompletedProcess([], 0, "/dev/ttys001\n", "")
+        (text, error), cmd = self.launch("Apple_Terminal", ok, iterm=False, placement="tab")
+        self.assertFalse(error)
+        self.assertIn('tell application "Terminal"', cmd[2])
+        self.assertIn("Terminal", text)
 
     def test_permission_failure_returns_manual_tab_command(self):
         denied = subprocess.CompletedProcess([], 1, "", "A privilege violation occurred. (-10004)")
