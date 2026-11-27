@@ -48,7 +48,7 @@ test:
 	@./bin/agentmeister host-run -h | grep -q "host-run add"
 	@./bin/agentmeister notify -h | grep -q telegram
 	@./bin/agentmeister deps -h >/dev/null
-	@./bin/agentmeister notify -h | grep -q "notify phone"
+	@./bin/agentmeister notify -h | grep -q "notify tossling"
 	@./bin/agentmeister proxy -h | grep -q mihomo
 	@./bin/agentmeister -h | grep -q -- '-x | -d'
 	@XDG_CONFIG_HOME=/nonexistent-cm ./bin/agentmeister proxy run -- true 2>/dev/null; test $$? -eq 2
