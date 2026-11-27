@@ -53,6 +53,23 @@ enum Demo {
         return (try? JSONDecoder().decode([Tab].self, from: data)) ?? []
     }
 
+    /// Изменения рабочей копии для инспектора: папки демо не в git, поэтому файлы выдуманы. Есть файл
+    /// с большими числами, новый файл и двоичный без чисел (+0 −0), чтобы проверить столбцы цифр.
+    static func changes(at path: String) -> GitChanges.Snapshot {
+        func file(_ path: String, _ code: String, _ added: Int?, _ removed: Int?) -> GitChange {
+            var change = GitChange(path: path, code: code)
+            change.added = added
+            change.removed = removed
+            return change
+        }
+        return GitChanges.Snapshot(root: path, files: [
+            file("docs/retries.md", "??", 24, 0),
+            file("docs/retry-flow.png", " M", nil, nil),
+            file("src/webhooks/deliver.ts", " M", 100, 2),
+            file("src/webhooks/retry.ts", " M", 7, 31),
+        ])
+    }
+
     /// Сцена subtasks (и subtasks-list с открытым списком закончившихся): у выбранной вкладки фоновые агенты
     /// и команды, идущие и закончившиеся, чтобы проверить ряд подзадач без настоящей сессии.
     static var subtasks: Bool { active && scene.hasPrefix("subtasks") }
