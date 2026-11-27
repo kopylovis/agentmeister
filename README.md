@@ -662,7 +662,7 @@ not the text. `translate check [text]` translates a sample and shows the latency
 A hook can't replace the message, so the agent sees both the original and the translation, which costs a few
 more tokens. To send English only, press ⌘⇧T in a Claude Code tab of the Agentmeister app (the key can be
 changed in Settings). The input line is translated in place: Claude Code hands it to `EDITOR` through Ctrl+G,
-and for app tabs that is `libexec/agentmeister/translate-editor`. While it runs, the tab shows a snapshot of
+and for app tabs that is `libexec/agentmeister/editor/agentmeister`. While it runs, the tab shows a snapshot of
 the screen with a card, Esc cancels. `[Image #N]` labels stay, and a request to reply in your language is added
 at the end. Check the translation and press Enter, the hook leaves it alone. A plain Ctrl+G opens your own
 editor as before.

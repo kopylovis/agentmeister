@@ -2079,8 +2079,7 @@ struct AgentUpdateOverlay: View {
     }
 }
 
-/// Перевод строки ввода по ⌘⇧T: снимок вкладки поверх терминала (под ним Claude Code в редакторе стер экран)
-/// и карточка. Пока ждем, по тексту строки пробегают случайные буквы, когда перевод пришел, текст слева
+/// Перевод строки ввода по ⌘⇧T: карточка над снимком терминала (под снимком Claude Code в редакторе стер экран). Пока ждем, по тексту строки пробегают случайные буквы, когда перевод пришел, текст слева
 /// направо складывается в английский. Ввод в это время не идет, Esc отменяет.
 struct InputTranslationOverlay: View {
     @EnvironmentObject var backend: Backend
@@ -2091,21 +2090,11 @@ struct InputTranslationOverlay: View {
     var body: some View {
         if let t = tab.inputTranslation {
             let l = L(backend.state.lang)
+            // снимок терминала лежит в нем самом (AppTerminalView.freeze), здесь только карточка и защита от кликов
             ZStack {
-                if let snapshot = t.snapshot {
-                    Image(nsImage: snapshot)
-                        .resizable()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .saturation(0.6)
-                        .brightness(-0.12)
-                } else {
-                    Rectangle().fill(Ink.terminalBg)
-                }
+                Color.clear.contentShape(Rectangle()).onTapGesture {}
                 card(t, l)
             }
-            .contentShape(Rectangle())
-            .onTapGesture {}
-            .transition(.opacity)
         }
     }
 
@@ -2168,6 +2157,12 @@ struct InputTranslationOverlay: View {
     static func scramble(_ from: String, into to: String, progress: Double, tick: Int, noise: Double = 1) -> String {
         let a = Array(from), b = Array(to)
         let count = max(a.count, b.count)
+        // метки [Image #N] не мерцают: это вложения, их надо узнавать
+        var kept = Set<Int>()
+        for match in from.matches(of: #/\[Image #\d+\]/#) {
+            let start = from.distance(from: from.startIndex, to: match.range.lowerBound)
+            kept.formUnion(start..<(start + from[match.range].count))
+        }
         let settled = Int(Double(count) * progress)
         var out = ""
         for i in 0..<count {
@@ -2180,7 +2175,7 @@ struct InputTranslationOverlay: View {
             var h = UInt64(truncatingIfNeeded: i &* 2654435761 &+ tick &* 40503)
             h ^= h >> 13
             let roll = Double(h % 1000) / 1000
-            out.append(c.isLetter && roll < noise ? glyphs[Int(h % UInt64(glyphs.count))] : c)
+            out.append(c.isLetter && !kept.contains(i) && roll < noise ? glyphs[Int(h % UInt64(glyphs.count))] : c)
         }
         return out
     }

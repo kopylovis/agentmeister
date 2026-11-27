@@ -9,3 +9,10 @@ import Testing
     #expect(noisy.count == ru.count)
     #expect(Array(noisy).enumerated().allSatisfy { i, c in Array(ru)[i].isLetter || c == Array(ru)[i] })
 }
+
+@Test func scrambleKeepsImageLabels() {
+    let ru = "[Image #10] что написано на картинке?"
+    for tick in 0..<20 {
+        #expect(InputTranslationOverlay.scramble(ru, into: ru, progress: 0, tick: tick).hasPrefix("[Image #10] "))
+    }
+}

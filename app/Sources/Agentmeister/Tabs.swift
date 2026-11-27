@@ -568,14 +568,13 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
 
     // MARK: Перевод строки ввода (⌘⇧T)
 
-    /// Идет перевод строки ввода. Claude Code на это время уходит в редактор и стирает экран, поэтому поверх
-    /// терминала лежит снимок вкладки, сделанный до Ctrl+G, а на нем карточка перевода.
+    /// Идет перевод строки ввода. Claude Code на это время уходит в редактор и стирает экран, поэтому внутри
+    /// терминала лежит его снимок, сделанный до Ctrl+G (AppTerminalView.freeze), а поверх карточка перевода.
     struct InputTranslation {
         enum Issue: Equatable {
             case notOpened, timeout, cancelled
             case failed(String)
         }
-        let snapshot: NSImage?
         let started = Date()
         var model: String?
         var provider: String?
@@ -594,7 +593,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         (Workspace.translateDir as NSString).appendingPathComponent("edit-" + id.uuidString.lowercased() + suffix)
     }
 
-    /// Запрос для translate-editor, снимок поверх терминала и Ctrl+G. Редактор переводит файл со строкой ввода
+    /// Запрос для редактора editor/agentmeister, снимок терминала и Ctrl+G. Редактор переводит файл со строкой ввода
     /// и пишет ход работы в edit-<вкладка>.status.json.
     func translateInput() {
         guard canTranslateInput, inputTranslation == nil else {
@@ -608,7 +607,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
             NSSound.beep()
             return
         }
-        inputTranslation = InputTranslation(snapshot: view.snapshotImage())
+        view.freeze()
+        inputTranslation = InputTranslation()
         view.send(txt: "\u{07}")
         watchInputTranslation(since: Date(), cancelSent: false)
     }
@@ -671,6 +671,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         let wait = issue == nil ? (current.english == nil ? 0.3 : InputTranslationOverlay.reveal + 0.15)
             : issue == .cancelled ? (redraw ? 0.3 : 0) : (redraw ? 0.3 : 0) + 1.6
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            // снимок уходит сразу, без растворения: под ним уже тот же экран, только с переводом
+            self?.view.unfreeze()
             self?.inputTranslation = nil
         }
     }
@@ -1268,7 +1270,7 @@ final class Workspace: ObservableObject {
         : (NSHomeDirectory() as NSString).appendingPathComponent(".cache/mnrh/app")
     static let frontFile = (appDir as NSString).appendingPathComponent("front.json")
     static let focusFile = (appDir as NSString).appendingPathComponent("focus.json")
-    /// Обмен с translate-editor при переводе строки ввода: edit-<вкладка>.json, .status.json и .cancel.
+    /// Обмен с редактором editor/agentmeister при переводе строки ввода: edit-<вкладка>.json, .status.json и .cancel.
     static let translateDir = (appDir as NSString).appendingPathComponent("translate")
 
     /// Записать, какая вкладка выбрана и активно ли окно. Хук уведомлений не шлет уведомление о вкладке,
@@ -1641,13 +1643,34 @@ final class AppTerminalView: LocalProcessTerminalView {
         if !pasteImage() { super.paste(sender) }
     }
 
-    /// Вкладка как картинка: ее кладут поверх терминала, пока Claude Code переводит строку ввода в редакторе.
-    func snapshotImage() -> NSImage? {
-        guard bounds.width > 0, bounds.height > 0, let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+    private var frozen: NSView?
+
+    /// Положить снимок терминала поверх него самого, в те же границы, чтобы он совпадал с экраном до пикселя.
+    /// Пока Claude Code переводит строку ввода в редакторе, видна вкладка, а не пустой экран редактора.
+    func freeze() {
+        guard frozen == nil, bounds.width > 0, bounds.height > 0,
+              let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return }
         cacheDisplay(in: bounds, to: rep)
         let image = NSImage(size: bounds.size)
         image.addRepresentation(rep)
-        return image
+        let view = NSImageView(frame: bounds)
+        view.image = image
+        view.imageScaling = .scaleAxesIndependently
+        view.autoresizingMask = [.width, .height]
+        view.wantsLayer = true
+        // чуть притушить, чтобы карточка читалась
+        let dim = CALayer()
+        dim.backgroundColor = NSColor.black.withAlphaComponent(0.22).cgColor
+        dim.frame = view.bounds
+        dim.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        view.layer?.addSublayer(dim)
+        addSubview(view)
+        frozen = view
+    }
+
+    func unfreeze() {
+        frozen?.removeFromSuperview()
+        frozen = nil
     }
 
     static func handleImagePaste(_ event: NSEvent) -> NSEvent? {
