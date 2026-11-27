@@ -34,6 +34,8 @@ struct SettingsData: Decodable {
         let rules: [Rule]
         let log: [String]?
         let logPath: String?
+        /// Время последнего срабатывания (ask, hold, allow) в секундах эпохи.
+        let lastHit: Double?
     }
 
     struct HostRun: Decodable {
@@ -88,6 +90,8 @@ struct SettingsData: Decodable {
         let translateFallback: String?
         let translateLog: [String]?
         let translateLogPath: String?
+        /// Медиана времени перевода по последним строкам журнала, мс. nil, если переводов в журнале нет.
+        let translateMedianMs: Int?
     }
 
     let notify: Notify?

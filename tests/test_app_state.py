@@ -223,6 +223,39 @@ class SettingsAndDoctor(unittest.TestCase):
         self.assertFalse(out["claude"]["installed"])
 
 
+class ModesLogs(unittest.TestCase):
+    def write(self, text):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "log")
+        with open(path, "w") as f:
+            f.write(text)
+        return path
+
+    def test_last_guard_hit_skips_errors(self):
+        import claude_guard
+        path = self.write("2026-11-24 19:12:53 hold  secrets-read   /x/.env\n"
+                          "2026-11-24 19:47:55 ask   force-push     git push -f\n"
+                          "2026-11-24 20:00:00 error ValueError()\n")
+        with patch.object(claude_guard, "LOG", path):
+            hit = app_state.guard_last_hit()
+        self.assertEqual(hit, int(time.mktime(time.strptime("2026-11-24 19:47:55", "%Y-%m-%d %H:%M:%S"))))
+        with patch.object(claude_guard, "LOG", path + ".missing"):
+            self.assertIsNone(app_state.guard_last_hit())
+
+    def test_translate_median_counts_only_answers(self):
+        import translate
+        path = self.write("2026-11-27 10:41:07 3f9c2a1e 182 зн 640 мс переведен\n"
+                          "2026-11-27 10:42:07 3f9c2a1e 96 зн пропущен, слэш-команда\n"
+                          "2026-11-27 10:43:07 3f9c2a1e 120 зн 9000 мс ошибка, TimeoutError: timed out\n"
+                          "2026-11-27 10:44:07 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter\n"
+                          "2026-11-27 10:45:07 3f9c2a1e 50 зн 1380 мс переведен\n")
+        with patch.object(translate, "LOG", path):
+            self.assertEqual(app_state.translate_median(), 1380)
+        with patch.object(translate, "LOG", self.write("2026-11-27 10:42:07 3f9c2a1e 96 зн пропущен, пусто\n")):
+            self.assertIsNone(app_state.translate_median())
+
+
 class SignedIn(unittest.TestCase):
     def test_sign_in_comes_from_the_agents_own_files(self):
         with tempfile.TemporaryDirectory() as home:
