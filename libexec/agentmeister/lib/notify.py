@@ -498,7 +498,16 @@ def hook(codex=False):
     if not isinstance(payload, dict):
         return 0
     sid = payload.get("session_id") or ""
-    if not isinstance(sid, str) or not UUID_RE.fullmatch(sid) or not enabled():
+    if not isinstance(sid, str) or not UUID_RE.fullmatch(sid):
+        return 0
+    if not codex:
+        # заметки Heads up от Claude Code: снять новые, пока помним, чья это сессия (agentmeister headsup)
+        try:
+            import headsup
+            headsup.from_hook(payload)
+        except Exception:
+            pass
+    if not enabled():
         return 0
     st = load_state(sid)
     event = payload.get("hook_event_name")

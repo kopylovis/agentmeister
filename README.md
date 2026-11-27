@@ -41,6 +41,7 @@ agentmeister sessions       saved sessions: resume, move, delete, search, slim
 agentmeister ps             running sessions and who is waiting; jump to a tab
 agentmeister restore        reopen sessions after a reboot or crash
 agentmeister usage          tokens and active time per project and model
+agentmeister headsup        Claude Code Heads up notes, including ones closed by accident
 
 # From inside Claude Code, also as /restart, /forget, /fresh, /slim
 agentmeister restart        quit, update Claude Code, reopen the same session

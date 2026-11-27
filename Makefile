@@ -59,6 +59,7 @@ test:
 	@./bin/agentmeister setup --country KAZ 2>/dev/null; test $$? -eq 2
 	@./bin/agentmeister setup -h | grep -q -- '--country'
 	@./bin/agentmeister doctor -h | grep -q 'проверить установку'
+	@./bin/agentmeister headsup -h | grep -q 'Heads up'
 	@./bin/agentmeister ps -h | grep -q restore
 	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/agentmeister/lib/setup_steps.py pending | grep -q '^fresh commands .*proxy promptsill$$'
 	@HOME=/nonexistent XDG_CONFIG_HOME=/nonexistent-cm /usr/bin/python3 libexec/agentmeister/lib/setup_steps.py check </dev/null | wc -c | grep -q '^ *0$$'

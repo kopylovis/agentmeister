@@ -95,8 +95,10 @@ struct MainView: View {
                 ui.showNewSession = true
             case "project":
                 ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
-            case "settings", "settings-modes":
-                UserDefaults.standard.set(Demo.scene == "settings" ? "proxy" : "modes", forKey: "settingsSection")
+            case "settings", "settings-modes", "headsup":
+                // settings-modes: раздел режимов; headsup: раздел агентов с историей заметок Heads up под карточками
+                let section = ["settings-modes": "modes", "headsup": "agents"][Demo.scene] ?? "proxy"
+                UserDefaults.standard.set(section, forKey: "settingsSection")
                 openSettings()
                 // окно настроек высокое, чтобы раздел proxy с подписками поместился целиком
                 try? await Task.sleep(for: .seconds(1))
@@ -111,7 +113,7 @@ struct MainView: View {
             }
             // у окна настроек нет свертывания и масштаба, и их кнопки серые. На скриншоте они цветные, как у
             // обычного окна. Кнопку закрытия под листом macOS гасит в любом случае, ее перекрашивает shoot.py
-            if Demo.scene.hasPrefix("settings"),
+            if Demo.scene.hasPrefix("settings") || Demo.scene == "headsup",
                let settings = NSApp.windows.first(where: { $0.isVisible && $0.title != "Agentmeister Demo" && $0.frame.width > 300 }) {
                 settings.styleMask.formUnion([.miniaturizable, .resizable])
             }

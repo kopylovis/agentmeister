@@ -715,6 +715,16 @@ def guard_log(n=4):
     return out
 
 
+def headsup(limit=100):
+    """История заметок Heads up для окна настроек: сначала досмотреть файл плагина, потом новые первыми."""
+    import headsup as hs
+    hs.scan()
+    return {"entries": [{"ts": r.get("ts"), "headline": r["headline"], "project": r.get("project"), "cwd": r.get("cwd"),
+                         "session": r.get("session"), "tag": r.get("tag"), "times": r.get("times") or 1}
+                        for r in hs.entries(limit)],
+            "path": hs.HISTORY, "plugin": hs.store_path() is not None, "max": hs.MAX_ENTRIES}
+
+
 def guard_test(command, cwd=None):
     """Что guard сделает с командой: правило и причина или ничего. Как agentmeister guard test, но данными."""
     import claude_guard
@@ -899,6 +909,7 @@ def main(argv):
                          "agentmeister app-state usage [дней]    статистика, 0 значит за все время\n"
                          "agentmeister app-state settings        что показывает окно настроек\n"
                          "agentmeister app-state doctor          проверки agentmeister doctor\n"
+                         "agentmeister app-state headsup         история заметок Heads up от Claude Code\n"
                          "agentmeister app-state lang [ru|en|auto]  язык интерфейса\n"
                          "agentmeister app-state projects-dir [add|remove] <папка>|default  папки с проектами",
                          "agentmeister app-state                state for the Agentmeister desktop app as JSON\n"
@@ -907,6 +918,7 @@ def main(argv):
                          "agentmeister app-state usage [days]    usage stats, 0 means all time\n"
                          "agentmeister app-state settings        what the settings window shows\n"
                          "agentmeister app-state doctor          agentmeister doctor checks\n"
+                         "agentmeister app-state headsup         history of Claude Code Heads up notes\n"
                          "agentmeister app-state lang [ru|en|auto]  interface language\n"
                          "agentmeister app-state projects-dir [add|remove] <folder>|default  folders that hold projects"))
         return 0
@@ -933,6 +945,8 @@ def main(argv):
         out = settings()
     elif argv and argv[0] == "doctor":
         out = doctor()
+    elif argv and argv[0] == "headsup":
+        out = headsup()
     elif argv and argv[0] == "usage":
         out = usage(int(argv[1]) if len(argv) > 1 and argv[1].isdigit() else 7)
     elif argv:

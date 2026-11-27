@@ -14,6 +14,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                                 "libexec", "agentmeister", "lib"))
 import notify  # noqa: E402
+import headsup  # noqa: E402,F401
 import claude_proc  # noqa: E402
 import claude_settings  # noqa: E402
 import swiftagent  # noqa: E402
@@ -22,15 +23,19 @@ import swiftagent  # noqa: E402
 # в iTerm2 ITERM_SESSION_ID, и хук принял бы их за свою вкладку. Нужные значения тесты ставят сами. Переменные
 # убираются только на время этого модуля: остальные тесты discover видят окружение как есть.
 _TERMINAL_ENV = mock.patch.dict(os.environ)
+# хук еще снимает заметки Heads up в историю (headsup.py): тесты уведомлений не должны писать в настоящую
+_HEADSUP = mock.patch("headsup.from_hook", return_value=0)
 
 
 def setUpModule():
     _TERMINAL_ENV.start()
+    _HEADSUP.start()
     for name in ("AGENTMEISTER_TAB", "ITERM_SESSION_ID", "TERM_PROGRAM", "LC_TERMINAL"):
         os.environ.pop(name, None)
 
 
 def tearDownModule():
+    _HEADSUP.stop()
     _TERMINAL_ENV.stop()
 
 

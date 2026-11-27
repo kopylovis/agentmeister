@@ -1,0 +1,43 @@
+{
+ "path": "/Users/demo/.local/state/mnrh/headsup.jsonl",
+ "plugin": true,
+ "max": 500,
+ "entries": [
+  {
+   "ts": 1795766646.0452979,
+   "headline": "The retry loop resends webhooks with the same idempotency key, so a partner that ignores the key will book the payment twice.",
+   "project": "ledger-api",
+   "cwd": "/Users/demo/Developer/ledger-api",
+   "session": null,
+   "tag": "Heads up",
+   "times": 1
+  },
+  {
+   "ts": 1795757346.0452979,
+   "headline": "Dark mode reads the theme from a cookie that the CDN caches for an hour, so some users will see the old theme after switching.",
+   "project": "atlas-web",
+   "cwd": "/Users/demo/Developer/atlas-web",
+   "session": null,
+   "tag": "You should know",
+   "times": 1
+  },
+  {
+   "ts": 1795674546.0452979,
+   "headline": "The Postgres 17 plan drops the old replica before the new one has caught up, so reads go to the primary for a while.",
+   "project": "infra",
+   "cwd": "/Users/demo/Developer/infra",
+   "session": null,
+   "tag": "Heads up",
+   "times": 2
+  },
+  {
+   "ts": null,
+   "headline": "The force push guard is off for this project, so a rebase can overwrite main.",
+   "project": null,
+   "cwd": null,
+   "session": null,
+   "tag": null,
+   "times": 1
+  }
+ ]
+}

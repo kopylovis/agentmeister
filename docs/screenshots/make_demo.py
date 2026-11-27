@@ -222,8 +222,21 @@ def main():
         "parallel": [{"branch": "rate-limit-headers", "task": "Return Retry-After on 429", "ahead": "2",
                       "dirty": 0, "running": True, "path": D + "/ledger-api/.worktrees/rate-limit-headers"}],
         "tools": {"releaseSince": "v2.4.0", "gradle": False}}
+    notes = [(NOW - 25 * 60, "ledger-api", "Heads up", 1,
+              "The retry loop resends webhooks with the same idempotency key, so a partner that ignores the key "
+              "will book the payment twice."),
+             (NOW - 3 * 3600, "atlas-web", "You should know", 1,
+              "Dark mode reads the theme from a cookie that the CDN caches for an hour, so some users will see "
+              "the old theme after switching."),
+             (NOW - 26 * 3600, "infra", "Heads up", 2,
+              "The Postgres 17 plan drops the old replica before the new one has caught up, so reads go to the "
+              "primary for a while."),
+             (None, None, None, 1, "The force push guard is off for this project, so a rebase can overwrite main.")]
+    headsup = {"path": H + "/.local/state/mnrh/headsup.jsonl", "plugin": True, "max": 500, "entries": [
+        {"ts": ts, "headline": text, "project": proj, "cwd": f"{D}/{proj}" if proj else None, "session": None,
+         "tag": tag, "times": times} for ts, proj, tag, times, text in notes]}
     for name, data in (("app-state.json", state), ("app-state-settings.json", settings), ("tabs.json", tabs),
-                       ("app-state-project.json", project)):
+                       ("app-state-project.json", project), ("app-state-headsup.json", headsup)):
         with open(os.path.join(OUT, name), "w") as f:
             json.dump(data, f, indent=1, ensure_ascii=False)
     for name, text in SCREENS.items():
