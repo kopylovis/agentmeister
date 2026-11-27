@@ -3,6 +3,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -56,8 +58,12 @@ class Hook(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.mkdtemp()
         self.log = os.path.join(tmp, "translate.log")
+        self.dir = os.path.join(tmp, "handoff")
+        self.tab = ""
         patches = [mock.patch.object(t, "LOG", self.log), mock.patch.object(t, "enabled", lambda: True),
-                   mock.patch.object(t, "fallback", lambda: None), mock.patch.object(t, "provider", lambda: "openrouter")]
+                   mock.patch.object(t, "fallback", lambda: None), mock.patch.object(t, "provider", lambda: "openrouter"),
+                   mock.patch.object(t, "HANDOFF_DIR", self.dir), mock.patch.object(t, "app_tab", lambda: self.tab),
+                   mock.patch.object(t, "HANDOFF_WAIT", 0.5)]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
@@ -83,8 +89,31 @@ class Hook(unittest.TestCase):
         except FileNotFoundError:
             return ""
 
-    def event(self, prompt):
-        return json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "abcdef12-0000", "prompt": prompt})
+    def event(self, prompt, transcript=None):
+        return json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "abcdef12-0000", "prompt": prompt,
+                           "transcript_path": transcript})
+
+    def app(self, ok=True):
+        """Приложение: берет первый запрос из папки обмена и отвечает. -> поток и список взятых запросов."""
+        taken = []
+
+        def serve():
+            deadline = time.time() + 2
+            while time.time() < deadline:
+                for name in os.listdir(self.dir) if os.path.isdir(self.dir) else []:
+                    if name.endswith(".json") and not name.endswith(".reply.json") and len(name) == 41:
+                        path = os.path.join(self.dir, name)
+                        with open(path) as f:
+                            taken.append(json.load(f))
+                        os.remove(path)
+                        with open(path[:-5] + ".reply.json", "w") as f:
+                            json.dump({"ok": ok}, f)
+                        return
+                time.sleep(0.01)
+
+        thread = threading.Thread(target=serve)
+        thread.start()
+        return thread, taken
 
     def test_translates(self):
         out, calls = self.run_hook(self.event("Исправь баг"), result="Fix the bug")
@@ -125,6 +154,91 @@ class Hook(unittest.TestCase):
         with mock.patch.object(t, "enabled", lambda: False):
             out, calls = self.run_hook(self.event("Исправь баг"), result="Fix")
         self.assertEqual((out, calls), ("", []))
+
+
+class HandOff(Hook):
+    def setUp(self):
+        super().setUp()
+        self.tab = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
+        self.replace = True
+        p = mock.patch.object(t, "replace_on", lambda: self.replace)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_off_keeps_context(self):
+        self.replace = False
+        out, _ = self.run_hook(self.event("Исправь баг"), result="Fix the bug")
+        self.assertIn("additionalContext", out)
+        self.assertFalse(os.path.isdir(self.dir))
+
+    def test_app_replaces_prompt(self):
+        thread, taken = self.app()
+        out, _ = self.run_hook(self.event("Исправь баг"), result="Fix the bug")
+        thread.join()
+        self.assertEqual(json.loads(out)["decision"], "block")
+        self.assertEqual(taken[0]["english"], "Fix the bug")
+        self.assertEqual((taken[0]["from"], taken[0]["session"], taken[0]["original"]),
+                         (self.tab, "abcdef12-0000", "Исправь баг"))
+        self.assertIn("ушел вместо оригинала", self.log_text())
+
+    def test_refused_or_silent_app_keeps_context(self):
+        thread, _ = self.app(ok=False)
+        out, _ = self.run_hook(self.event("Исправь баг"), result="Fix the bug")
+        thread.join()
+        self.assertIn("additionalContext", out)
+        out, _ = self.run_hook(self.event("Почини тест"), result="Fix the test")
+        self.assertIn("additionalContext", out)
+        self.assertEqual([n for n in os.listdir(self.dir) if not n.endswith("state.json")], [])
+
+    def test_outside_app_and_pasted_text_keep_context(self):
+        out, _ = self.run_hook(self.event("Вот лог [Pasted text #1 +40 lines]"), result="Here is the log")
+        self.assertIn("additionalContext", out)
+        self.tab = ""
+        out, _ = self.run_hook(self.event("Исправь баг"), result="Fix the bug")
+        self.assertIn("additionalContext", out)
+
+    def test_same_prompt_again_is_not_blocked_twice(self):
+        thread, _ = self.app()
+        self.run_hook(self.event("Исправь баг"), result="Fix the bug")
+        thread.join()
+        out, _ = self.run_hook(self.event("Исправь  баг"), result="Fix the bug")
+        self.assertIn("additionalContext", out)
+
+    def test_resubmit_passes_with_one_note(self):
+        transcript = os.path.join(os.path.dirname(self.dir), "t.jsonl")
+        with open(transcript, "w") as f:
+            f.write('{"type":"user"}\n')
+        thread, _ = self.app()
+        self.run_hook(self.event("Исправь баг"), result="Fix the bug")
+        thread.join()
+
+        def resubmit():
+            open(os.path.join(self.dir, "sent-abcdef12-0000"), "w").close()
+            return self.run_hook(self.event("Fix the bug «Ответ»", transcript), result="x")
+
+        out, calls = resubmit()
+        self.assertEqual(calls, [])
+        ctx = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Reply in Russian", ctx)
+        self.assertEqual(resubmit(), ("", []))
+        with open(transcript, "a") as f:
+            f.write('{"type":"system","subtype":"compact_boundary"}\n')
+        self.assertIn("Reply in Russian", resubmit()[0])
+        self.assertEqual(resubmit(), ("", []))
+
+    def test_stale_sent_mark_is_ignored(self):
+        os.makedirs(self.dir)
+        mark = os.path.join(self.dir, "sent-abcdef12-0000")
+        open(mark, "w").close()
+        os.utime(mark, (time.time() - 60, time.time() - 60))
+        out, calls = self.run_hook(self.event("Исправь баг"), result="Fix the bug")
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(os.path.exists(mark))
+
+    def test_language(self):
+        self.assertEqual(t.language("Привет"), "Russian")
+        self.assertEqual(t.language("Привіт, їжак"), "Ukrainian")
+        self.assertEqual(t.language("コードを直して"), "Japanese")
 
 
 class Key(unittest.TestCase):

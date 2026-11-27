@@ -4,6 +4,10 @@
 Gemini 3.1 Flash Lite) и добавляет перевод в контекст. Заменить сам промпт хук не может, поэтому агент видит оба текста, и при
 расхождении главным остается оригинал. Отвечает агент на языке пользователя.
 
+С translate replace on во вкладке Claude Code десктопного Agentmeister оригинал до модели не доходит. Хук отдает перевод приложению
+и блокирует промпт, Claude Code возвращает его в строку ввода, а приложение стирает его и отправляет перевод.
+Этот повторный промпт хук пропускает и один раз за сессию (и после сжатия) говорит агенту, на каком языке отвечать.
+
 Наружу не уходит текст без нелатинских букв, слэш-команды, длинные вставки и все, что похоже на секрет:
 ключи, токены, приватные ключи, JWT, ссылки на подписки proxy, ссылки с паролем или токеном в адресе.
 Текст промптов не пишется на диск, в журнал идут только время, длина и итог.
@@ -22,6 +26,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import CONFIG, HOME, badge, read_config, tilde, tr, write_config  # noqa: E402
 import claude_settings  # noqa: E402
+from claude_open import app_tab  # noqa: E402
 
 LOG = os.path.join(HOME, "Library", "Logs", "mnrh-translate.log")
 HOOK_CMD = "translate-hook"
@@ -85,6 +90,12 @@ LONG_TOKEN = re.compile(r"[A-Za-z0-9+_=-]{32,}")
 
 def enabled():
     return read_config().get("translate", "off") == "on"
+
+
+def replace_on():
+    """Заменять оригинал переводом (во вкладке Agentmeister). Выключено по умолчанию: модель тогда не сверит
+    перевод с оригиналом, а маленький переводчик может потерять отрицание или оговорку."""
+    return read_config().get("translate_replace", "off") == "on"
 
 
 def provider():
@@ -224,6 +235,152 @@ def context(english):
             "Reply in the language the user wrote in. Keep code, commands, paths and identifiers as they are.")
 
 
+# Обмен с приложением: <id>.json с переводом, ответ <id>.reply.json, sent-<сессия> перед повторной отправкой
+# и <сессия>.state.json с языком пользователя и тем, докуда агент уже знает о переводе.
+HANDOFF_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "mnrh", "app", "translate")
+HANDOFF_WAIT = 1.5  # приложение следит за папкой и отвечает сразу
+SENT_TTL = 15  # от метки приложения до промпта: вставка, картинки и Enter
+RETRY_TTL = 120  # тот же промпт снова: приложение не смогло его заменить, второй раз не блокируем
+STATE_DAYS = 7
+SESSION_RE = re.compile(r"^[0-9A-Za-z_-]{8,64}$")
+LANGUAGES = [("Ukrainian", r"[іїєґІЇЄҐ]"), ("Russian", r"[А-Яа-яЁё]"), ("Japanese", r"[\u3040-\u30ff]"),
+             ("Korean", r"[\uac00-\ud7af]"), ("Chinese", r"[\u4e00-\u9fff]"), ("Greek", r"[\u0370-\u03ff]"),
+             ("Hebrew", r"[\u0590-\u05ff]"), ("Arabic", r"[\u0600-\u06ff]")]
+
+
+def language(text):
+    return next((name for name, rx in LANGUAGES if re.search(rx, text)), "the user's own language")
+
+
+def note(lang):
+    return (f"[agentmeister translate] The user writes in {lang}. Their messages reach you machine-translated "
+            f"into English, the original is not sent. Reply in {lang}. Keep code, commands, paths and identifiers "
+            "as they are.")
+
+
+def _path(name):
+    return os.path.join(HANDOFF_DIR, name)
+
+
+def _read_json(path):
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_json(path, data):
+    os.makedirs(HANDOFF_DIR, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
+def _digest(text):
+    import hashlib
+    return hashlib.sha256(" ".join(text.split()).encode()).hexdigest()[:16]
+
+
+def _prune():
+    cutoff = time.time() - STATE_DAYS * 86400
+    try:
+        for name in os.listdir(HANDOFF_DIR):
+            path = _path(name)
+            if os.path.getmtime(path) < cutoff:
+                os.remove(path)
+    except OSError:
+        pass
+
+
+def resubmitted(sid):
+    """Промпт это перевод, который только что отправило приложение: метку sent-<сессия> оно ставит перед Enter."""
+    path = _path(f"sent-{sid}")
+    try:
+        fresh = time.time() - os.path.getmtime(path) < SENT_TTL
+        os.remove(path)
+        return fresh
+    except OSError:
+        return False
+
+
+def reply_note(sid, transcript):
+    """Заметка о языке, если агент о переводе еще не знает: первый перевод в сессии или сжатие после прошлой
+    заметки. Переписку читаем только с места прошлой проверки."""
+    path = _path(f"{sid}.state.json")
+    state = _read_json(path)
+    offset = state.get("offset")
+    try:
+        size = os.path.getsize(transcript) if transcript else 0
+    except OSError:
+        size = 0
+    due = not isinstance(offset, int)
+    if not due and transcript and size > offset:
+        try:
+            with open(transcript, "rb") as f:
+                f.seek(offset)
+                due = b'"compact_boundary"' in f.read()
+        except OSError:
+            pass
+    if not due and isinstance(offset, int) and size < offset:
+        due = True  # переписку переписали (slim), заметки в ней могло не остаться
+    state["offset"] = size
+    try:
+        _write_json(path, state)
+    except OSError:
+        return None
+    return note(state.get("language") or "the user's own language") if due else None
+
+
+def hand_off(sid, prompt, english):
+    """Отдать перевод вкладке Agentmeister, из которой идет сессия. True, если приложение взялось заменить
+    промпт: тогда хук его блокирует, а Claude Code возвращает текст в строку ввода, откуда приложение его стирает.
+    Не взялось (сессия не во вкладке, Codex, картинка не из этой вкладки, приложение старое или закрыто), False."""
+    tab = app_tab() if replace_on() else ""
+    if not tab or not sid or not SESSION_RE.match(sid) or "[Pasted text #" in prompt:
+        return False
+    state_path = _path(f"{sid}.state.json")
+    state = _read_json(state_path)
+    digest = _digest(prompt)
+    if state.get("last") == digest and time.time() - state.get("last_at", 0) < RETRY_TTL:
+        return False  # прошлую замену приложение не довело, промпт вернулся к пользователю, и он отправил его снова
+    import uuid
+    rid = str(uuid.uuid4())
+    req, reply = _path(rid + ".json"), _path(rid + ".reply.json")
+    try:
+        _write_json(req, {"from": tab, "session": sid, "original": prompt, "english": english, "at": time.time()})
+    except OSError:
+        return False
+    deadline = time.monotonic() + HANDOFF_WAIT
+    answer = None
+    while time.monotonic() < deadline:
+        if os.path.exists(reply):
+            answer = _read_json(reply)
+            break
+        time.sleep(0.03)
+    try:
+        os.remove(reply)
+    except OSError:
+        pass
+    if answer is None:
+        try:
+            os.remove(req)
+            return False  # приложение запрос не взяло
+        except FileNotFoundError:
+            answer = {"ok": True}  # взяло, но ответ не успел
+    if not answer.get("ok"):
+        return False
+    state.update(language=language(prompt), last=digest, last_at=time.time())
+    try:
+        _write_json(state_path, state)
+    except OSError:
+        pass
+    _prune()
+    return True
+
+
 def log(sid, result, chars=0, ms=None):
     line = time.strftime("%Y-%m-%d %H:%M:%S ") + f"{(sid or '?')[:8]} {chars} зн"
     if ms is not None:
@@ -262,6 +419,12 @@ def hook():
     sid, prompt = payload.get("session_id"), payload.get("prompt") or ""
     if not isinstance(prompt, str):
         return 0
+    if isinstance(sid, str) and SESSION_RE.match(sid) and resubmitted(sid):
+        text = reply_note(sid, payload.get("transcript_path"))
+        if text:
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text}},
+                             ensure_ascii=False))
+        return 0
     reason = skip_reason(prompt)
     if reason:
         # обычные английские промпты и команды в журнал не идут, чтобы он не забивался
@@ -279,6 +442,11 @@ def hook():
         log(sid, f"{info()['name']} не ответил вовремя, перевел {PROVIDERS[used]['name']}", len(prompt), ms)
     if not english or " ".join(english.split()) == " ".join(prompt.split()):
         log(sid, "перевод совпал с оригиналом", len(prompt), ms)
+        return 0
+    if hand_off(sid, prompt, english):
+        print(json.dumps({"decision": "block", "reason": tr("agentmeister translate: ушло по-английски",
+                                                            "agentmeister translate: sent in English")}))
+        log(sid, "переведен, ушел вместо оригинала", len(prompt), ms)
         return 0
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context(english)}},
                      ensure_ascii=False))
@@ -345,6 +513,9 @@ def status():
                      "The Claude Code hook is missing, agentmeister translate on adds it."))
     except ValueError:
         pass
+    if replace_on():
+        print(tr("Во вкладках Claude Code в Agentmeister перевод уходит вместо оригинала, оригинал агент не видит.",
+                 "In Claude Code tabs of Agentmeister the translation goes instead of the original, the agent doesn't see it."))
     print(tr(f"Журнал без текста промптов в {tilde(LOG)}.", f"Log without prompt text in {tilde(LOG)}."))
 
 
@@ -415,6 +586,7 @@ agentmeister translate key             сохранить ключ OpenRouter и
                                        stdin, --clipboard из буфера; провайдер выберется по ключу; rm удалит
 agentmeister translate provider [имя]  openrouter (по умолчанию) или google
 agentmeister translate model [<id>]    модель у текущего провайдера, default вернет обычную
+agentmeister translate replace on|off  во вкладках Claude Code в Agentmeister слать перевод вместо оригинала
 agentmeister translate check [текст]   перевести пример и показать задержку
 agentmeister translate log             последние записи журнала (без текста промптов)
 
@@ -427,6 +599,7 @@ agentmeister translate key             save an OpenRouter or Google AI Studio ke
                                        --clipboard from the clipboard; the key picks the provider; rm removes it
 agentmeister translate provider [name] openrouter (default) or google
 agentmeister translate model [<id>]    model for the current provider, default restores the usual one
+agentmeister translate replace on|off  in Claude Code tabs of Agentmeister send the translation instead of the original
 agentmeister translate check [text]    translate a sample and show the latency
 agentmeister translate log             recent log lines (no prompt text)
 
@@ -483,6 +656,20 @@ def main():
             return 2
         write_config(translate_provider=rest[1])
         status()
+        return 0
+    if cmd == "replace":
+        if len(rest) == 1:
+            print("on" if replace_on() else "off")
+            return 0
+        if rest[1] not in ("on", "off"):
+            print(tr("Нужно on или off.", "Use on or off."), file=sys.stderr)
+            return 2
+        write_config(translate_replace=rest[1])
+        print(tr("Во вкладках Claude Code в Agentmeister перевод уйдет вместо оригинала. Модель не сможет сверить "
+                 "его с оригиналом, рискованные просьбы лучше писать по-английски.",
+                 "In Claude Code tabs of Agentmeister the translation goes instead of the original. The model can't "
+                 "check it against the original, so write risky requests in English.") if rest[1] == "on" else
+              tr("Перевод снова идет рядом с оригиналом.", "The translation goes next to the original again."))
         return 0
     if cmd == "check":
         return cmd_check(rest[1:])
