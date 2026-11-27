@@ -21,7 +21,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, HOME, HOOK_TIMEOUTS, UUID_RE, read_config, tilde, write_config, write_json  # noqa: E402
+from mnrhlib import CACHE, HOME, HOOK_TIMEOUTS, UUID_RE, read_config, tilde, tr, write_config, write_json  # noqa: E402
 import telegram  # noqa: E402
 
 DIR = os.path.join(CACHE, "notify", "approve")
@@ -96,14 +96,14 @@ def guard_warning(tool, inp, cwd):
 def message(payload, title=""):
     tool = str(payload.get("tool_name") or "?")
     body, note, cut = render(tool, payload.get("tool_input"))
-    parts = ["<b>Claude Code: нужно разрешение</b>"]
+    parts = [tr("<b>Claude Code: нужно разрешение</b>", "<b>Claude Code needs permission</b>")]
     if payload.get("cwd"):
         parts.append(f"<i>{html.escape(project_name(payload['cwd']))}</i>")
     if title:
         parts.append(f"<i>{html.escape(title)}</i>")
     if payload.get("agent_type"):
-        parts.append(f"Субагент: {html.escape(str(payload['agent_type']))}")
-    parts.append(f"Инструмент: <b>{html.escape(tool)}</b>")
+        parts.append(tr("Субагент: ", "Subagent: ") + html.escape(str(payload['agent_type'])))
+    parts.append(tr("Инструмент: ", "Tool: ") + f"<b>{html.escape(tool)}</b>")
     warn = guard_warning(tool, payload.get("tool_input"), payload.get("cwd"))
     if warn:
         parts.append(f"⚠️ agentmeister guard: {html.escape(warn)}")
@@ -112,15 +112,16 @@ def message(payload, title=""):
     if note:
         parts.append(html.escape(note))
     if "•••" in body:
-        parts.append("Похожее на пароли и токены скрыто (•••).")
+        parts.append(tr("Похожее на пароли и токены скрыто (•••).", "Things that look like passwords and tokens are hidden (•••)."))
     if cut:
-        parts.append("⚠️ Показано не целиком. Если не уверен, отклони или ответь на Mac.")
+        parts.append(tr("⚠️ Показано не целиком. Если не уверен, отклони или ответь на Mac.",
+                        "⚠️ Not shown in full. If unsure, deny or answer on the Mac."))
     return "\n".join(parts)
 
 
 def keyboard(rid):
-    return json.dumps({"inline_keyboard": [[{"text": "Разрешить", "callback_data": f"cm1:{rid}:y"},
-                                            {"text": "Отклонить", "callback_data": f"cm1:{rid}:n"}]]})
+    return json.dumps({"inline_keyboard": [[{"text": tr("Разрешить", "Allow"), "callback_data": f"cm1:{rid}:y"},
+                                            {"text": tr("Отклонить", "Deny"), "callback_data": f"cm1:{rid}:n"}]]})
 
 
 def path(rid, ext):
@@ -182,9 +183,9 @@ def poll_once(chat_id, timeout):
         if got:
             rid, answer = got
             write_json(path(rid, "answer"), {"answer": answer})
-            text = "Разрешено" if answer == "allow" else "Отклонено"
+            text = tr("Разрешено", "Allowed") if answer == "allow" else tr("Отклонено", "Denied")
         else:
-            text = "Этот запрос уже не ждёт ответа"
+            text = tr("Этот запрос уже не ждёт ответа", "This request no longer needs an answer")
         with contextlib.suppress(telegram.TelegramError):
             telegram.call("answerCallbackQuery", callback_query_id=cb.get("id"), text=text)
     if last is not None:
@@ -246,20 +247,24 @@ def wait_answer(rid, chat_id, deadline):
 def decision(answer):
     d = {"behavior": answer}
     if answer == "deny":
-        d["message"] = "Пользователь отклонил запрос в Telegram"
+        d["message"] = tr("Пользователь отклонил запрос в Telegram", "The user denied the request in Telegram")
     return {"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": d}}
 
 
-FINALE = {"allow": "✅ Разрешено", "deny": "❌ Отклонено", "back": "Ты вернулся к Mac — ответь там",
-          "timeout": "Время вышло — ответь на Mac", "gone": "Ответ уже не нужен",
-          "error": "Не дождался ответа из-за ошибки — ответь на Mac",
-          "conflict": "Этого бота опрашивает другая программа — ответь на Mac"}
+def finale(outcome):
+    return {"allow": tr("✅ Разрешено", "✅ Allowed"), "deny": tr("❌ Отклонено", "❌ Denied"),
+            "back": tr("Ты вернулся к Mac — ответь там", "You're back at the Mac, answer there"),
+            "timeout": tr("Время вышло — ответь на Mac", "Time's up, answer on the Mac"),
+            "gone": tr("Ответ уже не нужен", "No answer needed anymore"),
+            "error": tr("Не дождался ответа из-за ошибки — ответь на Mac", "Stopped waiting because of an error, answer on the Mac"),
+            "conflict": tr("Этого бота опрашивает другая программа — ответь на Mac",
+                           "Another program is polling this bot, answer on the Mac")}[outcome]
 
 
 def finish(msg_id, text, outcome):
     with contextlib.suppress(telegram.TelegramError):
         telegram.call("editMessageText", chat_id=telegram.chat(), message_id=msg_id, parse_mode="HTML",
-                      text=f"{text}\n\n{FINALE[outcome]}", disable_web_page_preview="true")
+                      text=f"{text}\n\n{finale(outcome)}", disable_web_page_preview="true")
 
 
 def session_title(payload):
@@ -360,40 +365,50 @@ def install_hook():
         data = claude_settings.load()
         added = claude_settings.add_missing_hooks(data, claude_settings.rows("approve-hook"))
     except (OSError, ValueError) as e:
-        print(f"✗ {tilde(claude_settings.PATH)} не читается ({e}), хук не поставил: agentmeister setup")
+        print(tr(f"✗ {tilde(claude_settings.PATH)} не читается ({e}), хук не поставил: agentmeister setup",
+                 f"✗ can't read {tilde(claude_settings.PATH)} ({e}), hook not installed: agentmeister setup"))
         return False
     if added:
         claude_settings.save_atomic(data)
-        print(f"✓ хук PermissionRequest → {tilde(claude_settings.PATH)}")
+        print(tr("✓ хук PermissionRequest → ", "✓ PermissionRequest hook → ") + tilde(claude_settings.PATH))
     return True
 
 
 def describe():
     if not enabled():
-        return "Разрешения из Telegram: выключены — agentmeister notify telegram approve on"
-    tail = "" if hook_installed() else " (хук PermissionRequest не стоит — agentmeister setup)"
-    return "Разрешения из Telegram: кнопки «Разрешить» и «Отклонить», когда ты не за Mac" + tail
+        return tr("Разрешения из Telegram: выключены — agentmeister notify telegram approve on",
+                  "Telegram approvals: off. agentmeister notify telegram approve on")
+    tail = "" if hook_installed() else tr(" (хук PermissionRequest не стоит — agentmeister setup)",
+                                          " (the PermissionRequest hook isn't installed: agentmeister setup)")
+    return tr("Разрешения из Telegram: кнопки «Разрешить» и «Отклонить», когда ты не за Mac",
+              "Telegram approvals: Allow and Deny buttons when you're away from the Mac") + tail
 
 
 def main(args):
     value = args[0] if args else ""
     if value == "on":
         if not telegram.configured():
-            print("Сначала подключи бота: agentmeister notify telegram")
+            print(tr("Сначала подключи бота: agentmeister notify telegram", "Connect a bot first: agentmeister notify telegram"))
             return 1
         if telegram.shares_plugin_bot():
-            print("✗ Этот же бот настроен в плагине Telegram для Claude Code: кнопки читали бы его обновления и мешали"
-                  " плагину. Заведи для agentmeister отдельного бота: agentmeister notify telegram setup")
+            print(tr("✗ Этот же бот настроен в плагине Telegram для Claude Code: кнопки читали бы его обновления и мешали"
+                     " плагину. Заведи для agentmeister отдельного бота: agentmeister notify telegram setup",
+                     "✗ The same bot is set up in the Telegram plugin for Claude Code: the buttons would read its updates "
+                     "and get in the plugin's way. Create a separate bot for agentmeister: agentmeister notify telegram setup"))
             return 1
         write_config(telegram_approve="on")
         install_hook()
-        print("Когда ты не за Mac, запросы разрешения приходят в Telegram с кнопками «Разрешить» и «Отклонить».")
-        print(f"Если ты вернулся к Mac или прошло {WAIT // 60} мин, Claude спросит как обычно.")
-        print("Нажать кнопку может любой, у кого открыт твой Telegram. Выключить: agentmeister notify telegram approve off")
+        print(tr("Когда ты не за Mac, запросы разрешения приходят в Telegram с кнопками «Разрешить» и «Отклонить».",
+                 "When you're away from the Mac, permission requests come to Telegram with Allow and Deny buttons."))
+        print(tr(f"Если ты вернулся к Mac или прошло {WAIT // 60} мин, Claude спросит как обычно.",
+                 f"If you're back at the Mac or {WAIT // 60} min pass, Claude asks as usual."))
+        print(tr("Нажать кнопку может любой, у кого открыт твой Telegram. Выключить: agentmeister notify telegram approve off",
+                 "Anyone with your Telegram open can press the button. Turn off: agentmeister notify telegram approve off"))
         return 0
     if value == "off":
         write_config(telegram_approve="off")
-        print("Разрешения из Telegram выключены, Claude спрашивает только на Mac")
+        print(tr("Разрешения из Telegram выключены, Claude спрашивает только на Mac",
+                 "Telegram approvals are off, Claude asks only on the Mac"))
         return 0
     print(describe())
     print("agentmeister notify telegram approve on | off")

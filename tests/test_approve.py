@@ -15,6 +15,18 @@ import notify  # noqa: E402
 import telegram  # noqa: E402
 import telegram_approve as ta  # noqa: E402
 from mnrhlib import HOOK_TIMEOUTS, HOOKS  # noqa: E402
+import mnrhlib  # noqa: E402
+
+# тесты сверяют русские тексты, а без lang в config язык берется из macOS
+RU = mock.patch.object(mnrhlib, "lang", lambda: "ru")
+
+
+def setUpModule():
+    RU.start()
+
+
+def tearDownModule():
+    RU.stop()
 
 SID = "11111111-2222-3333-4444-555555555555"
 CHAT = "4242"
