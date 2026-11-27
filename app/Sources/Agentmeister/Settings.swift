@@ -176,6 +176,8 @@ struct SettingsData: Decodable {
         /// Через сколько минут после последней сессии и при каком заряде lid отпускает крышку. Nil в старом ответе.
         let lidGraceMin: Int?
         let lidBattery: Int?
+        /// Строгая типографика humanize (прямые кавычки, без е с точками, без двоеточий). Nil в старом ответе.
+        let humanizeTypography: Bool?
         /// Откуда ключ OpenRouter для translate: file, env или nil, если его нет.
         let translateKey: String?
         let translateModel: String?

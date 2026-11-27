@@ -689,6 +689,10 @@ def settings():
                           for rid, text in claude_guard.RULES.items()],
                 "log": guard_log(), "logPath": claude_guard.LOG, "lastHit": guard_last_hit()}
 
+    def humanize_typography():
+        import humanize
+        return humanize.typography()
+
     def modes_info():
         import claude_buildlog
         import claude_lid
@@ -701,6 +705,7 @@ def settings():
                 "buildlogKB": claude_buildlog.max_bytes() // 1024,
                 "buildlogDir": claude_buildlog.LOGS, "lidReady": lid_ready,
                 "lidGraceMin": claude_lid.grace() // 60, "lidBattery": claude_lid.low_battery(),
+                "humanizeTypography": humanize_typography(),
                 "translateKey": translate.key_source(), "translateModel": translate.model(),
                 "translateProvider": translate.provider(), "translateFallback": translate.fallback(),
                 "translateLog": translate.recent(4), "translateLogPath": translate.LOG,

@@ -331,7 +331,7 @@ struct ModesPane: View {
 
     // MARK: humanize
 
-    private var humanizePanel: some View {
+    @ViewBuilder private var humanizePanel: some View {
         Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
             GridRow {
                 fieldLabel(l.t("Агенты", "Agents"))
@@ -355,6 +355,13 @@ struct ModesPane: View {
             }
         }
         .font(.system(size: 13))
+        if let on = info?.humanizeTypography {
+            SettingsRow(l.t("Строгая типографика", "Strict typography"),
+                        l.t("Только прямые кавычки, без буквы е с точками, без двоеточий посреди фразы. Строже обычной русской типографики, поэтому отдельно.",
+                            "Straight quotes only, no letter ё, no colons mid-sentence. Stricter than usual typography, so it's separate.")) {
+                HeaderSwitch(label: l.t("Строгая типографика", "Strict typography"), on: on) { run(["humanize", "typography", $0 ? "on" : "off"]) }
+            }
+        }
     }
 
     // MARK: translate

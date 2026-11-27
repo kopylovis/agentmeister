@@ -1,6 +1,7 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -131,3 +132,23 @@ class SourceMarkers202611(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Typography(unittest.TestCase):
+    TEXT = "Еще «тест» ёж. Итог: да. Причина: нет."
+
+    def names(self):
+        return {name for _, name, _ in h.check(self.TEXT)}
+
+    def test_off_by_default_leaves_quotes_yo_and_colons(self):
+        with patch.dict(os.environ, MNRH_HUMANIZE_TYPOGRAPHY="off"):
+            self.assertFalse({"елочки и лапки", "буква е с точками", "двоеточия"} & self.names())
+            self.assertNotIn("с точками", h.reminder())
+            self.assertNotIn("## 8. Типографика", h.rules_text())
+
+    def test_on_adds_rules_reminder_and_checks(self):
+        with patch.dict(os.environ, MNRH_HUMANIZE_TYPOGRAPHY="on"):
+            self.assertTrue({"елочки и лапки", "буква е с точками", "двоеточия"} <= self.names())
+            self.assertIn("Букву е с точками не пиши", h.reminder())
+            self.assertTrue(h.reminder().endswith("Перед отправкой перечитай по разделу 7."))
+            self.assertIn("## 8. Типографика", h.rules_text())

@@ -111,12 +111,12 @@ struct MainView: View {
                 ui.sidebarCollapsed = false
             case "project":
                 ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
-            case "settings", "settings-modes", "settings-notify", "settings-notify-phone", "settings-notify-add", "settings-general", "settings-buildlog", "settings-lid", "headsup":
+            case "settings", "settings-modes", "settings-notify", "settings-notify-phone", "settings-notify-add", "settings-general", "settings-buildlog", "settings-lid", "settings-humanize", "headsup":
                 // settings-modes: раздел режимов; settings-notify: уведомления; headsup: раздел агентов с историей заметок Heads up под карточками
-                let section = ["settings-modes": "modes", "settings-notify": "notify", "settings-notify-phone": "notify", "settings-notify-add": "notify", "settings-general": "general", "settings-buildlog": "modes", "settings-lid": "modes", "headsup": "agents"][Demo.scene] ?? "proxy"
+                let section = ["settings-modes": "modes", "settings-notify": "notify", "settings-notify-phone": "notify", "settings-notify-add": "notify", "settings-general": "general", "settings-buildlog": "modes", "settings-lid": "modes", "settings-humanize": "modes", "headsup": "agents"][Demo.scene] ?? "proxy"
                 UserDefaults.standard.set(section, forKey: "settingsSection")
                 // settings-buildlog и settings-lid открывают режимы с выбранной карточкой
-                if let mode = ["settings-buildlog": "buildlog", "settings-lid": "lid"][Demo.scene] {
+                if let mode = ["settings-buildlog": "buildlog", "settings-lid": "lid", "settings-humanize": "humanize"][Demo.scene] {
                     UserDefaults.standard.set(mode, forKey: "modes.selected")
                 }
                 openSettings()

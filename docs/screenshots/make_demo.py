@@ -273,7 +273,7 @@ def build(out):
         "hostRun": {"running": True, "pid": 4211, "version": "3", "commands": [
             {"name": "orbit-ios-build", "cwd": D + "/orbit-ios", "run": ["xcodebuild", "-scheme", "Orbit", "build"], "args": False},
             {"name": "ledger-api-deploy", "cwd": D + "/ledger-api", "run": ["fly", "deploy"], "args": True}]},
-        "modesInfo": {"buildlogDays": 7, "buildlogLines": 40, "buildlogDir": H + "/.cache/mnrh/buildlog", "lidReady": False,
+        "modesInfo": {"buildlogDays": 7, "buildlogLines": 40, "humanizeTypography": False, "buildlogDir": H + "/.cache/mnrh/buildlog", "lidReady": False,
                       "translateKey": "file", "translateModel": "gemini-3.1-flash-lite",
                       "translateProvider": "google", "translateFallback": "openrouter",
                       "translateLog": [stamp(NOW - 50 * 60) + " 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter",
