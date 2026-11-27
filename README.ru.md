@@ -993,7 +993,7 @@ Terminal и iTerm2 (по tty, как `/restart`), а в Android Studio, VS Code 
 2 минуты никто не трогал мышь и клавиатуру. `agentmeister notify telegram` подключает бота:
 создаёшь его у @BotFather, вводишь токен (или копируешь его и запускаешь команду не из
 терминала — agentmeister возьмёт токен из буфера обмена и очистит буфер), нажимаешь Start в чате с
-ботом. Токен лежит в Связке ключей (сервис `agentmeister.notify`, аккаунт `telegram`; до 1.29 это был
+ботом. Токен лежит в Связке ключей (сервис `agentmeister.notify`, аккаунт `telegram`; до 1.28.1 это был
 `mnrh-telegram`, он копируется в новое место и остается для старых версий до `telegram off`), в конфиге — только
 номер чата.
 `telegram test` — пробное сообщение, `agentmeister notify away <сек>` — через сколько секунд без
@@ -1035,7 +1035,7 @@ Mac. Нажатия принимаются только из чата, где п
 Без приложения Tossling на Mac задай сервер вручную и дай
 [токен публикации проекта](https://tossling.github.io/docs/server/projects/) для канала `agentmeister`. Токен
 читается из ввода или stdin и лежит в Связке ключей (`agentmeister.notify`, аккаунт `tossling`). Токен, сохраненный
-до 1.29 под `agentmeister.tossling`, тоже читается.
+до 1.30 под `agentmeister.tossling`, тоже читается.
 
 ```sh
 agentmeister notify tossling server https://tossling.example.com
