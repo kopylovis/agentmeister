@@ -1,8 +1,7 @@
 import SwiftTerm
 import SwiftUI
 
-/// Запрос пользователя в выводе вкладки Claude Code: строка "❯ текст" на подложке. В классическом режиме Claude Code
-/// печатает каждый запрос так в прокрутку. Строка ввода внизу тоже начинается с "❯", но без подложки.
+/// Строка отправленного запроса в прокрутке терминала.
 struct PromptMark: Equatable {
     /// Сквозной номер строки буфера, как absoluteRow у снимков SwiftTerm: не меняется при прокрутке.
     let row: Int
@@ -19,10 +18,35 @@ struct StickyPrompt: Equatable {
     let date: Date?
 }
 
-/// Запрос из переписки сессии Claude Code: текст и время отправки.
+/// Запрос из переписки сессии: текст и время отправки.
 struct SessionPrompt: Equatable {
     let text: String
     let date: Date
+    let firstLine: String
+    let renderedFirstLine: String?
+
+    init(text: String, date: Date, agent: LaunchSpec.Agent) {
+        self.text = text
+        self.date = date
+        let line = String(text.prefix(while: { !$0.isNewline }))
+        firstLine = Self.normalized(line)
+        if agent == .codex, line.contains(where: { "`*_[]#>".contains($0) }),
+           let markdown = try? AttributedString(markdown: line) {
+            renderedFirstLine = Self.normalized(String(markdown.characters))
+        } else {
+            renderedFirstLine = nil
+        }
+    }
+
+    static func normalized(_ text: String) -> String {
+        text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").lowercased()
+    }
+
+    func matches(_ shown: String, agent: LaunchSpec.Agent) -> Bool {
+        guard !firstLine.isEmpty, !shown.isEmpty else { return false }
+        return firstLine.hasPrefix(shown) || renderedFirstLine?.hasPrefix(shown) == true
+            || (agent == .claude && shown.hasPrefix(firstLine))
+    }
 }
 
 /// Строка списка запросов: запрос из переписки и его строка в выводе, если она еще в прокрутке терминала.
@@ -35,7 +59,7 @@ struct PromptEntry: Identifiable, Equatable {
 
 /// Результат прохода по буферу.
 struct PromptScan: Equatable {
-    let marks: [PromptMark]
+    var marks: [PromptMark]
     /// Сквозной номер верхней видимой строки.
     let top: Int
     /// Сквозной номер первой строки, которую терминал еще хранит. scrollTo(row:) считает от нее.
@@ -58,11 +82,12 @@ final class PromptIndex: @unchecked Sendable {
     private var scanned = 0
     private var history: [PromptMark] = []
 
-    func update(_ ref: TerminalRef) -> PromptScan? {
+    func update(_ ref: TerminalRef, agent: LaunchSpec.Agent) -> PromptScan? {
         lock.lock()
         defer { lock.unlock() }
         let view = ref.view
-        guard let viewport = view.terminalContentSnapshot(region: .viewport), viewport.bufferKind == .normal,
+        guard view.terminalInputStateSnapshot()?.isAlternateBuffer == false,
+              let viewport = view.terminalContentSnapshot(region: .viewport), viewport.bufferKind == .normal,
               let origin = view.terminalContentSnapshot(region: .rows(0..<0)) else { return nil }
         let linesTop = origin.capturedRange.lowerBound
         let liveTop = viewport.liveTopRow
@@ -73,26 +98,33 @@ final class PromptIndex: @unchecked Sendable {
             scanned = 0
             history = []
         }
-        if scanned < linesTop {
-            scanned = linesTop
+        scanned = max(scanned, linesTop)
+        if let first = history.first, first.row < linesTop {
             history.removeAll { $0.row < linesTop }
         }
+        let mark = { (row: TerminalContentRowSnapshot) in Self.mark(row, agent: agent) }
         while scanned < liveTop {
             let end = min(scanned + 600, liveTop)
             guard let chunk = view.terminalContentSnapshot(region: .rows(scanned..<end)) else { break }
-            history += chunk.rows.compactMap(Self.mark)
+            history += chunk.rows.compactMap(mark)
             scanned = end
         }
-        let live = view.terminalContentSnapshot(region: .rows(liveTop..<(liveTop + rows)))?.rows.compactMap(Self.mark) ?? []
+        let live = view.terminalContentSnapshot(region: .rows(liveTop..<(liveTop + rows)))?.rows.compactMap(mark) ?? []
         return PromptScan(marks: history + live, top: viewport.capturedRange.lowerBound, linesTop: linesTop, rows: rows,
                           bottom: liveTop + rows)
     }
 
-    /// Строка запроса: первый непустой символ "❯" на цветной подложке.
-    private static func mark(_ row: TerminalContentRowSnapshot) -> PromptMark? {
+    static func mark(_ row: TerminalContentRowSnapshot, agent: LaunchSpec.Agent) -> PromptMark? {
         guard !row.isWrapped, let first = row.cells.firstIndex(where: { !$0.isBlank }) else { return nil }
         let cell = row.cells[first]
-        guard cell.text == "❯", cell.attribute.bg != .defaultColor, cell.attribute.bg != .defaultInvertedColor else { return nil }
+        switch agent {
+        case .claude:
+            guard cell.text == "❯", cell.attribute.bg != .defaultColor, cell.attribute.bg != .defaultInvertedColor else { return nil }
+        case .codex:
+            // У отправленного текста знак бледный, у диктовки красный. В поле ввода знак без затемнения.
+            guard first == 0, cell.text == "›", cell.attribute.style.contains(.bold),
+                  cell.attribute.style.contains(.dim) || cell.attribute.fg == .ansi256(code: 1) else { return nil }
+        }
         var text = row.text.trimmingCharacters(in: .whitespaces)
         text = String(text.dropFirst()).trimmingCharacters(in: .whitespaces)
         return PromptMark(row: row.absoluteRow, text: text)
@@ -118,8 +150,9 @@ enum SessionPrompts {
     private static let service = ["<task-notification", "<system-reminder", "[Request interrupted", "<command-",
                                   "<local-command", "Caveat:", "[Image: source"]
 
-    static func list(_ sessionId: String) -> [SessionPrompt] {
-        guard let path = SessionContext.file(sessionId), let handle = FileHandle(forReadingAtPath: path) else { return [] }
+    static func list(_ sessionId: String, agent: LaunchSpec.Agent) -> [SessionPrompt] {
+        let path = agent == .codex ? SessionContext.codexFile(sessionId) : SessionContext.file(sessionId)
+        guard let path, let handle = FileHandle(forReadingAtPath: path) else { return [] }
         defer { try? handle.close() }
         lock.lock()
         defer { lock.unlock() }
@@ -136,43 +169,59 @@ enum SessionPrompts {
         let complete = data[data.startIndex...lastNewline]
         cursor.offset += UInt64(complete.count)
         for line in complete.split(separator: UInt8(ascii: "\n")) {
-            // быстрый отсев: запросы пользователя только в строках type user
-            guard line.count > 20, let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
-                  o["type"] as? String == "user", o["isMeta"] as? Bool != true,
-                  let message = o["message"] as? [String: Any] else { continue }
-            var text = ""
-            if let plain = message["content"] as? String {
-                text = plain
-            } else if let blocks = message["content"] as? [[String: Any]] {
-                if blocks.contains(where: { $0["type"] as? String == "tool_result" }) { continue }
-                text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: "\n")
-            }
-            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty, !service.contains(where: { text.hasPrefix($0) }) else { continue }
+            guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { continue }
+            let content = agent == .codex ? codexText(o) : claudeText(o)
+            guard let text = content?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { continue }
             let date = (o["timestamp"] as? String).flatMap { iso.date(from: $0) } ?? Date()
-            cursor.prompts.append(SessionPrompt(text: text, date: date))
+            cursor.prompts.append(SessionPrompt(text: text, date: date, agent: agent))
         }
         return cursor.prompts
     }
 
+    static func codexText(_ record: [String: Any]) -> String? {
+        guard record["type"] as? String == "event_msg", let event = record["payload"] as? [String: Any] else { return nil }
+        switch event["type"] as? String {
+        case "user_message":
+            return event["message"] as? String
+        case "item_completed":
+            guard let item = event["item"] as? [String: Any], item["type"] as? String == "UserMessage",
+                  let content = item["content"] as? [[String: Any]] else { return nil }
+            return content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: "\n")
+        default:
+            return nil
+        }
+    }
+
+    private static func claudeText(_ o: [String: Any]) -> String? {
+        guard o["type"] as? String == "user", o["isMeta"] as? Bool != true,
+              let message = o["message"] as? [String: Any] else { return nil }
+        let text: String
+        if let plain = message["content"] as? String {
+            text = plain
+        } else if let blocks = message["content"] as? [[String: Any]],
+                  !blocks.contains(where: { $0["type"] as? String == "tool_result" }) {
+            text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: "\n")
+        } else {
+            return nil
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return service.contains(where: { trimmed.hasPrefix($0) }) ? nil : trimmed
+    }
+
     /// Свести запросы из переписки со строками в выводе. Идем с конца: последние запросы точно на экране, а самые
     /// старые могли уйти из прокрутки. Строка в выводе это первая строка запроса, иногда обрезанная по ширине.
-    static func merge(_ marks: [PromptMark], _ prompts: [SessionPrompt]) -> [PromptEntry] {
-        func norm(_ s: String) -> String {
-            s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ").lowercased()
-        }
+    static func merge(_ marks: [PromptMark], _ prompts: [SessionPrompt], agent: LaunchSpec.Agent) -> [PromptEntry] {
         var paired: [Int: Int] = [:]   // индекс запроса -> индекс строки
         var i = marks.count - 1
         var j = prompts.count - 1
         while i >= 0 && j >= 0 {
-            let shown = norm(marks[i].text).trimmingCharacters(in: CharacterSet(charactersIn: "…"))
-            let first = norm(prompts[j].text.components(separatedBy: "\n").first ?? "")
-            if !shown.isEmpty && (first.hasPrefix(shown) || shown.hasPrefix(first)) {
+            let shown = SessionPrompt.normalized(marks[i].text).trimmingCharacters(in: CharacterSet(charactersIn: "…"))
+            if prompts[j].matches(shown, agent: agent) {
                 paired[j] = i
                 i -= 1
                 j -= 1
             } else if !shown.isEmpty, j > 0,
-                      let k = (0..<j).reversed().first(where: { norm(prompts[$0].text.components(separatedBy: "\n").first ?? "").hasPrefix(shown) }) {
+                      let k = (0..<j).reversed().first(where: { prompts[$0].matches(shown, agent: agent) }) {
                 // запросы между ними в выводе не нашлись (ушли с экрана при перерисовке или из другой вкладки): пропускаем
                 j = k
             } else {
@@ -187,6 +236,7 @@ enum SessionPrompts {
             if let m = paired[index] { used.insert(m) }
             out.append(PromptEntry(id: out.count, text: prompt.text, date: prompt.date, mark: mark))
         }
+        if agent == .codex { return out }
         // строки вывода, которых нет в переписке (другая сессия в этой вкладке до перезапуска): по месту в выводе
         for (index, mark) in marks.enumerated() where !used.contains(index) {
             let at = out.firstIndex { $0.mark.map { $0.row > mark.row } ?? false } ?? out.count
@@ -201,20 +251,25 @@ extension TerminalTab {
     static let stickyHeight: CGFloat = 34
     static let terminalTopInset: CGFloat = 14
 
-    /// Перечитать запросы и пересчитать закрепленную полосу. Только у Claude Code: метка запроса его.
+    /// Перечитать запросы и пересчитать закрепленную полосу.
     func refreshPrompts() async {
-        guard spec.agent == .claude, spec.utility == nil else {
+        guard spec.claudeSession || spec.codexSession else {
             if sticky != nil { sticky = nil }
             return
         }
         let ref = TerminalRef(view: view)
         let index = promptIndex
         let sid = sessionId
-        let (scan, prompts) = await Task.detached(priority: .userInitiated) {
-            (index.update(ref), sid.map(SessionPrompts.list) ?? [])
+        let agent = spec.agent
+        let (scan, entries) = await Task.detached(priority: .userInitiated) {
+            var scan = index.update(ref, agent: agent)
+            let prompts = scan == nil ? [] : sid.map { SessionPrompts.list($0, agent: agent) } ?? []
+            let entries = SessionPrompts.merge(scan?.marks ?? [], prompts, agent: agent)
+            if agent == .codex { scan?.marks = entries.compactMap(\.mark) }
+            return (scan, entries)
         }.value
+        guard !Task.isCancelled, sessionId == sid else { return }
         if promptScan != scan { promptScan = scan }
-        let entries = SessionPrompts.merge(scan?.marks ?? [], prompts)
         if promptEntries != entries { promptEntries = entries }
         let next = computeSticky()
         if sticky != next { sticky = next }
@@ -267,7 +322,7 @@ extension TerminalTab {
     }
 }
 
-/// Закрепленный запрос над терминалом вкладки Claude Code. Пока виден, раз в 150 мс перечитывает запросы.
+/// Закрепленный запрос над терминалом вкладки агента. Пока виден, раз в 150 мс перечитывает запросы.
 struct StickyPromptBar: View {
     @EnvironmentObject var backend: Backend
     @ObservedObject var tab: TerminalTab
@@ -297,7 +352,7 @@ struct StickyPromptBar: View {
         HStack(spacing: 10) {
             Button { tab.scrollToPrompt(sticky.mark) } label: {
                 HStack(spacing: 8) {
-                    Text("❯").foregroundStyle(Ink.faint)
+                    Text(tab.spec.codexSession ? "›" : "❯").foregroundStyle(Ink.faint)
                     Text(sticky.mark.text)
                         .lineLimit(1)
                         .truncationMode(.tail)

@@ -986,7 +986,7 @@ struct DetailView: View {
                 TerminalHost(tab: workspace.current)
                     .clipShape(.windowCard)
                     .overlay {
-                        if let tab = workspace.current, tab.spec.agent == .claude, tab.spec.utility == nil {
+                        if let tab = workspace.current, tab.spec.claudeSession || tab.spec.codexSession {
                             StickyPromptBar(tab: tab).clipShape(.windowCard)
                         }
                     }
