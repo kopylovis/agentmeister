@@ -195,6 +195,22 @@ struct WindowDragArea: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
+/// Делает окно растягиваемым и разворачиваемым: кнопка zoom в светофоре и двойной клик по WindowDragArea.
+/// Окну Settings из SwiftUI эти флаги не даются.
+struct ZoomableWindow: NSViewRepresentable {
+    final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            window.styleMask.formUnion([.resizable, .miniaturizable])
+            window.collectionBehavior.insert(.fullScreenPrimary)
+            window.standardWindowButton(.zoomButton)?.isEnabled = true
+        }
+    }
+    func makeNSView(context: Context) -> NSView { Probe() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
 /// Кнопка свернуть или развернуть проекты, у светофора.
 struct SidebarToggle: View {
     @EnvironmentObject var backend: Backend
