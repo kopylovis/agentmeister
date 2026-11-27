@@ -173,6 +173,8 @@ struct SettingsView: View {
             .padding(10)
             // светофор сдвинут вниз и вправо, как в главном окне: первый раздел начинается под ним
             .padding(.top, 44)
+            // полоса со светофором тянет окно и разворачивает его двойным кликом, как заголовок
+            .overlay(alignment: .top) { WindowDragArea().frame(height: 44) }
             .frame(width: 210)
             .frame(maxHeight: .infinity)
             .glassEffect(.regular, in: .windowCard)
@@ -211,6 +213,8 @@ struct SettingsView: View {
         .toolbar(removing: .title)
         // без сдвига светофор лежит на скругленном углу стеклянной карточки разделов
         .background(TrafficLightsInset())
+        // окно Settings из SwiftUI нельзя ни растянуть, ни развернуть; двойной клик по верху его разворачивает
+        .background(ZoomableWindow())
         .frame(minWidth: 960, idealWidth: 1080, minHeight: 640, idealHeight: 740)
         .task { await reload() }
     }
