@@ -196,68 +196,25 @@ struct ProjectView: View {
                             .allowsHitTesting(false)
                     }
                 }
-            HStack(spacing: 8) {
-                Menu {
-                    Button("Claude Code") { agent = .claude; terminal = false }
-                    Button("Codex") { agent = .codex; terminal = false; asParallel = false }
-                    Button(l.t("Терминал", "Terminal")) { terminal = true; asParallel = false }
-                } label: {
-                    if terminal {
-                        chip(l.t("Терминал", "Terminal"), fg: Ink.text2, bg: Ink.chip)
-                    } else {
-                        chip(agent == .codex ? "Codex" : "Claude Code",
-                             fg: agent == .codex ? Ink.codexBadge : Ink.claudeBadge,
-                             bg: agent == .codex ? Ink.codexBadgeBg : Ink.claudeBadgeBg)
-                    }
+            // в узком окне подпись флажка не помещается в строку с кнопками и ломалась по буквам, тогда флажок
+            // уходит отдельной строкой под кнопки
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    agentMenu
+                    routeMenu(exit)
+                    parallelToggle.fixedSize()
+                    Spacer(minLength: 8)
+                    startButton(trimmed)
                 }
-                .menuStyle(.button)
-                .buttonStyle(.hoverCapsule(.overlay))
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help(l.agent)
-                Menu {
-                    let subs = backend.state.proxy?.choices ?? []
-                    if subs.isEmpty {
-                        Button(l.t("Через proxy", "Via proxy") + (exit.map { " " + $0 } ?? "")) { direct = false }
-                    } else {
-                        let cascade = subs.filter { $0.inCascade != false }.map(\.name)
-                        Button(l.t("Через proxy по очереди: ", "Via proxy in order: ") + cascade.joined(separator: ", ")) {
-                            direct = false
-                            subscription = nil
-                        }
-                        ForEach(subs, id: \.name) { s in
-                            Button(l.t("Только ", "Only ") + s.name + ((s.exit ?? s.country).map { " " + $0 } ?? "")) {
-                                direct = false
-                                subscription = s.name
-                            }
-                        }
-                        Divider()
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        agentMenu
+                        routeMenu(exit)
+                        Spacer(minLength: 8)
+                        startButton(trimmed)
                     }
-                    Button(l.directly) { direct = true }
-                } label: {
-                    chip(direct ? l.directly : subscription.map { "proxy " + $0 } ?? "proxy" + (exit.map { " " + $0 } ?? ""),
-                         fg: direct ? Ink.direct : Ink.teal,
-                         bg: direct ? Ink.amberDot.opacity(0.16) : Ink.tealChip)
+                    parallelToggle.fixedSize(horizontal: false, vertical: true)
                 }
-                .menuStyle(.button)
-                .buttonStyle(.hoverCapsule(.overlay))
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help(direct ? l.directWarning : l.route)
-                Toggle(l.t("В своем worktree, параллельной задачей", "In its own worktree, as a parallel task"), isOn: $asParallel)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 12))
-                    .foregroundStyle(agent == .claude && !terminal ? Ink.text2 : Ink.faint)
-                    .disabled(agent != .claude || terminal)
-                    .help(agent == .claude
-                          ? l.t("Своя ветка и worktree. Готовую задачу вливают в исходную ветку, через PR или выбрасывают.",
-                                "Its own branch and worktree. Finish by merging into the original branch, through a PR, or by dropping it.")
-                          : l.t("Параллельные задачи пока только у Claude Code", "Parallel tasks are Claude Code only for now"))
-                    .padding(.leading, 4)
-                Spacer(minLength: 8)
-                PillButton(title: l.t("Начать  ⌘↩", "Start  ⌘↩"), prominent: true, busy: starting) { start() }
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(project == nil || starting || (asParallel && trimmed.isEmpty))
             }
             if let startError {
                 Text(startError).font(.system(size: 12)).foregroundStyle(Ink.red)
@@ -269,6 +226,78 @@ struct ProjectView: View {
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Ink.card))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
             .strokeBorder(promptFocused ? Ink.modeOnBorder : Ink.hairline))
+    }
+
+    private var agentMenu: some View {
+        Menu {
+            Button("Claude Code") { agent = .claude; terminal = false }
+            Button("Codex") { agent = .codex; terminal = false; asParallel = false }
+            Button(l.t("Терминал", "Terminal")) { terminal = true; asParallel = false }
+        } label: {
+            if terminal {
+                chip(l.t("Терминал", "Terminal"), fg: Ink.text2, bg: Ink.chip)
+            } else {
+                chip(agent == .codex ? "Codex" : "Claude Code",
+                     fg: agent == .codex ? Ink.codexBadge : Ink.claudeBadge,
+                     bg: agent == .codex ? Ink.codexBadgeBg : Ink.claudeBadgeBg)
+            }
+        }
+        .menuStyle(.button)
+        .buttonStyle(.hoverCapsule(.overlay))
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(l.agent)
+    }
+
+    private func routeMenu(_ exit: String?) -> some View {
+        Menu {
+            let subs = backend.state.proxy?.choices ?? []
+            if subs.isEmpty {
+                Button(l.t("Через proxy", "Via proxy") + (exit.map { " " + $0 } ?? "")) { direct = false }
+            } else {
+                let cascade = subs.filter { $0.inCascade != false }.map(\.name)
+                Button(l.t("Через proxy по очереди: ", "Via proxy in order: ") + cascade.joined(separator: ", ")) {
+                    direct = false
+                    subscription = nil
+                }
+                ForEach(subs, id: \.name) { s in
+                    Button(l.t("Только ", "Only ") + s.name + ((s.exit ?? s.country).map { " " + $0 } ?? "")) {
+                        direct = false
+                        subscription = s.name
+                    }
+                }
+                Divider()
+            }
+            Button(l.directly) { direct = true }
+        } label: {
+            chip(direct ? l.directly : subscription.map { "proxy " + $0 } ?? "proxy" + (exit.map { " " + $0 } ?? ""),
+                 fg: direct ? Ink.direct : Ink.teal,
+                 bg: direct ? Ink.amberDot.opacity(0.16) : Ink.tealChip)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.hoverCapsule(.overlay))
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(direct ? l.directWarning : l.route)
+    }
+
+    private var parallelToggle: some View {
+        Toggle(l.t("В своем worktree, параллельной задачей", "In its own worktree, as a parallel task"), isOn: $asParallel)
+            .toggleStyle(.checkbox)
+            .font(.system(size: 12))
+            .foregroundStyle(agent == .claude && !terminal ? Ink.text2 : Ink.faint)
+            .disabled(agent != .claude || terminal)
+            .help(agent == .claude
+                  ? l.t("Своя ветка и worktree. Готовую задачу вливают в исходную ветку, через PR или выбрасывают.",
+                        "Its own branch and worktree. Finish by merging into the original branch, through a PR, or by dropping it.")
+                  : l.t("Параллельные задачи пока только у Claude Code", "Parallel tasks are Claude Code only for now"))
+            .padding(.leading, 4)
+    }
+
+    private func startButton(_ trimmed: String) -> some View {
+        PillButton(title: l.t("Начать  ⌘↩", "Start  ⌘↩"), prominent: true, busy: starting) { start() }
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(project == nil || starting || (asParallel && trimmed.isEmpty))
     }
 
     private func chip(_ text: String, fg: Color, bg: Color) -> some View {
