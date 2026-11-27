@@ -13,7 +13,9 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import CACHE, HOME, UUID_RE, read_config, settings_name, settings_path, tilde, tr, write_config, write_json
 from swiftagent import SwiftAgent
+import channels
 import ntfy_alert
+import presence
 import telegram
 
 AGENT = SwiftAgent("notify", "agentmeister Notify", "com.agentmeister.notify")
@@ -111,6 +113,10 @@ def usage():
              f"agentmeister notify after <sec>  notify about a finished reply only if the turn took longer (now "
              f"{after()}s, default {DEFAULT_AFTER})"))
     print(tr("agentmeister notify sound on|off звук", "agentmeister notify sound on|off sound"))
+    print(tr(f"agentmeister notify away <сек>   через сколько секунд без мыши и клавиатуры ты не за Mac, общее для "
+             f"Telegram и Tossling (сейчас {presence.away_after()} с)",
+             f"agentmeister notify away <sec>   seconds without mouse and keyboard after which you are away from the "
+             f"Mac, shared by Telegram and Tossling (now {presence.away_after()}s)"))
     print(tr("agentmeister notify test        показать пробное уведомление",
              "agentmeister notify test        show a test notification"))
     print(tr("agentmeister notify telegram    ещё и в Telegram, когда ты не за Mac: подключить бота",
@@ -543,12 +549,9 @@ def hook(codex=False):
         front = front_bundle()
         bundle = front if front in TERMINALS else ""
     native = native_push(payload)
-    to_phone = not native and telegram.wanted() and not approval_pending(payload, sid)
-    phone_mode = ntfy_alert.phone_mode()
-    to_tossling = not native and ntfy_alert.configured() and (
-        phone_mode == "always" or (phone_mode == "away" and telegram.away()))
+    phone = [] if native else channels.targets(lambda: approval_pending(payload, sid))
     on_mac = not tty or not watching(bundle, tty)
-    if not on_mac and not to_phone and not to_tossling:
+    if not on_mac and not phone:
         return 0
     head, body = what
     agent = "Codex" if codex else "Claude Code"
@@ -568,20 +571,13 @@ def hook(codex=False):
         sent = result == "ok"
         if not sent:
             log_error(result)
-    if to_phone:
+    msg = channels.Message(agent, head, project if cwd else "", title, body, urgent=event != "Stop")
+    for ch in phone:
         try:
-            subtitle = "\n".join(part for part in (project if cwd else "", title) if part)
-            telegram.send(f"{agent}: {head}", subtitle, body)
+            ch.send(msg)
             sent = True
-        except telegram.TelegramError as e:
-            log_error(f"telegram: {e}")
-    if to_tossling:
-        try:
-            ntfy_alert.publish(ntfy_alert.AGENTMEISTER_TOPIC, "\n\n".join(p for p in (title, body) if p),
-                               title=f"{agent}: {head}", priority=3 if event == "Stop" else 4)
-            sent = True
-        except ntfy_alert.AlertError as e:
-            log_error(f"tossling: {e}")
+        except channels.SendError as e:
+            log_error(f"{ch.name}: {e}")
     current = load_state(sid) if codex else st
     if sent and current.get("prompt_at") == st.get("prompt_at"):
         current["notified"] = True
@@ -617,6 +613,8 @@ def status():
     count = configured_hooks("notify-hook")
     print(f"Хуки Codex, настроено {count if count is not None else '?'} из {len(NOTIFY_EVENTS)}. "
           "Проверь доверие в /hooks или запусти agentmeister --harness codex setup.")
+    print(f"Не за Mac: экран заблокирован или {presence.away_after()} с без мыши и клавиатуры, "
+          "общее для Telegram и Tossling")
     print(telegram.describe())
     if telegram.configured():
         import telegram_approve
@@ -705,6 +703,16 @@ def main():
     if rest[0] == "after" and len(rest) == 2 and rest[1].isdigit():
         write_config(notify_after=rest[1])
         print(f"О готовом ответе — если ход шёл дольше {rest[1]} с")
+        return 0
+    if rest[0] == "away" and len(rest) <= 2:
+        if len(rest) == 2:
+            if not rest[1].isdigit():
+                print(tr("agentmeister notify away <секунд без мыши и клавиатуры>",
+                         "agentmeister notify away <seconds without mouse and keyboard>"))
+                return 2
+            presence.set_away_after(rest[1])
+        print(tr(f"Не за Mac: экран заблокирован или {presence.away_after()} с без мыши и клавиатуры",
+                 f"Away: the screen is locked or {presence.away_after()}s without mouse and keyboard"))
         return 0
     if rest[0] == "test":
         return test()

@@ -955,8 +955,9 @@ Terminal и iTerm2 (по tty, как `/restart`), а в Android Studio, VS Code 
 создаёшь его у @BotFather, вводишь токен (или копируешь его и запускаешь команду не из
 терминала — agentmeister возьмёт токен из буфера обмена и очистит буфер), нажимаешь Start в чате с
 ботом. Токен лежит в Связке ключей (`mnrh-telegram`), в конфиге — только номер чата.
-`telegram test` — пробное сообщение, `telegram away <сек>` — через сколько секунд без ввода
-считать, что тебя нет, `telegram always` — присылать всегда, `telegram off` — отключить и
+`telegram test` — пробное сообщение, `agentmeister notify away <сек>` — через сколько секунд без
+ввода считать, что тебя нет, порог общий для Telegram и Tossling (`telegram away <сек>` делает то же),
+`telegram always` — присылать всегда, `telegram off` — отключить и
 удалить токен. Если ты смотришь на вкладку Claude, но отошёл, уведомление придёт только в
 Telegram. Ошибки отправки пишутся в `~/.cache/mnrh/notify/errors.log`.
 
