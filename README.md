@@ -938,7 +938,7 @@ touched the mouse and keyboard for 2 minutes. `agentmeister notify telegram` con
 from the clipboard and clears it), then press Start in the chat with the bot. The token is kept in the Keychain
 (service `agentmeister.notify`, account `telegram`; before 1.29 it was `mnrh-telegram`, which is copied over and kept
 for older versions until `telegram off`); the config only holds the chat id. `telegram test` sends a test message,
-`agentmeister notify away <sec>` sets how long without input counts as away for Telegram and Tossling alike
+`agentmeister notify away <sec>` sets how long without input counts as away for all phone channels
 (`telegram away <sec>` does the same), `telegram always` sends every time, and
 `telegram off` disconnects and deletes the token. If you're looking at Claude's tab but have walked away, the
 notification only goes to Telegram. Send errors are logged to `~/.cache/mnrh/notify/errors.log`.
@@ -963,22 +963,43 @@ masked command can't be fully read from the phone; the message says so, and then
 it touches keys comes with guard's warning, but the button allows it just like the terminal prompt would. Turn it
 on only if your Telegram account has a password and two-step verification.
 
-Or to [Tossling](https://github.com/Tossling/tossling-server) on your phone, through your own Tossling server. It
-needs Tossling on the Mac connected to that server ([install](https://tossling.github.io/docs/install/)):
-agentmeister takes the server and token from `tossling config`. `agentmeister notify phone away` sends when you're away from the
-Mac, `phone always` every time, `phone off` to turn it off, `phone test` for a test. Subscribe to `agentmeister` in
-Tossling's notification settings. The title starts with Claude Code or Codex. Questions and permission requests
-use high priority. If the server requires a project publisher token, save it in the Mac keychain. Use your
-Tossling server URL without a trailing slash. The command prompts for the token.
+Or to [Tossling](https://github.com/Tossling/tossling-server) on your phone, through your own Tossling server. If
+Tossling is installed on the Mac and connected to that server ([install](https://tossling.github.io/docs/install/)),
+agentmeister takes the server and token from `tossling config`. `agentmeister notify tossling away` sends when you're
+away from the Mac, `tossling always` every time, `tossling off` turns it off, `tossling test` sends a test
+(`notify phone ...` is the old name and still works). Subscribe to `agentmeister` in Tossling's notification
+settings. The title starts with Claude Code or Codex. Questions and permission requests use high priority.
+`tossling body title` sends only the title and the project, without the session name, the question or the command;
+`tossling body full` brings the text back.
+
+Without the Tossling app on the Mac, set the server by hand and give a
+[project publisher token](https://tossling.github.io/docs/server/projects/) for the `agentmeister` channel. The
+token is read from the prompt or from stdin and kept in the Keychain (`agentmeister.notify`, account `tossling`).
+A token saved before 1.29 under `agentmeister.tossling` is still read.
 
 ```sh
-security add-generic-password -U -s agentmeister.tossling -a https://tossling.example.com -w
+agentmeister notify tossling server https://tossling.example.com
+agentmeister notify tossling token
+agentmeister notify tossling away
 ```
+
+`tossling server auto` goes back to the settings of the Tossling app.
+
+Or to [ntfy](https://github.com/binwiederhier/ntfy): ntfy.sh or your own server, with the ntfy app for
+[Android](https://github.com/binwiederhier/ntfy-android) or [iPhone](https://github.com/binwiederhier/ntfy-ios).
+`agentmeister notify ntfy setup` picks a random topic like `agentmeister-` plus 20 letters and digits, turns the
+channel on for when you're away and prints the topic to subscribe to. On ntfy.sh anyone who knows the topic name can
+read it, so keep it private; `ntfy topic new` makes a new one. For the same reason on ntfy.sh only the title and the
+project are sent by default (`ntfy body full` sends everything). Your own server:
+`ntfy setup --server https://ntfy.example.com`; if it requires login, `ntfy token` takes a token (`tk_...`) or
+`user:password` from the prompt or stdin into the Keychain (`agentmeister.notify`, account `ntfy`). For instant push
+on iPhone your server needs `upstream-base-url: "https://ntfy.sh"`. Also `ntfy away | always | off | test`,
+`ntfy token off` and `ntfy forget`, which removes the settings and the token.
 
 With Remote Control, Claude Code pushes to the Claude app on your phone itself. If the session is connected
 (`/remote-control`, `--remote-control` or "Enable Remote Control for all sessions") and **Push when actions
 required** is on in `/config` (`inputNeededNotifEnabled`), agentmeister doesn't send permission requests and
-questions to Telegram or Tossling for that session, so they don't arrive twice; the Mac notification stays.
+questions to phone channels for that session, so they don't arrive twice; the Mac notification stays.
 agentmeister sees the connection through `CLAUDE_CODE_BRIDGE_SESSION_ID`, which Claude Code v2.1.199 and later
 sets in hook commands while Remote Control is connected. "Done" and "waiting for you" still go out as before:
 Claude sends its own push for those only when it decides to. If `/config` shows "No mobile registered",

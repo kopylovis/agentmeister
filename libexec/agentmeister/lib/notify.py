@@ -14,7 +14,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import CACHE, HOME, UUID_RE, read_config, settings_name, settings_path, tilde, tr, write_config, write_json
 from swiftagent import SwiftAgent
 import channels
+import keychain
 import ntfy_alert
+import ntfy_channel
 import presence
 import telegram
 
@@ -114,16 +116,19 @@ def usage():
              f"{after()}s, default {DEFAULT_AFTER})"))
     print(tr("agentmeister notify sound on|off звук", "agentmeister notify sound on|off sound"))
     print(tr(f"agentmeister notify away <сек>   через сколько секунд без мыши и клавиатуры ты не за Mac, общее для "
-             f"Telegram и Tossling (сейчас {presence.away_after()} с)",
+             f"всех каналов на телефон (сейчас {presence.away_after()} с)",
              f"agentmeister notify away <sec>   seconds without mouse and keyboard after which you are away from the "
-             f"Mac, shared by Telegram and Tossling (now {presence.away_after()}s)"))
+             f"Mac, shared by all phone channels (now {presence.away_after()}s)"))
     print(tr("agentmeister notify test        показать пробное уведомление",
              "agentmeister notify test        show a test notification"))
     print(tr("agentmeister notify telegram    ещё и в Telegram, когда ты не за Mac: подключить бота",
              "agentmeister notify telegram    also send to Telegram when you are away from the Mac: connect the bot"))
-    print(tr(f"agentmeister notify phone away  ещё и в Tossling на телефон (канал {topic}), когда ты не за Mac",
-             f"agentmeister notify phone away  also send to Tossling on the phone (channel {topic}) when you are away from the Mac"))
-    print("  … phone always | off | test")
+    print(tr(f"agentmeister notify tossling away  ещё и в Tossling на телефон (канал {topic}), когда ты не за Mac",
+             f"agentmeister notify tossling away  also send to Tossling on the phone (channel {topic}) when you are away from the Mac"))
+    print(tr("  … tossling always | off | test | body full|title | server <url>|auto | token [off]  (phone то же самое)",
+             "  … tossling always | off | test | body full|title | server <url>|auto | token [off]  (phone is the same)"))
+    print(tr("agentmeister notify ntfy        ещё и в ntfy (ntfy.sh или свой сервер): подключить, -h подробнее",
+             "agentmeister notify ntfy        also send to ntfy (ntfy.sh or your own server): connect, -h for more"))
     print(tr("  … telegram test | off | always | away <сек>", "  … telegram test | off | always | away <sec>"))
     print(tr("  … telegram approve on | off  разрешать и отклонять запросы Claude кнопками в Telegram, когда ты не за Mac",
              "  … telegram approve on | off  allow or deny Claude's requests with Telegram buttons when you are away from the Mac"))
@@ -614,21 +619,29 @@ def status():
     print(f"Хуки Codex, настроено {count if count is not None else '?'} из {len(NOTIFY_EVENTS)}. "
           "Проверь доверие в /hooks или запусти agentmeister --harness codex setup.")
     print(f"Не за Mac: экран заблокирован или {presence.away_after()} с без мыши и клавиатуры, "
-          "общее для Telegram и Tossling")
+          "общее для всех каналов на телефон")
     print(telegram.describe())
     if telegram.configured():
         import telegram_approve
         print(telegram_approve.describe())
     if claude_settings.setting("inputNeededNotifEnabled", os.getcwd()) is True:
         print("Remote Control: в сессии с /remote-control о запросах разрешения и вопросах на телефон пишет сам "
-              "Claude (Push when actions required), в Telegram и Tossling они не дублируются")
+              "Claude (Push when actions required), в каналы на телефон они не дублируются")
+    print(tossling_describe())
+    print(ntfy_channel.describe())
+
+
+def tossling_describe():
     if not ntfy_alert.configured():
-        print(f"Tossling: не найден на этом Mac или не подключен к серверу, {ntfy_alert.INSTALL_DOCS}")
-        return
-    mode = ntfy_alert.phone_mode()
-    print("Tossling: " + {"off": "выключено — agentmeister notify phone away",
-                       "away": f"когда ты не за Mac, канал «{ntfy_alert.AGENTMEISTER_TOPIC}»",
-                       "always": f"всегда, канал «{ntfy_alert.AGENTMEISTER_TOPIC}»"}[mode])
+        return tr(f"Tossling: не найден на этом Mac или не подключен к серверу, {ntfy_alert.INSTALL_DOCS}",
+                  f"Tossling: not installed on this Mac or not connected to a server, {ntfy_alert.INSTALL_DOCS}")
+    when = {"off": tr("выключен, agentmeister notify tossling away", "off, agentmeister notify tossling away"),
+            "away": tr("когда ты не за Mac", "when you are away"), "always": tr("всегда", "always")}[ntfy_alert.phone_mode()]
+    server = ntfy_alert.endpoint()[0]
+    src = tr("адрес задан вручную", "address set by hand") if ntfy_alert.source() == "manual" \
+        else tr("настройки tossling на этом Mac", "settings of tossling on this Mac")
+    body = tr("только заголовок", "title only") if ntfy_alert.body_mode() == "title" else tr("полный текст", "full text")
+    return f"Tossling: {when}, {server}, {tr('канал', 'topic')} {ntfy_alert.AGENTMEISTER_TOPIC}, {body}, {src}"
 
 
 def test():
@@ -654,30 +667,69 @@ def test():
 
 
 def phone(rest):
+    """agentmeister notify tossling (и старое имя phone): канал agentmeister на сервере Tossling."""
     value = rest[0] if rest else ""
-    if value in ("on", "away", "always", "off"):
+    topic = ntfy_alert.AGENTMEISTER_TOPIC
+    if value in ("on", "away", "always", "off") and len(rest) == 1:
         if value != "off" and not ntfy_alert.configured():
             print(tr(f"Tossling на этом Mac не найден или не подключен к серверу, уведомления уходят через него. "
-                     f"Как поставить: {ntfy_alert.INSTALL_DOCS}",
+                     f"Как поставить: {ntfy_alert.INSTALL_DOCS}. Свой сервер без приложения: "
+                     f"agentmeister notify tossling server <url> и token",
                      f"Tossling isn't installed on this Mac or isn't connected to a server, notifications go through it. "
-                     f"How to install: {ntfy_alert.INSTALL_DOCS}"))
+                     f"How to install: {ntfy_alert.INSTALL_DOCS}. Your own server without the app: "
+                     f"agentmeister notify tossling server <url> and token"))
             return 1
-        write_config(notify_phone="away" if value == "on" else value)
-        print({"off": "В Tossling больше не отправляю",
-               "always": f"Отправляю в Tossling всегда, канал «{ntfy_alert.AGENTMEISTER_TOPIC}»"}.get(
-            value, f"Отправляю в Tossling, когда ты не за Mac, канал «{ntfy_alert.AGENTMEISTER_TOPIC}»"))
-        print(f"На телефоне: Tossling → Уведомления → + → канал {ntfy_alert.AGENTMEISTER_TOPIC}")
+        ntfy_alert.set_mode("away" if value == "on" else value)
+        print(tossling_describe())
+        if value != "off":
+            print(tr(f"На телефоне Tossling, Уведомления, плюс, канал {topic}",
+                     f"On the phone Tossling, Notifications, plus, channel {topic}"))
         return 0
-    if value == "test":
+    if value == "body" and len(rest) == 2 and rest[1] in ntfy_alert.BODIES:
+        write_config(notify_tossling_body=rest[1])
+        print(tossling_describe())
+        return 0
+    if value == "server" and len(rest) == 2:
+        url = rest[1].rstrip("/")
+        if url == "auto":
+            write_config(notify_tossling_server=None)
+        elif ntfy_channel.valid_server(url):
+            write_config(notify_tossling_server=url)
+        else:
+            print(tr(f"Не похоже на адрес сервера: {url}", f"Not a server address: {url}"))
+            return 2
+        print(tossling_describe())
+        if url != "auto" and not ntfy_alert.configured():
+            print(tr(f"Нужен токен публикации проекта ({ntfy_alert.PROJECTS_DOCS}): agentmeister notify tossling token",
+                     f"A project publisher token is needed ({ntfy_alert.PROJECTS_DOCS}): agentmeister notify tossling token"))
+        return 0
+    if value == "token" and rest[1:] in ([], ["off"]):
+        if rest[1:] == ["off"]:
+            keychain.delete(ntfy_alert.KEYCHAIN_ACCOUNT)
+        else:
+            secret = keychain.read_secret(tr("Токен публикации (при вводе не виден): ", "Publisher token (hidden): "))
+            if not secret:
+                print(tr("Пусто, токен не менял", "Empty, token unchanged"))
+                return 1
+            if not keychain.save(ntfy_alert.KEYCHAIN_ACCOUNT, secret, "Agentmeister Tossling"):
+                print(tr("Не сохранил токен в Связку ключей", "Couldn't save the token to the keychain"))
+                return 1
+        print(tossling_describe())
+        return 0
+    if value == "test" and len(rest) == 1:
         try:
-            ntfy_alert.publish(ntfy_alert.AGENTMEISTER_TOPIC, "Сюда приходят уведомления от Claude Code и Codex.",
-                               title="Agentmeister: проверка канала")
+            ntfy_alert.publish(topic, tr("Сюда приходят уведомления от Claude Code и Codex.",
+                                         "Claude Code and Codex notifications arrive here."),
+                               title=tr("Agentmeister: проверка канала", "Agentmeister: channel check"))
         except ntfy_alert.AlertError as e:
-            print(f"Не отправил: {e}")
+            print(tr(f"Не отправил: {e}", f"Not sent: {e}"))
             return 1
-        print("Отправил пробное уведомление")
+        print(tr("Отправил пробное уведомление", "Sent a test notification"))
         return 0
-    print(f"В Tossling: {ntfy_alert.phone_mode()}. agentmeister notify phone away | always | off | test")
+    if value:
+        print("agentmeister notify tossling away | always | off | test | body full|title | server <url>|auto | token [off]")
+        return 2
+    print(tossling_describe())
     return 0
 
 
@@ -724,8 +776,10 @@ def main():
         return test()
     if rest[0] == "telegram":
         return telegram.main(rest[1:])
-    if rest[0] == "phone":
+    if rest[0] in ("tossling", "phone"):
         return phone(rest[1:])
+    if rest[0] == "ntfy":
+        return ntfy_channel.main(rest[1:])
     usage()
     return 2
 

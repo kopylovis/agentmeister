@@ -621,18 +621,29 @@ def settings():
 
     def notify():
         import ntfy_alert
+        import ntfy_channel
         import presence
         try:
             after = int(cfg.get("notify_after", 20))
         except ValueError:
             after = 20
         away = presence.away_after()
+        tossling = ntfy_alert.endpoint()  # одна проверка: она запускает tossling config
+        tossling_mode = ntfy_alert.phone_mode() if tossling else "off"
         return {"on": cfg.get("notify", "on") != "off", "after": after, "sound": cfg.get("notify_sound", "on") != "off",
                 "away": away,
                 "telegram": {"connected": bool(cfg.get("telegram_chat")), "bot": cfg.get("telegram_bot") or None,
                              "when": "always" if cfg.get("telegram_when") == "always" else "away", "away": away,
                              "approve": cfg.get("telegram_approve", "off") == "on"},
-                "phone": {"mode": ntfy_alert.phone_mode(), "configured": ntfy_alert.configured()}}
+                "phone": {"mode": tossling_mode, "configured": bool(tossling)},
+                "tossling": {"mode": tossling_mode, "configured": bool(tossling), "server": tossling[0] if tossling else None,
+                             "source": ("manual" if ntfy_alert.manual_server() else "cli") if tossling else None,
+                             "topic": ntfy_alert.AGENTMEISTER_TOPIC, "body": ntfy_alert.body_mode(),
+                             "docs": ntfy_alert.INSTALL_DOCS},
+                "ntfy": {"mode": ntfy_channel.mode(), "configured": ntfy_channel.configured(),
+                         "server": ntfy_channel.server(), "topic": ntfy_channel.topic() or None,
+                         "body": ntfy_channel.body_mode(), "token": bool(ntfy_channel.token()),
+                         "public": ntfy_channel.public(), "subscribe": ntfy_channel.subscribe_url() or None}}
 
     def guard():
         import claude_guard
