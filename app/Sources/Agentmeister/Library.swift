@@ -226,8 +226,8 @@ struct LibraryView: View {
         let bytes = claude.reduce(0) { $0 + $1.size }
         let size = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
         let days = backend.state.retentionDays ?? 30
-        return l.t("\(l.count(n, "сессия", "сессии", "сессий", "session", "sessions")), \(size) в ~/.claude/projects. Переписки хранятся \(days) дней.",
-                   "\(l.count(n, "сессия", "сессии", "сессий", "session", "sessions")), \(size) in ~/.claude/projects. Transcripts are kept for \(days) days.")
+        return l.t("\(l.count(n, "сессия", "сессии", "сессий", "session", "sessions")), \(size) в \(tilde(LoginEnvironment.claudeHome))/projects. Переписки хранятся \(days) дней.",
+                   "\(l.count(n, "сессия", "сессии", "сессий", "session", "sessions")), \(size) in \(tilde(LoginEnvironment.claudeHome))/projects. Transcripts are kept for \(days) days.")
     }
 
 }

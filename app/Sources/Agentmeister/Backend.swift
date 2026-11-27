@@ -7,6 +7,18 @@ import Foundation
 enum LoginEnvironment {
     static let shared: [String: String] = load()
 
+    /// Папка настроек Claude Code: CLAUDE_CONFIG_DIR из окружения входа или ~/.claude, как у самого claude.
+    static var claudeHome: String {
+        shared["CLAUDE_CONFIG_DIR"].flatMap { $0.isEmpty ? nil : ($0 as NSString).expandingTildeInPath }
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
+    }
+
+    /// Папка Codex: CODEX_HOME из окружения входа или ~/.codex.
+    static var codexHome: String {
+        shared["CODEX_HOME"].flatMap { $0.isEmpty ? nil : ($0 as NSString).expandingTildeInPath }
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent(".codex")
+    }
+
     private static let marker = "__AGENTMEISTER_ENV__"
     /// Переменные самой оболочки, которые не нужно переносить во вкладки.
     private static let shellOnly: Set<String> = ["PWD", "OLDPWD", "SHLVL", "_", "TERM", "ZSH_EXECUTION_STRING"]
@@ -459,9 +471,7 @@ final class Backend: ObservableObject {
     /// Открытые сессии из реестра Claude Code, у которых жив процесс. То же, что claude_live.live() в CLI.
     nonisolated static func readLive() -> [AppState.Live] {
         if Demo.active { return [] }
-        let env = LoginEnvironment.shared
-        let home = env["CLAUDE_CONFIG_DIR"] ?? (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
-        let dir = (home as NSString).appendingPathComponent("sessions")
+        let dir = (LoginEnvironment.claudeHome as NSString).appendingPathComponent("sessions")
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return [] }
         var out: [AppState.Live] = []
         for name in names where name.hasSuffix(".json") {

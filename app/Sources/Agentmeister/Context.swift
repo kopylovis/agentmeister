@@ -14,7 +14,7 @@ enum SessionContext {
         lock.lock(); defer { lock.unlock() }
         let fm = FileManager.default
         if let known = paths[sessionId], fm.fileExists(atPath: known) { return known }
-        let root = (NSHomeDirectory() as NSString).appendingPathComponent(".claude/projects")
+        let root = (LoginEnvironment.claudeHome as NSString).appendingPathComponent("projects")
         for dir in (try? fm.contentsOfDirectory(atPath: root)) ?? [] {
             let path = "\(root)/\(dir)/\(sessionId).jsonl"
             if fm.fileExists(atPath: path) {
@@ -73,8 +73,7 @@ enum SessionContext {
         lock.lock(); defer { lock.unlock() }
         let fm = FileManager.default
         if let known = codexPaths[threadId], fm.fileExists(atPath: known) { return known }
-        let home = ProcessInfo.processInfo.environment["CODEX_HOME"] ?? (NSHomeDirectory() as NSString).appendingPathComponent(".codex")
-        let root = (home as NSString).appendingPathComponent("sessions")
+        let root = (LoginEnvironment.codexHome as NSString).appendingPathComponent("sessions")
         let suffix = "-\(threadId.lowercased()).jsonl"
         for year in ((try? fm.contentsOfDirectory(atPath: root)) ?? []).sorted(by: >) {
             for month in ((try? fm.contentsOfDirectory(atPath: "\(root)/\(year)")) ?? []).sorted(by: >) {
