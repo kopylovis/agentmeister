@@ -346,8 +346,8 @@ Claude отправляет запросы к API Anthropic через лока�
 а Ctrl+C ее останавливает. Писать в список сессия через proxy не может, но может попросить:
 
 ```sh
-agentmeister host-run add tossling-ios --cwd ~/Developer/tossling-mobile --run bundle exec fastlane ios_beta
-agentmeister host-run remove tossling-ios
+agentmeister host-run add myapp-beta --cwd ~/Developer/myapp --run bundle exec fastlane ios_beta
+agentmeister host-run remove myapp-beta
 ```
 
 Исполнитель показывает на маке окно с именем, папкой и полной командой. Запись появится, только если
@@ -362,8 +362,8 @@ agentmeister host-run remove tossling-ios
 ```json
 {
   "commands": {
-    "tossling-ios": {"cwd": "~/Developer/tossling-mobile", "run": ["bundle", "exec", "fastlane", "ios_beta"]},
-    "tossling-firebase": {"cwd": "~/Developer/tossling-mobile", "run": ["bundle", "exec", "fastlane", "upload"],
+    "myapp-beta": {"cwd": "~/Developer/myapp", "run": ["bundle", "exec", "fastlane", "ios_beta"]},
+    "myapp-firebase": {"cwd": "~/Developer/myapp", "run": ["bundle", "exec", "fastlane", "upload"],
                           "args": true}
   }
 }
