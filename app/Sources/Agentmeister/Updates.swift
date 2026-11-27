@@ -34,6 +34,9 @@ final class Updates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUStandard
         available = true
     }
 
+    /// Когда Sparkle последний раз проверял обновления, для окна "О программе".
+    var lastCheck: Date? { controller?.updater.lastUpdateCheckDate }
+
     func check() {
         NSApp.activate()
         controller?.checkForUpdates(nil)

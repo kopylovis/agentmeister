@@ -93,6 +93,12 @@ struct AgentmeisterApp: App {
                 .environmentObject(ui)
         }
         .windowStyle(.hiddenTitleBar)
+        Window(L(backend.state.lang).t("О программе", "About Agentmeister"), id: "about") {
+            AboutView()
+                .environmentObject(backend)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
         Window(L(backend.state.lang).t("Сессии", "Sessions"), id: "library") {
             LibraryView()
                 .environmentObject(backend)
@@ -135,6 +141,9 @@ struct AgentmeisterApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             let l = L(backend.state.lang)
+            CommandGroup(replacing: .appInfo) {
+                AboutCommand(l: l)
+            }
             CommandGroup(after: .appInfo) {
                 UpdateCommands(l: l)
             }
