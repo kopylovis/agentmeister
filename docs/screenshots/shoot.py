@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 APP = os.path.join(ROOT, "app", ".build", "out", "Products", "Debug", "Agentmeister")
 # сцена: (что снимать, через сколько секунд)
 SCENES = {"main": ("main", 7), "new-session": ("sheet", 8), "project": ("main", 8), "settings": ("settings", 9),
-          "settings-modes": ("settings", 9), "settings-notify": ("settings", 9), "settings-general": ("settings", 9), "settings-buildlog": ("settings", 9), "settings-lid": ("settings", 9), "settings-humanize": ("settings", 9),
+          "settings-modes": ("settings", 9), "settings-notify": ("settings", 9), "settings-general": ("settings", 9), "settings-buildlog": ("settings", 9), "settings-lid": ("settings", 9), "settings-humanize": ("settings", 9), "settings-guard": ("settings", 9),
           "settings-notify-phone": ("settings", 10), "settings-notify-add": ("settings", 10), "rail": ("main", 8), "about": ("settings", 8), "headsup": ("settings", 9),
           "inspector-scroll": ("main", 7)}
 # сцены, которые показывает README

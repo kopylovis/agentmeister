@@ -920,6 +920,8 @@ master ↑3 ±5 · vite :5173 · memory 9.9/16 GB · swap 1.5 · Gradle 2 (3.1 G
 сообщению после вопроса, модель не может ответить за тебя. `agentmeister guard skip
 destructive` выключает правило, `guard test '<команда>'` показывает решение, `guard log` —
 последние срабатывания.
+Встроенные секреты заточены под мобильную разработку (keystore, .p8, fastlane). Свои добавляет
+`agentmeister guard secret add '*.tfvars'` или `guard secret add ~/.kube/config`, `/` в конце берет всю папку.
 
 ### Длинный вывод сборок: `agentmeister buildlog`
 

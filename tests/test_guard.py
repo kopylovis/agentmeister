@@ -397,3 +397,19 @@ class Decide(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UserSecrets(unittest.TestCase):
+    def test_own_patterns_by_name_path_and_folder(self):
+        import tempfile
+        conf = os.path.join(tempfile.mkdtemp(prefix="cm-guard-secrets-"), "config")
+        with open(conf, "w") as f:
+            f.write("guard_secrets=*.tfvars,~/.kube/config,~/.config/gcloud/\n")
+        with patch.object(mnrhlib, "CONFIG", conf):
+            self.assertTrue(g.is_secret("/x/prod.tfvars"))
+            self.assertTrue(g.is_secret("~/.kube/config"))
+            self.assertTrue(g.is_secret(os.path.expanduser("~/.config/gcloud/credentials.db")))
+            self.assertFalse(g.is_secret("/x/main.tf"))
+            self.assertEqual(g.check("Bash", {"command": "cat infra/prod.tfvars"}, "/tmp")[0], "secrets-read")
+        with patch.object(mnrhlib, "CONFIG", conf + ".missing"):
+            self.assertFalse(g.is_secret("/x/prod.tfvars"))

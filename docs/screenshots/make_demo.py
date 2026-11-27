@@ -266,7 +266,7 @@ def build(out):
                                "tag": None}},
         "guard": {"on": True, "log": [stamp(NOW - 26 * 3600, "%d.%m %H:%M") + "  ask   force-push     git push --force origin main",
                                       stamp(NOW - 3 * 3600, "%d.%m %H:%M") + "  hold  rm-root        rm -rf ../build-cache"],
-                  "lastHit": int(NOW - 3 * 3600), "logPath": H + "/Library/Logs/mnrh-guard.log", "rules": [
+                  "lastHit": int(NOW - 3 * 3600), "logPath": H + "/Library/Logs/mnrh-guard.log", "secrets": ["*.tfvars", "~/.kube/config"], "rules": [
             {"id": "rm-root", "text": "rm -rf вне проекта", "textEn": "rm -rf outside the project", "on": True},
             {"id": "force-push", "text": "git push --force в main", "textEn": "git push --force to main", "on": True},
             {"id": "curl-sh", "text": "curl | sh", "textEn": "curl | sh", "on": True}]},

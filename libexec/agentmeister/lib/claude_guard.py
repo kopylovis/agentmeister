@@ -91,11 +91,35 @@ def log(line):
         pass
 
 
+def user_secrets():
+    """Свои маски секретов: guard_secrets в config через запятую. Маска без "/" сверяется с именем файла
+    (*.tfvars), с "/" с полным путем (~/.kube/config, ~/.config/gcloud/ для всей папки)."""
+    return [p.strip() for p in read_config().get("guard_secrets", "").split(",") if p.strip()]
+
+
+def matches_user_secret(path, name):
+    full = os.path.abspath(os.path.expanduser(path))
+    for pattern in user_secrets():
+        if "/" not in pattern:
+            if fnmatch.fnmatch(name, pattern):
+                return True
+            continue
+        want = os.path.abspath(os.path.expanduser(pattern))
+        if pattern.endswith("/"):
+            if full == want or full.startswith(want + "/"):
+                return True
+        elif fnmatch.fnmatch(full, want):
+            return True
+    return False
+
+
 def is_secret(path):
     name = os.path.basename(path.rstrip("/"))
     if not name or any(fnmatch.fnmatch(name, p) for p in NOT_SECRET):
         return False
     if any(fnmatch.fnmatch(name, p) for p in SECRET_NAMES):
+        return True
+    if matches_user_secret(path, name):
         return True
     full = os.path.expanduser(path)
     for d in ("~/.ssh/", "~/.aws/", "~/.gnupg/", "~/.config/gh/hosts", "~/.claude/.credentials"):
@@ -866,6 +890,7 @@ def usage():
     print(tr("""agentmeister guard                   состояние и правила
 agentmeister guard on | off          включить или выключить совсем
 agentmeister guard skip <правило>    не проверять правило; unskip <правило> — вернуть
+agentmeister guard secret add <маска>  свой секрет: *.tfvars, ~/.kube/config, ~/.config/gcloud/; remove убирает
 agentmeister guard test '<команда>'  что сделает guard с этой командой (в папке, где запущен)
 agentmeister guard log               последние решения
 
@@ -875,6 +900,7 @@ agentmeister guard log               последние решения
              """agentmeister guard                   state and rules
 agentmeister guard on | off          turn on or off entirely
 agentmeister guard skip <rule>       don't check a rule; unskip <rule> brings it back
+agentmeister guard secret add <mask>  your own secret: *.tfvars, ~/.kube/config, ~/.config/gcloud/; remove drops it
 agentmeister guard test '<command>'  what guard does with this command (in the current folder)
 agentmeister guard log               recent decisions
 
@@ -919,6 +945,21 @@ def main():
         write_config(guard_skip=",".join(sorted(skip)))
         print(tr(f"Правило {rest[1]} {'выключено' if cmd == 'skip' else 'включено'}",
                  f"Rule {rest[1]} {'off' if cmd == 'skip' else 'on'}"))
+        return 0
+    if cmd == "secret":
+        own = user_secrets()
+        if len(rest) == 3 and rest[1] in ("add", "remove"):
+            pattern = rest[2].strip()
+            if not pattern or "," in pattern:
+                print(tr("Маска без запятых: *.tfvars или ~/.kube/config", "A pattern without commas: *.tfvars or ~/.kube/config"),
+                      file=sys.stderr)
+                return 2
+            own = own + [pattern] if rest[1] == "add" and pattern not in own else [p for p in own if p != pattern]
+            write_config(guard_secrets=",".join(own) or None)
+        elif len(rest) != 1:
+            print("agentmeister guard secret [add|remove <маска>]", file=sys.stderr)
+            return 2
+        print(tr("Свои секреты: ", "Your secrets: ") + (", ".join(own) if own else tr("нет", "none")))
         return 0
     if cmd == "test" and len(rest) >= 2:
         text = " ".join(rest[1:])
