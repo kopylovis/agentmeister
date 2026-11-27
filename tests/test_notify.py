@@ -455,6 +455,128 @@ class GotifyChannel(unittest.TestCase):
         self.assertEqual((self.keys, notify.gotify_channel.server(), notify.gotify_channel.mode()), ({}, "", "off"))
 
 
+class KeychainCase(unittest.TestCase):
+    """Пустой config и подменная Связка ключей для тестов каналов."""
+
+    def setUp(self):
+        empty_config(self)
+        self.keys = {}
+        for name, fn in (("find", lambda account, service="agentmeister.notify": self.keys.get((service, account), "")),
+                         ("save", lambda account, value, label, service="agentmeister.notify": self.keys.update({(service, account): value}) or True),
+                         ("delete", lambda account, service="agentmeister.notify": self.keys.pop((service, account), None))):
+            patcher = mock.patch.object(notify.keychain, name, fn)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def run_cli(self, module, *args, stdin=""):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.object(sys, "stdin", io.StringIO(stdin)):
+            code = module.main(list(args))
+        return code, out.getvalue()
+
+
+class WebhookChannel(KeychainCase):
+    def test_setup_send_and_title_only(self):
+        w = notify.webhook_channel
+        self.assertEqual(self.run_cli(w, "setup", stdin="https://hooks.example.com/x?token=s3cret\n")[0], 0)
+        self.assertEqual(self.keys, {("agentmeister.notify", "webhook"): "https://hooks.example.com/x?token=s3cret"})
+        self.assertEqual((w.mode(), w.body_mode(), w.host()), ("away", "full", "hooks.example.com"))
+        self.assertNotIn("s3cret", w.describe())
+        self.run_cli(w, "auth", stdin="Bearer abc")
+        msg = notify.channels.Message("Codex", "Answer needed", "app", "Session", "Which branch?", True)
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            notify.channels.Webhook().send(msg)
+        req = urlopen.call_args.args[0]
+        self.assertEqual((req.full_url, req.get_header("Authorization")), ("https://hooks.example.com/x?token=s3cret", "Bearer abc"))
+        data = json.loads(req.data)
+        self.assertEqual((data["title"], data["message"], data["project"], data["urgent"]),
+                         ("Codex: Answer needed", "Session\n\nWhich branch?", "app", True))
+        self.assertEqual(data["text"], "Codex: Answer needed\nSession\n\nWhich branch?")
+        self.run_cli(w, "body", "title")
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            notify.channels.Webhook().send(msg)
+        data = json.loads(urlopen.call_args.args[0].data)
+        self.assertEqual((data["message"], data["session"]), ("app", ""))
+        self.run_cli(w, "forget")
+        self.assertEqual((self.keys, w.mode()), ({}, "off"))
+
+    def test_bad_url(self):
+        self.assertEqual(self.run_cli(notify.webhook_channel, "setup", stdin="hooks.example.com")[0], 2)
+        self.assertEqual(self.keys, {})
+
+
+class PushoverChannel(KeychainCase):
+    def test_setup_and_send(self):
+        p = notify.pushover_channel
+        self.assertEqual(self.run_cli(p, "setup", stdin="uUSER\naTOKEN\n")[0], 0)
+        self.assertEqual(self.keys, {("agentmeister.notify", "pushover-user"): "uUSER", ("agentmeister.notify", "pushover"): "aTOKEN"})
+        self.assertEqual((p.mode(), p.body_mode()), ("away", "title"))
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            p.send("Claude Code: Permission needed", "app", urgent=True)
+        req = urlopen.call_args.args[0]
+        self.assertEqual(req.full_url, "https://api.pushover.net/1/messages.json")
+        self.assertEqual(dict(notify.pushover_channel.urllib.parse.parse_qsl(req.data.decode())),
+                         {"token": "aTOKEN", "user": "uUSER", "title": "Claude Code: Permission needed", "message": "app", "priority": "1"})
+
+    def test_errors_and_missing_half(self):
+        p = notify.pushover_channel
+        self.assertEqual(self.run_cli(p, "setup", stdin="only-one")[0], 2)
+        self.run_cli(p, "setup", stdin="u t")
+        err = p.urllib.error.HTTPError(p.API, 400, "x", {}, io.BytesIO(b'{"status":0,"errors":["application token is invalid"]}'))
+        with mock.patch("urllib.request.urlopen", side_effect=err), \
+                self.assertRaisesRegex(p.PushoverError, "application token is invalid"):
+            p.send("t", "m")
+
+
+class AppriseChannel(unittest.TestCase):
+    def setUp(self):
+        empty_config(self)
+        self.home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.exe = os.path.join(self.home, "apprise")
+        a = notify.apprise_channel
+        for name, value in (("CONFIGS", (os.path.join(self.home, "apprise.yml"),)), ("SEARCH", (self.home,))):
+            patcher = mock.patch.object(a, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        patcher = mock.patch.object(a.shutil, "which", return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def install(self, config=True):
+        with open(self.exe, "w") as f:
+            f.write("#!/bin/sh\n")
+        os.chmod(self.exe, 0o755)
+        if config:
+            with open(os.path.join(self.home, "apprise.yml"), "w") as f:
+                f.write("urls:\n  - json://localhost\n")
+
+    def test_needs_binary_and_config(self):
+        a = notify.apprise_channel
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(a.main(["away"]), 1)
+        self.install(config=False)
+        self.assertFalse(a.configured())
+        self.install()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(a.main(["away"]), 0)
+        self.assertEqual((a.mode(), a.body_mode()), ("away", "title"))
+
+    def test_body_goes_through_stdin(self):
+        a = notify.apprise_channel
+        self.install()
+        with contextlib.redirect_stdout(io.StringIO()):
+            a.main(["tag", "phone"])
+        with mock.patch.object(a.subprocess, "run", return_value=mock.Mock(returncode=0, stdout="", stderr="")) as run:
+            a.send("Codex: Done", "secret command text", urgent=False)
+        args, kwargs = run.call_args
+        self.assertEqual(args[0], [self.exe, "-t", "Codex: Done", "-n", "info", "-g", "phone"])
+        self.assertEqual(kwargs["input"], "secret command text")
+        with mock.patch.object(a.subprocess, "run", return_value=mock.Mock(returncode=1, stdout="", stderr="x\nno services\n")), \
+                self.assertRaisesRegex(a.AppriseError, "no services"):
+            a.send("t", "m")
+
+
 class TosslingPreset(unittest.TestCase):
     """Tossling как пресет ntfy: настройки tossling CLI или адрес вручную с токеном из Связки ключей."""
 

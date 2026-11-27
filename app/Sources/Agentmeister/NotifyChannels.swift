@@ -6,7 +6,7 @@ import SwiftUI
 /// карточками и лист "Добавить канал". Каждое действие это agentmeister notify <канал> ..., секреты уходят
 /// через stdin (Backend.runWithInput), в аргументах их видно в ps.
 enum PhoneChannel: String, CaseIterable, Identifiable {
-    case telegram, tossling, ntfy, bark, gotify
+    case telegram, tossling, ntfy, bark, gotify, webhook, pushover, apprise
     var id: String { rawValue }
 
     var name: String {
@@ -16,6 +16,9 @@ enum PhoneChannel: String, CaseIterable, Identifiable {
         case .ntfy: "ntfy"
         case .bark: "Bark"
         case .gotify: "Gotify"
+        case .webhook: "Webhook"
+        case .pushover: "Pushover"
+        case .apprise: "Apprise"
         }
     }
 
@@ -27,6 +30,9 @@ enum PhoneChannel: String, CaseIterable, Identifiable {
         case .ntfy: ("binwiederhier/ntfy", "https://github.com/binwiederhier/ntfy")
         case .bark: ("Finb/Bark", "https://github.com/Finb/Bark")
         case .gotify: ("gotify/server", "https://github.com/gotify/server")
+        case .webhook: ("POST JSON", "https://github.com/kopylovis/agentmeister#notifications-when-claude-is-waiting-for-you")
+        case .pushover: ("pushover.net/api", "https://pushover.net/api")
+        case .apprise: ("caronc/apprise", "https://github.com/caronc/apprise")
         }
     }
 
@@ -37,6 +43,9 @@ enum PhoneChannel: String, CaseIterable, Identifiable {
         case .ntfy: l.t("ntfy.sh или свой сервер ntfy", "ntfy.sh or your own ntfy server")
         case .bark: l.t("Push на iPhone через APNs без своего приложения", "Push to an iPhone through APNs without your own app")
         case .gotify: l.t("Свой сервер Gotify и приложение на Android", "Your own Gotify server and the Android app")
+        case .webhook: l.t("POST с JSON на любой адрес", "POST JSON to any URL")
+        case .pushover: l.t("Платный сервис, свой сервер не нужен", "A paid service, no server of your own")
+        case .apprise: l.t("Около сотни сервисов через apprise на этом Mac", "About a hundred services through apprise on this Mac")
         }
     }
 
@@ -47,6 +56,9 @@ enum PhoneChannel: String, CaseIterable, Identifiable {
         case .ntfy: ["Android", "iPhone", l.t("облако или свой", "cloud or own")]
         case .bark: ["iPhone", l.t("облако или свой", "cloud or own")]
         case .gotify: ["Android", l.t("веб", "web"), l.t("свой сервер", "own server")]
+        case .webhook: ["Home Assistant", "n8n", l.t("скрипты", "scripts")]
+        case .pushover: ["Android", "iPhone", l.t("платно", "paid")]
+        case .apprise: [l.t("любые", "any"), l.t("свой config", "own config")]
         }
     }
 }
@@ -83,6 +95,9 @@ struct PhoneChannels: View {
         case .ntfy: n.ntfy?.configured ?? false
         case .bark: n.bark?.configured ?? false
         case .gotify: n.gotify?.configured ?? false
+        case .webhook: n.webhook?.configured ?? false
+        case .pushover: n.pushover?.configured ?? false
+        case .apprise: n.apprise?.configured ?? false
         }
     }
 
@@ -134,7 +149,7 @@ struct PhoneChannels: View {
         .onAppear {
             guard Demo.active, open.isEmpty else { return }
             if Demo.scene == "settings-notify-add" { adding = true }
-            open = Demo.scene == "settings-notify-phone" ? [.bark, .gotify] : Demo.scene == "settings-notify" ? [.ntfy] : [.telegram]
+            open = Demo.scene == "settings-notify-phone" ? [.webhook] : Demo.scene == "settings-notify" ? [.ntfy] : [.telegram]
         }
         .sheet(isPresented: $adding) {
             AddChannelSheet(l: l, connected: Set(connected)) { Task { await reload() } }
@@ -163,6 +178,9 @@ struct ChannelCard: View {
         case .ntfy: n.ntfy?.mode ?? "off"
         case .bark: n.bark?.mode ?? "off"
         case .gotify: n.gotify?.mode ?? "off"
+        case .webhook: n.webhook?.mode ?? "off"
+        case .pushover: n.pushover?.mode ?? "off"
+        case .apprise: n.apprise?.mode ?? "off"
         }
     }
 
@@ -173,6 +191,9 @@ struct ChannelCard: View {
         case .ntfy: n.ntfy?.body
         case .bark: n.bark?.body
         case .gotify: n.gotify?.body
+        case .webhook: n.webhook?.body
+        case .pushover: n.pushover?.body
+        case .apprise: n.apprise?.body
         }
     }
 
@@ -183,6 +204,9 @@ struct ChannelCard: View {
         case .ntfy: n.ntfy?.error
         case .bark: n.bark?.error
         case .gotify: n.gotify?.error
+        case .webhook: n.webhook?.error
+        case .pushover: n.pushover?.error
+        case .apprise: n.apprise?.error
         }
     }
 
@@ -194,6 +218,9 @@ struct ChannelCard: View {
             .filter { !$0.isEmpty }.joined(separator: " · ")
         case .bark: host(n.bark?.server) + ((n.bark?.encrypted ?? false) ? " · AES-256" : "")
         case .gotify: host(n.gotify?.server)
+        case .webhook: n.webhook?.host ?? ""
+        case .pushover: "api.pushover.net"
+        case .apprise: [n.apprise?.config ?? "", n.apprise?.tag.map { "#" + $0 } ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
         }
     }
 
@@ -289,6 +316,9 @@ struct ChannelCard: View {
         case .ntfy: ntfy
         case .bark: bark
         case .gotify: gotify
+        case .webhook: webhook
+        case .pushover: pushover
+        case .apprise: apprise
         }
         footer
     }
@@ -411,11 +441,50 @@ struct ChannelCard: View {
         Note(text: l.t("Приложения для iPhone у Gotify нет.", "Gotify has no iPhone app."))
     }
 
+    @ViewBuilder private var webhook: some View {
+        field(l.t("Адрес", "URL"), keychain: true) {
+            secret = SecretRequest(title: l.t("Адрес вебхука", "Webhook URL"),
+                                   prompt: l.t("Полный адрес, токен в нем останется в Связке ключей", "The full URL, a token in it stays in the keychain"),
+                                   args: ["notify", "webhook", "setup"])
+        }
+        field(l.t("Authorization", "Authorization"), keychain: n.webhook?.auth ?? false, empty: l.t("нет", "none")) {
+            secret = SecretRequest(title: l.t("Заголовок Authorization", "Authorization header"),
+                                   prompt: l.t("Значение заголовка, например Bearer <токен>", "The header value, for example Bearer <token>"),
+                                   args: ["notify", "webhook", "auth"])
+        }
+        Note(text: l.t("Тело запроса JSON с полями agent, title, message, project, session, urgent и строкой text.",
+                       "The request body is JSON with agent, title, message, project, session, urgent and a text line."))
+    }
+
+    @ViewBuilder private var pushover: some View {
+        field(l.t("Ключ пользователя и токен", "User Key and token"), keychain: true) {
+            secret = SecretRequest(title: l.t("Ключи Pushover", "Pushover keys"),
+                                   prompt: l.t("User Key и API Token приложения через пробел", "The User Key and the app API Token, separated by a space"),
+                                   args: ["notify", "pushover", "setup"])
+        }
+        Note(text: l.t("Вопросы и запросы уходят с приоритетом 1, он пробивает тихие часы Pushover.",
+                       "Questions and requests go with priority 1, which gets through Pushover quiet hours."))
+    }
+
+    @ViewBuilder private var apprise: some View {
+        let t = n.apprise
+        field(l.t("Config apprise", "apprise config"), t?.config ?? "")
+        HStack(spacing: 12) {
+            Text(l.t("Тег", "Tag")).foregroundStyle(Ink.muted).frame(width: 170, alignment: .leading)
+            Text(t?.tag ?? l.t("все сервисы без тега", "all untagged services")).font(.system(size: 12, design: .monospaced))
+            Spacer()
+        }
+        .font(.system(size: 13))
+        Note(text: l.t("Адреса сервисов и их токены живут в config apprise, agentmeister их не хранит. Текст уходит в apprise через stdin. Тег задается командой agentmeister notify apprise tag <тег>.",
+                       "Service URLs and their tokens live in the apprise config, agentmeister doesn't keep them. The text goes to apprise through stdin. Set a tag with agentmeister notify apprise tag <tag>."))
+    }
+
     private var removeArgs: [[String]]? {
         switch channel {
         case .telegram: [["notify", "telegram", "off"]]
         case .tossling: n.tossling?.source == "manual" ? [["notify", "tossling", "off"], ["notify", "tossling", "token", "off"], ["notify", "tossling", "server", "auto"]] : nil
-        case .ntfy, .bark, .gotify: [["notify", channel.rawValue, "forget"]]
+        case .ntfy, .bark, .gotify, .webhook, .pushover: [["notify", channel.rawValue, "forget"]]
+        case .apprise: [["notify", "apprise", "forget"]]
         }
     }
 
@@ -616,6 +685,7 @@ struct AddChannelSheet: View {
     @State private var picked: PhoneChannel?
     @State private var server = ""
     @State private var token = ""
+    @State private var extra = ""
     @State private var busy = false
     @State private var error: String?
 
@@ -650,6 +720,7 @@ struct AddChannelSheet: View {
                 picked = c
                 server = c == .ntfy ? "https://ntfy.sh" : ""
                 token = ""
+                extra = ""
                 error = nil
             } label: {
                 VStack(alignment: .leading, spacing: 6) {
@@ -709,6 +780,22 @@ struct AddChannelSheet: View {
         case .gotify:
             input(l.t("Сервер", "Server"), "https://gotify.example.com", $server)
             input(l.t("Токен приложения", "App token"), l.t("из Apps в веб-панели", "from Apps in the web UI"), $token, secure: true)
+        case .webhook:
+            input(l.t("Адрес", "URL"), "https://example.com/hooks/agentmeister", $token, secure: true)
+            input(l.t("Authorization, необязательно", "Authorization, optional"), "Bearer …", $extra, secure: true)
+            Text(l.t("Адрес хранится в Связке ключей целиком, токен в нем никуда не попадет.",
+                     "The URL is kept in the keychain whole, a token in it goes nowhere else."))
+                .font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
+        case .pushover:
+            input(l.t("Ключ пользователя", "User Key"), "u…", $server, secure: true)
+            input(l.t("Токен приложения", "App API Token"), "a…", $token, secure: true)
+            Link(l.t("Где взять", "Where to get them"), destination: URL(string: "https://pushover.net/api")!).font(.system(size: 12))
+        case .apprise:
+            Text(l.t("Нужны команда apprise (brew install apprise) и ее config со списком сервисов, например ~/.config/apprise/apprise.yml. agentmeister только включает отправку через нее.",
+                     "This needs the apprise command (brew install apprise) and its config with your services, for example ~/.config/apprise/apprise.yml. agentmeister only turns sending through it on."))
+                .font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
+            Link(l.t("Как писать config apprise", "How to write the apprise config"), destination: URL(string: "https://github.com/caronc/apprise/wiki/config")!)
+                .font(.system(size: 12))
         }
         if let error { Text(error).font(.system(size: 12)).foregroundStyle(Ink.red).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
         HStack {
@@ -744,7 +831,9 @@ struct AddChannelSheet: View {
         case .telegram: return true
         case .ntfy: return !s.isEmpty
         case .bark: return !t.isEmpty
-        case .tossling, .gotify: return !s.isEmpty && !t.isEmpty
+        case .tossling, .gotify, .pushover: return !s.isEmpty && !t.isEmpty
+        case .webhook: return !t.isEmpty
+        case .apprise: return true
         }
     }
 
@@ -757,6 +846,11 @@ struct AddChannelSheet: View {
         case .ntfy: return [(["notify", "ntfy", "setup", "--server", s], nil)] + (t.isEmpty ? [] : [(["notify", "ntfy", "token"], t)])
         case .bark: return [(["notify", "bark", "setup"], t)]
         case .gotify: return [(["notify", "gotify", "setup", s], t)]
+        case .webhook:
+            let auth = extra.trimmingCharacters(in: .whitespacesAndNewlines)
+            return [(["notify", "webhook", "setup"], t)] + (auth.isEmpty ? [] : [(["notify", "webhook", "auth"], auth)])
+        case .pushover: return [(["notify", "pushover", "setup"], s + "\n" + t)]
+        case .apprise: return [(["notify", "apprise", "away"], nil)]
         }
     }
 

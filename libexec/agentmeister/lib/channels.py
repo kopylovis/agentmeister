@@ -6,12 +6,15 @@ import os
 import time
 from typing import NamedTuple
 
+import apprise_channel
 import bark_channel
 import gotify_channel
 import ntfy_alert
 import ntfy_channel
 import presence
+import pushover_channel
 import telegram
+import webhook_channel
 from mnrhlib import CACHE, write_json
 
 MODES = ("off", "away", "always")
@@ -149,7 +152,62 @@ class Gotify(Channel):
             raise SendError(str(e)) from None
 
 
-ALL = (Telegram(), Tossling(), Ntfy(), Bark(), Gotify())
+class Webhook(Channel):
+    name = "webhook"
+    label = "Webhook"
+
+    def configured(self):
+        return webhook_channel.configured()
+
+    def mode(self):
+        return webhook_channel.mode()
+
+    def send(self, msg):
+        data = webhook_channel.payload(msg.agent, msg.head, msg.project, msg.title, msg.body, msg.urgent,
+                                       webhook_channel.body_mode())
+        try:
+            webhook_channel.send(data)
+        except webhook_channel.WebhookError as e:
+            raise SendError(str(e)) from None
+
+
+class Pushover(Channel):
+    name = "pushover"
+    label = "Pushover"
+
+    def configured(self):
+        return pushover_channel.configured()
+
+    def mode(self):
+        return pushover_channel.mode()
+
+    def send(self, msg):
+        title, text = ntfy_text(msg, pushover_channel.body_mode())
+        try:
+            pushover_channel.send(title, text, urgent=msg.urgent)
+        except pushover_channel.PushoverError as e:
+            raise SendError(str(e)) from None
+
+
+class Apprise(Channel):
+    name = "apprise"
+    label = "Apprise"
+
+    def configured(self):
+        return apprise_channel.configured()
+
+    def mode(self):
+        return apprise_channel.mode()
+
+    def send(self, msg):
+        title, text = ntfy_text(msg, apprise_channel.body_mode())
+        try:
+            apprise_channel.send(title, text, urgent=msg.urgent)
+        except apprise_channel.AppriseError as e:
+            raise SendError(str(e)) from None
+
+
+ALL = (Telegram(), Tossling(), Ntfy(), Bark(), Gotify(), Webhook(), Pushover(), Apprise())
 
 
 def by_name(name):
