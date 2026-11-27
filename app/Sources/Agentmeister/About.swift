@@ -55,6 +55,7 @@ struct AboutView: View {
                 Text(l.t("Проекты, сессии, режимы и proxy для каждой сессии Claude Code и Codex.",
                          "Projects, sessions, modes and a per-session proxy for Claude Code and Codex."))
                     .font(.system(size: 13)).foregroundStyle(Ink.text2)
+                    .frame(width: 330, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                 Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
                     link(l.t("Автор", "Author"), "github.com/kopylovis", "https://github.com/kopylovis")
@@ -77,13 +78,15 @@ struct AboutView: View {
                 }
                 .font(.system(size: 13))
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // окно по размеру содержимого: одинаковые поля слева, справа и снизу
         .padding(.horizontal, 28)
-        .padding(.top, 36)
-        .padding(.bottom, 26)
-        .frame(width: 600)
+        // сверху уже есть полоса скрытого заголовка со светофором, свой отступ к ней небольшой
+        .padding(.top, 8)
+        .padding(.bottom, 28)
+        .fixedSize()
         .background(WindowDragArea())
+        .background(CloseOnlyWindow())
         .task {
             // версия CLI и путь к нему: в DMG свой agentmeister, а у разработчика он может смотреть в репозиторий
             guard LoginEnvironment.found else { return }
@@ -130,6 +133,27 @@ struct AboutView: View {
                 .help(url)
         }
     }
+}
+
+/// Окно, у которого из светофора работает только закрытие: как у панели "О программе" в macOS.
+struct CloseOnlyWindow: NSViewRepresentable {
+    final class Probe: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window else { return }
+            window.styleMask.remove([.miniaturizable, .resizable])
+            window.collectionBehavior.insert(.fullScreenNone)
+            window.standardWindowButton(.miniaturizeButton)?.isEnabled = false
+            window.standardWindowButton(.zoomButton)?.isEnabled = false
+            // окно сохраняло прежний размер, и снизу оставалась пустота: подгоняем под содержимое
+            DispatchQueue.main.async { [weak window] in
+                guard let window, let content = window.contentView else { return }
+                window.setContentSize(content.fittingSize)
+            }
+        }
+    }
+    func makeNSView(context: Context) -> NSView { Probe() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 /// Пункт "О программе" в меню приложения: открывает AboutView вместо стандартной панели.
