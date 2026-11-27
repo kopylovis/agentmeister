@@ -624,15 +624,8 @@ struct NotifyPane: View {
         }
     }
 
-    private func row<Control: View>(_ title: String, _ sub: String, @ViewBuilder control: () -> Control) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).fontWeight(.medium)
-                Text(sub).font(.system(size: 12)).foregroundStyle(Ink.muted)
-            }
-            Spacer()
-            control()
-        }
+    private func row<Control: View>(_ title: String, _ sub: String? = nil, @ViewBuilder control: @escaping () -> Control) -> some View {
+        SettingsRow(title, sub, titleFont: .system(size: 13, weight: .medium), control: control)
     }
 
     var body: some View {
@@ -679,14 +672,18 @@ struct NotifyPane: View {
                     }
                 }
                 if n.telegram.connected {
-                    HStack(spacing: 12) {
-                        Text(l.t("Присылать", "Send")).foregroundStyle(Ink.muted)
+                    row(l.t("Когда присылать", "When to send")) {
                         SegmentedCapsule(selection: Binding(get: { n.telegram.when }, set: { run(["notify", "telegram", $0]) }),
-                                         options: [("away", l.t("Когда я не за Mac", "When I'm away"), nil), ("always", l.t("Всегда", "Always"), nil)])
-                            .frame(maxWidth: 360)
-                        Text(l.t("Не за Mac после", "Away after")).foregroundStyle(Ink.muted)
-                        NumberField(value: max(1, n.telegram.away / 60)) { run(["notify", "telegram", "away", String($0 * 60)]) }
-                        Text(l.t("мин", "min")).foregroundStyle(Ink.muted)
+                                         options: [("away", l.t("Когда я не за Mac", "When I'm away"), nil), ("always", l.t("Всегда", "Always"), nil)],
+                                         compact: true)
+                    }
+                    row(l.t("Не за Mac после", "Away after"),
+                        l.t("Экран заблокирован или мышь и клавиатура не трогались столько минут",
+                            "The screen is locked or the mouse and keyboard sat idle this many minutes")) {
+                        HStack(spacing: 6) {
+                            NumberField(value: max(1, n.telegram.away / 60)) { run(["notify", "telegram", "away", String($0 * 60)]) }
+                            Text(l.t("мин", "min")).foregroundStyle(Ink.muted)
+                        }
                     }
                     VStack(alignment: .leading, spacing: 10) {
                         row(l.t("Отвечать на запросы разрешений из Telegram", "Answer permission requests from Telegram"),
@@ -708,12 +705,14 @@ struct NotifyPane: View {
                 }
             }
             GlassSection {
-                Text(l.t("Телефон через ntfy", "Phone through ntfy")).font(.system(size: 17, weight: .semibold))
-                Note(text: l.t("Канал claude в Tossling, вопросы и запросы с высоким приоритетом", "The claude channel in Tossling, questions and requests at high priority"))
-                SegmentedCapsule(selection: Binding(get: { n.phone.mode }, set: { run(["notify", "phone", $0]) }),
-                                 options: [("off", l.t("Выкл", "Off"), nil), ("away", l.t("Когда я не за Mac", "When I'm away"), nil), ("always", l.t("Всегда", "Always"), nil)])
-                    .frame(maxWidth: 480)
-                    .disabled(!n.phone.configured)
+                SettingsRow(l.t("Телефон через ntfy", "Phone through ntfy"),
+                            l.t("Канал claude в Tossling, вопросы и запросы с высоким приоритетом", "The claude channel in Tossling, questions and requests at high priority"),
+                            titleFont: .system(size: 17, weight: .semibold)) {
+                    SegmentedCapsule(selection: Binding(get: { n.phone.mode }, set: { run(["notify", "phone", $0]) }),
+                                     options: [("off", l.t("Выкл", "Off"), nil), ("away", l.t("Когда я не за Mac", "When I'm away"), nil), ("always", l.t("Всегда", "Always"), nil)],
+                                     compact: true)
+                        .disabled(!n.phone.configured)
+                }
                 if !n.phone.configured {
                     Text(l.t("ntfy не настроен", "ntfy isn't configured")).font(.system(size: 12)).foregroundStyle(Ink.amber)
                 }
@@ -935,11 +934,12 @@ struct AgentsPane: View {
 
     var body: some View {
         PaneTitle(l.t("Агенты", "Agents"))
-        HStack(spacing: 14) {
-            Text(l.t("Агент для новых сессий", "Agent for new sessions")).foregroundStyle(Ink.muted)
-            SegmentedCapsule(selection: $defaultAgent, options: [("claude", "Claude Code", nil), ("codex", "Codex", nil),
-                                                                  ("ask", l.t("Спрашивать", "Ask each time"), nil)])
-                .frame(maxWidth: 460)
+        GlassSection {
+            SettingsRow(l.t("Агент для новых сессий", "Agent for new sessions")) {
+                SegmentedCapsule(selection: $defaultAgent, options: [("claude", "Claude Code", nil), ("codex", "Codex", nil),
+                                                                      ("ask", l.t("Спрашивать", "Ask each time"), nil)],
+                                 compact: true)
+            }
         }
         if let data {
             // карточки одной высоты: каждая тянется до самой высокой

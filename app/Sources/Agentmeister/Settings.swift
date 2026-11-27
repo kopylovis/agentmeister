@@ -254,6 +254,39 @@ struct GlassSection<Content: View>: View {
     }
 }
 
+/// Ряд настройки по макету GeneralRows.dc.html: название и короткое пояснение слева (пояснение переносится),
+/// компактный контрол прижат к правому краю по центру и занимает ровно свою ширину.
+struct SettingsRow<Control: View>: View {
+    let title: String
+    var detail: String? = nil
+    var titleFont: Font = .system(size: 13, weight: .semibold)
+    @ViewBuilder var control: () -> Control
+
+    init(_ title: String, _ detail: String? = nil, titleFont: Font = .system(size: 13, weight: .semibold),
+         @ViewBuilder control: @escaping () -> Control) {
+        self.title = title
+        self.detail = detail
+        self.titleFont = titleFont
+        self.control = control
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 24) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(titleFont)
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            control().fixedSize()
+        }
+    }
+}
+
 /// Плитка внутри секции: фон карточки, радиус 14.
 struct Tile<Content: View>: View {
     @ViewBuilder var content: () -> Content
@@ -505,30 +538,29 @@ struct GeneralPane: View {
 
     var body: some View {
         PaneTitle(l.t("Основные", "General"))
-        GlassSection {
-            Text(l.t("Язык", "Language")).font(.system(size: 13, weight: .semibold))
-            SegmentedCapsule(selection: Binding(
-                get: { backend.state.langSetting ?? "auto" },
-                set: { value in Task { _ = await backend.perform(["lang", value]) } }
-            ), options: [("auto", l.t("Как в системе", "System"), nil), ("ru", "Русский", nil), ("en", "English", nil)])
-            .frame(maxWidth: 440)
-            Note(text: l.t("Язык общий для приложения и agentmeister в терминале, это agentmeister lang. Как в системе значит русский, только если он стоит первым в macOS, иначе английский.",
-                           "The app and agentmeister in a terminal share it, same as agentmeister lang. System means Russian only when it comes first in macOS, English otherwise."))
-        }
-        GlassSection {
-            Text(l.t("Оформление", "Appearance")).font(.system(size: 13, weight: .semibold))
-            AppearancePicker(selection: $appearance, l: l)
-        }
-        GlassSection {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(l.t("Мастер первого запуска", "First-run setup")).font(.system(size: 13, weight: .semibold))
-                    Text(l.t("Те же семь шагов, что при первом запуске: папки проектов, агенты, proxy, вход, режимы и разрешения.",
-                             "The same seven steps as on first launch: project folders, agents, proxy, sign-in, modes and permissions."))
+        GlassSection(spacing: 16) {
+            SettingsRow(l.t("Язык", "Language"),
+                        l.t("Язык общий для приложения и agentmeister в терминале, это agentmeister lang. Как в системе значит русский, только если он стоит первым в macOS, иначе английский.",
+                            "The app and agentmeister in a terminal share it, same as agentmeister lang. System means Russian only when it comes first in macOS, English otherwise.")) {
+                SegmentedCapsule(selection: Binding(
+                    get: { backend.state.langSetting ?? "auto" },
+                    set: { value in Task { _ = await backend.perform(["lang", value]) } }
+                ), options: [("auto", l.t("Как в системе", "System"), nil), ("ru", "Русский", nil), ("en", "English", nil)], compact: true)
+            }
+            Divider()
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(l.t("Оформление", "Appearance")).font(.system(size: 13, weight: .semibold))
+                    Text(l.t("Превью показывают окно приложения в каждой теме.", "Previews show the app window in each theme."))
                         .font(.system(size: 12)).foregroundStyle(Ink.muted)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 8)
+                AppearancePicker(selection: $appearance, l: l)
+            }
+        }
+        GlassSection {
+            SettingsRow(l.t("Мастер первого запуска", "First-run setup"),
+                        l.t("Те же семь шагов, что при первом запуске: папки проектов, агенты, proxy, вход, режимы и разрешения.",
+                            "The same seven steps as on first launch: project folders, agents, proxy, sign-in, modes and permissions.")) {
                 Button {
                     ui.onboardingStep = 0
                     ui.showOnboarding = true
@@ -545,13 +577,9 @@ struct GeneralPane: View {
                            "These are folders that hold projects, like ~/Developer and ~/Work, not projects themselves. Each of their subfolders is a project. The app and agentmeister in a terminal share the list, same as agentmeister projects-dir."))
         }
         GlassSection {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(l.t("Показывать в строке меню", "Show in menu bar")).font(.system(size: 13, weight: .semibold))
-                    Note(text: l.t("Значок показывает, работает ли агент или ждет ответа. В панели открытые сессии, proxy, host-run и новая сессия.",
-                                   "The icon shows whether an agent is working or waiting for you. Its panel lists open sessions, proxy, host-run and starts a new session."))
-                }
-                Spacer()
+            SettingsRow(l.t("Показывать в строке меню", "Show in menu bar"),
+                        l.t("Значок показывает, работает ли агент или ждет ответа. В панели открытые сессии, proxy, host-run и новая сессия.",
+                            "The icon shows whether an agent is working or waiting for you. Its panel lists open sessions, proxy, host-run and starts a new session.")) {
                 HeaderSwitch(label: l.t("Показывать в строке меню", "Show in menu bar"), on: showMenuBar) { showMenuBar = $0 }
             }
         }
@@ -573,48 +601,163 @@ enum Appearance: String, CaseIterable {
     }
 }
 
-/// Три карточки с превью темы, выбранная обведена акцентом. Как в макете первого запуска.
+/// Три превью темы равными колонками на всю ширину, подпись под превью, выбранное обведено акцентом. Общий для
+/// мастера первого запуска и Настроек.
 struct AppearancePicker: View {
     @Binding var selection: String
     let l: L
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 16) {
             ForEach(Appearance.allCases, id: \.self) { item in
-                let on = selection == item.rawValue
-                Button {
+                AppearanceOption(item: item, title: title(item), on: selection == item.rawValue) {
                     selection = item.rawValue
                     Appearance.apply(item.rawValue)
-                } label: {
-                    VStack(alignment: .leading, spacing: 8) {
-                        preview(item)
-                            .frame(height: 84)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                        Text(item == .system ? l.t("Как в системе", "System") : item == .light ? l.t("Светлая", "Light") : l.t("Темная", "Dark"))
-                            .fontWeight(.medium)
-                            .foregroundStyle(Ink.text)
-                    }
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 14).fill(Ink.card))
-                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(on ? Color.accentColor : .clear, lineWidth: 2))
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.hover(14, .overlay))
-                .accessibilityAddTraits(on ? .isSelected : [])
+                .frame(maxWidth: .infinity)
             }
         }
-        .frame(maxWidth: 520)
     }
 
-    @ViewBuilder
-    private func preview(_ item: Appearance) -> some View {
-        let light = LinearGradient(colors: [Color(hex: 0xBCD8EA), Color(hex: 0xE2D0EE)], startPoint: .topLeading, endPoint: .bottomTrailing)
-        let dark = LinearGradient(colors: [Color(hex: 0x1D4C68), Color(hex: 0x4E3566)], startPoint: .topLeading, endPoint: .bottomTrailing)
+    private func title(_ item: Appearance) -> String {
         switch item {
-        case .light: light
-        case .dark: dark
-        case .system: HStack(spacing: 0) { light; dark }
+        case .system: l.t("Как в системе", "System")
+        case .light: l.t("Светлая", "Light")
+        case .dark: l.t("Темная", "Dark")
         }
+    }
+}
+
+/// Одно превью темы с подписью. Подсветка под курсором только на самом превью, не на подписи.
+private struct AppearanceOption: View {
+    let item: Appearance
+    let title: String
+    let on: Bool
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                ThemeMiniature(item: item)
+                    .aspectRatio(2, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(shape)
+                    .overlay(shape.strokeBorder(Ink.buttonBorder))
+                    .overlay(shape.fill(hover && !on ? Ink.hover : .clear))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(on ? Color.accentColor : .clear, lineWidth: 2)
+                        .padding(-4))
+                Text(title)
+                    .fontWeight(on ? .semibold : .regular)
+                    .foregroundStyle(Ink.text)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+}
+
+/// Главное окно Agentmeister в миниатюре для превью темы: полоса проектов с тремя плитками, две вкладки и
+/// терминал с несколькими строками, одна зеленая. У светлой и темной свои цвета, текущая тема приложения на них
+/// не влияет. Системная поделена пополам: слева светлая, справа темная. Цвета из макета GeneralRows.dc.html.
+struct ThemeMiniature: View {
+    let item: Appearance
+
+    struct Tones {
+        let window: Color
+        let rail: Color
+        let tiles: [Color]
+        let strip: Color
+        let tabOn: Color
+        let tabOff: Color
+        let panel: Color
+        let heading: Color
+        let line: Color
+        let green: Color
+    }
+
+    static let light = Tones(window: Color(hex: 0xEEF0F4), rail: .white,
+                             tiles: [Color(hex: 0x6C8F4E), Color(hex: 0x4D7CF0), Color(hex: 0xC58B5C)],
+                             strip: .white, tabOn: Color(hex: 0xDFE7FB), tabOff: Color(hex: 0xEEF0F4),
+                             panel: .white, heading: Color(hex: 0xD7DAE1), line: Color(hex: 0xE6E8ED), green: Color(hex: 0xB5E0C5))
+    static let dark = Tones(window: Color(hex: 0x161618), rail: Color(hex: 0x2A2A2D),
+                            tiles: [Color(hex: 0x6C8F4E), Color(hex: 0x4D7CF0), Color(hex: 0x8A5A3C)],
+                            strip: Color(hex: 0x2A2A2D), tabOn: Color(hex: 0x2D3B5C), tabOff: Color(hex: 0x38383B),
+                            panel: Color(hex: 0x0C0C0D), heading: Color(hex: 0x3A3A3D), line: Color(hex: 0x2A2A2D), green: Color(hex: 0x2F6B47))
+
+    var body: some View {
+        switch item {
+        case .light: window(Self.light)
+        case .dark: window(Self.dark)
+        case .system:
+            HStack(spacing: 0) {
+                HStack(spacing: 5) {
+                    rail(Self.light, width: 26, tile: 12)
+                    terminal(Self.light, short: true)
+                }
+                .padding(7)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Self.light.window)
+                terminal(Self.dark, short: true)
+                    .padding(7)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Self.dark.window)
+            }
+        }
+    }
+
+    private func window(_ t: Tones) -> some View {
+        HStack(spacing: 5) {
+            rail(t, width: 30, tile: 14)
+            VStack(spacing: 4) {
+                HStack(spacing: 3) {
+                    RoundedRectangle(cornerRadius: 2).fill(t.tabOn).frame(width: 28)
+                    RoundedRectangle(cornerRadius: 2).fill(t.tabOff).frame(width: 28)
+                }
+                .padding(3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 12)
+                .background(RoundedRectangle(cornerRadius: 4).fill(t.strip))
+                terminal(t, short: false)
+            }
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(t.window)
+    }
+
+    private func rail(_ t: Tones, width: CGFloat, tile: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            ForEach(Array(t.tiles.enumerated()), id: \.offset) { _, color in
+                RoundedRectangle(cornerRadius: 3).fill(color).frame(height: tile)
+            }
+        }
+        .padding(4)
+        .frame(width: width)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(RoundedRectangle(cornerRadius: 5).fill(t.rail))
+    }
+
+    /// Строки терминала долями ширины: заголовок, текст и одна зеленая.
+    private func terminal(_ t: Tones, short: Bool) -> some View {
+        let lines: [(CGFloat, CGFloat, Color)] = short
+            ? [(0.6, 6, t.heading), (0.8, 4, t.line), (0.7, 4, t.line), (0.5, 4, t.green)]
+            : [(0.55, 5, t.heading), (0.85, 4, t.line), (0.75, 4, t.line), (0.45, 4, t.green), (0.65, 4, t.line)]
+        return GeometryReader { g in
+            VStack(alignment: .leading, spacing: short ? 4 : 5) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    RoundedRectangle(cornerRadius: 2).fill(line.2).frame(width: g.size.width * line.0, height: line.1)
+                }
+            }
+        }
+        .clipped()
+        .padding(6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: 5).fill(t.panel))
     }
 }
 
@@ -723,17 +866,25 @@ struct ProxyHostRunPane: View {
             }
             GlassSection(spacing: 10) {
                 Text(l.t("Браузер через proxy", "Proxy browser")).font(.system(size: 13, weight: .semibold))
-                Toggle(l.t("Страницы от агента во встроенном браузере", "Pages the agent opens go to the built-in browser"), isOn: $browserForAgent)
-                Picker(l.t("Ссылки по клику из вкладки", "Links you click in a tab"), selection: $linkPlace) {
-                    Text(l.t("Спрашивать", "Ask")).tag(LinkPlace.ask.rawValue)
-                    Text(l.t("Окно Agentmeister", "Agentmeister window")).tag(LinkPlace.builtin.rawValue)
-                    if ChromeProfile.app != nil {
-                        Text(l.t("Отдельный профиль Chrome", "Separate Chrome profile")).tag(LinkPlace.chrome.rawValue)
-                    }
-                    Text(l.t("Браузер по умолчанию", "Default browser")).tag(LinkPlace.system.rawValue)
+                SettingsRow(l.t("Страницы от агента во встроенном браузере", "Pages the agent opens go to the built-in browser"),
+                            titleFont: .system(size: 13)) {
+                    Toggle(l.t("Страницы от агента во встроенном браузере", "Pages the agent opens go to the built-in browser"), isOn: $browserForAgent)
+                        .toggleStyle(.switch)
+                        .labelsHidden()
                 }
-                // запомненный Chrome без Chrome: в списке его нет, ссылка все равно спросит
-                .onAppear { if linkPlace == LinkPlace.chrome.rawValue && ChromeProfile.app == nil { linkPlace = LinkPlace.ask.rawValue } }
+                SettingsRow(l.t("Ссылки по клику из вкладки", "Links you click in a tab"), titleFont: .system(size: 13)) {
+                    Picker(l.t("Ссылки по клику из вкладки", "Links you click in a tab"), selection: $linkPlace) {
+                        Text(l.t("Спрашивать", "Ask")).tag(LinkPlace.ask.rawValue)
+                        Text(l.t("Окно Agentmeister", "Agentmeister window")).tag(LinkPlace.builtin.rawValue)
+                        if ChromeProfile.app != nil {
+                            Text(l.t("Отдельный профиль Chrome", "Separate Chrome profile")).tag(LinkPlace.chrome.rawValue)
+                        }
+                        Text(l.t("Браузер по умолчанию", "Default browser")).tag(LinkPlace.system.rawValue)
+                    }
+                    .labelsHidden()
+                    // запомненный Chrome без Chrome: в списке его нет, ссылка все равно спросит
+                    .onAppear { if linkPlace == LinkPlace.chrome.rawValue && ChromeProfile.app == nil { linkPlace = LinkPlace.ask.rawValue } }
+                }
                 Note(text: l.t("Вход в агента, OAuth для MCP и другие страницы, которые агент во вкладке через proxy открывает сам, грузятся во встроенном браузере через тот же mihomo. Если mihomo не запущен, браузер ничего не грузит. Ссылку, по которой кликнули во вкладке через proxy, приложение открывает там, где выбрано, или спрашивает. В вопросе можно запомнить выбор.",
                                "Agent sign-in, MCP OAuth and other pages a proxied tab opens by itself load in the built-in browser through the same mihomo. With mihomo stopped the browser loads nothing. A link you click in a proxied tab opens where you picked, or the app asks. The question can remember your choice."))
             }
