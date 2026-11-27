@@ -300,6 +300,13 @@ def terminal():
     return term if term in OPEN else "Apple_Terminal"
 
 
+def iterm_installed():
+    """Есть ли iTerm2 на этом Mac: вкладку умеет открывать только он, без него остается окно Terminal."""
+    if os.environ.get("TERM_PROGRAM") == "iTerm.app":
+        return True
+    return any(os.path.isdir(os.path.join(d, "iTerm.app")) for d in ("/Applications", os.path.join(HOME, "Applications")))
+
+
 def claude_on(tty):
     """pid Claude Code на этом терминале, если он уже поднялся."""
     out = run(["ps", "-t", tty.replace("/dev/", ""), "-o", "pid=,command="], timeout=5)
@@ -384,6 +391,12 @@ def open_claude(args, cm):
     placement = args.get("placement", "tab" if term == "iTerm.app" else "window")
     if placement not in ("tab", "window"):
         return "placement должен быть tab или window", True
+    note = ""
+    if placement == "tab" and not iterm_installed():
+        # вкладку умеет только iTerm2; без него открываем окно Terminal, а не ошибку AppleScript
+        placement = "window"
+        note = tr(" Вкладку открывает только iTerm2, его на этом Mac нет, поэтому открыл окно Terminal.",
+                  " Only iTerm2 can open a tab and it isn't on this Mac, so a Terminal window opened instead.")
     if placement == "tab":
         term = "iTerm.app"
     destination = tr("новую вкладку", "a new tab") if placement == "tab" else tr("новое окно", "a new window")
@@ -455,7 +468,8 @@ def open_claude(args, cm):
 
     where = tr(f"{tilde(target)}, режим {mode}", f"{tilde(target)}, mode {mode}") + \
         (tr(", через proxy", ", through the proxy") if net == "-x" else "")
-    return report(term, tty, cmd, destination, where, rc, bool(args.get("prompt")))
+    text, failed = report(term, tty, cmd, destination, where, rc, bool(args.get("prompt")))
+    return text + note, failed
 
 
 def report(term, tty, cmd, destination, where, rc, prompt):
