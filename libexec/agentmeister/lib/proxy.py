@@ -36,6 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import secret  # noqa: E402
 from mnrhlib import BAD, HOME, OK, WARN, paint, tilde, tr  # noqa: E402
+import mnrhlib  # noqa: E402
 import host_run  # noqa: E402
 
 CONF_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "mnrh", "proxy")
@@ -65,6 +66,20 @@ PORT_WINDOW = 50  # порты mihomo выбираются из DEFAULT_PORT..DE
 PROBE_PORT = DEFAULT_PORT + PORT_WINDOW - 1  # порт проверки сторожа, последний в окне; подпискам его не дают
 CHECK_URL = "https://1.1.1.1/cdn-cgi/trace"
 PROBE_URL = "https://www.gstatic.com/generate_204"
+
+
+def check_url():
+    """Адрес, по которому видно IP и страну выхода: proxy_check_url в config, ответ в формате Cloudflare
+    /cdn-cgi/trace (строки ip= и loc=). Нужен, если 1.1.1.1 в сети закрыт."""
+    url = mnrhlib.read_config().get("proxy_check_url", "").strip()
+    return url if re.match(r"^https?://\S+$", url) else CHECK_URL
+
+
+def probe_url():
+    """Адрес проверки живости серверов в mihomo: proxy_probe_url в config, отвечает 204 или 200. Нужен, если
+    gstatic.com в сети закрыт. Меняется после agentmeister proxy restart."""
+    url = mnrhlib.read_config().get("proxy_probe_url", "").strip()
+    return url if re.match(r"^https?://\S+$", url) else PROBE_URL
 SESSION_PROFILE = """(version 1)
 (allow default)
 (deny network*)
@@ -105,14 +120,14 @@ proxy-providers:
     path: ./subscription.txt{filter}
     health-check:
       enable: true
-      url: https://www.gstatic.com/generate_204
+      url: {probe_url}
       interval: 300
 {providers}proxy-groups:
   - name: VPS
     type: fallback
     use: [{chain}]
     proxies: [REJECT]
-    url: https://www.gstatic.com/generate_204
+    url: {probe_url}
     interval: 300
   - name: GATE
     type: select
@@ -139,7 +154,7 @@ PROVIDER = """  {name}:
     path: ./subs/{name}.txt{filter}
     health-check:
       enable: true
-      url: https://www.gstatic.com/generate_204
+      url: {probe_url}
       interval: 300
 """
 
@@ -150,7 +165,7 @@ GROUP = """  - name: VPS-{name}
     type: fallback
     use: [{provider}]
     proxies: [REJECT]
-    url: https://www.gstatic.com/generate_204
+    url: {probe_url}
     interval: 300
   - name: GATE-{name}
     type: select
@@ -759,8 +774,8 @@ def wait_ready(p, deadline):
     """Порт открывается раньше, чем mihomo прочитает подписку: ждём первого настоящего ответа через proxy."""
     while time.time() < deadline:
         r = subprocess.run(["curl", "-q", "--noproxy", "", "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "4",
-                            "-x", f"http://127.0.0.1:{p}", PROBE_URL], capture_output=True, text=True)
-        if r.stdout.strip() == "204":
+                            "-x", f"http://127.0.0.1:{p}", probe_url()], capture_output=True, text=True)
+        if r.stdout.strip() in ("204", "200"):
             return True
         time.sleep(0.5)
     return False
@@ -1419,7 +1434,7 @@ def trace(env=None):
     cmd = ["curl", "-q", "-s", "--max-time", "12", "--noproxy", "" if proxy else "*"]
     if proxy:
         cmd += ["-x", proxy]
-    cmd.append(CHECK_URL)
+    cmd.append(check_url())
     out = subprocess.run(cmd, capture_output=True, text=True).stdout
     info = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
     return (info.get("ip"), info.get("loc")) if info.get("ip") else None
@@ -1489,11 +1504,14 @@ def render_config(p, country, only, data):
     strict = (data.get(MAIN) or {}).get("port") if extras else None
     groups = listeners = ""
     if extras and good_port(strict):
-        groups = GROUP.format(name=MAIN, provider="vps") + "".join(GROUP.format(name=n, provider=n) for n in extras)
+        groups = GROUP.format(name=MAIN, provider="vps", probe_url=probe_url()) + \
+            "".join(GROUP.format(name=n, provider=n, probe_url=probe_url()) for n in extras)
         listeners = LISTENER.format(name=MAIN, port=strict) + \
             "".join(LISTENER.format(name=n, port=v["port"]) for n, v in extras.items())
     return TEMPLATE.format(port=p, country=country.upper(), filter=only_line(only),
-                           providers="".join(PROVIDER.format(name=n, filter=only_line(str(v.get("only") or "")))
+                           probe_url=probe_url(),
+                           providers="".join(PROVIDER.format(name=n, filter=only_line(str(v.get("only") or "")),
+                                                             probe_url=probe_url())
                                              for n, v in extras.items()),
                            chain=", ".join(["vps"] + [n for n, v in extras.items()
                                                       if not want or str(v.get("country") or "").upper() == want]),
@@ -2068,6 +2086,8 @@ agentmeister proxy remove <имя>    удалить одну дополните
 agentmeister proxy update          обновить mihomo через Homebrew и перезапустить, если он запущен
 agentmeister proxy restart         перезапустить mihomo, не закрывая сессии через proxy
 agentmeister proxy remove          удалить настройку
+agentmeister proxy check-url <адрес>|default  где проверять IP и страну выхода (формат /cdn-cgi/trace)
+agentmeister proxy probe-url <адрес>|default  чем mihomo проверяет живость серверов (ответ 204 или 200)
 agentmeister proxy run [--via <имя>] -- <cmd>
                                   запустить команду с доступом к сети только через mihomo
 
@@ -2104,6 +2124,16 @@ def main(argv):
         return 0
     if cmd == "update":
         return update()
+    if cmd in ("check-url", "probe-url") and len(rest) == 1:
+        key = {"check-url": "proxy_check_url", "probe-url": "proxy_probe_url"}[cmd]
+        value = rest[0].strip()
+        if value != "default" and not re.match(r"^https?://\S+$", value):
+            print(f"{BAD} нужен адрес https://… или default", file=sys.stderr)
+            return 2
+        mnrhlib.write_config(**{key: None if value == "default" else value})
+        print(f"{OK} проверка выхода: {check_url()}\n{OK} проверка серверов: {probe_url()}"
+              + ("\nНовый адрес проверки серверов mihomo возьмет после agentmeister proxy restart." if cmd == "probe-url" else ""))
+        return 0
     if cmd == "restart":
         return restart_cmd()
     if cmd == "watch":

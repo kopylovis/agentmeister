@@ -408,6 +408,11 @@ restarts mihomo under running sessions, a wrong exit is only reported (the watch
 `--only <pattern>` keeps only the servers whose names
 match. Encrypted `happ://crypt…` links can only be read by Happ, so use the plain `https://` one.
 
+The exit check asks `https://1.1.1.1/cdn-cgi/trace` and mihomo checks servers with
+`https://www.gstatic.com/generate_204`. Where either is blocked, `agentmeister proxy check-url <url>` (any Cloudflare
+`/cdn-cgi/trace`) and `agentmeister proxy probe-url <url>` (answers 204 or 200) replace them; the probe URL applies
+after `agentmeister proxy restart`.
+
 More subscriptions can be added next to the main one. Each gets its own name and port:
 
 ```bash

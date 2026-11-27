@@ -412,6 +412,11 @@ agentmeister proxy test                                    # выход напр
 только серверы с подходящим именем. Зашифрованные ссылки `happ://crypt…` читает только Happ,
 нужна обычная `https://`.
 
+Страну выхода agentmeister проверяет через `https://1.1.1.1/cdn-cgi/trace`, а mihomo проверяет серверы через
+`https://www.gstatic.com/generate_204`. Если в сети они закрыты, их заменяют `agentmeister proxy check-url <адрес>`
+(любой `/cdn-cgi/trace` Cloudflare) и `agentmeister proxy probe-url <адрес>` (отвечает 204 или 200), второй
+начинает работать после `agentmeister proxy restart`.
+
 Кроме основной подписки можно добавить еще. У каждой свое имя и свой порт:
 
 ```bash
