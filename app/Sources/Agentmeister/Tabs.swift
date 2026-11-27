@@ -605,8 +605,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// не переназначили в ~/.codex/config.toml (open_external_editor), а переназначенную понимаем только ctrl-<буква>.
     var editorKey: String? {
         guard spec.codexSession else { return "\u{07}" }
-        let home = LoginEnvironment.shared["CODEX_HOME"] ?? (NSHomeDirectory() as NSString).appendingPathComponent(".codex")
-        let config = (try? String(contentsOfFile: (home as NSString).appendingPathComponent("config.toml"), encoding: .utf8)) ?? ""
+        let config = (try? String(contentsOfFile: (LoginEnvironment.codexHome as NSString).appendingPathComponent("config.toml"), encoding: .utf8)) ?? ""
         return Self.codexEditorKey(config)
     }
 
@@ -1470,7 +1469,7 @@ enum CodexThreads {
     }
 
     static var home: String {
-        LoginEnvironment.shared["CODEX_HOME"] ?? (NSHomeDirectory() as NSString).appendingPathComponent(".codex")
+        LoginEnvironment.codexHome
     }
 
     /// Треды с первой строкой session_meta, файлы которых менялись после since. Смотрим только папки дней

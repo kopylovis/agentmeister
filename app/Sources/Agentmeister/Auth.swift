@@ -551,7 +551,7 @@ struct AuthDialog: View {
             if let plan = info?.plan { parts.append(claude ? l.t("подписка " + plan, plan + " plan") : plan) }
             return parts.isEmpty ? name : parts.joined(separator: " · ")
         }()
-        let codexHome = tilde(LoginEnvironment.shared["CODEX_HOME"] ?? (NSHomeDirectory() as NSString).appendingPathComponent(".codex"))
+        let codexHome = tilde(LoginEnvironment.codexHome)
         let proxy = backend.state.proxy
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 14) {
