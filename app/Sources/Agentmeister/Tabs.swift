@@ -1,5 +1,6 @@
 import AppKit
 import Darwin
+import Quartz
 import SwiftTerm
 import UniformTypeIdentifiers
 
@@ -41,6 +42,7 @@ struct LaunchSpec: Hashable {
     var demoScreen: String?
 
     var codexSession: Bool { agent == .codex && utility == nil && !terminal }
+    var claudeSession: Bool { agent == .claude && utility == nil && !terminal }
 
     /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
     var proxied: Bool {
@@ -1514,7 +1516,7 @@ final class AppTerminalView: LocalProcessTerminalView {
     }
 
     override func paste(_ sender: Any) {
-        if !pasteCodexImage() { super.paste(sender) }
+        if !pasteImage() { super.paste(sender) }
     }
 
     static func handleImagePaste(_ event: NSEvent) -> NSEvent? {
@@ -1522,15 +1524,21 @@ final class AppTerminalView: LocalProcessTerminalView {
         guard modifiers == .control || modifiers == .command,
               event.characters == "\u{16}" || event.charactersIgnoringModifiers?.lowercased() == "v",
               let view = event.window?.firstResponder as? AppTerminalView,
-              view.pasteCodexImage() else { return event }
+              view.pasteImage() else { return event }
         return nil
     }
 
-    private func pasteCodexImage() -> Bool {
-        guard let tab, tab.running, tab.spec.codexSession else { return false }
+    /// Картинка из буфера или один файл изображения из Finder. Codex получает file URL, Claude Code путь,
+    /// и оба превращают его в [Image #N].
+    private func pasteImage() -> Bool {
+        guard let tab, tab.running, tab.spec.codexSession || tab.spec.claudeSession else { return false }
         do {
             guard let url = try Self.imageURL(from: .general) else { return false }
-            pasteText(url.absoluteString)
+            if tab.spec.claudeSession {
+                pasteClaudeImages([url].filter(Self.isImageFile), text: Self.escaped(url.path))
+            } else {
+                pasteText(url.absoluteString)
+            }
         } catch {
             NSApp.presentError(error)
         }
@@ -1561,6 +1569,136 @@ final class AppTerminalView: LocalProcessTerminalView {
         return url
     }
 
+    // Картинка в строке ввода Claude Code видна только как [Image #N], а файл Claude Code сохраняет лишь при
+    // отправке. Поэтому номер N приложение узнает само: после вставки ищет на экране новый [Image #N] и
+    // запоминает, какой файл вставило. Клик по [Image #N] показывает этот файл в Quick Look.
+    private var pastedImages: [Int: URL] = [:]
+    private var pastedImagesSession: String?
+    private var imagePressTaken = false
+    private var previewURL: URL?
+
+    /// Форматы, которые Claude Code прикладывает к запросу по пути.
+    static func isImageFile(_ url: URL) -> Bool {
+        ["png", "jpg", "jpeg", "gif", "webp"].contains(url.pathExtension.lowercased())
+    }
+
+    private func pasteClaudeImages(_ images: [URL], text: String) {
+        let before = images.isEmpty ? [:] : imageTokenCounts()
+        pasteText(text)
+        if !images.isEmpty { claimImages(images, before: before, attempt: 0) }
+    }
+
+    /// Claude Code заменяет путь на [Image #N] не сразу. Новые номера ищем несколько раз, пока они не появятся.
+    private func claimImages(_ images: [URL], before: [Int: Int], attempt: Int) {
+        let delays = [0.1, 0.2, 0.4, 0.8, 1.6]
+        guard attempt < delays.count else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delays[attempt]) { [weak self] in
+            guard let self else { return }
+            let added = self.imageTokenCounts().filter { $0.value > before[$0.key, default: 0] }.keys.sorted()
+            if added.count < images.count, attempt + 1 < delays.count {
+                self.claimImages(images, before: before, attempt: attempt + 1)
+                return
+            }
+            self.syncImageSession()
+            // номера у Claude Code только растут, новые картинки получают старшие
+            for (number, url) in zip(added.suffix(images.count), images) { self.pastedImages[number] = url }
+        }
+    }
+
+    /// /clear и перезапуск начинают нумерацию заново, старые номера к новой сессии не относятся.
+    private func syncImageSession() {
+        let session = tab?.sessionId
+        if pastedImagesSession == nil {
+            pastedImagesSession = session
+        } else if let session, session != pastedImagesSession {
+            pastedImages = [:]
+            pastedImagesSession = session
+        }
+    }
+
+    private func liveRows() -> [TerminalContentRowSnapshot] {
+        guard let viewport = terminalContentSnapshot(region: .viewport) else { return [] }
+        let top = viewport.liveTopRow
+        return terminalContentSnapshot(region: .rows(top..<(top + viewport.dimensions.rows)))?.rows ?? []
+    }
+
+    private func imageTokenCounts() -> [Int: Int] {
+        var counts: [Int: Int] = [:]
+        for row in liveRows() {
+            for token in Self.imageTokens(row.cells.map(\.text)) { counts[token.number, default: 0] += 1 }
+        }
+        return counts
+    }
+
+    /// [Image #N] в строке экрана: столбцы и номер. Одна ячейка это один столбец, поэтому ищем по ячейкам.
+    static func imageTokens(_ cells: [String]) -> [(columns: ClosedRange<Int>, number: Int)] {
+        let prefix = "[Image #".map(String.init)
+        var found: [(columns: ClosedRange<Int>, number: Int)] = []
+        var i = 0
+        while i + prefix.count < cells.count {
+            guard Array(cells[i..<(i + prefix.count)]) == prefix else {
+                i += 1
+                continue
+            }
+            var j = i + prefix.count
+            var digits = ""
+            while j < cells.count, let c = cells[j].first, cells[j].count == 1, c.isASCII, c.isNumber {
+                digits.append(c)
+                j += 1
+            }
+            if !digits.isEmpty, j < cells.count, cells[j] == "]", let number = Int(digits) {
+                found.append((i...j, number))
+                i = j + 1
+            } else {
+                i += 1
+            }
+        }
+        return found
+    }
+
+    private func imageUnderPointer(_ event: NSEvent) -> URL? {
+        guard tab?.spec.claudeSession == true, !pastedImages.isEmpty,
+              let viewport = terminalContentSnapshot(region: .viewport) else { return nil }
+        syncImageSession()
+        let index = characterIndex(for: event.locationInWindow)
+        let cols = viewport.dimensions.cols
+        guard cols > 0, index >= 0 else { return nil }
+        let line = index / cols, col = index % cols
+        guard viewport.rows.indices.contains(line) else { return nil }
+        let token = Self.imageTokens(viewport.rows[line].cells.map(\.text)).first { $0.columns.contains(col) }
+        guard let number = token?.number, let url = pastedImages[number] else { return nil }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            pastedImages[number] = nil
+            return nil
+        }
+        return url
+    }
+
+    private func showPreview(_ url: URL) {
+        previewURL = url
+        window?.makeFirstResponder(self)
+        guard let panel = QLPreviewPanel.shared() else { return }
+        if panel.isVisible, panel.dataSource === self {
+            panel.reloadData()
+        } else {
+            panel.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        previewURL != nil
+    }
+
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = self
+        panel.reloadData()
+    }
+
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        panel.dataSource = nil
+        previewURL = nil
+    }
+
     // Файлы из Finder и скриншоты: путь вставляется в строку ввода, как в Terminal и iTerm2. Claude Code
     // по пути к картинке прикладывает ее к сообщению.
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -1575,7 +1713,12 @@ final class AppTerminalView: LocalProcessTerminalView {
         let files = Self.files(sender)
         guard !files.isEmpty, tab?.running == true else { return false }
         window?.makeFirstResponder(self)
-        pasteText(files.map { Self.escaped($0.path) }.joined(separator: " ") + " ")
+        let text = files.map { Self.escaped($0.path) }.joined(separator: " ") + " "
+        if tab?.spec.claudeSession == true {
+            pasteClaudeImages(files.filter(Self.isImageFile), text: text)
+        } else {
+            pasteText(text)
+        }
         return true
     }
 
@@ -1593,6 +1736,13 @@ final class AppTerminalView: LocalProcessTerminalView {
 
     override func mouseDown(with event: NSEvent) {
         downloadPress = nil
+        imagePressTaken = false
+        if event.clickCount == 1, event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+           let url = imageUnderPointer(event) {
+            imagePressTaken = true
+            showPreview(url)
+            return
+        }
         if tab?.spec.codexSession == true, event.clickCount == 1,
            event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command,
            let snapshot = terminalContentSnapshot(region: .viewport) {
@@ -1608,10 +1758,14 @@ final class AppTerminalView: LocalProcessTerminalView {
 
     override func mouseDragged(with event: NSEvent) {
         downloadPress = nil
-        super.mouseDragged(with: event)
+        if !imagePressTaken { super.mouseDragged(with: event) }
     }
 
     override func mouseUp(with event: NSEvent) {
+        if imagePressTaken {
+            imagePressTaken = false
+            return
+        }
         if let press = downloadPress,
            !event.modifierFlags.contains(.command) || hypot(event.locationInWindow.x - press.point.x,
                                                             event.locationInWindow.y - press.point.y) > 4 {
@@ -1687,5 +1841,15 @@ enum DockAttention {
         let label = waiting > 0 ? String(waiting) : nil
         if NSApp.dockTile.badgeLabel != label { NSApp.dockTile.badgeLabel = label }
         if waiting > last, !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+    }
+}
+
+extension AppTerminalView: QLPreviewPanelDataSource {
+    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        previewURL == nil ? 0 : 1
+    }
+
+    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
+        previewURL as NSURL?
     }
 }
