@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Какой файл показать в окне изменений: клик по файлу в карточке инспектора пишет сюда, окно прокручивает к нему.
 @MainActor
@@ -197,6 +198,7 @@ struct ChangesWindow: View {
         let name = (file.path as NSString).lastPathComponent
         let dir = (file.path as NSString).deletingLastPathComponent
         let seen = viewed.contains(file.path)
+        let url = URL(fileURLWithPath: root).appendingPathComponent(file.path)
         return HStack(spacing: 8) {
             Text(file.letter).font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(file.color).frame(width: 12)
             VStack(alignment: .leading, spacing: 1) {
@@ -232,6 +234,7 @@ struct ChangesWindow: View {
 
     private func fileHeader(_ file: GitChange) -> some View {
         let seen = viewed.contains(file.path)
+        let url = URL(fileURLWithPath: root).appendingPathComponent(file.path)
         return HStack(spacing: 8) {
             Button {
                 if seen { viewed.remove(file.path) } else { viewed.insert(file.path) }
@@ -250,8 +253,12 @@ struct ChangesWindow: View {
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11))
             if file.letter != "D" {
+                if let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image) {
+                    Button(l.t("Сохранить копию…", "Save a Copy…")) { saveCopy(of: url, type: type) }
+                        .buttonStyle(PillStyle(small: true))
+                }
                 Button(l.t("Открыть", "Open")) {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: (root as NSString).appendingPathComponent(file.path)))
+                    NSWorkspace.shared.open(url)
                 }
                 .buttonStyle(PillStyle(small: true))
             }
@@ -260,6 +267,21 @@ struct ChangesWindow: View {
         .frame(height: 36)
         .background(.bar, in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Ink.hairline))
+    }
+
+    private func saveCopy(of source: URL, type: UTType) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [type]
+        panel.nameFieldStringValue = source.lastPathComponent
+        panel.begin { response in
+            guard response == .OK, let destination = panel.url,
+                  source.standardizedFileURL != destination.standardizedFileURL else { return }
+            do {
+                try Data(contentsOf: source, options: .mappedIfSafe).write(to: destination, options: .atomic)
+            } catch {
+                NSApp.presentError(error)
+            }
+        }
     }
 
     @ViewBuilder

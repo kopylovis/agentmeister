@@ -224,6 +224,10 @@ class AppSubtask(unittest.TestCase):
         thread.join()
         return result, seen, run
 
+    def test_codex_tab_with_kitty_graphics(self):
+        with patch.dict(os.environ, TERM_PROGRAM="Agentmeister (Kitty graphics)", AGENTMEISTER_TAB=self.TAB):
+            self.assertEqual(claude_open.app_tab(), self.TAB)
+
     def test_app_opens_the_subtask(self):
         (text, bad), seen, run = self.run_open({"ok": True, "tab": "x"})
         self.assertFalse(bad)

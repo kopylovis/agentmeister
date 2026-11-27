@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var pasteMonitor: Any?
+
     @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Пока приложение собирается как исполняемый файл без .app, macOS сама не дает ему Dock и меню
@@ -12,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Demo.active { return }
         // ⌃⌥Space (или свое сочетание из настроек) из любого приложения показывает Agentmeister
         HotKey.shared.apply()
+        pasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: AppTerminalView.handleImagePaste)
         // команда agentmeister в терминале из встроенного CLI, если ее еще нигде нет
         DispatchQueue.global(qos: .utility).async { LoginEnvironment.linkCommand() }
         Updates.shared.start()
@@ -60,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         if Demo.active { return }
+        if let pasteMonitor { NSEvent.removeMonitor(pasteMonitor) }
         // обычный выход: при следующем запуске вкладки откроются без вопроса
         UserDefaults.standard.set(true, forKey: Workspace.cleanExitKey)
         // окно закрылось: уведомления снова нужны для всех вкладок

@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import SwiftTerm
+import UniformTypeIdentifiers
 
 /// Что запустить во вкладке. agentmeister сам поднимает proxy, sandbox-exec и агента, как во вкладке iTerm2.
 struct LaunchSpec: Hashable {
@@ -38,6 +39,8 @@ struct LaunchSpec: Hashable {
     var terminal = false
     /// Только демо для скриншотов: вместо агента вкладка печатает этот файл.
     var demoScreen: String?
+
+    var codexSession: Bool { agent == .codex && utility == nil && !terminal }
 
     /// Идет ли вкладка через proxy: обычная сессия без -d или служебная agentmeister proxy run.
     var proxied: Bool {
@@ -220,7 +223,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     static func environment(tab: UUID, spec: LaunchSpec) -> [String] {
         var env = LoginEnvironment.shared
         let drop = ["TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "ITERM_SESSION_ID", "ITERM_PROFILE",
-                    "LC_TERMINAL", "LC_TERMINAL_VERSION", "COLORFGBG", "TMUX", "STY",
+                    "LC_TERMINAL", "LC_TERMINAL_VERSION", "COLORFGBG", "TMUX", "TMUX_PANE", "STY",
+                    "ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_VERSION",
                     "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "all_proxy", "NO_PROXY", "no_proxy",
                     "MNRH_PROXY", "MNRH_PROXY_SUB", "PROMPTSILL_PROXY_LABEL", "PROMPTSILL_PROXY_DETAIL", "PROMPTSILL_PROXY_URL", "PROMPTSILL_PROXY_FILE"]
         for key in drop { env.removeValue(forKey: key) }
@@ -229,7 +233,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         }
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
-        env["TERM_PROGRAM"] = "Agentmeister"
+        // Codex 0.172 selects inline graphics by a substring in TERM_PROGRAM. SwiftTerm renders Kitty placements.
+        env["TERM_PROGRAM"] = spec.codexSession ? "Agentmeister (Kitty graphics)" : "Agentmeister"
         env["MNRH_ICONS"] = "emoji"
         env["FORCE_HYPERLINK"] = "1"
         // хук уведомлений узнает по нему вкладку: клик открывает ее, а если она впереди, уведомления нет
@@ -1505,6 +1510,54 @@ final class AppTerminalView: LocalProcessTerminalView {
                 }
             }
         }
+    }
+
+    override func paste(_ sender: Any) {
+        if !pasteCodexImage() { super.paste(sender) }
+    }
+
+    static func handleImagePaste(_ event: NSEvent) -> NSEvent? {
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        guard modifiers == .control || modifiers == .command,
+              event.characters == "\u{16}" || event.charactersIgnoringModifiers?.lowercased() == "v",
+              let view = event.window?.firstResponder as? AppTerminalView,
+              view.pasteCodexImage() else { return event }
+        return nil
+    }
+
+    private func pasteCodexImage() -> Bool {
+        guard let tab, tab.running, tab.spec.codexSession else { return false }
+        do {
+            guard let url = try Self.imageURL(from: .general) else { return false }
+            pasteText(url.absoluteString)
+        } catch {
+            NSApp.presentError(error)
+        }
+        return true
+    }
+
+    static func imageURL(from board: NSPasteboard) throws -> URL? {
+        if board.types?.contains(.fileURL) == true {
+            let files = board.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]
+            guard let files, files.count == 1, let url = files.first,
+                  let properties = try? url.resourceValues(forKeys: [.contentTypeKey, .isRegularFileKey]),
+                  properties.isRegularFile == true, properties.contentType?.conforms(to: .image) == true else { return nil }
+            return url
+        }
+
+        let png: Data
+        if let data = board.data(forType: .png) {
+            png = data
+        } else {
+            guard let type = board.types?.first(where: { UTType($0.rawValue)?.conforms(to: .image) == true }),
+                  let data = board.data(forType: type), let bitmap = NSBitmapImageRep(data: data),
+                  let data = bitmap.representation(using: .png, properties: [:]) else { return nil }
+            png = data
+        }
+        // The composer reads the file again on submit. Keep it in the user's temporary directory.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("agentmeister-\(UUID()).png")
+        try png.write(to: url, options: .withoutOverwriting)
+        return url
     }
 
     // Файлы из Finder и скриншоты: путь вставляется в строку ввода, как в Terminal и iTerm2. Claude Code

@@ -320,7 +320,8 @@ APP_WAIT = 6.0  # приложение забирает запросы раз в
 def app_tab():
     """id вкладки десктопного Agentmeister, из которой идет эта сессия, или пусто."""
     tab = os.environ.get("AGENTMEISTER_TAB", "").lower()
-    return tab if os.environ.get("TERM_PROGRAM") == "Agentmeister" and UUID_RE.match(tab) else ""
+    embedded = os.environ.get("TERM_PROGRAM") in ("Agentmeister", "Agentmeister (Kitty graphics)")
+    return tab if embedded and UUID_RE.match(tab) else ""
 
 
 def via_app(request):
