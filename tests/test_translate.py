@@ -210,6 +210,24 @@ class Editor(unittest.TestCase):
         self.assertIn("секрет", status["error"])
 
 
+class Text(unittest.TestCase):
+    def run_text(self, text, result):
+        out = io.StringIO()
+        with mock.patch.object(t, "translate", lambda *a, **k: result), mock.patch.object(t, "fallback", lambda: None), \
+                mock.patch.object(t, "LOG", os.path.join(tempfile.mkdtemp(), "log")), \
+                mock.patch("sys.stdin", io.StringIO(text)), mock.patch("sys.stdout", out):
+            code = t.cmd_text()
+        return code, out.getvalue()
+
+    def test_translates_stdin(self):
+        self.assertEqual(self.run_text("Исправь баг\n", "Fix the bug"), (0, "Fix the bug\n\n(Reply in Russian.)\n"))
+
+    def test_english_is_refused(self):
+        code, out = self.run_text("fix the bug\n", "x")
+        self.assertEqual(code, 1)
+        self.assertIn("без нелатинских букв", out)
+
+
 class Key(unittest.TestCase):
     def test_saved_with_600(self):
         tmp = tempfile.mkdtemp()

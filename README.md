@@ -667,7 +667,9 @@ and for app tabs that is `libexec/agentmeister/editor/agentmeister`. While it ru
 the screen with a card, Esc cancels. `[Image #N]` labels stay, and a request to reply in your language is added
 at the end. Check the translation and press Enter, the hook leaves it alone. A plain Ctrl+G opens your own
 editor as before. Without a translator key, ⌘⇧T shows a field for it in the tab, and the key's shape picks the
-provider. In Settings the hook itself is now called "Add a translation to messages sent without ⌘⇧T".
+provider. In Settings the hook itself is now called "Add a translation to messages sent without ⌘⇧T". The first-prompt
+field on the project screen and in the new session and parallel task sheets has a Translate button at the top
+right, and ⌘⇧T works there too.
 
 ## Where we left off
 
