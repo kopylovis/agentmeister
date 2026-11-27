@@ -1414,11 +1414,11 @@ struct AddSubscriptionSheet: View {
                 }
                 GridRow {
                     Text(l.t("Страна", "Country")).foregroundStyle(Ink.muted)
-                    TextField(mainCountry ?? "KZ", text: $country).textFieldStyle(.roundedBorder).frame(width: 80)
+                    TextField(mainCountry ?? "DE", text: $country).textFieldStyle(.roundedBorder).frame(width: 80)
                 }
                 GridRow {
                     Text(l.t("Серверы", "Servers")).foregroundStyle(Ink.muted)
-                    TextField(l.t("все, или выражение для имени, например KZ", "all, or a name pattern such as KZ"), text: $only)
+                    TextField(l.t("все, или выражение для имени, например DE", "all, or a name pattern such as DE"), text: $only)
                         .textFieldStyle(.roundedBorder)
                 }
             }
