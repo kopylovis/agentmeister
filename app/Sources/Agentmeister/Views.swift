@@ -87,8 +87,9 @@ struct MainView: View {
             if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true || $0.title == "Agentmeister" }) {
                 window.title = "Agentmeister Demo"
                 // в сцене tabs-list окно узкое, чтобы вкладки не поместились в полосу, в bar-narrow чтобы панель
-                // сессии прокручивалась
-                window.setFrame(NSRect(x: 40, y: 40, width: Demo.scene == "bar-narrow" ? 760 : Demo.scene == "tabs-list" ? 1000 : 1440, height: 880),
+                // сессии прокручивалась. В inspector-scroll окно низкое, чтобы прокручивалась правая панель
+                window.setFrame(NSRect(x: 40, y: 40, width: Demo.scene == "bar-narrow" ? 760 : Demo.scene == "tabs-list" ? 1000 : 1440,
+                                       height: Demo.scene == "inspector-scroll" ? 560 : 880),
                                 display: true)
                 // снимок с активным окном: цветные кнопки, даже если фокус был у другого приложения
                 NSApp.activate(ignoringOtherApps: true)
@@ -2171,9 +2172,6 @@ struct TabInspector: View {
         let claude = tab.spec.utility == nil && tab.spec.agent == .claude
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                header(title: saved?.title.isEmpty == false ? saved!.title : tab.title,
-                       branch: project?.git?.branch ?? saved?.branch)
-
                 InspectorSection(title: l.route, open: open("route")) {
                     RouteChain(nodes: routeNodes, direct: !tab.spec.proxied)
                 }
@@ -2245,7 +2243,20 @@ struct TabInspector: View {
                 Rectangle().fill(Ink.hairline).frame(height: 1)
             }
             .font(.system(size: 12))
-            .padding(.bottom, 16)
+        }
+        .scrollIndicators(.never)
+        // демо inspector-scroll: панель прокручена до середины, секции видны и под шапкой, и под нижней полосой
+        .defaultScrollAnchor(Demo.active && Demo.scene == "inspector-scroll" ? .center : .top)
+        // шапка стоит на месте, секции уходят под нее размытыми, как строки под шапкой проектов слева
+        .safeAreaBar(edge: .top, spacing: 0) {
+            header(title: saved?.title.isEmpty == false ? saved!.title : tab.title,
+                   branch: project?.git?.branch ?? saved?.branch)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .blurBar(edge: .top)
+        }
+        // снизу полоса размытия: строки растворяются у скругленного края карточки, а не срезаются им
+        .safeAreaBar(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: 20).frame(maxWidth: .infinity).blurBar(edge: .bottom)
         }
         .task(id: tab.spec.projectPath) {
             changes = nil
