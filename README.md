@@ -194,7 +194,7 @@ If `am` is missing, `agentmeister alias on` or the "Short name am" menu item add
 that belongs to another program, and `agentmeister alias off` removes only its own.
 
 Homebrew also installs mihomo for `agentmeister -x`. `agentmeister setup` puts `/restart`, `/forget`, `/slim`
-and the other commands into `~/.claude/commands`, hooks into `~/.claude/settings.json` and a zsh hook into
+and the other commands into `~/.claude/commands` (a command file of your own with the same name stays as it is), hooks into `~/.claude/settings.json` and a zsh hook into
 `~/.zshrc`, and registers the `agentmeister` MCP server. If the proxy isn't set up yet, setup asks whether
 to do it now (`--country KZ` sets the expected exit country). If the
 [promptsill](https://github.com/kopylovis/promptsill) status line is missing, it offers to install it with Homebrew.
