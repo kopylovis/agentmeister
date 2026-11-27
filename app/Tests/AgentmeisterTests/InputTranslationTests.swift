@@ -24,3 +24,10 @@ import Testing
     #expect(TranslateKey.provider("sk-ant-api03-abc") == nil)
     #expect(TranslateKey.provider("") == nil)
 }
+
+@Test func codexEditorKeyFromConfig() {
+    #expect(TerminalTab.codexEditorKey("") == "\u{07}")
+    #expect(TerminalTab.codexEditorKey("[tui.keymap.global]\nopen_external_editor = \"ctrl-e\"\n") == "\u{05}")
+    #expect(TerminalTab.codexEditorKey("[tui.keymap.global]\nopen_external_editor = \"alt-g\"\n") == nil)
+    #expect(TerminalTab.codexEditorKey("# open_external_editor = \"ctrl-e\"\nmodel = \"x\"") == "\u{07}")
+}
