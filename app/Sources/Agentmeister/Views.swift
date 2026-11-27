@@ -1173,6 +1173,11 @@ struct SubAgentPoller: View {
 
     var body: some View {
         Color.clear.task(id: root.sessionId) {
+            if Demo.subtasks {
+                root.agents = Demo.subAgents()
+                root.shells = Demo.shells()
+                return
+            }
             guard let sid = root.sessionId, root.spec.agent == .claude, root.spec.utility == nil else {
                 root.agents = []
                 root.shells = []
@@ -1183,60 +1188,6 @@ struct SubAgentPoller: View {
                 if root.agents != agents { root.agents = agents }
                 if root.shells != shells { root.shells = shells }
                 try? await Task.sleep(for: .seconds(3))
-            }
-        }
-    }
-}
-
-/// Ряд подзадач под полосой вкладок: параллельные задачи выбранного агента в своих worktree.
-/// Виден, пока выбран агент с подзадачами или одна из них.
-struct SubtaskRow: View {
-    @EnvironmentObject var workspace: Workspace
-    @EnvironmentObject var backend: Backend
-    @EnvironmentObject var ui: UIState
-    @ObservedObject var root: TerminalTab
-    let subtasks: [TerminalTab]
-
-    var l: L { L(backend.state.lang) }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.turn.down.right").font(.system(size: 10, weight: .medium))
-                Text(l.t("подзадачи агента", "agent's subtasks"))
-            }
-            .font(.system(size: 11))
-            .foregroundStyle(Ink.faint)
-            .padding(.leading, 18)
-            .padding(.trailing, 6)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(subtasks) { tab in
-                        SubtaskChip(tab: tab, selected: tab.id == workspace.selected)
-                    }
-                    ForEach(root.agents) { agent in
-                        SubAgentChip(agent: agent, l: l)
-                    }
-                    ForEach(root.shells) { shell in
-                        ShellChip(shell: shell, l: l) {
-                            BackgroundShells.hide(shell.id)
-                            root.shells.removeAll { $0.id == shell.id }
-                        }
-                    }
-                    Button {
-                        workspace.selected = root.id
-                        ui.newSessionProject = backend.state.project(containing: root.spec.projectPath)?.path ?? root.spec.projectPath
-                        ui.showParallel = true
-                    } label: {
-                        Label(l.t("задача", "task"), systemImage: "plus")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Ink.muted)
-                            .padding(.horizontal, 10)
-                            .frame(height: 26)
-                    }
-                    .buttonStyle(.hoverCapsule())
-                    .help(l.t("Новая параллельная задача этого агента", "A new parallel task for this agent"))
-                }
             }
         }
     }
