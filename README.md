@@ -345,8 +345,8 @@ as it would in a normal terminal, with a direct network. Its output and exit cod
 and Ctrl+C stops it. A proxied session can't write the list, but it can ask for a change:
 
 ```sh
-agentmeister host-run add tossling-ios --cwd ~/Developer/tossling-mobile --run bundle exec fastlane ios_beta
-agentmeister host-run remove tossling-ios
+agentmeister host-run add myapp-beta --cwd ~/Developer/myapp --run bundle exec fastlane ios_beta
+agentmeister host-run remove myapp-beta
 ```
 
 The runner shows a window on the Mac with the name, the folder and the full command. The entry is written
@@ -361,8 +361,8 @@ also edit the list by hand in a normal terminal:
 ```json
 {
   "commands": {
-    "tossling-ios": {"cwd": "~/Developer/tossling-mobile", "run": ["bundle", "exec", "fastlane", "ios_beta"]},
-    "tossling-firebase": {"cwd": "~/Developer/tossling-mobile", "run": ["bundle", "exec", "fastlane", "upload"],
+    "myapp-beta": {"cwd": "~/Developer/myapp", "run": ["bundle", "exec", "fastlane", "ios_beta"]},
+    "myapp-firebase": {"cwd": "~/Developer/myapp", "run": ["bundle", "exec", "fastlane", "upload"],
                           "args": true}
   }
 }

@@ -55,8 +55,8 @@ PROXY_VARS = ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY", "https_proxy
 MAX_REQUEST = 256 * 1024
 EXAMPLE = """{
   "commands": {
-    "tossling-ios": {"cwd": "~/Developer/tossling-mobile", "run": ["bundle", "exec", "fastlane", "ios_beta"]},
-    "tossling-firebase": {"cwd": "~/Developer/tossling-mobile", "run": ["bundle", "exec", "fastlane", "upload"],
+    "myapp-beta": {"cwd": "~/Developer/myapp", "run": ["bundle", "exec", "fastlane", "ios_beta"]},
+    "myapp-firebase": {"cwd": "~/Developer/myapp", "run": ["bundle", "exec", "fastlane", "upload"],
                           "args": true}
   }
 }"""
@@ -1075,12 +1075,12 @@ add и remove меняют список через исполнитель. Он 
 дают код 1, ошибка в запросе или занятое имя код 2. --args разрешает сессии дописывать аргументы
 в конец команды, --replace заменяет команду с тем же именем, и тогда в окне видно старую и новую.
 Остальные записи файла сохраняются. Пример:
-  agentmeister host-run add tossling-ios --cwd ~/Developer/tossling-mobile --run bundle exec fastlane ios_beta
+  agentmeister host-run add myapp-beta --cwd ~/Developer/myapp --run bundle exec fastlane ios_beta
 
 open открывает вкладку в текущем окне iTerm2 и запускает там agentmeister open <проект> -k -x --new
 с аргументами claude после --. Из песочницы iTerm2 вкладку не откроет, поэтому это делает исполнитель.
 Сессия всегда идет через proxy, -d не принимается. Пример:
-  agentmeister host-run open tossling -- --remote-control tossling "первый запрос"
+  agentmeister host-run open myapp -- --remote-control myapp "первый запрос"
 
 Файл можно вести и руками в обычном терминале:
 {EXAMPLE}
@@ -1106,12 +1106,12 @@ and Accessibility can't press the button. Deny, a closed window and {CONFIRM_TIM
 give exit code 1, a bad request or a taken name exit code 2. --args lets sessions append arguments to the
 command, --replace replaces the command with the same name, and the window then shows the old and new one.
 Other entries in the file are kept. Example:
-  agentmeister host-run add tossling-ios --cwd ~/Developer/tossling-mobile --run bundle exec fastlane ios_beta
+  agentmeister host-run add myapp-beta --cwd ~/Developer/myapp --run bundle exec fastlane ios_beta
 
 open opens a tab in the current iTerm2 window and runs agentmeister open <project> -k -x --new there
 with the claude arguments after --. iTerm2 won't open a tab from the sandbox, so the runner does it.
 The session always goes through the proxy, -d is not accepted. Example:
-  agentmeister host-run open tossling -- --remote-control tossling "first prompt"
+  agentmeister host-run open myapp -- --remote-control myapp "first prompt"
 
 You can also edit the file by hand in a regular terminal:
 {EXAMPLE}
