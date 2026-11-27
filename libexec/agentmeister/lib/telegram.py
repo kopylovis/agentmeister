@@ -17,8 +17,11 @@ from mnrhlib import HOME, read_config, tilde, write_config
 import presence
 from presence import away_after
 
-SERVICE = "mnrh-telegram"
-ACCOUNT = "bot"
+# Секреты каналов уведомлений лежат в Связке ключей под одним сервисом, аккаунт по имени канала
+SERVICE = "agentmeister.notify"
+ACCOUNT = "telegram"
+# Здесь токен лежал до 1.29. Запись не удаляется, пока канал не отключат: ее читают старые версии Agentmeister
+OLD_KEYCHAIN = ("mnrh-telegram", "bot")
 API = "https://api.telegram.org/bot{}/{}"
 TOKEN_RE = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")
 
@@ -63,25 +66,39 @@ def shares_plugin_bot(tok=None):
     return bool(plug) and plug == (tok or token())
 
 
-def token():
+def keychain_find(service, account):
     try:
-        r = subprocess.run(["security", "find-generic-password", "-s", SERVICE, "-a", ACCOUNT, "-w"],
+        r = subprocess.run(["security", "find-generic-password", "-s", service, "-a", account, "-w"],
                            capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
+def token():
+    tok = keychain_find(SERVICE, ACCOUNT)
+    if tok:
+        return tok
+    tok = keychain_find(*OLD_KEYCHAIN)
+    if tok:
+        try:  # копия под новым именем, старую запись не трогаем
+            save_token(tok)
+        except TelegramError:
+            pass
+    return tok
+
+
 def save_token(value):
     r = subprocess.run(["security", "add-generic-password", "-U", "-s", SERVICE, "-a", ACCOUNT,
-                        "-l", "mnrh Telegram bot", "-w", value], capture_output=True, text=True, timeout=10)
+                        "-l", "Agentmeister Telegram bot", "-w", value], capture_output=True, text=True, timeout=10)
     if r.returncode != 0:
         raise TelegramError("не сохранил токен в Связку ключей")
 
 
 def forget_token():
-    subprocess.run(["security", "delete-generic-password", "-s", SERVICE, "-a", ACCOUNT],
-                   capture_output=True, timeout=10)
+    for service, account in ((SERVICE, ACCOUNT), OLD_KEYCHAIN):
+        subprocess.run(["security", "delete-generic-password", "-s", service, "-a", account],
+                       capture_output=True, timeout=10)
 
 
 def call(method, tok=None, wait=15, **params):

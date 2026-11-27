@@ -346,5 +346,40 @@ class Wiring(unittest.TestCase):
             self.assertFalse(notify.approval_pending(prompt, "other"))
 
 
+class Keychain(unittest.TestCase):
+    """Токен бота живет под agentmeister.notify/telegram. Старая запись mnrh-telegram/bot копируется туда
+    и остается для старых версий, пока канал не отключат."""
+
+    def fake_security(self, store):
+        def run(cmd, **kw):
+            op, service, account = cmd[1], cmd[cmd.index("-s") + 1], cmd[cmd.index("-a") + 1]
+            key = (service, account)
+            if op == "find-generic-password":
+                return mock.Mock(returncode=0 if key in store else 44, stdout=store.get(key, "") + "\n")
+            if op == "add-generic-password":
+                store[key] = cmd[cmd.index("-w") + 1]
+            if op == "delete-generic-password":
+                store.pop(key, None)
+            return mock.Mock(returncode=0, stdout="")
+        return run
+
+    def test_old_token_is_copied_and_kept(self):
+        store = {("mnrh-telegram", "bot"): "123:old"}
+        with mock.patch.object(telegram.subprocess, "run", self.fake_security(store)):
+            self.assertEqual(telegram.token(), "123:old")
+        self.assertEqual(store, {("mnrh-telegram", "bot"): "123:old", ("agentmeister.notify", "telegram"): "123:old"})
+
+    def test_new_token_wins(self):
+        store = {("mnrh-telegram", "bot"): "123:old", ("agentmeister.notify", "telegram"): "456:new"}
+        with mock.patch.object(telegram.subprocess, "run", self.fake_security(store)):
+            self.assertEqual(telegram.token(), "456:new")
+
+    def test_forget_removes_both(self):
+        store = {("mnrh-telegram", "bot"): "123:old", ("agentmeister.notify", "telegram"): "456:new"}
+        with mock.patch.object(telegram.subprocess, "run", self.fake_security(store)):
+            telegram.forget_token()
+        self.assertEqual(store, {})
+
+
 if __name__ == "__main__":
     unittest.main()
