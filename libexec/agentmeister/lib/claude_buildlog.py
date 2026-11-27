@@ -19,7 +19,7 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, CLAUDE_HOME, read_config, tilde, write_config  # noqa: E402
+from mnrhlib import CACHE, CLAUDE_HOME, lang, read_config, tilde, tr, write_config  # noqa: E402
 from claude_guard import positional, split_segments, strip_env, words  # noqa: E402
 
 LOGS = os.path.join(CACHE, "logs")
@@ -107,8 +107,11 @@ def read_big(path, size):
     head = head[:head.rfind(b"\n") + 1] or head
     tail = tail[tail.find(b"\n") + 1:] or tail
     skipped = size - len(head) - len(tail)
-    return (head.decode("utf-8", "replace") + f"… пропущено из середины вывода: {max(1, skipped >> 20)} МБ, "
-            f"они в полном логе\n" + tail.decode("utf-8", "replace"))
+    mb = max(1, skipped >> 20)
+    return (head.decode("utf-8", "replace") +
+            tr(f"… пропущено из середины вывода: {mb} МБ, они в полном логе\n",
+               f"… skipped from the middle of the output: {mb} MB, it's in the full log\n") +
+            tail.decode("utf-8", "replace"))
 
 
 def full_output(resp):
@@ -176,8 +179,10 @@ def pick(lines):
             else:
                 extra += 1
     keep.update(range(max(0, n - TAIL), n))
-    dropped = ([f"… ещё строк с ошибками: {errors - MAX_ERRORS}, они в полном логе"] if errors > MAX_ERRORS else []) + \
-        ([f"… ещё разных предупреждений: {extra}, они в полном логе"] if extra else [])
+    dropped = ([tr(f"… ещё строк с ошибками: {errors - MAX_ERRORS}, они в полном логе",
+                   f"… {errors - MAX_ERRORS} more error lines, they're in the full log")] if errors > MAX_ERRORS else []) + \
+        ([tr(f"… ещё разных предупреждений: {extra}, они в полном логе",
+             f"… {extra} more distinct warnings, they're in the full log")] if extra else [])
     return sorted(keep), {i: c for i, c in repeats.items() if i in keep}, dropped
 
 
@@ -185,12 +190,12 @@ def render(lines, idx, header, footer, repeats=None):
     out, prev = [header], -1
     for i in idx:
         if i > prev + 1:
-            out.append(f"… пропущено строк: {i - prev - 1}")
+            out.append(tr(f"… пропущено строк: {i - prev - 1}", f"… {i - prev - 1} lines skipped"))
         more = (repeats or {}).get(i)
-        out.append(clip(lines[i]) + (f"  [и ещё {more} таких же в других местах]" if more else ""))
+        out.append(clip(lines[i]) + (tr(f"  [и ещё {more} таких же в других местах]", f"  [and {more} more like it elsewhere]") if more else ""))
         prev = i
     if prev < len(lines) - 1:
-        out.append(f"… пропущено строк: {len(lines) - 1 - prev}")
+        out.append(tr(f"… пропущено строк: {len(lines) - 1 - prev}", f"… {len(lines) - 1 - prev} lines skipped"))
     out += footer
     return "\n".join(out)
 
@@ -203,11 +208,18 @@ def shrink(text, log_path, failed=False, unknown=None):
     if unknown:
         footer = footer + [unknown]
     size = len(text.encode("utf-8", "replace"))
-    state = FAILED_HEAD if failed else UNKNOWN_HEAD if unknown else ""
-    where = "Что дошло до хука" if unknown else "Полный лог"
-    header = (f"[agentmeister buildlog: {state}вывод длинный ({len(lines)} строк, {max(1, size // 1024)} КБ), здесь выжимка: "
-              f"ошибки, предупреждения, итог и конец. {where}: {tilde(log_path)}, ищи в нём grep или читай Read "
-              f"с offset, если выжимки мало]")
+    state = failed_head() if failed else unknown_head() if unknown else ""
+    kb = max(1, size // 1024)
+    if lang() == "en":
+        where = "What reached the hook" if unknown else "Full log"
+        header = (f"[agentmeister buildlog: {state}the output is long ({len(lines)} lines, {kb} KB), this is a digest: "
+                  f"errors, warnings, the summary and the end. {where}: {tilde(log_path)}, grep it or Read it with "
+                  f"offset if the digest isn't enough]")
+    else:
+        where = "Что дошло до хука" if unknown else "Полный лог"
+        header = (f"[agentmeister buildlog: {state}вывод длинный ({len(lines)} строк, {kb} КБ), здесь выжимка: "
+                  f"ошибки, предупреждения, итог и конец. {where}: {tilde(log_path)}, ищи в нём grep или читай Read "
+                  f"с offset, если выжимки мало]")
     compact = render(lines, idx, header, footer, repeats)
     if len(compact) > BUDGET:
         tail = [i for i in idx if i >= len(lines) - TAIL]
@@ -219,7 +231,7 @@ def shrink(text, log_path, failed=False, unknown=None):
             if total > BUDGET:
                 break
             head.append(i)
-        compact = render(lines, head + tail, header, footer + ["(выжимка обрезана по размеру, остальное в полном логе)"],
+        compact = render(lines, head + tail, header, footer + [tr("(выжимка обрезана по размеру, остальное в полном логе)", "(the digest was cut for size, the rest is in the full log)")],
                          repeats)
     return compact if len(compact) * 2 <= len(text) else None
 
@@ -261,14 +273,31 @@ def save(path, cmd, text):
 # PostToolUse, и ее длинный вывод можно сжать. Текст без подстановок: echo с $? Claude Code просит подтвердить.
 FAIL_MARK = "[agentmeister buildlog: exit code was not 0]"
 WRAP = f' || echo "{FAIL_MARK}"'
-FAILED_HEAD = "команда завершилась с ошибкой (код не 0), "
-FAILED_NOTE = ("[agentmeister buildlog: команда завершилась с ошибкой (код не 0). Хук дописал к ней || echo, чтобы "
-               "сжать длинный вывод, поэтому Claude Code показывает вызов как успешный]")
-UNKNOWN_HEAD = "результат неизвестен, "
+
+
+def failed_head():
+    return tr("команда завершилась с ошибкой (код не 0), ", "the command failed (non-zero exit code), ")
+
+
+def failed_note():
+    return tr("[agentmeister buildlog: команда завершилась с ошибкой (код не 0). Хук дописал к ней || echo, чтобы "
+              "сжать длинный вывод, поэтому Claude Code показывает вызов как успешный]",
+              "[agentmeister buildlog: the command failed (non-zero exit code). The hook appended || echo to it to "
+              "compact long output, so Claude Code shows the call as successful]")
+
+
+def unknown_head():
+    return tr("результат неизвестен, ", "result unknown, ")
 
 
 def unknown_note(cmd, full):
     """Пояснение, когда метки FAIL_MARK не видно, потому что вывод дошел до хука не целиком."""
+    if lang() == "en":
+        where = (f"the full output should be in {tilde(full)}, check its end" if full else
+                 f"run it again with output to a file and check the exit code: {cmd} > /tmp/build.log 2>&1; echo $?")
+        return ("[agentmeister buildlog: result unknown. The hook appended || echo to the command to compact the output, "
+                "so Claude Code shows the call as successful, but the output didn't reach the hook in full and it's "
+                f"not clear whether the command failed. Don't treat it as successful: {where}]")
     where = (f"полный вывод должен быть в {tilde(full)}, проверь его конец" if full else
              f"запусти ее снова с выводом в файл и проверь код возврата: {cmd} > /tmp/build.log 2>&1; echo $?")
     return ("[agentmeister buildlog: результат неизвестен. Хук дописал к команде || echo, чтобы сжать вывод, поэтому "
@@ -329,7 +358,7 @@ def decide(payload):
             prune()
     if compact is None and not failed and not unknown:
         return None
-    out.update(stdout=compact if compact is not None else text + "\n" + (FAILED_NOTE if failed else unknown),
+    out.update(stdout=compact if compact is not None else text + "\n" + (failed_note() if failed else unknown),
                stderr="")
     return out
 
@@ -583,6 +612,18 @@ def hook():
 
 
 def usage():
+    if lang() == "en":
+        print("agentmeister buildlog                 whether it's on and where the logs are")
+        print("agentmeister buildlog on | off        turn on or off")
+        print("agentmeister buildlog test <file>     what Claude sees instead of such output")
+        print()
+        print(f"The PostToolUse hook compacts long output (over {MAX_LINES} lines or {MAX_BYTES // 1024} KB) of Gradle, "
+              "xcodebuild,")
+        print("swift build/test, npm/pnpm/yarn test and build, pytest and make: Claude sees errors, warnings and the summary,")
+        print(f"and the full log is in {tilde(LOGS)}/<session>/ ({KEEP_DAYS} days). To compact a failed build too,")
+        print("the PreToolUse hook appends || echo with a marker: Claude learns the build failed, but not the exit code.")
+        print(f"In iTerm2 a build longer than {TAB_DELAY:g} s is labeled in the tab next to Claude's status: gradlew :app:assembleDebug.")
+        return
     print("agentmeister buildlog                 включено ли и где логи")
     print("agentmeister buildlog on | off        включить или выключить")
     print("agentmeister buildlog test <файл>     что увидит Claude вместо такого вывода")
@@ -605,24 +646,28 @@ def main():
         return tab_child()
     rest = args[1:]
     if not rest:
-        print(f"agentmeister buildlog: {'включён' if enabled() else 'выключен'}. Логи: {tilde(LOGS)}")
+        print(tr(f"agentmeister buildlog: {'включён' if enabled() else 'выключен'}. Логи: {tilde(LOGS)}",
+                 f"agentmeister buildlog: {'on' if enabled() else 'off'}. Logs: {tilde(LOGS)}"))
         return 0
     if rest[0] in ("on", "off") and len(rest) == 1:
         write_config(buildlog=rest[0])
-        print(f"agentmeister buildlog {'включён' if rest[0] == 'on' else 'выключен'}")
+        print(tr(f"agentmeister buildlog {'включён' if rest[0] == 'on' else 'выключен'}",
+                 f"agentmeister buildlog {'on' if rest[0] == 'on' else 'off'}"))
         return 0
     if rest[0] == "test" and len(rest) == 2:
         try:
             with open(rest[1], encoding="utf-8", errors="replace") as f:
                 text = f.read()
         except OSError as e:
-            print(f"Не прочитал {rest[1]}: {e.strerror}", file=sys.stderr)
+            print(tr(f"Не прочитал {rest[1]}: {e.strerror}", f"Couldn't read {rest[1]}: {e.strerror}"), file=sys.stderr)
             return 1
         if not is_long(text):
-            print(f"Вывод короткий (до {MAX_LINES} строк и {MAX_BYTES // 1024} КБ), Claude увидит его как есть")
+            print(tr(f"Вывод короткий (до {MAX_LINES} строк и {MAX_BYTES // 1024} КБ), Claude увидит его как есть",
+                     f"The output is short (up to {MAX_LINES} lines and {MAX_BYTES // 1024} KB), Claude sees it as is"))
             return 0
         print(shrink(text, os.path.join(LOGS, "<сессия>", "<время>.log")) or
-              "Выжимка вышла не короче половины вывода, Claude увидит его как есть")
+              tr("Выжимка вышла не короче половины вывода, Claude увидит его как есть",
+                 "The digest isn't shorter than half the output, Claude sees it as is"))
         return 0
     usage()
     return 0 if rest[0] in ("-h", "--help") else 2

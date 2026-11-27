@@ -11,6 +11,21 @@ sys.dont_write_bytecode = True
 TESTS = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(TESTS), "libexec", "agentmeister", "lib"))
 import claude_buildlog as b  # noqa: E402
+import mnrhlib  # noqa: E402
+
+# тесты сверяют русские тексты, а без lang в config язык берется из macOS
+RU = mock.patch.object(mnrhlib, "lang", lambda: "ru")
+RU_HERE = mock.patch.object(b, "lang", lambda: "ru")
+
+
+def setUpModule():
+    RU.start()
+    RU_HERE.start()
+
+
+def tearDownModule():
+    RU_HERE.stop()
+    RU.stop()
 
 FIXTURES = os.path.join(TESTS, "fixtures")
 
@@ -262,7 +277,7 @@ class FailedBuild(HookBase):
     def test_short_failed_output_gets_a_note(self):
         out = b.decide(self.payload("e: Foo.kt:3:1 Unresolved reference\n" + b.FAIL_MARK,
                                     cmd="./gradlew build" + b.WRAP))
-        self.assertEqual(out["stdout"], "e: Foo.kt:3:1 Unresolved reference\n" + b.FAILED_NOTE)
+        self.assertEqual(out["stdout"], "e: Foo.kt:3:1 Unresolved reference\n" + b.failed_note())
         self.assertFalse(os.path.exists(b.LOGS))
 
     def test_successful_wrapped_build_is_untouched(self):
