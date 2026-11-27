@@ -4,6 +4,10 @@
 Gemini 3.1 Flash Lite) и добавляет перевод в контекст. Заменить сам промпт хук не может, поэтому агент видит оба текста, и при
 расхождении главным остается оригинал. Отвечает агент на языке пользователя.
 
+По ⌘⇧T во вкладке Claude Code приложение Agentmeister переводит саму строку ввода: шлет Ctrl+G, Claude Code
+запускает EDITOR, а это libexec/agentmeister/translate-editor (editor_main ниже). Он переводит файл на месте
+и выходит, перевод виден до отправки, и хук его уже не трогает. Без запроса от приложения открывается обычный редактор.
+
 Наружу не уходит текст без нелатинских букв, слэш-команды, длинные вставки и все, что похоже на секрет:
 ключи, токены, приватные ключи, JWT, ссылки на подписки proxy, ссылки с паролем или токеном в адресе.
 Текст промптов не пишется на диск, в журнал идут только время, длина и итог.
@@ -22,6 +26,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import CONFIG, HOME, badge, read_config, tilde, tr, write_config  # noqa: E402
 import claude_settings  # noqa: E402
+from claude_open import app_tab  # noqa: E402
 
 LOG = os.path.join(HOME, "Library", "Logs", "mnrh-translate.log")
 HOOK_CMD = "translate-hook"
@@ -222,6 +227,118 @@ def context(english):
             "to help you reason in English:\n\n" + english + "\n\n"
             "Work from the translation, but the user's original wording wins wherever the two differ in meaning. "
             "Reply in the language the user wrote in. Keep code, commands, paths and identifiers as they are.")
+
+
+# Перевод строки ввода по ⌘⇧T: в журнал идет с пометкой input вместо сессии. Приложение кладет edit-<вкладка>.json и шлет Ctrl+G, редактор пишет ход работы
+# в edit-<вкладка>.status.json, а edit-<вкладка>.cancel от приложения (Esc) оставляет текст как был.
+EDIT_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "mnrh", "app", "translate")
+EDIT_TTL = 10
+IMAGE = re.compile(r"\[Image #\d+\]")
+LANGUAGES = [("Ukrainian", r"[іїєґІЇЄҐ]"), ("Russian", r"[А-Яа-яЁё]"), ("Japanese", r"[\u3040-\u30ff]"),
+             ("Korean", r"[\uac00-\ud7af]"), ("Chinese", r"[\u4e00-\u9fff]"), ("Greek", r"[\u0370-\u03ff]"),
+             ("Hebrew", r"[\u0590-\u05ff]"), ("Arabic", r"[\u0600-\u06ff]")]
+
+
+def language(text):
+    return next((name for name, rx in LANGUAGES if re.search(rx, text)), None)
+
+
+def translate_input(text):
+    """(английский текст для строки ввода, None) или (None, почему нет). Картинки [Image #N] должны остаться
+    теми же, иначе Claude Code не приложит их к сообщению. В конце просьба отвечать на языке оригинала."""
+    reason = skip_reason(text)
+    if reason:
+        return None, reason
+    english, _ = translate_any(text.strip())
+    if sorted(IMAGE.findall(english)) != sorted(IMAGE.findall(text)):
+        return None, "перевод потерял метку картинки"
+    lang = language(text)
+    return english.strip() + (f"\n\n(Reply in {lang}.)" if lang else ""), None
+
+
+def _edit_path(tab, suffix):
+    return os.path.join(EDIT_DIR, f"edit-{tab}{suffix}")
+
+
+def _edit_status(tab, **status):
+    path = _edit_path(tab, ".status.json")
+    try:
+        os.makedirs(EDIT_DIR, exist_ok=True)
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w") as f:
+            json.dump(status, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+def _requested(tab):
+    """Ctrl+G прислало приложение по ⌘⇧T, а не человек: свежий edit-<вкладка>.json. Запрос одноразовый."""
+    path = _edit_path(tab, ".json")
+    try:
+        fresh = time.time() - os.path.getmtime(path) < EDIT_TTL
+        os.remove(path)
+        return fresh
+    except OSError:
+        return False
+
+
+def own_editor(path):
+    """Обычный редактор пользователя: тот, что был в EDITOR до приложения, иначе vi."""
+    cmd = os.environ.get("AGENTMEISTER_EDITOR") or "vi"
+    os.execv("/bin/sh", ["/bin/sh", "-c", cmd + ' "$@"', "sh"] + ([path] if path else []))
+
+
+def editor_main(args):
+    path = args[-1] if args else ""
+    tab = app_tab()
+    if not tab or not path or not _requested(tab):
+        own_editor(path)
+        return 1  # execv не вернулся бы, сюда попадаем, только если запустить редактор не вышло
+    cancel = _edit_path(tab, ".cancel")
+    try:
+        os.remove(cancel)
+    except OSError:
+        pass
+    _edit_status(tab, state="started", model=model(), provider=info()["name"])
+    start = time.monotonic()
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError as e:
+        _edit_status(tab, state="done", ok=False, error=str(e))
+        return 0
+    import threading
+    result = {}
+
+    def work():
+        try:
+            result["english"], result["skip"] = translate_input(text)
+        except Exception as e:
+            result["error"] = f"{type(e).__name__}: {str(e)[:120]}"
+
+    thread = threading.Thread(target=work, daemon=True)
+    thread.start()
+    while thread.is_alive():
+        thread.join(0.05)
+        if os.path.exists(cancel):
+            _edit_status(tab, state="done", ok=False, cancelled=True)
+            log("input", "отменен", len(text))
+            return 0
+    ms = int((time.monotonic() - start) * 1000)
+    english = result.get("english")
+    if english:
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(english + ("\n" if text.endswith("\n") else ""))
+        os.replace(tmp, path)
+        _edit_status(tab, state="done", ok=True, ms=ms)
+        log("input", "переведен", len(text), ms)
+    else:
+        error = result.get("skip") or result.get("error") or "пустой перевод"
+        _edit_status(tab, state="done", ok=False, error=error, ms=ms)
+        log("input", ("пропущен, " if result.get("skip") else "ошибка, ") + error, len(text), None if result.get("skip") else ms)
+    return 0
 
 
 def log(sid, result, chars=0, ms=None):
@@ -437,6 +554,8 @@ is added next to the original."""))
 
 def main():
     args = sys.argv[1:]
+    if args[:1] == ["editor"]:
+        return editor_main(args[1:])
     if args[:1] == [HOOK_CMD]:
         try:
             return hook()
