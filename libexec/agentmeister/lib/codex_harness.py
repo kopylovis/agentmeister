@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -17,7 +18,14 @@ from mnrhlib import CM, HOME, LOCAL_CLI, RESTART_QUEUE, ROOT, UUID_RE, find_proj
 
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop")
 NOTIFY_EVENTS = ("UserPromptSubmit", "PermissionRequest", "Stop")
-HOOK_COMMANDS = {"humanize-hook": HOOK_EVENTS, "notify-hook": NOTIFY_EVENTS, "translate-hook": ("UserPromptSubmit",)}
+HOOK_COMMANDS = {
+    "humanize-hook": HOOK_EVENTS,
+    "translate-hook": ("UserPromptSubmit",),
+    "guard-hook": ("PreToolUse",),
+    "notify-hook": NOTIFY_EVENTS,
+}
+TOOL_MATCHERS = {"guard-hook": "Bash|apply_patch"}
+
 HOOK_LABELS = {
     "approve-hook": "Agentmeister approvals",
     "buildlog-hook": "Agentmeister build digest",
@@ -295,11 +303,30 @@ def configured_humanize_hooks():
     return configured_hooks("humanize-hook")
 
 
+def covers_tools(name, matcher):
+    if not matcher or matcher == "*":
+        return True
+    if name not in TOOL_MATCHERS:
+        return False
+    try:
+        matches = re.compile(matcher).search
+        patch = any(matches(alias) for alias in ("apply_patch", "Edit", "Write"))
+        return bool(matches("Bash") and (name != "guard-hook" or patch))
+    except re.error:
+        return False
+
+
+
+def requires_sync(name, event):
+    return name in ("guard-hook", "translate-hook")
+
+
 def configured_hooks(name):
     try:
         hooks = json.loads(hooks_path().read_text(encoding="utf-8")).get("hooks", {})
         return sum(any(handler.get("type") == "command" and is_hook(handler.get("command"), name)
-                       for group in hooks.get(event, []) if not group.get("matcher")
+                       and not (requires_sync(name, event) and handler.get("async"))
+                       for group in hooks.get(event, []) if covers_tools(name, group.get("matcher"))
                        for handler in group["hooks"]) for event in HOOK_COMMANDS[name])
     except FileNotFoundError:
         return 0
@@ -344,7 +371,7 @@ def configure_hooks(remove):
         raise ValueError(f"{path} has an invalid hooks structure")
     hooks = data.setdefault("hooks", {})
     changed = False
-    for event in dict.fromkeys(HOOK_EVENTS + NOTIFY_EVENTS):
+    for event in dict.fromkeys(event for events in HOOK_COMMANDS.values() for event in events):
         commands = [name for name, events in HOOK_COMMANDS.items() if event in events]
         groups = hooks.get(event, [])
         if not isinstance(groups, list) or any(not isinstance(g, dict) or not isinstance(g.get("hooks"), list)
@@ -362,7 +389,10 @@ def configure_hooks(remove):
                     if not group["hooks"]:
                         groups.remove(group)
                     changed = True
-                elif not group.get("matcher"):
+                elif covers_tools(name, group.get("matcher")):
+                    if not remove and requires_sync(name, event) and handler.get("async"):
+                        handler.pop("async")
+                        changed = True
                     existing.add(name)
         if not remove:
             for name in commands:
@@ -375,7 +405,10 @@ def configure_hooks(remove):
                     handler.update({"timeout": 15, "additionalContextLimit": 0})
                 if name == "notify-hook" and event != "UserPromptSubmit":
                     handler.update({"async": True, "timeout": 60})
-                groups.append({"hooks": [handler]})
+                group = {"hooks": [handler]}
+                if name in TOOL_MATCHERS:
+                    group["matcher"] = TOOL_MATCHERS[name]
+                groups.append(group)
                 changed = True
         if groups:
             hooks[event] = groups
@@ -539,8 +572,8 @@ def setup(codex, argv):
     if not remove:
         from setup_cmd import install_restart_hook
         install_restart_hook()
-        print(tr("Хуки humanize и notify, MCP настроены. Подтверди новые хуки в Codex через /hooks.",
-                 "Configured humanize and notify hooks and MCP. Trust the new hooks in Codex with /hooks."))
+        print(tr("Хуки Agentmeister и MCP настроены. Подтверди новые хуки в Codex через /hooks.",
+                 "Configured Agentmeister hooks and MCP. Trust the new hooks in Codex with /hooks."))
         configure_footer()
     return 0
 

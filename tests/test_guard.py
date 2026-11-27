@@ -346,6 +346,36 @@ class Decide(unittest.TestCase):
             f.write(json.dumps({"type": "user", "timestamp": stamp, "message": {"content": "да"}}) + "\n")
         self.assertEqual(g.decide(self.payload("auto", transcript))["permissionDecision"], "allow")
 
+    def test_codex_requires_a_new_user_reply_for_the_same_call(self):
+        import json
+        import time
+        transcript = os.path.join(self.tmp, "rollout.jsonl")
+        payload = dict(self.payload("default", transcript), turn_id="turn1")
+        self.assertEqual(g.decide(payload)["permissionDecision"], "deny")
+        def reply(text, role="user_message", offset=1):
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() + offset)) + "Z"
+            with open(transcript, "a") as f:
+                f.write(json.dumps({"type": "event_msg", "timestamp": stamp,
+                                    "payload": {"type": role, "message": text}}) + "\n")
+        reply("yes", offset=-5)
+        reply("yes", role="agent_message")
+        self.assertEqual(g.decide(payload)["permissionDecision"], "deny")
+        reply("yes, but do not run it")
+        self.assertEqual(g.decide(payload)["permissionDecision"], "deny")
+        with open(transcript, "a") as f:
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() + 1)) + "Z"
+            f.write(json.dumps({"type": "response_item", "timestamp": stamp, "payload": {
+                "type": "message", "role": "user", "content": [{"type": "input_text", "text": "да"}]}}) + "\n")
+        self.assertIsNone(g.decide(payload))
+        self.assertEqual(g.decide(payload)["permissionDecision"], "deny")
+
+    def test_codex_patch_checks_every_path_without_logging_the_diff(self):
+        for line, rule in (("Move to: config/.env", "secrets-read"), ("Delete File: cert.p12", "secrets-delete")):
+            command = "*** Begin Patch\n*** Update File: readme\n*** " + line + "\n*** End Patch"
+            with self.subTest(line=line):
+                self.assertEqual(g.check("apply_patch", {"command": command}, self.tmp)[0], rule)
+                self.assertIsNone(g.check("apply_patch", {"command": command}, self.tmp, {rule}))
+
     def test_skipped_rule(self):
         g.skipped = lambda: {"destructive"}
         self.assertIsNone(g.decide(self.payload("default")))
