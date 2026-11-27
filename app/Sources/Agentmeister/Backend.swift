@@ -76,7 +76,7 @@ enum LoginEnvironment {
     static let restartJob: String? = besideCLI("libexec/agentmeister/lib/restart_job.py")
 
     /// EDITOR вкладок Claude Code: по ⌘⇧T переводит строку ввода, иначе открывает обычный редактор.
-    static let translateEditor: String? = besideCLI("libexec/agentmeister/translate-editor")
+    static let translateEditor: String? = besideCLI("libexec/agentmeister/editor/agentmeister")
 
     /// CLI, который едет внутри приложения (Contents/Resources/agentmeister), его кладет туда bundle.sh.
     static let bundledCLI: String? = {
