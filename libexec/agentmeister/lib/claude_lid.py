@@ -30,6 +30,9 @@ GRACE = 120  # перезапуск сессии с claude update бывает �
 POLL = 15
 LOW_BATTERY = 15
 SESSION = re.compile(r"^caffeinate(\s+-\S+)*\s+\S*/?claude(\s|$)")
+# "Не спать" во вкладке приложения: caffeinate -is -w <pid оболочки вкладки>, родитель сам Agentmeister
+APP_SESSION = re.compile(r"^(\S*/)?caffeinate(\s+-\S+)*\s+-w\s+\d+\s*$")
+APP = re.compile(r"(^|/)Agentmeister$")
 # сторож agentmeister (claude_lid.py watch) или mnrh (lid.py watch): pid-файл у них общий
 WATCHER = re.compile(r"(^|[\s/])(claude_)?lid\.py\s+watch(\s|$)")
 
@@ -53,10 +56,15 @@ def set_disabled(on):
 
 
 def sessions():
-    """pid caffeinate, которые держат сессии Claude (agentmeister -k, open_claude, перезапуск)."""
-    out = run(["ps", "-axo", "pid=,args="])
-    return [int(l.split(None, 1)[0]) for l in out.splitlines()
-            if len(l.split(None, 1)) == 2 and SESSION.match(l.split(None, 1)[1])]
+    """pid caffeinate, которые держат сессии Claude: agentmeister -k, open_claude, перезапуск и кнопка
+    "Не спать" во вкладке приложения."""
+    procs = {}
+    for line in run(["ps", "-axo", "pid=,ppid=,args="]).splitlines():
+        parts = line.split(None, 2)
+        if len(parts) == 3 and parts[0].isdigit() and parts[1].isdigit():
+            procs[int(parts[0])] = (int(parts[1]), parts[2])
+    return [pid for pid, (ppid, args) in procs.items()
+            if SESSION.match(args) or (APP_SESSION.match(args) and APP.search(procs.get(ppid, (0, ""))[1].split(" -", 1)[0].strip()))]
 
 
 def battery():

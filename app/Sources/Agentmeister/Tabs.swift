@@ -440,8 +440,13 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         guard spec.awake, running, shellPid > 0 else { return }
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
-        task.arguments = ["-i", "-w", String(shellPid)]
-        if (try? task.run()) != nil { caffeinate = task }
+        // -is, как у agentmeister -k: Mac не спит и от простоя, и от сети. Сторож lid узнает такой caffeinate
+        // по родителю-приложению и держит Mac и с закрытой крышкой, если режим lid включен
+        task.arguments = ["-is", "-w", String(shellPid)]
+        if (try? task.run()) != nil {
+            caffeinate = task
+            Task.detached(priority: .utility) { _ = Backend.run(["lid", "keep"]) }
+        }
     }
 
     /// Команда оболочки для обновления агента. agentmeister agent-update берет brew upgrade для установки из Homebrew
