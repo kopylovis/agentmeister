@@ -487,3 +487,23 @@ class RestartJob(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CheckUrls(unittest.TestCase):
+    def test_probe_and_check_urls_from_config(self):
+        from unittest.mock import patch
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "libexec/agentmeister/lib"))
+        import mnrhlib
+        import proxy
+        conf = os.path.join(tempfile.mkdtemp(prefix="cm-proxy-urls-"), "config")
+        with patch.object(mnrhlib, "CONFIG", conf):
+            self.assertEqual((proxy.check_url(), proxy.probe_url()), (proxy.CHECK_URL, proxy.PROBE_URL))
+            with open(conf, "w") as f:
+                f.write("proxy_check_url=https://example.com/cdn-cgi/trace\nproxy_probe_url=not a url\n")
+            self.assertEqual(proxy.check_url(), "https://example.com/cdn-cgi/trace")
+            self.assertEqual(proxy.probe_url(), proxy.PROBE_URL)
+            with open(conf, "w") as f:
+                f.write("proxy_probe_url=https://example.com/ok\n")
+            text = proxy.render_config(17890, "DE", "", {"main": {"port": 17892}, "home": {"port": 17893}})
+            self.assertNotIn("gstatic", text)
+            self.assertEqual(text.count("url: https://example.com/ok"), 5)
