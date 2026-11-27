@@ -1,0 +1,163 @@
+{
+ "errors": {},
+ "notify": {
+  "on": true,
+  "after": 30,
+  "sound": true,
+  "telegram": {
+   "connected": true,
+   "bot": "demo_agents_bot",
+   "when": "away",
+   "away": 5,
+   "approve": true
+  },
+  "phone": {
+   "mode": "off",
+   "configured": false
+  }
+ },
+ "guard": {
+  "on": true,
+  "log": [
+   "26.11 12:00  ask   force-push     git push --force origin main",
+   "27.11 11:00  hold  rm-root        rm -rf ../build-cache"
+  ],
+  "lastHit": 1795766414,
+  "logPath": "/Users/demo/Library/Logs/mnrh-guard.log",
+  "rules": [
+   {
+    "id": "rm-root",
+    "text": "rm -rf вне проекта",
+    "textEn": "rm -rf outside the project",
+    "on": true
+   },
+   {
+    "id": "force-push",
+    "text": "git push --force в main",
+    "textEn": "git push --force to main",
+    "on": true
+   },
+   {
+    "id": "curl-sh",
+    "text": "curl | sh",
+    "textEn": "curl | sh",
+    "on": true
+   }
+  ]
+ },
+ "hostRun": {
+  "running": true,
+  "pid": 4211,
+  "version": "3",
+  "commands": [
+   {
+    "name": "orbit-ios-build",
+    "cwd": "/Users/demo/Developer/orbit-ios",
+    "run": [
+     "xcodebuild",
+     "-scheme",
+     "Orbit",
+     "build"
+    ],
+    "args": false
+   },
+   {
+    "name": "ledger-api-deploy",
+    "cwd": "/Users/demo/Developer/ledger-api",
+    "run": [
+     "fly",
+     "deploy"
+    ],
+    "args": true
+   }
+  ]
+ },
+ "modesInfo": {
+  "buildlogDays": 7,
+  "buildlogLines": 40,
+  "buildlogDir": "/Users/demo/.cache/mnrh/buildlog",
+  "lidReady": false,
+  "translateKey": "file",
+  "translateModel": "gemini-3.1-flash-lite",
+  "translateProvider": "google",
+  "translateFallback": "openrouter",
+  "translateLog": [
+   "2026-11-27 13:10:14 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter",
+   "2026-11-27 13:29:14 3f9c2a1e 182 зн 640 мс переведен",
+   "2026-11-27 13:48:14 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)",
+   "2026-11-27 13:56:14 3f9c2a1e 131 зн 1380 мс переведен"
+  ],
+  "translateMedianMs": 1380,
+  "translateLogPath": "/Users/demo/Library/Logs/mnrh-translate.log"
+ },
+ "proxy": {
+  "configured": true,
+  "running": true,
+  "port": 17890,
+  "current": "main",
+  "blocked": false,
+  "exit": "KZ",
+  "protocol": "vless",
+  "ip": "203.0.113.24",
+  "node": "kz-almaty-1",
+  "defaultRoute": "proxy",
+  "sessions": 3,
+  "defaultSubscription": null,
+  "subscriptions": [
+   {
+    "name": "main",
+    "port": 17892,
+    "country": "KZ",
+    "exit": "KZ",
+    "inCascade": true,
+    "blocked": false
+   },
+   {
+    "name": "backup",
+    "port": 17891,
+    "country": "KZ",
+    "exit": "KZ",
+    "inCascade": true,
+    "blocked": false
+   },
+   {
+    "name": "work",
+    "port": 17893,
+    "country": "SE",
+    "exit": "SE",
+    "inCascade": false,
+    "blocked": false
+   }
+  ],
+  "country": "KZ"
+ },
+ "modes": {
+  "humanize": true,
+  "translate": true,
+  "guard": true,
+  "buildlog": true,
+  "notify": true,
+  "lid": false,
+  "alias": true
+ },
+ "claude": {
+  "installed": true,
+  "path": "/opt/homebrew/bin/claude",
+  "version": "2.3.1",
+  "installedVia": "brew",
+  "model": "opus",
+  "signedIn": true,
+  "email": "dev@example.com",
+  "plan": "Max"
+ },
+ "codex": {
+  "installed": true,
+  "path": "/opt/homebrew/bin/codex",
+  "version": "0.98.0",
+  "installedVia": "brew",
+  "model": "gpt-5.5",
+  "signedIn": true,
+  "email": null,
+  "plan": "Pro"
+ }
+}

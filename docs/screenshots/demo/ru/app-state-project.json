@@ -1,0 +1,69 @@
+{
+ "path": "/Users/demo/Developer/ledger-api",
+ "name": "ledger-api",
+ "errors": {},
+ "git": {
+  "branch": "webhook-retries",
+  "dirty": 3,
+  "commits": [
+   {
+    "sha": "b81d07e",
+    "time": 1795774814,
+    "subject": "webhooks: retry 5xx and timeouts with backoff"
+   },
+   {
+    "sha": "4f1c2a9",
+    "time": 1795759214,
+    "subject": "transfers: idempotency keys on POST /transfers"
+   },
+   {
+    "sha": "9e03b1d",
+    "time": 1795683614,
+    "subject": "ledger: double-entry check runs in one transaction"
+   },
+   {
+    "sha": "71ac5f2",
+    "time": 1795604414,
+    "subject": "api: 429 with Retry-After for bursts"
+   }
+  ]
+ },
+ "last": {
+  "id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000001",
+  "title": "Повторы с паузой для платежных вебхуков",
+  "last": 1795777094.557962,
+  "size": 2400000,
+  "summary": "Доставка вебхуков повторяет 5xx и таймауты, 17 тестов проходят."
+ },
+ "todos": [
+  {
+   "n": 1,
+   "text": "Предупреждать, когда вебхук сдается после пяти попыток",
+   "done": false
+  },
+  {
+   "n": 2,
+   "text": "Описать заголовок ключа идемпотентности",
+   "done": false
+  },
+  {
+   "n": 3,
+   "text": "Перенести проверки ledger в ночную задачу",
+   "done": true
+  }
+ ],
+ "parallel": [
+  {
+   "branch": "rate-limit-headers",
+   "task": "Отдавать Retry-After при 429",
+   "ahead": "2",
+   "dirty": 0,
+   "running": true,
+   "path": "/Users/demo/Developer/ledger-api/.worktrees/rate-limit-headers"
+  }
+ ],
+ "tools": {
+  "releaseSince": "v2.4.0",
+  "gradle": false
+ }
+}

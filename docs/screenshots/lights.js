@@ -1,4 +1,4 @@
-// Кнопки окна на снимке демо: osascript -l JavaScript lights.js <снимок.png> [check | fix [образец.png] | crop <выход.png>]
+// Кнопки окна на снимке демо: osascript -l JavaScript lights.js <снимок.png> [check | colors | fix [образец.png] | crop <выход.png>]
 // check печатает, сколько из трех кнопок в левом верхнем углу серые. fix перекрашивает серые по образцу
 // lights.png рядом со скриптом: под листом macOS всегда гасит кнопку закрытия, а неактивное окно гасит все три.
 // Меняются только пиксели кругов, остальной снимок и его профиль Display P3 остаются как были.
@@ -64,6 +64,9 @@ function run(argv) {
   }
   var found = buttons(dst);
   var gray = found.filter(function (b) { return b.gray; }).length;
+  // colors: сколько кнопок цветные. Серые кнопки светлой темы почти сливаются с фоном и не находятся как серые,
+  // поэтому активность окна надежнее проверять по цветным
+  if (mode === 'colors') return String(found.filter(function (b) { return !b.gray; }).length);
   if (mode === 'check' || !gray) return String(gray);
   var here = $.NSString.stringWithString(path).stringByDeletingLastPathComponent.js;
   var ref = load(argv[2] || here + '/lights.png');

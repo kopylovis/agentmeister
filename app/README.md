@@ -164,6 +164,8 @@ main|new-session|project|settings`. Данные выдуманные (`docs/scr
 пишет tabs.json, front.json и focus.json, а горячая клавиша, обновления и мастер первого запуска выключены.
 `python3 docs/screenshots/shoot.py` запускает каждую сцену и снимает ее окно по pid, настоящее приложение рядом
 не мешает. Каждая сцена снимается в темной и светлой теме (`-appearance`), в `<сцена>-dark.png` и
-`<сцена>-light.png`. `--theme dark|light` снимает одну тему, `--out <папка>` кладет снимки не в docs/screenshots.
+`<сцена>-light.png`. `--theme dark|light` снимает одну тему, `--out <папка>` кладет снимки не в docs/screenshots. Русские снимки для
+README.ru.md лежат в `docs/screenshots/ru`, их данные `make_demo.py` пишет в `docs/screenshots/demo/ru`, а
+приложение читает с `--demo-lang ru`. `--lang en|ru` снимает один язык.
 Текст вкладок `make_demo.py` пишет в двух вариантах, `claude.txt` с цветами темной темы Claude Code и
 `claude-light.txt` со светлыми. Светлое окно демо берет второй.

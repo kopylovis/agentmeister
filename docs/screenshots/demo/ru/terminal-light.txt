@@ -1,0 +1,13 @@
+[38;5;28mdemo@mac[0m [38;5;25m~/Developer/infra[0m [38;5;243mmain[0m
+$ git push
+Enumerating objects: 9, done.
+Writing objects: 100% (5/5), 812 bytes | 812.00 KiB/s, done.
+To github.com:example/infra.git
+   4f1c2a9..b81d07e  main -> main
+
+[38;5;28mdemo@mac[0m [38;5;25m~/Developer/infra[0m [38;5;243mmain[0m
+$ ssh db-1.internal
+[38;5;124mssh: connect to host db-1.internal port 22: Operation not permitted[0m
+
+[38;5;28mdemo@mac[0m [38;5;25m~/Developer/infra[0m [38;5;243mmain[0m
+$ 

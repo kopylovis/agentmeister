@@ -1,7 +1,8 @@
 import AppKit
 import Foundation
 
-/// Демо для скриншотов README: Agentmeister --demo <папка> [--scene main|new-session|project|settings].
+/// Демо для скриншотов README: Agentmeister --demo <папка> [--scene main|new-session|project|settings]
+/// [--demo-lang ru]. С --demo-lang файлы сначала ищутся в подпапке языка (ru/app-state.json и т. п.).
 /// Только в отладочной сборке. Вместо agentmeister ответы берутся из JSON в папке: app-state.json (проекты,
 /// сессии, proxy с выдуманными данными), app-state-settings.json и т. п. по первым двум аргументам команды.
 /// Вкладки описаны в tabs.json, вместо агента в каждой печатается текст из своего файла. Настоящие ~/.claude и
@@ -15,6 +16,7 @@ enum Demo {
     #endif
     static var active: Bool { dir != nil }
     static let scene = argument("--scene") ?? "main"
+    static let lang = argument("--demo-lang")
 
     private static func argument(_ name: String) -> String? {
         let args = CommandLine.arguments
@@ -27,7 +29,7 @@ enum Demo {
     static func response(_ args: [String]) -> Result<Data, Error> {
         guard let dir else { return .failure(CocoaError(.featureUnsupported)) }
         let name = args.prefix(2).filter { !$0.hasPrefix("-") }.joined(separator: "-") + ".json"
-        guard let data = FileManager.default.contents(atPath: (dir as NSString).appendingPathComponent(name)) else {
+        guard let path = file(name), let data = FileManager.default.contents(atPath: path) else {
             return .failure(CocoaError(.fileNoSuchFile))
         }
         return .success(data)
@@ -47,7 +49,7 @@ enum Demo {
     }
 
     static func tabs() -> [Tab] {
-        guard let dir, let data = FileManager.default.contents(atPath: (dir as NSString).appendingPathComponent("tabs.json")) else {
+        guard let path = file("tabs.json"), let data = FileManager.default.contents(atPath: path) else {
             return []
         }
         return (try? JSONDecoder().decode([Tab].self, from: data)) ?? []
@@ -106,9 +108,8 @@ enum Demo {
     /// Файл с текстом вкладки. В светлом окне берется вариант с цветами светлой темы Claude Code (claude-light.txt
     /// рядом с claude.txt), если он есть.
     static func screenPath(_ name: String) -> String? {
-        guard let dir else { return nil }
-        let path = (dir as NSString).appendingPathComponent(name)
-        let light = (path as NSString).deletingPathExtension + "-light." + (name as NSString).pathExtension
+        guard let path = file(name) else { return nil }
+        let light = file((name as NSString).deletingPathExtension + "-light." + (name as NSString).pathExtension) ?? ""
         // тема из настройки: окно в момент открытия вкладок может еще не успеть ее принять
         let isLight = switch Appearance(rawValue: UserDefaults.standard.string(forKey: Appearance.key) ?? "") ?? .system {
         case .light: true
@@ -116,5 +117,15 @@ enum Demo {
         case .system: NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua
         }
         return isLight && FileManager.default.fileExists(atPath: light) ? light : path
+    }
+
+    /// Файл демо: из подпапки --demo-lang, если там есть, иначе из самой папки демо.
+    private static func file(_ name: String) -> String? {
+        guard let dir else { return nil }
+        if let lang {
+            let local = ((dir as NSString).appendingPathComponent(lang) as NSString).appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: local) { return local }
+        }
+        return (dir as NSString).appendingPathComponent(name)
     }
 }

@@ -1,0 +1,43 @@
+{
+ "path": "/Users/demo/.local/state/mnrh/headsup.jsonl",
+ "plugin": true,
+ "max": 500,
+ "entries": [
+  {
+   "ts": 1795775714.557962,
+   "headline": "Цикл повторов шлет вебхук с тем же ключом идемпотентности, и партнер, который ключ не проверяет, проведет платеж дважды.",
+   "project": "ledger-api",
+   "cwd": "/Users/demo/Developer/ledger-api",
+   "session": null,
+   "tag": "Heads up",
+   "times": 1
+  },
+  {
+   "ts": 1795766414.557962,
+   "headline": "Темная тема читается из cookie, которую CDN кэширует на час, и часть пользователей после переключения увидит старую тему.",
+   "project": "atlas-web",
+   "cwd": "/Users/demo/Developer/atlas-web",
+   "session": null,
+   "tag": "You should know",
+   "times": 1
+  },
+  {
+   "ts": 1795683614.557962,
+   "headline": "План Postgres 17 удаляет старую реплику раньше, чем новая ее догонит, и какое-то время чтение идет в основную базу.",
+   "project": "infra",
+   "cwd": "/Users/demo/Developer/infra",
+   "session": null,
+   "tag": "Heads up",
+   "times": 2
+  },
+  {
+   "ts": null,
+   "headline": "Защита от force push в этом проекте выключена, rebase может переписать main.",
+   "project": null,
+   "cwd": null,
+   "session": null,
+   "tag": null,
+   "times": 1
+  }
+ ]
+}
