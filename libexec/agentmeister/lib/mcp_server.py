@@ -71,7 +71,8 @@ def version():
 
 
 def call_restart(tool, a):
-    update = a.get("update", True)
+    import session_defaults
+    update = a.get("update", session_defaults.restart_update())
     try:
         if tool == "forget":
             p = restart(update=False, delay=2.5, forget=True)

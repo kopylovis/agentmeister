@@ -74,6 +74,7 @@ agentmeister setup          команды, хуки, MCP-сервер, хук z
 agentmeister doctor         проверить установку
 agentmeister projects-dir   папки с проектами; add, remove
 agentmeister lang           язык интерфейса: ru, en, auto
+agentmeister defaults       режим и Remote Control сессий от agentmeister, обновление при /restart, модель /ask
 agentmeister alias          короткое имя am; on, off
 ```
 
@@ -293,6 +294,11 @@ Claude Code и Codex. В терминале `agentmeister --harness claude statu
 Выбор стрелками ↑↓ и Enter. Цифра сразу ставит курсор на пункт (`0` — домашний
 каталог, `1` и `0` подряд — десятый), буквы фильтруют список по имени, Esc
 сбрасывает фильтр или выходит.
+
+Сессии, которые открывают `open_claude`, `/parallel` и меню, стартуют с caffeinate и Remote Control, пока
+это не поменять: `agentmeister defaults mode normal`, `agentmeister defaults remote-control off`.
+`agentmeister defaults restart-update off` отключает `claude update` при `/restart` (`agentmeister restart
+--update` все равно обновит), `agentmeister defaults ask-model opus` выбирает модель для `/ask`.
 
 Если у проекта есть сохранённые сессии, дальше предлагается продолжить одну из них или
 начать новую (Enter — новая). Сессии свежие сверху: когда, размер, число сообщений и
