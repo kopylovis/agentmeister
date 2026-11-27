@@ -659,14 +659,6 @@ or a token) are not sent. The log in `~/Library/Logs/mnrh-translate.log` keeps t
 not the text. `translate check [text]` translates a sample and shows the latency. The idea comes from
 [translate-hooks](https://github.com/AndrewK404/translate-hooks).
 
-A hook can't replace the prompt, so normally the agent gets both the original and the translation, which costs
-more tokens. With `agentmeister translate replace on` the original never reaches the model in Claude Code tabs
-of the Agentmeister app. The hook blocks it and hands the translation to the app. Claude Code puts the text back
-into the input line, the app erases it and sends the translation, attaching images again. Once per session and
-after compaction the agent is told which language to reply in. The model can't check the translation against
-the original, so write risky requests in English. In iTerm2, in Codex and for prompts with a collapsed
-`[Pasted text]` paste the translation still goes next to the original.
-
 ## Where we left off
 
 When a new session starts, the `SessionStart` hook gives Claude a brief about the project as background (it
