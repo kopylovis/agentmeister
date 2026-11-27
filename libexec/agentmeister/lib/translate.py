@@ -454,9 +454,9 @@ def status():
                  f"No {p['name']} key, set it with agentmeister translate key."))
     if provider() == "google":
         print(tr("На бесплатном уровне Google может использовать запросы для улучшения моделей. "
-                 "Из России Gemini API отвечает только через proxy, в сессиях с -d перевода не будет.",
-                 "On the free tier Google may use requests to improve its models. From Russia the Gemini API "
-                 "answers only through the proxy, so sessions with -d get no translation."))
+                 "Там, где Gemini API недоступен (например, в России), он отвечает только через proxy, в сессиях с -d перевода не будет.",
+                 "On the free tier Google may use requests to improve its models. Where the Gemini API isn't available "
+                 "(Russia, for example), it answers only through the proxy, so sessions with -d get no translation."))
     try:
         if claude_settings.missing(claude_settings.load(), HOOK_ROWS):
             print(tr("Хука в Claude Code нет, его подключит agentmeister translate on.",

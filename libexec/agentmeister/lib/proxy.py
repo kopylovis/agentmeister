@@ -1,6 +1,6 @@
 """Прокси для сессий Claude Code и Codex.
 
-mihomo слушает HTTP/SOCKS на 127.0.0.1 и отправляет всё через подписку 3x-ui (VLESS, Hysteria2: какой жив).
+mihomo слушает HTTP/SOCKS на 127.0.0.1 и отправляет всё через подписку (VLESS, Hysteria2: какой жив).
 К серверу он ходит через физический интерфейс, мимо TUN-туннелей VPN вроде Happ.
 Внешний веб-трафик Claude Code идет через mihomo. Для Codex действует отдельный строгий профиль.
 mihomo запускается с первой такой сессией и останавливается после последней.
@@ -1573,7 +1573,7 @@ def sub_options(args):
             rest.append(a)
     country, only = opts.get("country", "").strip(), opts.get("only", "").strip()
     if country and not re.match(r"^[A-Za-z]{2}$", country):
-        print(f"{BAD} --country ждёт код страны из двух букв, например KZ")
+        print(f"{BAD} --country ждёт код страны из двух букв, например DE")
         return None
     if only:
         try:
@@ -1591,7 +1591,7 @@ def ask_url(given, usage):
         if not sys.stdin.isatty():
             print(usage, file=sys.stderr)
             return None
-        print("Ссылка на подписку из 3x-ui (та же, что в Happ). На экране её видно не будет.")
+        print("Ссылка на подписку для Clash, mihomo или v2ray (из 3x-ui, Marzban, та же, что в Happ). На экране её видно не будет.")
         url = secret("Подписка: ").strip()
     if url.startswith("happ://"):
         print(f"{BAD} это зашифрованная ссылка Happ (happ://crypt…), её читает только сам Happ. "
@@ -2056,11 +2056,11 @@ def last():
 
 USAGE = """agentmeister proxy                 статус: настроен ли, запущен ли mihomo, сколько сессий через proxy
 agentmeister proxy test            сравнить выход напрямую и через proxy (IP и страна)
-agentmeister proxy setup [ссылка] [--country KZ] [--only KZ]
-                                  настроить по ссылке на подписку (https://…, как в Happ).
+agentmeister proxy setup [ссылка] [--country DE] [--only DE]
+                                  настроить по ссылке на подписку (https://…, Clash, mihomo или v2ray).
                                   --country: если выход окажется в другой стране, сессия не запустится;
                                   --only: брать из подписки только серверы, чьё имя подходит под это выражение
-agentmeister proxy add <имя> [ссылка] [--country SE] [--only RE]
+agentmeister proxy add <имя> [ссылка] [--country NL] [--only RE]
                                   еще одна подписка. agentmeister <проект> -x <имя> идет только через нее,
                                   а просто -x по всем по очереди: следующая, когда в прошлой нет живых серверов
 agentmeister proxy list            подписки, их порты и флаги -x

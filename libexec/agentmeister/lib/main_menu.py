@@ -99,8 +99,8 @@ ITEMS = [
      "Сравнить выход напрямую и через proxy, с IP и страной.",
      "Compare the direct exit with the proxy exit, IP and country."),
     ("proxy setup", "🔗", "Настроить по подписке", "Set up from a subscription",
-     "Настроить mihomo по ссылке на подписку, как в Happ. Через proxy пойдут сессии, запущенные с -x.",
-     "Set up mihomo from a subscription link, the same one Happ takes. Sessions started with -x go "
+     "Настроить mihomo по ссылке на подписку для Clash, mihomo или v2ray. Через proxy пойдут сессии, запущенные с -x.",
+     "Set up mihomo from a Clash, mihomo or v2ray subscription link. Sessions started with -x go "
      "through the proxy."),
     ("proxy restart", "🔁", "Перезапустить mihomo", "Restart mihomo",
      "Перезапустить mihomo, не закрывая сессии, которые идут через proxy.",
