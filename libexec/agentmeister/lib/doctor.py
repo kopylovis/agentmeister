@@ -57,6 +57,8 @@ def check_commands():
     missing, stale = [], []
     for path, text in pages:
         name = "/" + os.path.basename(path)[:-3]
+        if not setup_cmd.command_is_ours(path):
+            continue  # своя команда пользователя с тем же именем, setup ее не трогает
         try:
             with open(path) as f:
                 if f.read() != text:
