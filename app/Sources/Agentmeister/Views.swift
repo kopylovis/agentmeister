@@ -55,6 +55,9 @@ final class UIState: ObservableObject {
     @Published var renaming: TerminalTab?
     /// Вкладка, которую просят перезапустить без proxy. Пока не nil, окно перечисляет риски и ждет подтверждения.
     @Published var confirmingDirect: TerminalTab?
+    /// Вкладка, где Remote Control переключили, а вписать /remote-control в идущую сессию было нельзя. Пока не nil,
+    /// окно спрашивает, перезапустить ли сессию сейчас. Включить или выключить, видно по spec.remoteControl.
+    @Published var confirmingRemote: TerminalTab?
     /// Агент, в которого входят через диалог входа из баннера вкладки. Лист висит на окне, а не на баннере:
     /// баннер пропадает, как только вход прошел, а диалог должен показать "Вход выполнен".
     @Published var signingIn: LaunchSpec.Agent?
@@ -180,6 +183,26 @@ struct MainView: View {
 
                 Restart via proxy brings the proxy back.
                 """))
+        }
+        .alert(ui.confirmingRemote?.spec.remoteControl == false ? l.t("Отключить Remote Control сейчас?", "Disconnect Remote Control now?")
+                                                                : l.t("Подключить Remote Control сейчас?", "Connect Remote Control now?"),
+               isPresented: Binding(get: { ui.confirmingRemote != nil }, set: { if !$0 { ui.confirmingRemote = nil } }),
+               presenting: ui.confirmingRemote) { tab in
+            Button(tab.spec.remoteControl ? l.t("Перезапустить с Remote Control", "Restart with Remote Control")
+                                          : l.t("Перезапустить без Remote Control", "Restart without Remote Control")) {
+                tab.restart()
+                ui.confirmingRemote = nil
+            }
+            Button(l.t("При следующем запуске", "On next start"), role: .cancel) { ui.confirmingRemote = nil }
+        } message: { tab in
+            Text(l.t("Claude Code ждет ответа в диалоге или в строке ввода есть текст, поэтому приложение не стало вписывать /remote-control. ",
+                     "Claude Code is waiting for an answer in a dialog or the prompt has text, so the app did not type /remote-control. ")
+                 + (tab.spec.remoteControl
+                    ? l.t("Можно перезапустить ту же сессию с Remote Control или подождать до следующего запуска.",
+                          "You can restart the same session with Remote Control or wait for the next start.")
+                    : l.t("Пока сессию не перезапустят, она остается подключенной. Можно перезапустить ее без Remote Control сейчас.",
+                          "The session stays connected until it restarts. You can restart it without Remote Control now."))
+                 + (tab.status == "busy" ? l.t(" Ответ, который агент пишет сейчас, прервется.", " The answer the agent is writing now will stop.") : ""))
         }
         .sheet(item: $ui.renaming) { tab in
             RenameSheet(tab: tab)
@@ -1541,6 +1564,24 @@ struct InfoBar: View {
         NSWorkspace.shared.open(URL(fileURLWithPath: tab.spec.projectPath, isDirectory: true))
     }
 
+    /// Подсказка кнопки Remote Control: что включено для запусков и что идет в сессии сейчас.
+    private var remoteControlHelp: String {
+        switch (tab.spec.remoteControl, tab.running && tab.remoteConnected) {
+        case (true, false) where tab.running:
+            return l.t("Remote Control включен, но эта сессия пока не подключена. Подключится после /remote-control или перезапуска",
+                       "Remote Control is on, but this session is not connected yet. It connects after /remote-control or a restart")
+        case (true, _):
+            return l.t("Вопросы сессии приходят в приложение Claude на телефоне. Нажмите, чтобы выключить",
+                       "Session questions go to the Claude app on your phone. Click to turn it off")
+        case (false, true):
+            return l.t("Remote Control выключен для следующих запусков. Эта сессия подключена, пока ее не отключат в панели /remote-control или не перезапустят",
+                       "Remote Control is off for the next starts. This session stays connected until you disconnect it in the /remote-control panel or restart it")
+        case (false, false):
+            return l.t("Подключить сессию к Remote Control и отвечать из приложения Claude на телефоне",
+                       "Connect the session to Remote Control and answer from the Claude app on your phone")
+        }
+    }
+
     private func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
@@ -1609,13 +1650,17 @@ struct InfoBar: View {
                 }
                 .help(l.t("Настройки proxy и host-run", "Proxy and host-run settings"))
             }
-            if tab.spec.remoteControl && tab.spec.agent == .claude {
-                Chip {
-                    Image(systemName: "iphone").font(.system(size: 11))
-                    Text("Remote Control")
+            if tab.spec.utility == nil && tab.spec.agent == .claude {
+                Button {
+                    if !tab.setRemoteControl(!tab.spec.remoteControl) { ui.confirmingRemote = tab }
+                } label: {
+                    Label("Remote Control", systemImage: "iphone")
                 }
-                .help(l.t("Сессия подключена к Remote Control, вопросы приходят в приложение Claude на телефоне",
-                          "Connected to Remote Control, questions go to the Claude app on your phone"))
+                .buttonStyle(ChipStyle(on: tab.spec.remoteControl))
+                // короткие переключатели не сокращаются, место уступают длинные чипы маршрута и перезапуска
+                .layoutPriority(1)
+                .help(remoteControlHelp)
+                .accessibilityAddTraits(tab.spec.remoteControl ? .isSelected : [])
             }
             if tab.spec.utility == nil {
                 Button {
@@ -1624,6 +1669,7 @@ struct InfoBar: View {
                     Label(l.t("Не спать", "Stay awake"), systemImage: "timer")
                 }
                 .buttonStyle(ChipStyle(on: tab.spec.awake))
+                .layoutPriority(1)
                 .help(l.t("Mac не уснет, пока идет эта сессия", "The Mac stays awake while this session runs"))
                 .accessibilityAddTraits(tab.spec.awake ? .isSelected : [])
             }
