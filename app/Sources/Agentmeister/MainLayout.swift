@@ -60,6 +60,8 @@ struct CardsLayout<Main: View>: View {
                     InspectorView()
                         .frame(width: inspectorWidth)
                         .frame(maxHeight: .infinity)
+                        // секции прокручиваются под шапкой и нижней полосой, но за рамку карточки не выходят
+                        .clipShape(.windowCard)
                         .glassEffect(.regular, in: .windowCard)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
@@ -549,6 +551,12 @@ struct TrafficLightsInset: NSViewRepresentable {
                     MainActor.assumeIsolated { self?.place() }
                 })
             }
+            DispatchQueue.main.async { self.place() }
+        }
+
+        /// Смена светлой и темной темы тоже раскладывает заголовок заново и возвращает кнопки на место.
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
             DispatchQueue.main.async { self.place() }
         }
 
