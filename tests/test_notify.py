@@ -87,7 +87,7 @@ class TosslingPush(unittest.TestCase):
                 mock.patch.object(notify.time, "time", return_value=1741), \
                 mock.patch.object(notify, "app_tab", return_value=sid), \
                 mock.patch.object(notify, "watching", return_value=True), \
-                mock.patch.object(notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(notify.channels.telegram, "configured", return_value=False), \
                 mock.patch.object(notify.ntfy_alert, "phone_mode", return_value="always"), \
                 mock.patch.object(notify.ntfy_alert, "endpoint", return_value=("https://example.com", "test")), \
                 mock.patch.object(notify.ntfy_alert, "publisher_token", side_effect=["project-token", ""]), \
@@ -104,6 +104,94 @@ class TosslingPush(unittest.TestCase):
                         "topic": "agentmeister", "title": f"{agent}: Done in 12m 21s", "message": "Finished the build",
                         "priority": 3, "icon": notify.ntfy_alert.AGENTMEISTER_ICON,
                     })
+
+
+class AwayThreshold(unittest.TestCase):
+    """Порог "не за Mac" общий для каналов: notify_away, без него прежний telegram_away, без обоих 120 с."""
+
+    def setUp(self):
+        fd, self.conf = tempfile.mkstemp()
+        os.close(fd)
+        self.addCleanup(os.remove, self.conf)
+        patcher = mock.patch("mnrhlib.CONFIG", self.conf)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write(self, text):
+        with open(self.conf, "w") as f:
+            f.write(text)
+
+    def test_default(self):
+        self.assertEqual(notify.presence.away_after(), 120)
+
+    def test_old_telegram_value_is_read(self):
+        self.write("telegram_away=300\n")
+        self.assertEqual(notify.presence.away_after(), 300)
+
+    def test_new_value_wins_and_replaces_old(self):
+        self.write("telegram_away=300\nnotify_away=60\n")
+        self.assertEqual(notify.presence.away_after(), 60)
+        notify.presence.set_away_after("45")
+        with open(self.conf) as f:
+            self.assertEqual(f.read(), "notify_away=45\n")
+
+    def test_telegram_command_sets_shared_value(self):
+        with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(notify.telegram, "configured", return_value=False):
+            self.assertEqual(notify.telegram.main(["away", "600"]), 0)
+        self.assertEqual(notify.presence.away_after(), 600)
+
+
+class PhoneTargets(unittest.TestCase):
+    """Какие каналы получат сообщение: режим, "не за Mac" и запросы, на которые канал отвечает сам."""
+
+    class Fake(notify.channels.Channel):
+        def __init__(self, name, mode, approvals=False):
+            self.name, self._mode, self.handles_approvals = name, mode, approvals
+
+        def configured(self):
+            return self._mode != "off"
+
+        def mode(self):
+            return self._mode
+
+    def names(self, chans, away, pending=False):
+        presence_away = mock.Mock(return_value=away)
+        with mock.patch.object(notify.channels, "ALL", chans), mock.patch.object(notify.presence, "away", presence_away):
+            out = [ch.name for ch in notify.channels.targets(lambda: pending)]
+        return out, presence_away.call_count
+
+    def test_modes(self):
+        chans = (self.Fake("tg", "away", approvals=True), self.Fake("ts", "always"), self.Fake("off", "off"))
+        self.assertEqual(self.names(chans, away=True), (["tg", "ts"], 1))
+        self.assertEqual(self.names(chans, away=False), (["ts"], 1))
+
+    def test_presence_checked_only_when_needed(self):
+        self.assertEqual(self.names((self.Fake("ts", "always"),), away=False), (["ts"], 0))
+
+    def test_pending_approval_skips_only_the_answering_channel(self):
+        chans = (self.Fake("tg", "always", approvals=True), self.Fake("ts", "always"))
+        self.assertEqual(self.names(chans, away=True, pending=True), (["ts"], 0))
+
+    def test_send_error_is_logged_and_other_channels_still_get_it(self):
+        bad, good = self.Fake("bad", "always"), self.Fake("good", "always")
+        bad.send = mock.Mock(side_effect=notify.channels.SendError("HTTP 500"))
+        good.send = mock.Mock()
+        pin_lang(self, "en")
+        sid = "b812d4fa-e535-463a-8369-f1433fa25652"
+        payload = {"session_id": sid, "hook_event_name": "Notification", "notification_type": "agent_needs_input",
+                   "cwd": "/work/agentmeister"}
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(notify, "STATE", tmp), \
+                mock.patch.object(notify, "enabled", return_value=True), \
+                mock.patch.object(notify, "app_tab", return_value=sid), \
+                mock.patch.object(notify, "watching", return_value=True), \
+                mock.patch.object(notify, "log_error") as log, \
+                mock.patch.object(notify.channels, "ALL", (bad, good)), \
+                mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+            notify.save_state(sid, {"prompt_at": 1000})
+            self.assertEqual(notify.hook(), 0)
+        log.assert_called_once_with("bad: HTTP 500")
+        msg = good.send.call_args.args[0]
+        self.assertEqual((msg.agent, msg.project, msg.urgent), ("Claude Code", "agentmeister", True))
 
 
 class HelpText(unittest.TestCase):
@@ -228,7 +316,7 @@ class ClaudeNotify(unittest.TestCase):
                 mock.patch.object(notify, "own_terminal", return_value=None), \
                 mock.patch.object(notify, "iterm_session", return_value=""), \
                 mock.patch.object(notify, "ensure_app", return_value=True), \
-                mock.patch.object(notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(notify.channels.telegram, "configured", return_value=False), \
                 mock.patch.object(notify.ntfy_alert, "configured", return_value=False), \
                 mock.patch.object(notify, "post", side_effect=["open failed", "ok"]) as post:
             os.mkdir(os.path.join(tmp, "sessions"))
@@ -394,7 +482,7 @@ class NotifyBuild(unittest.TestCase):
                 mock.patch.object(notify, "session_title", return_value=""), \
                 mock.patch.object(notify, "ensure_app", return_value=False) as ensure, \
                 mock.patch.object(notify, "post") as post, \
-                mock.patch.object(notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(notify.channels.telegram, "configured", return_value=False), \
                 mock.patch.object(notify.ntfy_alert, "configured", return_value=False), \
                 mock.patch.object(notify.subprocess, "run", side_effect=run), \
                 mock.patch.object(sys, "stdin", io.StringIO(json.dumps(data))):
@@ -440,7 +528,7 @@ class ItermSession(unittest.TestCase):
                 mock.patch.object(notify, "session_title", return_value=""),
                 mock.patch.object(notify, "ensure_app", return_value=True),
                 mock.patch.object(notify, "cm_path", return_value="/bin/agentmeister"),
-                mock.patch.object(notify.telegram, "wanted", return_value=False),
+                mock.patch.object(notify.telegram, "configured", return_value=False),
                 mock.patch.object(notify.ntfy_alert, "configured", return_value=False)]
 
     def test_headless_run_in_an_iterm_tab_does_not_notify(self):
@@ -488,7 +576,7 @@ class ItermSession(unittest.TestCase):
                 mock.patch.object(notify, "session_title", return_value=""), \
                 mock.patch.object(notify, "ensure_app", return_value=True), \
                 mock.patch.object(notify, "cm_path", return_value="/bin/agentmeister"), \
-                mock.patch.object(notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(notify.channels.telegram, "configured", return_value=False), \
                 mock.patch.object(notify.ntfy_alert, "configured", return_value=False), \
                 mock.patch.object(notify, "post", return_value="ok") as post, \
                 mock.patch.object(sys, "stdin", io.StringIO(json.dumps(data))):
@@ -539,7 +627,8 @@ class CodexNotify(unittest.TestCase):
                 mock.patch.object(notify, "codex_terminal", return_value=None), \
                 mock.patch.object(notify, "iterm_session", return_value=""), \
                 mock.patch.object(notify, "ensure_app", return_value=True), \
-                mock.patch.object(notify.telegram, "wanted", return_value=True), \
+                mock.patch.object(notify.telegram, "configured", return_value=True), \
+                mock.patch.object(notify.telegram, "mode", return_value="always"), \
                 mock.patch.object(notify.telegram, "send") as send, \
                 mock.patch.object(notify.ntfy_alert, "configured", return_value=False), \
                 mock.patch.object(notify, "post", return_value="ok") as post:

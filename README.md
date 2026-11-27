@@ -928,7 +928,8 @@ touched the mouse and keyboard for 2 minutes. `agentmeister notify telegram` con
 @BotFather, enter the token (or copy it and run the command outside a terminal, and agentmeister takes the token
 from the clipboard and clears it), then press Start in the chat with the bot. The token is kept in the Keychain
 (`mnrh-telegram`); the config only holds the chat id. `telegram test` sends a test message,
-`telegram away <sec>` sets how long without input counts as away, `telegram always` sends every time, and
+`agentmeister notify away <sec>` sets how long without input counts as away for Telegram and Tossling alike
+(`telegram away <sec>` does the same), `telegram always` sends every time, and
 `telegram off` disconnects and deletes the token. If you're looking at Claude's tab but have walked away, the
 notification only goes to Telegram. Send errors are logged to `~/.cache/mnrh/notify/errors.log`.
 

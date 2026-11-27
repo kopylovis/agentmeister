@@ -14,12 +14,13 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import secret
 from mnrhlib import HOME, read_config, tilde, write_config
+import presence
+from presence import away_after
 
 SERVICE = "mnrh-telegram"
 ACCOUNT = "bot"
 API = "https://api.telegram.org/bot{}/{}"
 TOKEN_RE = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")
-DEFAULT_AWAY = 120
 
 
 class TelegramError(Exception):
@@ -120,34 +121,8 @@ def mode():
     return "always" if read_config().get("telegram_when") == "always" else "away"
 
 
-def away_after():
-    try:
-        return max(0, int(read_config().get("telegram_away", DEFAULT_AWAY)))
-    except ValueError:
-        return DEFAULT_AWAY
-
-
-def idle_seconds():
-    try:
-        out = subprocess.run(["ioreg", "-c", "IOHIDSystem", "-d", "4"], capture_output=True, text=True,
-                             timeout=5).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return 0
-    m = re.search(r'"HIDIdleTime" = (\d+)', out)
-    return int(m.group(1)) / 1e9 if m else 0
-
-
-def screen_locked():
-    try:
-        r = subprocess.run("ioreg -n Root -d1 -a | plutil -extract IOConsoleLocked raw -o - -", shell=True,
-                           capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return r.stdout.strip() == "true"
-
-
 def away():
-    return screen_locked() or idle_seconds() >= away_after()
+    return presence.away()
 
 
 def wanted():
@@ -302,7 +277,7 @@ def main(args):
             if not args[1].isdigit():
                 print("agentmeister notify telegram away <секунд без ввода>")
                 return 2
-            write_config(telegram_away=args[1])
+            presence.set_away_after(args[1])
         write_config(telegram_when="away")
         print(describe())
         return 0

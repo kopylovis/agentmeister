@@ -621,16 +621,14 @@ def settings():
 
     def notify():
         import ntfy_alert
-        import telegram
+        import presence
         try:
             after = int(cfg.get("notify_after", 20))
         except ValueError:
             after = 20
-        try:
-            away = int(cfg.get("telegram_away", telegram.DEFAULT_AWAY))
-        except ValueError:
-            away = telegram.DEFAULT_AWAY
+        away = presence.away_after()
         return {"on": cfg.get("notify", "on") != "off", "after": after, "sound": cfg.get("notify_sound", "on") != "off",
+                "away": away,
                 "telegram": {"connected": bool(cfg.get("telegram_chat")), "bot": cfg.get("telegram_bot") or None,
                              "when": "always" if cfg.get("telegram_when") == "always" else "away", "away": away,
                              "approve": cfg.get("telegram_approve", "off") == "on"},
