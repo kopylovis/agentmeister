@@ -213,6 +213,15 @@ def read_config():
     return conf
 
 
+def config_int(key, default, low, high):
+    """Целое из config в пределах [low, high]; пустое или неверное значение дает default."""
+    try:
+        value = int(read_config().get(key, ""))
+    except ValueError:
+        return default
+    return value if low <= value <= high else default
+
+
 def write_config(**values):
     conf = read_config()
     conf.update(values)

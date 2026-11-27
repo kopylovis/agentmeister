@@ -169,8 +169,13 @@ struct SettingsData: Decodable {
     struct ModesInfo: Decodable {
         let buildlogDays: Int
         let buildlogLines: Int
+        /// Порог выжимки в КБ, nil в старом ответе app-state (было 20).
+        let buildlogKB: Int?
         let buildlogDir: String
         let lidReady: Bool
+        /// Через сколько минут после последней сессии и при каком заряде lid отпускает крышку. Nil в старом ответе.
+        let lidGraceMin: Int?
+        let lidBattery: Int?
         /// Откуда ключ OpenRouter для translate: file, env или nil, если его нет.
         let translateKey: String?
         let translateModel: String?

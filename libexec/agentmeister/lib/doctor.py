@@ -305,9 +305,9 @@ def check_lid():
                             "sleep is disabled (pmset disablesleep 1) with no watcher: agentmeister lid release"))]
     if claude_lid.ready():
         return [("ok", tr(f"крышка: caffeinate-сессии не уснут и с закрытой крышкой (на батарее до "
-                          f"{claude_lid.LOW_BATTERY}% заряда)",
+                          f"{claude_lid.low_battery()}% заряда)",
                           f"lid: caffeinate sessions stay awake with the lid closed (on battery down to "
-                          f"{claude_lid.LOW_BATTERY}%)"))]
+                          f"{claude_lid.low_battery()}%)"))]
     return [("warn" if read_config().get("lid") == "on" else "ok", tr("крышка: закрытая крышка усыпит Mac и в caffeinate-сессии (agentmeister lid setup)",
                       "lid: closing the lid puts the Mac to sleep even in caffeinate sessions (agentmeister lid setup)"))]
 
