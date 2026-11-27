@@ -76,6 +76,7 @@ struct MainView: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var ui: UIState
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var l: L { L(backend.state.lang) }
 
@@ -96,6 +97,8 @@ struct MainView: View {
             case "new-session":
                 ui.newSessionProject = workspace.current?.spec.projectPath
                 ui.showNewSession = true
+            case "about":
+                openWindow(id: "about")
             case "rail":
                 ui.sidebarCollapsed = true
             case "project":
