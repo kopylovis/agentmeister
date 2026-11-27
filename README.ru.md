@@ -983,7 +983,9 @@ Mac. Нажатия принимаются только из чата, где п
 приходит с его предупреждением, но кнопка разрешает его так же, как ответ в терминале. Включай,
 только если у аккаунта Telegram есть пароль и двухэтапная проверка.
 
-Или в Tossling на телефоне, через свой ntfy: `agentmeister notify phone away` — когда тебя нет за Mac,
+Или в [Tossling](https://github.com/Tossling/tossling-server) на телефоне, через свой сервер Tossling. Для этого
+на Mac должен стоять Tossling, подключенный к этому серверу ([установка](https://tossling.github.io/docs/install/)),
+agentmeister берет сервер и токен у `tossling config`. `agentmeister notify phone away` — когда тебя нет за Mac,
 `phone always` — всегда, `phone off` — выключить, `phone test` — пробное. В настройках уведомлений Tossling подпишись
 на канал `agentmeister`. Заголовок начинается с Claude Code или Codex. Вопросы и просьбы о разрешении приходят
 с высоким приоритетом. Если сервер требует токен отправителя проекта, сохрани его в Связке ключей на Mac.

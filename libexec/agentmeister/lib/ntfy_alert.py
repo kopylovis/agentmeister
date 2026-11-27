@@ -6,7 +6,9 @@ import urllib.request
 
 from mnrhlib import HOME, read_config, tossling_path
 
-LEGACY_CONFIGS = (os.path.join(HOME, ".config", "tossling", "config.json"), os.path.join(HOME, ".config", "tossy", "config.json"), os.path.join(HOME, ".config", "mnrh", "clip.json"))
+# Настройки старых версий Tossling (раньше Tossy), если команды tossling нет
+LEGACY_CONFIGS = (os.path.join(HOME, ".config", "tossling", "config.json"), os.path.join(HOME, ".config", "tossy", "config.json"))
+INSTALL_DOCS = "https://tossling.github.io/docs/install/"
 DEFAULT_TOPIC = "mac"
 AGENTMEISTER_TOPIC = "agentmeister"
 AGENTMEISTER_ICON = "https://raw.githubusercontent.com/kopylovis/agentmeister/main/docs/icon.png"
@@ -61,7 +63,7 @@ def phone_mode():
 def publish(topic, message, title="", priority=3, tags=None, click=None, markdown=False):
     target = endpoint()
     if not target:
-        raise AlertError("Tossling не настроен: tossling setup")
+        raise AlertError(f"Tossling на этом Mac не найден или не подключен к серверу. Как поставить: {INSTALL_DOCS}")
     server, token = target
     payload = {"topic": topic, "message": message or title or "—", "priority": int(priority)}
     if topic == AGENTMEISTER_TOPIC:

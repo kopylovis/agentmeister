@@ -705,8 +705,9 @@ struct NotifyPane: View {
                 }
             }
             GlassSection {
-                SettingsRow(l.t("Телефон через ntfy", "Phone through ntfy"),
-                            l.t("Канал agentmeister в Tossling, вопросы и запросы с высоким приоритетом", "The agentmeister channel in Tossling, questions and requests at high priority"),
+                SettingsRow("Tossling",
+                            l.t("Канал agentmeister на твоем сервере Tossling, вопросы и запросы с высоким приоритетом. Сервер и токен берутся у tossling на этом Mac.",
+                                "The agentmeister channel on your Tossling server, questions and requests at high priority. The server and token come from tossling on this Mac."),
                             titleFont: .system(size: 17, weight: .semibold)) {
                     SegmentedCapsule(selection: Binding(get: { n.phone.mode }, set: { run(["notify", "phone", $0]) }),
                                      options: [("off", l.t("Выкл", "Off"), nil), ("away", l.t("Когда я не за Mac", "When I'm away"), nil), ("always", l.t("Всегда", "Always"), nil)],
@@ -714,7 +715,12 @@ struct NotifyPane: View {
                         .disabled(!n.phone.configured)
                 }
                 if !n.phone.configured {
-                    Text(l.t("ntfy не настроен", "ntfy isn't configured")).font(.system(size: 12)).foregroundStyle(Ink.amber)
+                    HStack(spacing: 8) {
+                        Text(l.t("Tossling на этом Mac не найден или не подключен к серверу", "Tossling isn't installed on this Mac or isn't connected to a server"))
+                            .foregroundStyle(Ink.amber)
+                        Link(l.t("Как поставить", "How to install"), destination: URL(string: "https://tossling.github.io/docs/install/")!)
+                    }
+                    .font(.system(size: 12))
                 }
             }
             Note(text: l.t("Если сессия подключена к Remote Control и в /config включено Push when actions required, ее запросы и вопросы не дублируются в Telegram и на телефон. Уведомление на Mac остается.",

@@ -622,6 +622,9 @@ def status():
     if claude_settings.setting("inputNeededNotifEnabled", os.getcwd()) is True:
         print("Remote Control: в сессии с /remote-control о запросах разрешения и вопросах на телефон пишет сам "
               "Claude (Push when actions required), в Telegram и Tossling они не дублируются")
+    if not ntfy_alert.configured():
+        print(f"Tossling: не найден на этом Mac или не подключен к серверу, {ntfy_alert.INSTALL_DOCS}")
+        return
     mode = ntfy_alert.phone_mode()
     print("Tossling: " + {"off": "выключено — agentmeister notify phone away",
                        "away": f"когда ты не за Mac, канал «{ntfy_alert.AGENTMEISTER_TOPIC}»",
@@ -654,7 +657,10 @@ def phone(rest):
     value = rest[0] if rest else ""
     if value in ("on", "away", "always", "off"):
         if value != "off" and not ntfy_alert.configured():
-            print("Сначала tossling setup: уведомления уходят через сервер Tossling")
+            print(tr(f"Tossling на этом Mac не найден или не подключен к серверу, уведомления уходят через него. "
+                     f"Как поставить: {ntfy_alert.INSTALL_DOCS}",
+                     f"Tossling isn't installed on this Mac or isn't connected to a server, notifications go through it. "
+                     f"How to install: {ntfy_alert.INSTALL_DOCS}"))
             return 1
         write_config(notify_phone="away" if value == "on" else value)
         print({"off": "В Tossling больше не отправляю",
