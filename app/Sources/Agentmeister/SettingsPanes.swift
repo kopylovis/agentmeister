@@ -754,6 +754,7 @@ enum TerminalPrefs {
     static let linksKey = "terminal.links"
     static let bellKey = "terminal.bell"
     static let colorsKey = "terminal.colors"
+    static let codexHistoryKey = "terminal.codexHistory"
     static let classicKey = "terminal.classicRenderer"
 
     static let fonts = ["SF Mono", "Menlo", "Monaco", "JetBrains Mono"]
@@ -769,6 +770,8 @@ enum TerminalPrefs {
     /// Claude Code в классическом режиме (CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1): переписка уходит в прокрутку
     /// терминала, и ⌘F ее находит. В полноэкранном режиме в терминале только видимый экран.
     static var classicRenderer: Bool { UserDefaults.standard.object(forKey: classicKey) as? Bool ?? true }
+
+    static var codexHistory: Bool { UserDefaults.standard.object(forKey: codexHistoryKey) as? Bool ?? true }
 
     static func font(name: String = fontName, size: Double = size) -> NSFont {
         if name != "SF Mono", let font = NSFont(name: name, size: size) { return font }
@@ -806,6 +809,7 @@ struct TerminalPane: View {
     @AppStorage(TerminalPrefs.linksKey) private var links = "modifier"
     @AppStorage(TerminalPrefs.bellKey) private var bell = "tab"
     @AppStorage(TerminalPrefs.colorsKey) private var colors = "window"
+    @AppStorage(TerminalPrefs.codexHistoryKey) private var codexHistory = true
     @AppStorage(TerminalPrefs.classicKey) private var classic = true
 
     var l: L { L(backend.state.lang) }
@@ -863,6 +867,12 @@ struct TerminalPane: View {
                 }
                 .help(l.t("Классический режим Claude Code: вся переписка в прокрутке терминала, ⌘F находит ее целиком. Выключено, и Claude Code рисует полноэкранный интерфейс, где ⌘F видит только экран. Действует для новых и перезапущенных вкладок.",
                           "Claude Code's classic renderer: the whole conversation is in the terminal scrollback and ⌘F finds all of it. Off, Claude Code draws its fullscreen interface and ⌘F sees only the screen. Applies to new and restarted tabs."))
+                Divider()
+                row(l.t("История Codex в терминале", "Codex history in the terminal")) {
+                    Toggle("", isOn: $codexHistory).toggleStyle(.switch).labelsHidden()
+                }
+                .help(l.t("В новых и перезапущенных вкладках Codex текущий запрос закреплен над ответом. Выключите для полноэкранного режима Codex.",
+                          "Pin the current prompt above its answer in new and restarted Codex tabs. Turn off for the fullscreen Codex interface."))
                 Divider()
                 row("Option " + l.t("как Meta", "as Meta")) {
                     Toggle("", isOn: $optionMeta).toggleStyle(.switch).labelsHidden()

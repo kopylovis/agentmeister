@@ -18,6 +18,7 @@ let package = Package(
             dependencies: [.product(name: "SwiftTerm", package: "SwiftTerm"), .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/Agentmeister"
         ),
+        .testTarget(name: "AgentmeisterTests", dependencies: ["Agentmeister", .product(name: "SwiftTerm", package: "SwiftTerm")]),
     ],
     swiftLanguageModes: [.v5]
 )

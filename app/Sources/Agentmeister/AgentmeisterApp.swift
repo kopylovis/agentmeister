@@ -83,10 +83,10 @@ struct AgentmeisterApp: App {
     /// Значок в строке меню, выключается в Настройках > Основные.
     @AppStorage(MenuBarPrefs.showKey) private var showMenuBar = true
 
-    /// Есть ли куда переходить ⌘↑ и ⌘↓: впереди главное окно с вкладкой Claude Code, а не экран проекта.
+    /// Есть ли куда переходить ⌘↑ и ⌘↓: впереди главное окно с вкладкой агента, а не экран проекта.
     private var promptsReady: Bool {
         guard let tab = workspace.current, ui.mainKey, !ui.screenOpen else { return false }
-        return tab.spec.agent == .claude && tab.spec.utility == nil
+        return tab.spec.claudeSession || (tab.spec.codexSession && tab.view.terminalInputStateSnapshot()?.isAlternateBuffer == false)
     }
 
     var body: some Scene {

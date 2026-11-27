@@ -63,6 +63,9 @@ struct LaunchSpec: Hashable {
         if remoteControl && agent == .claude { agentArgs += ["--remote-control", projectName] }
         // флаги запуска по умолчанию из настроек агента
         agentArgs = AgentPrefs.flags(agent) + agentArgs
+        if codexSession && TerminalPrefs.codexHistory && !agentArgs.contains("--no-alt-screen") {
+            agentArgs.insert("--no-alt-screen", at: 0)
+        }
         if let id = resumeId, agent == .claude {
             // запрос после продолжения: перезапуск после /slim так сразу выполняет /compact
             let prompt = firstPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
