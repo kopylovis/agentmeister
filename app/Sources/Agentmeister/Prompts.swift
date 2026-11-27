@@ -257,6 +257,8 @@ extension TerminalTab {
             if sticky != nil { sticky = nil }
             return
         }
+        // во время перевода по ⌘⇧T Claude Code в редакторе и экран пуст: закрепленная строка остается прежней
+        if inputTranslation != nil { return }
         let ref = TerminalRef(view: view)
         let index = promptIndex
         let sid = sessionId
