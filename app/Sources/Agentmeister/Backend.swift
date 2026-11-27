@@ -217,6 +217,9 @@ struct AppState: Decodable {
         let cwd: String?
         let status: String?
         let name: String?
+        /// Сессия Remote Control, к которой сейчас подключена эта сессия. Claude Code пишет его в реестр при
+        /// подключении и стирает при отключении.
+        let bridgeSessionId: String?
     }
 
     struct Proxy: Decodable, Hashable {
@@ -434,9 +437,10 @@ final class Backend: ObservableObject {
         Task.detached(priority: .utility) {
             let live = Self.readLive()
             await MainActor.run {
-                let before = Dictionary(self.state.live.compactMap { r in r.sessionId.map { ($0, r.status ?? "") } },
+                // Remote Control тоже: кнопка панели сессии показывает, подключена ли сессия на самом деле
+                let before = Dictionary(self.state.live.compactMap { r in r.sessionId.map { ($0, (r.status ?? "") + " " + (r.bridgeSessionId ?? "")) } },
                                         uniquingKeysWith: { a, _ in a })
-                let after = Dictionary(live.compactMap { r in r.sessionId.map { ($0, r.status ?? "") } },
+                let after = Dictionary(live.compactMap { r in r.sessionId.map { ($0, (r.status ?? "") + " " + (r.bridgeSessionId ?? "")) } },
                                        uniquingKeysWith: { a, _ in a })
                 guard before != after || self.state.live.map(\.pid) != live.map(\.pid) else { return }
                 self.state.live = live

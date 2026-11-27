@@ -177,6 +177,9 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// У Codex статуса нет, а id треда находит Workspace.trackCodexThreads.
     @Published var sessionId: String?
     @Published var status: String?
+    /// Сессия сейчас подключена к Remote Control: в реестре Claude Code у нее есть bridgeSessionId.
+    /// spec.remoteControl это настройка запуска, а это то, что идет на самом деле.
+    @Published var remoteConnected = false
     /// В терминале прозвенел звонок, пока вкладка не была выбрана. Сбрасывается при выборе.
     @Published var rang = false
     /// Вызывается, когда процесс вкладки завершился. Мастер по нему перечитывает состояние.
@@ -379,6 +382,56 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         updateAwake()
         // tabs.json пишется по изменению списка вкладок, а это изменение внутри вкладки
         Workspace.main?.save()
+    }
+
+    /// Включить или выключить Remote Control. Настройка сохраняется для следующих запусков, а идущую сессию
+    /// Claude Code вкладка подключает или отключает командой /remote-control, если ее можно вписать, ничего не
+    /// испортив (promptReady). При выключении Claude Code открывает свою панель Remote Control, где фокус стоит
+    /// на Continue: отключает в ней сам человек. false значит, что вписать команду нельзя и идущая сессия
+    /// осталась как была: тогда спросить, перезапустить ли ее сейчас.
+    @discardableResult
+    func setRemoteControl(_ on: Bool) -> Bool {
+        spec.remoteControl = on
+        // tabs.json пишется по изменению списка вкладок, а это изменение внутри вкладки
+        Workspace.main?.save()
+        guard running, spec.agent == .claude, spec.utility == nil, remoteConnected != on else { return true }
+        guard promptReady else { return false }
+        // имя то же, что у --remote-control при запуске
+        submit(on ? "/remote-control " + spec.projectName : "/remote-control")
+        view.window?.makeFirstResponder(view)
+        return true
+    }
+
+    /// Можно ли вписать /remote-control в идущий Claude Code и нажать Enter. Claude Code не ждет ответа в
+    /// диалоге: статус idle или busy (эта команда выполняется и посреди ответа, не прерывая и не дожидаясь его).
+    /// И строка ввода пуста, иначе команда дописалась бы к черновику и Enter отправил бы его.
+    var promptReady: Bool {
+        guard running, status == "idle" || status == "busy",
+              let screen = view.terminalContentSnapshot(region: .history(maximumScrollbackRows: -1)) else { return false }
+        return Self.promptEmpty(screen)
+    }
+
+    /// Пуста ли строка ввода Claude Code на живом экране. Это последняя строка, которая начинается с "❯" без
+    /// подложки (запросы в прокрутке на подложке). После "❯" может стоять только серая подсказка (Try "..."),
+    /// курсор терминала стоит сразу за "❯ ", а до черты под полем ввода нет строк с текстом. "❯" у пункта
+    /// списка в диалоге стоит перед обычным текстом, такой экран пустым не считается.
+    nonisolated static func promptEmpty(_ screen: TerminalContentSnapshot) -> Bool {
+        func blank(_ cell: TerminalCellSnapshot) -> Bool { cell.isBlank || cell.text.allSatisfy(\.isWhitespace) }
+        let rows = screen.rows
+        for index in rows.indices.reversed() {
+            let row = rows[index]
+            guard let first = row.cells.firstIndex(where: { !blank($0) }), row.cells[first].text == "❯" else { continue }
+            let bg = row.cells[first].attribute.bg
+            guard bg == .defaultColor || bg == .defaultInvertedColor,
+                  screen.cursorRow == row.absoluteRow, screen.cursorColumn == first + 2,
+                  row.cells[(first + 1)...].allSatisfy({ blank($0) || $0.attribute.style.contains(.dim) }) else { return false }
+            for below in rows[(index + 1)...] {
+                guard let start = below.cells.firstIndex(where: { !blank($0) }) else { continue }
+                return below.cells[start].text == "─"
+            }
+            return true
+        }
+        return false
     }
 
     private func updateAwake() {
@@ -753,6 +806,7 @@ final class Workspace: ObservableObject {
                                       agent: LaunchSpec.Agent(rawValue: item.agent ?? "") ?? .claude,
                                       direct: item.direct ?? false, subscription: item.subscription)
                 spec.terminal = item.terminal ?? false
+                spec.remoteControl = item.remoteControl ?? false
                 if spec.terminal { spec.utility = ["proxy", "run", "--", "zsh"] }
                 spec.demoScreen = Demo.screenPath(item.screen)
                 open(spec, select: item.selected ?? false)
@@ -1014,8 +1068,11 @@ final class Workspace: ObservableObject {
                     save()
                 }
                 if tab.status != match.status { tab.status = match.status }
-            } else if tab.status != nil {
-                tab.status = nil
+                let connected = match.bridgeSessionId != nil
+                if tab.remoteConnected != connected { tab.remoteConnected = connected }
+            } else {
+                if tab.status != nil { tab.status = nil }
+                if tab.remoteConnected { tab.remoteConnected = false }
             }
         }
         DockAttention.update(waiting: tabs.filter { $0.running && $0.status == "waiting" }.count)

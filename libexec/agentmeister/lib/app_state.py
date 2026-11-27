@@ -316,10 +316,13 @@ def codex_read(sid, tail=12, chars=700):
 
 
 def live():
-    """Открытые сейчас сессии из реестра Claude Code: статус waiting, busy или idle."""
+    """Открытые сейчас сессии из реестра Claude Code: статус waiting, busy или idle. bridgeSessionId есть,
+    пока сессия подключена к Remote Control."""
     import claude_live
     return [{"sessionId": s.get("sessionId"), "pid": s.get("pid"), "cwd": s.get("cwd"), "status": s.get("status"),
-             "name": s.get("name"), "statusUpdatedAt": s.get("statusUpdatedAt")} for s in claude_live.live()]
+             "name": s.get("name"), "statusUpdatedAt": s.get("statusUpdatedAt"),
+             "bridgeSessionId": s.get("bridgeSessionId") if isinstance(s.get("bridgeSessionId"), str) else None}
+            for s in claude_live.live()]
 
 
 def proxy_state():

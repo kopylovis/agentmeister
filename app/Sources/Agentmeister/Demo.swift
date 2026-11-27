@@ -40,6 +40,7 @@ enum Demo {
         let direct: Bool?
         let subscription: String?
         let terminal: Bool?
+        let remoteControl: Bool?
         /// Файл с текстом, который печатается во вкладке, относительно папки демо.
         let screen: String
         let selected: Bool?
