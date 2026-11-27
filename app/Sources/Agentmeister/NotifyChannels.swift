@@ -130,7 +130,12 @@ struct PhoneChannels: View {
                 }
             }
         }
-        .onAppear { if Demo.active && open.isEmpty { open = [Demo.scene == "settings-notify" ? .ntfy : .telegram] } }
+        .id("phone-channels")
+        .onAppear {
+            guard Demo.active, open.isEmpty else { return }
+            if Demo.scene == "settings-notify-add" { adding = true }
+            open = Demo.scene == "settings-notify-phone" ? [.bark, .gotify] : Demo.scene == "settings-notify" ? [.ntfy] : [.telegram]
+        }
         .sheet(isPresented: $adding) {
             AddChannelSheet(l: l, connected: Set(connected)) { Task { await reload() } }
         }
@@ -628,7 +633,7 @@ struct AddChannelSheet: View {
             Text(l.t("Куда присылать вопросы и запросы агентов, когда ты не за Mac. Ссылка под названием ведет на исходники сервиса.",
                      "Where agent questions and requests go when you are away from the Mac. The link under each name leads to the service's source."))
                 .font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 8)], spacing: 8) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                 ForEach(PhoneChannel.allCases) { c in card(c) }
             }
             HStack {
@@ -653,7 +658,10 @@ struct AddChannelSheet: View {
                         if on { StateChip(text: l.t("подключен", "connected"), fg: Ink.teal, bg: Ink.tealChip) }
                     }
                     Text(c.summary(l)).font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 4) { ForEach(c.tags(l), id: \.self) { StateChip(text: $0, fg: Ink.muted, bg: Ink.chip) } }
+                    Text(c.tags(l).joined(separator: " · "))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Ink.faint)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())

@@ -108,9 +108,9 @@ struct MainView: View {
                 ui.sidebarCollapsed = false
             case "project":
                 ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
-            case "settings", "settings-modes", "settings-notify", "headsup":
+            case "settings", "settings-modes", "settings-notify", "settings-notify-phone", "settings-notify-add", "headsup":
                 // settings-modes: раздел режимов; settings-notify: уведомления; headsup: раздел агентов с историей заметок Heads up под карточками
-                let section = ["settings-modes": "modes", "settings-notify": "notify", "headsup": "agents"][Demo.scene] ?? "proxy"
+                let section = ["settings-modes": "modes", "settings-notify": "notify", "settings-notify-phone": "notify", "settings-notify-add": "notify", "headsup": "agents"][Demo.scene] ?? "proxy"
                 UserDefaults.standard.set(section, forKey: "settingsSection")
                 openSettings()
                 // окно настроек высокое, чтобы раздел proxy с подписками поместился целиком

@@ -240,6 +240,7 @@ struct SettingsView: View {
             .padding(8)
             .accessibilityLabel(l.t("Разделы настроек", "Settings sections"))
 
+            ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     switch current {
@@ -258,6 +259,12 @@ struct SettingsView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 28)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // демо settings-notify-phone снимает каналы на телефон: прокрутить к ним, когда данные загрузились
+            .onAppear {
+                guard Demo.scene == "settings-notify-phone" else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { scroller.scrollTo("phone-channels", anchor: .top) }
+            }
             }
             // macOS 26 рисует над скрытым заголовком свою полосу, когда курсор над ней, и прокрученная карточка
             // мелькала под ней пятном. Вместо нее ровное размытие, как в главном окне
