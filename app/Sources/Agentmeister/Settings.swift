@@ -193,9 +193,18 @@ struct SettingsView: View {
                     }
                 }
                 .padding(.horizontal, 28)
-                .padding(.top, 36)
+                // 28 из прежних 36 теперь дает полоса размытия сверху
+                .padding(.top, 8)
                 .padding(.bottom, 28)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // macOS 26 рисует над скрытым заголовком свою полосу, когда курсор над ней, и прокрученная карточка
+            // мелькала под ней пятном. Вместо нее ровное размытие, как в главном окне
+            .scrollEdgeEffectHidden(true, for: .top)
+            .safeAreaBar(edge: .top, spacing: 0) {
+                Color.clear.frame(height: 28).frame(maxWidth: .infinity)
+                    .background(WindowDragArea())
+                    .blurBar(edge: .top)
             }
         }
         .ignoresSafeArea(edges: .top)
