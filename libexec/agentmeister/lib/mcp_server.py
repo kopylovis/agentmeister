@@ -9,7 +9,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CM, HOME, MNRH, tilde  # noqa: E402
+from mnrhlib import CM, HOME, MNRH, lang, tilde  # noqa: E402
 from claude_proc import RestartError, current_sid  # noqa: E402
 from claude_restart import restart, slim_current  # noqa: E402
 import mac_status  # noqa: E402
@@ -214,8 +214,13 @@ READ_ONLY = [t["name"] for t in EXTRA_TOOLS if (t.get("annotations") or {}).get(
 
 def tools():
     if os.environ.get("MNRH_MCP_HARNESS") == "codex":
-        return [gradle_deps.TOOL] + mnrh_todo.TOOLS + release_notes.TOOLS
-    return [TOOL, FORGET_TOOL, FRESH_TOOL, SLIM_TOOL, claude_open.TOOL] + EXTRA_TOOLS
+        found = [gradle_deps.TOOL] + mnrh_todo.TOOLS + release_notes.TOOLS
+    else:
+        found = [TOOL, FORGET_TOOL, FRESH_TOOL, SLIM_TOOL, claude_open.TOOL] + EXTRA_TOOLS
+    if lang() == "en":
+        import mcp_en
+        found = mcp_en.english(found)
+    return found
 
 
 LIB = os.path.dirname(os.path.abspath(__file__))
