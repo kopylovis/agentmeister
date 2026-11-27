@@ -216,6 +216,8 @@ def launch(codex, args, passthrough):
         cmd.append("--no-daemon")
     cmd += passthrough
     if mode == "caffeinate":
+        import claude_lid
+        claude_lid.keep()
         cmd = ["caffeinate", "-is"] + cmd
     if proxied:
         cmd = [sys.executable, str(Path(__file__).with_name("proxy.py")), "run"] + \

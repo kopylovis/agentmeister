@@ -11,6 +11,7 @@ import claude_lid as lid  # noqa: E402
 
 PS = """  101     1 /bin/zsh -l
   202   101 caffeinate -is /Users/me/.local/bin/claude --resume 1234
+  302   101 caffeinate -is /opt/homebrew/bin/codex --no-daemon
   303   101 caffeinate -is claude
   404   101 caffeinate -i make
   505   101 /usr/bin/python3 proxy.py run -- caffeinate -is claude
@@ -31,7 +32,7 @@ class Lid(unittest.TestCase):
 
     def test_sessions_are_caffeinate_wrapping_claude(self):
         lid.run = lambda cmd, **kw: PS
-        self.assertEqual(lid.sessions(), [202, 303, 707])
+        self.assertEqual(lid.sessions(), [202, 302, 303, 707])
 
     def test_not_ready_without_rule(self):
         lid.SUDOERS = "/nonexistent-cm/sudoers.d/mnrh-pmset"
