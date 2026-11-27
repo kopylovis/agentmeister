@@ -11,7 +11,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import BADGES, CACHE, HOME, badge, read_config, tilde, tr, write_config, write_json
+from mnrhlib import BADGES, CACHE, HOME, badge, lang, read_config, tilde, tr, write_config, write_json
 
 LOG = os.path.join(HOME, "Library", "Logs", "mnrh-guard.log")
 TAIL = 4 << 20
@@ -35,7 +35,7 @@ RULES_EN = {
                    "the project, curl | sh, dd to a disk. Finds them inside bash -c, eval, sudo too",
 }
 GUARD_STATE = os.path.join(CACHE, "guard")
-YES = re.compile(r"^\W*(да|ага|угу|ок|окей|ok|okay|yes|y|давай|выполняй|можно|разрешаю|разреши|делай|go|sure)\b", re.I)
+YES = re.compile(r"^\W*(да|ага|угу|ок|окей|ok|okay|yes|y|давай|выполняй|можно|разрешаю|разреши|делай|go|sure|yep|yeah|proceed|confirm|approve|approved|allow)\b", re.I)
 SENSITIVE_DIRS = ["~/.ssh", "~/.gnupg", "~/.aws", "~/Library/Keychains", "~/.config/gh"]
 DELETERS = {"rm", "rmdir", "unlink", "shred", "srm", "trash"}
 WALK_LIMIT = 3000
@@ -73,9 +73,9 @@ def hold_badge(sid, rule):
                 os.remove(os.path.join(BADGES, name))
     except OSError:
         pass
-    what = {"secrets-read": "чтение секрета", "secrets-delete": "удаление секрета",
-            "destructive": "опасную команду"}.get(rule, rule)
-    badge(f"mnrh-guard_{sid[:8]}", {"text": f"остановил {what}", "color": "yellow", "session": sid,
+    what = {"secrets-read": tr("чтение секрета", "a secret read"), "secrets-delete": tr("удаление секрета", "a secret delete"),
+            "destructive": tr("опасную команду", "a risky command")}.get(rule, rule)
+    badge(f"mnrh-guard_{sid[:8]}", {"text": tr(f"остановил {what}", f"held {what}"), "color": "yellow", "session": sid,
                                     "expires": int(time.time() + 120)}, refresh=True)
 
 
@@ -332,14 +332,16 @@ def check_secrets_cmd(ws, segment):
     exe = os.path.basename(ws[0])
     if exe == "security" and len(ws) > 1 and (ws[1] == "dump-keychain" or
                                                (ws[1].startswith("find-") and ("-w" in ws or "-g" in ws))):
-        return "secrets-read", "пароль из связки ключей попадёт в переписку"
+        return "secrets-read", tr("пароль из связки ключей попадёт в переписку", "a keychain password would end up in the conversation")
     if exe in READERS:
         for w in ws[1:]:
             if not w.startswith("-") and is_secret(w):
-                return "secrets-read", f"{exe} {tilde(os.path.expanduser(w))}: содержимое секрета попадёт в переписку"
+                return "secrets-read", f"{exe} {tilde(os.path.expanduser(w))}: " + tr("содержимое секрета попадёт в переписку",
+                                                                                        "the secret's contents would end up in the conversation")
     for m in re.finditer(r"<\s*([^\s<>|;&]+)", segment):
         if is_secret(m.group(1)):
-            return "secrets-read", f"чтение {m.group(1)}: содержимое секрета попадёт в переписку"
+            return "secrets-read", tr(f"чтение {m.group(1)}: содержимое секрета попадёт в переписку",
+                                      f"reading {m.group(1)}: the secret's contents would end up in the conversation")
     return None
 
 
@@ -370,7 +372,7 @@ def holds_secrets(path):
 def check_secret_delete(ws, cwd, env):
     exe = os.path.basename(ws[0])
     if exe == "security" and len(ws) > 1 and ws[1].startswith("delete-"):
-        return "secrets-delete", f"security {ws[1]} удалит запись из связки ключей"
+        return "secrets-delete", tr(f"security {ws[1]} удалит запись из связки ключей", f"security {ws[1]} deletes a keychain item")
     if exe not in DELETERS:
         return None
     for t in ws[1:]:
@@ -383,12 +385,15 @@ def check_secret_delete(ws, cwd, env):
                 continue
         found = holds_secrets(p)
         if found:
-            what = (f"папка с ключами {found}" if found.endswith("/") else "это секрет" if found == tilde(p)
-                    else f"там секрет: {found}")
+            what = (tr(f"папка с ключами {found}", f"the key folder {found}") if found.endswith("/") else
+                    tr("это секрет", "it's a secret") if found == tilde(p) else tr(f"там секрет: {found}", f"a secret is inside: {found}"))
+            lost = tr("восстановить не получится", "it can't be restored")
             if unknown:
-                return "secrets-delete", (f"{exe} {t}: значение переменной неизвестно, а если она пуста, это "
-                                          f"{exe} {tilde(p)} — {what}, восстановить не получится")
-            return "secrets-delete", f"{exe} {tilde(p)} — {what}, восстановить не получится"
+                return "secrets-delete", tr(f"{exe} {t}: значение переменной неизвестно, а если она пуста, это "
+                                            f"{exe} {tilde(p)} — {what}, {lost}",
+                                            f"{exe} {t}: the variable's value is unknown, and if it's empty this is "
+                                            f"{exe} {tilde(p)}, {what}, {lost}")
+            return "secrets-delete", tr(f"{exe} {tilde(p)} — {what}, {lost}", f"{exe} {tilde(p)}: {what}, {lost}")
     return None
 
 
@@ -515,28 +520,33 @@ def check_git(ws, cwd, env):
         return None
     sub, rest = args[i], args[i + 1:]
     flags, longs, paths = short_flags(rest), set(rest[:rest.index("--")] if "--" in rest else rest), positional(rest)
-    lost = "восстановить не получится"
+    lost = tr("восстановить не получится", "they can't be restored")
     if sub == "reset" and "--hard" in longs:
-        return f"git reset --hard сотрёт незакоммиченные правки, {lost}"
+        return tr(f"git reset --hard сотрёт незакоммиченные правки, {lost}", f"git reset --hard wipes uncommitted changes, {lost}")
     if sub == "push":
         force = next((a for a in rest if a == "--force" or a.startswith(("--force-with-lease", "--force-if-includes"))),
                      "-f" if "f" in flags else next((f"+{a[1:]}" for a in paths if a.startswith("+")), None))
         if force:
-            return f"git push {force} перепишет ветку на сервере, чужие коммиты там пропадут"
+            return tr(f"git push {force} перепишет ветку на сервере, чужие коммиты там пропадут",
+                      f"git push {force} rewrites the branch on the server, other people's commits there will be lost")
     if sub == "clean" and ("f" in flags or "--force" in longs) and flags & {"d", "x", "X"} and \
             "n" not in flags and "--dry-run" not in longs:
-        ignored = " и всё из .gitignore (.env, локальные настройки)" if flags & {"x", "X"} else ""
-        return f"git clean удалит неотслеживаемые файлы и папки{ignored}; их нет в git, {lost}"
+        ignored = tr(" и всё из .gitignore (.env, локальные настройки)", " and everything in .gitignore (.env, local settings)") \
+            if flags & {"x", "X"} else ""
+        return tr(f"git clean удалит неотслеживаемые файлы и папки{ignored}; их нет в git, {lost}",
+                  f"git clean deletes untracked files and folders{ignored}; they aren't in git, {lost}")
     if sub == "checkout" and ("f" in flags or "--force" in longs):
-        return f"git checkout --force отменит все незакоммиченные правки, {lost}"
+        return tr(f"git checkout --force отменит все незакоммиченные правки, {lost}",
+                  f"git checkout --force discards all uncommitted changes, {lost}")
     if sub in ("checkout", "restore"):
         staged_only = ("S" in flags or "--staged" in longs) and not ("W" in flags or "--worktree" in longs)
         spec = next((p for p in paths if whole_tree(p, cwd, env)), None)
         if spec and not (sub == "restore" and staged_only):
-            return f"git {sub} {spec} отменит все незакоммиченные правки в {tilde(cwd)}, {lost}"
+            return tr(f"git {sub} {spec} отменит все незакоммиченные правки в {tilde(cwd)}, {lost}",
+                      f"git {sub} {spec} discards all uncommitted changes in {tilde(cwd)}, {lost}")
     if sub == "branch" and ("D" in flags or (("d" in flags or "--delete" in longs) and
                                              ("f" in flags or "--force" in longs))):
-        return "git branch -D удалит ветку, даже если она никуда не влита"
+        return tr("git branch -D удалит ветку, даже если она никуда не влита", "git branch -D deletes the branch even if it isn't merged anywhere")
     return None
 
 
@@ -555,23 +565,24 @@ def check_rm(ws, cwd, env, root):
         while os.path.basename(p) in ("*", ".*"):
             p, glob = os.path.dirname(p), True
         if p == "/":
-            what = "это корень диска"
+            what = tr("это корень диска", "it's the disk root")
         elif within(HOME, p):
-            what = "это домашняя папка" if p == HOME else "внутри домашняя папка"
+            what = tr("это домашняя папка", "it's the home folder") if p == HOME else tr("внутри домашняя папка", "the home folder is inside")
         elif os.path.normpath(p) == root or os.path.realpath(p) == os.path.realpath(root):
-            what = "это сам проект"
+            what = tr("это сам проект", "it's the project itself")
         elif within(p, root) and not within(HOME, root):
             continue
         elif any(within(p, d) for d in CACHE_DIRS) or any(within(p, d, strict=not glob) for d in TEMP_DIRS) and (
                 glob or not any(within(p, d) and within(d, p) for d in TEMP_DIRS)):
             continue
         else:
-            what = f"проекта нет, Claude запущен в {tilde(root)}" if within(HOME, root) else \
-                f"это вне проекта {tilde(root)}"
+            what = tr(f"проекта нет, Claude запущен в {tilde(root)}", f"there's no project, Claude runs in {tilde(root)}") \
+                if within(HOME, root) else tr(f"это вне проекта {tilde(root)}", f"it's outside the project {tilde(root)}")
+        lost = tr("восстановить не получится", "it can't be restored")
         if unknown:
-            return (f"rm -r {t}: значение переменной неизвестно, а если она пуста, это rm -r {tilde(p)} — {what}, "
-                    f"восстановить не получится")
-        return f"rm -r {tilde(p)} — {what}, восстановить не получится"
+            return tr(f"rm -r {t}: значение переменной неизвестно, а если она пуста, это rm -r {tilde(p)} — {what}, {lost}",
+                      f"rm -r {t}: the variable's value is unknown, and if it's empty this is rm -r {tilde(p)}, {what}, {lost}")
+        return tr(f"rm -r {tilde(p)} — {what}, {lost}", f"rm -r {tilde(p)}: {what}, {lost}")
     return None
 
 
@@ -582,23 +593,25 @@ def check_destructive(ws, seg, cwd, env, root):
     if exe == "rm":
         return check_rm(ws, cwd, env, root)
     if (exe in SHELLS or INTERPRETER.match(exe) or exe in ("source", ".")) and FROM_NET.search(seg):
-        return f"{exe} выполнит скрипт прямо из сети, не глядя"
+        return tr(f"{exe} выполнит скрипт прямо из сети, не глядя", f"{exe} runs a script straight from the network, unseen")
     if exe == "dd":
         dev = next((a for a in ws[1:] if DISK_DEV.match(a)), None)
         if dev:
-            return f"dd {dev} перезапишет диск, данные на нём пропадут"
+            return tr(f"dd {dev} перезапишет диск, данные на нём пропадут", f"dd {dev} overwrites the disk, its data will be lost")
     if exe == "diskutil" and len(ws) > 1:
         sub = ws[1].lower()
         if sub.startswith("erase") or sub in ERASE or (sub == "apfs" and len(ws) > 2 and
                                                         ws[2].lower().startswith(("delete", "erase"))):
-            return f"diskutil {' '.join(ws[1:3] if sub == 'apfs' else ws[1:2])} сотрёт диск или раздел"
+            what = ' '.join(ws[1:3] if sub == 'apfs' else ws[1:2])
+            return tr(f"diskutil {what} сотрёт диск или раздел", f"diskutil {what} erases a disk or volume")
     if exe == "mkfs" or exe.startswith(("mkfs.", "newfs")):
-        return f"{exe} отформатирует раздел, данные на нём пропадут"
+        return tr(f"{exe} отформатирует раздел, данные на нём пропадут", f"{exe} formats a volume, its data will be lost")
     if exe in ("chmod", "chown", "chgrp") and "R" in short_flags(ws[1:]):
         for t in positional(ws[1:])[1:]:
             p = resolve(t, cwd, env)
             if p in SYSTEM_DIRS:
-                return f"{exe} -R {tilde(p)} поменяет права во всей папке, вернуть как было не получится"
+                return tr(f"{exe} -R {tilde(p)} поменяет права во всей папке, вернуть как было не получится",
+                          f"{exe} -R {tilde(p)} changes permissions across the whole folder, they can't be put back")
     return None
 
 
@@ -639,7 +652,8 @@ def scan_bash(cmd, cwd, env, root, depth=0):
                     yield found
             why = check_destructive(ws, seg, cwd, env, root)
             if not why and fetched and runs_stdin(ws):
-                why = f"curl | {os.path.basename(ws[0])} выполнит скрипт прямо из сети, не глядя"
+                why = tr(f"curl | {os.path.basename(ws[0])} выполнит скрипт прямо из сети, не глядя",
+                         f"curl | {os.path.basename(ws[0])} runs a script straight from the network, unseen")
             if why:
                 yield "destructive", why
             fetched = fetched or os.path.basename(ws[0]) in ("curl", "wget")
@@ -665,7 +679,7 @@ def check(tool, inp, cwd, skip=()):
             if is_secret(path):
                 rule = "secrets-delete" if kind == "Delete File" else "secrets-read"
                 if rule not in skip:
-                    return rule, f"правка файла с секретом {tilde(path)}"
+                    return rule, tr(f"правка файла с секретом {tilde(path)}", f"editing the secret file {tilde(path)}")
         return None
     found = None
     if tool == "Grep":
@@ -674,11 +688,16 @@ def check(tool, inp, cwd, skip=()):
         name = mask[3:] if mask.startswith("**/") else mask
         if (path and is_secret(path)) or (name and (is_secret(name) or name not in CATCH_ALL and any(
                 fnmatch.fnmatch(sample, name) for sample in SECRET_SAMPLES))):
-            found = "secrets-read", f"поиск в {tilde(path or mask)}: это секрет, найденные строки попадут в переписку"
+            found = "secrets-read", tr(f"поиск в {tilde(path or mask)}: это секрет, найденные строки попадут в переписку",
+                                       f"searching {tilde(path or mask)}: it's a secret, matching lines would end up in the conversation")
     path = inp.get("file_path") or inp.get("notebook_path") or ""
     if tool in ("Read", "Edit", "Write", "MultiEdit", "NotebookEdit") and path and is_secret(path):
-        verb = "чтение" if tool == "Read" else "правка"
-        found = "secrets-read", f"{verb} {tilde(path)}: это секрет, его содержимое попадёт в переписку"
+        if tool == "Read":
+            found = "secrets-read", tr(f"чтение {tilde(path)}: это секрет, его содержимое попадёт в переписку",
+                                       f"reading {tilde(path)}: it's a secret, its contents would end up in the conversation")
+        else:
+            found = "secrets-read", tr(f"правка {tilde(path)}: это секрет, его содержимое попадёт в переписку",
+                                       f"editing {tilde(path)}: it's a secret, its contents would end up in the conversation")
     return found if found and found[0] not in skip else None
 
 
@@ -808,15 +827,18 @@ def decide(payload, codex=False):
         pending.pop(key)
         save_pending(sid, pending)
         log(f"allow {rule:<14} {what}")
-        return {"permissionDecision": "allow", "permissionDecisionReason": "agentmeister guard: пользователь разрешил"}
+        return {"permissionDecision": "allow", "permissionDecisionReason": "agentmeister guard: " + tr("пользователь разрешил", "the user allowed it")}
     pending[key] = time.time()
     save_pending(sid, pending)
     log(f"hold  {rule:<14} {what}")
     hold_badge(sid, rule)
-    return {"permissionDecision": "deny", "permissionDecisionReason": (
-        f"agentmeister guard: {why}. Это не отказ: спроси пользователя одним коротким вопросом, выполнить ли это, и объясни "
-        f"зачем. Если он ответит «да» — повтори ровно этот же вызов, и он пройдёт. Если нет — не делай и не ищи "
-        f"обходной путь.")}
+    return {"permissionDecision": "deny", "permissionDecisionReason": f"agentmeister guard: {why}. " + tr(
+        "Это не отказ: спроси пользователя одним коротким вопросом, выполнить ли это, и объясни "
+        "зачем. Если он ответит «да» — повтори ровно этот же вызов, и он пройдёт. Если нет — не делай и не ищи "
+        "обходной путь.",
+        "This isn't a refusal: ask the user in one short question whether to do this, and explain why. If they "
+        "answer yes, repeat exactly the same call and it will go through. If not, don't do it and don't look for a "
+        "workaround.")}
 
 
 def hook():
@@ -841,22 +863,32 @@ def hook():
 
 
 def usage():
-    print("agentmeister guard                   состояние и правила")
-    print("agentmeister guard on | off          включить или выключить совсем")
-    print("agentmeister guard skip <правило>    не проверять правило; unskip <правило> — вернуть")
-    print("agentmeister guard test '<команда>'  что сделает guard с этой командой (в папке, где запущен)")
-    print("agentmeister guard log               последние решения")
-    print()
-    print("Хук PreToolUse следит за чтением и удалением секретов и ключей и за необратимыми командами")
-    print("(git reset --hard, push --force, rm -r вне проекта, curl | sh…). В обычном режиме Claude Code")
-    print("спросит разрешение сам. В auto Claude спросит тебя в чате: ответишь «да» — этот вызов пройдёт.")
+    print(tr("""agentmeister guard                   состояние и правила
+agentmeister guard on | off          включить или выключить совсем
+agentmeister guard skip <правило>    не проверять правило; unskip <правило> — вернуть
+agentmeister guard test '<команда>'  что сделает guard с этой командой (в папке, где запущен)
+agentmeister guard log               последние решения
+
+Хук PreToolUse следит за чтением и удалением секретов и ключей и за необратимыми командами
+(git reset --hard, push --force, rm -r вне проекта, curl | sh…). В обычном режиме Claude Code
+спросит разрешение сам. В auto Claude спросит тебя в чате: ответишь «да» — этот вызов пройдёт.""",
+             """agentmeister guard                   state and rules
+agentmeister guard on | off          turn on or off entirely
+agentmeister guard skip <rule>       don't check a rule; unskip <rule> brings it back
+agentmeister guard test '<command>'  what guard does with this command (in the current folder)
+agentmeister guard log               recent decisions
+
+The PreToolUse hook watches for reading and deleting secrets and keys and for irreversible commands
+(git reset --hard, push --force, rm -r outside the project, curl | sh…). In the default mode Claude Code
+asks for permission itself. In auto mode Claude asks you in the chat: answer yes and that call goes through."""))
 
 
 def status():
     skip = skipped()
-    print(f"agentmeister guard: {'включён' if enabled() else 'выключен'}. Лог: {tilde(LOG)}")
-    for rule, text in RULES.items():
-        mark = "  выкл" if rule in skip else "  вкл "
+    print(tr(f"agentmeister guard: {'включён' if enabled() else 'выключен'}. Лог: {tilde(LOG)}",
+             f"agentmeister guard: {'on' if enabled() else 'off'}. Log: {tilde(LOG)}"))
+    for rule, text in (RULES_EN if lang() == "en" else RULES).items():
+        mark = tr("  выкл", "  off ") if rule in skip else tr("  вкл ", "  on  ")
         print(f"{mark} {rule:<11} {text}")
 
 
@@ -875,16 +907,18 @@ def main():
     if cmd in ("on", "off"):
         write_config(guard=cmd)
         sync_badge(cmd == "on")
-        print(f"agentmeister guard {'включён' if cmd == 'on' else 'выключен'}")
+        print(tr(f"agentmeister guard {'включён' if cmd == 'on' else 'выключен'}", f"agentmeister guard {cmd}"))
         return 0
     if cmd in ("skip", "unskip") and len(rest) == 2:
         if rest[1] not in RULES:
-            print(f"Нет правила «{rest[1]}». Есть: {', '.join(RULES)}", file=sys.stderr)
+            print(tr(f"Нет правила «{rest[1]}». Есть: {', '.join(RULES)}", f"No rule \"{rest[1]}\". Rules: {', '.join(RULES)}"),
+                  file=sys.stderr)
             return 2
         skip = skipped()
         skip = skip | {rest[1]} if cmd == "skip" else skip - {rest[1]}
         write_config(guard_skip=",".join(sorted(skip)))
-        print(f"Правило {rest[1]} {'выключено' if cmd == 'skip' else 'включено'}")
+        print(tr(f"Правило {rest[1]} {'выключено' if cmd == 'skip' else 'включено'}",
+                 f"Rule {rest[1]} {'off' if cmd == 'skip' else 'on'}"))
         return 0
     if cmd == "test" and len(rest) >= 2:
         text = " ".join(rest[1:])
@@ -892,16 +926,17 @@ def main():
             ("Bash", {"command": text})
         found = check(tool, inp, os.getcwd())
         if not found:
-            print("пропущу")
+            print(tr("пропущу", "would allow"))
         else:
-            print(f"остановлю ({found[0]}{', правило выключено' if found[0] in skipped() else ''}): {found[1]}")
+            off = tr(", правило выключено", ", rule is off") if found[0] in skipped() else ""
+            print(tr(f"остановлю ({found[0]}{off}): {found[1]}", f"would hold ({found[0]}{off}): {found[1]}"))
         return 0
     if cmd == "log":
         try:
             with open(LOG) as f:
                 print("".join(f.readlines()[-30:]), end="")
         except OSError:
-            print("Лог пуст.")
+            print(tr("Лог пуст.", "The log is empty."))
         return 0
     usage()
     return 2
