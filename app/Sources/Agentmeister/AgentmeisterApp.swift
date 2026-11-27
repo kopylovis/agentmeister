@@ -195,9 +195,12 @@ struct AgentmeisterApp: App {
                 Button(l.t("Снимок окна", "Window screenshot")) { workspace.typeInClaude("/shot ") }
                     .shortcut(.shot)
                     .disabled(!workspace.hasClaudeTab)
-                Button(l.t("Перевести ввод на английский", "Translate the input to English")) { workspace.current?.translateInput() }
-                    .shortcut(.translateInput)
-                    .disabled(!(workspace.current?.canTranslateInput ?? false))
+                // на экране проекта и в листах с полем запроса переводит поле, иначе строку ввода вкладки
+                Button(l.t("Перевести ввод на английский", "Translate the input to English")) {
+                    if ui.composerShown { ui.translateComposer += 1 } else { workspace.current?.translateInput() }
+                }
+                .shortcut(.translateInput)
+                .disabled(!ui.composerShown && !(workspace.current?.canTranslateInput ?? false))
             }
             // поиск по терминалу текущей вкладки: панель поиска SwiftTerm, ⌘G и ⇧⌘G по совпадениям
             CommandGroup(after: .textEditing) {

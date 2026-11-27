@@ -24,6 +24,9 @@ final class UIState: ObservableObject {
     @Published var newSessionProject: String?
     /// Лист параллельной задачи: Claude Code в своей ветке и worktree, проект из newSessionProject.
     @Published var showParallel = false
+    /// ⌘⇧T, пока открыт экран проекта или лист с полем запроса: поля с кнопкой перевода переводят свой текст.
+    @Published var translateComposer = 0
+    var composerShown: Bool { projectScreen != nil || showNewSession || showParallel }
     /// Путь проекта, чей экран открыт вместо терминала. Nil, когда видны вкладки.
     /// Экран проекта и превью сессии взаимоисключающие, а projectScreen = nil везде значит "вернуться к вкладкам",
     /// поэтому это убирает и превью.
@@ -2205,6 +2208,67 @@ struct InputTranslationOverlay: View {
     }
 }
 
+/// Кнопка "Перевести" у поля первого запроса: переводит текст на месте, как ⌘⇧T во вкладке, через
+/// agentmeister translate text. ⌘⇧T, пока поле на экране, нажимает ее же.
+struct TranslateFieldButton: View {
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var ui: UIState
+    @Binding var text: String
+    @State private var busy = false
+    @State private var failure: String?
+
+    /// В тексте есть нелатинские буквы, иначе переводить нечего (как skip_reason в translate.py).
+    static func needsTranslation(_ text: String) -> Bool {
+        text.unicodeScalars.contains { $0.properties.isAlphabetic && $0.value > 0x24F && !(0x1E00...0x1EFF).contains($0.value) }
+    }
+
+    var body: some View {
+        let l = L(backend.state.lang)
+        Button { translate(l) } label: {
+            HStack(spacing: 5) {
+                if busy {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: failure == nil ? "character.bubble" : "exclamationmark.triangle.fill")
+                }
+                Text(failure == nil ? l.t("Перевести", "Translate") : l.t("Не перевел", "Not translated"))
+                Text(ShortcutStore.shared.label(.translateInput)).opacity(0.6)
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(failure == nil ? Ink.text2 : Ink.amber)
+            .padding(.horizontal, 11)
+            .frame(height: 26)
+            .background(Capsule().fill(Ink.chip))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.hoverCapsule(.overlay))
+        // не сжимается: в узком окне ряд с ней перестраивается, а не обрезает подписи
+        .fixedSize()
+        .disabled(busy || !Self.needsTranslation(text))
+        .help(failure ?? l.t("Перевести текст на английский, проверить и отправить", "Translate the text to English, check it and send"))
+        .onChange(of: ui.translateComposer) { translate(l) }
+    }
+
+    private func translate(_ l: L) {
+        let source = text
+        guard !busy, Self.needsTranslation(source) else { return }
+        busy = true
+        failure = nil
+        Task {
+            let r = await Task.detached(priority: .userInitiated) { Backend.runWithInput(["translate", "text"], input: source) }.value
+            busy = false
+            // пока шел перевод, текст поправили руками: перевод старого текста не ставим
+            guard text == source else { return }
+            if r.ok, !r.text.isEmpty {
+                text = r.text
+            } else {
+                failure = r.text.isEmpty ? l.t("Перевод не удался", "Translation failed") : r.text
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) { failure = nil }
+            }
+        }
+    }
+}
+
 /// ⌘⇧T без ключа переводчика: карточка во вкладке с полем для ключа. Провайдер определяется по виду ключа,
 /// ключ сохраняет agentmeister translate key, после этого сразу идет перевод. Esc или клик мимо закрывают.
 struct TranslateKeyCard: View {
@@ -2937,7 +3001,11 @@ struct NewSessionSheet: View {
             }
             if !terminal {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(mode == .parallel ? l.t("Задача", "Task") : l.firstPrompt).foregroundStyle(Ink.muted)
+                    HStack(spacing: 8) {
+                        Text(mode == .parallel ? l.t("Задача", "Task") : l.firstPrompt).foregroundStyle(Ink.muted)
+                        Spacer(minLength: 8)
+                        TranslateFieldButton(text: $prompt)
+                    }
                     TextEditor(text: $prompt)
                         .font(.system(size: 12, design: .monospaced))
                         .scrollContentBackground(.hidden)
@@ -3112,7 +3180,11 @@ struct ParallelSheet: View {
                 }
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text(l.t("Задача", "Task")).foregroundStyle(Ink.muted)
+                HStack(spacing: 8) {
+                    Text(l.t("Задача", "Task")).foregroundStyle(Ink.muted)
+                    Spacer(minLength: 8)
+                    TranslateFieldButton(text: $task)
+                }
                 TextEditor(text: $task)
                     .font(.system(size: 12, design: .monospaced))
                     .scrollContentBackground(.hidden)

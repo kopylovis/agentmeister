@@ -170,11 +170,16 @@ struct ProjectView: View {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let exit = backend.state.proxy?.exit
         return VStack(alignment: .leading, spacing: 10) {
-            Text(terminal ? l.t("Терминал в \(name)", "Terminal in \(name)")
-                 : asParallel ? l.t("Параллельная задача в \(name)", "Parallel task in \(name)")
-                            : l.t("Новая сессия в \(name)", "New session in \(name)"))
-                .font(.system(size: 12))
-                .foregroundStyle(Ink.muted)
+            // заголовок поля, справа кнопка перевода (у терминала ее нет)
+            HStack(spacing: 8) {
+                Text(terminal ? l.t("Терминал в \(name)", "Terminal in \(name)")
+                     : asParallel ? l.t("Параллельная задача в \(name)", "Parallel task in \(name)")
+                                : l.t("Новая сессия в \(name)", "New session in \(name)"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.muted)
+                Spacer(minLength: 8)
+                if !terminal { TranslateFieldButton(text: $prompt) }
+            }
             TextEditor(text: $prompt)
                 .font(terminal ? .system(size: 13, design: .monospaced) : .system(size: 14))
                 .scrollContentBackground(.hidden)

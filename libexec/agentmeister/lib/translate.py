@@ -525,6 +525,25 @@ def cmd_check(args):
     return 0
 
 
+def cmd_text():
+    """Перевести stdin для поля первого запроса в приложении: перевод в stdout, иначе причина и код 1."""
+    text = sys.stdin.read().rstrip("\n")
+    start = time.monotonic()
+    try:
+        english, reason = translate_input(text)
+    except Exception as e:
+        log("composer", f"ошибка, {type(e).__name__}: {str(e)[:120]}", len(text), int((time.monotonic() - start) * 1000))
+        print(tr(f"Перевод не удался, {e}", f"Translation failed: {e}"))
+        return 1
+    if not english:
+        log("composer", "пропущен, " + reason, len(text))
+        print(reason)
+        return 1
+    log("composer", "переведен", len(text), int((time.monotonic() - start) * 1000))
+    print(english)
+    return 0
+
+
 def usage():
     print(tr("""agentmeister translate                 состояние
 agentmeister translate on | off        перевод промптов на английский для Claude Code и Codex
@@ -534,6 +553,7 @@ agentmeister translate key             сохранить ключ OpenRouter и
 agentmeister translate provider [имя]  openrouter (по умолчанию) или google
 agentmeister translate model [<id>]    модель у текущего провайдера, default вернет обычную
 agentmeister translate check [текст]   перевести пример и показать задержку
+agentmeister translate text            перевести stdin так же, как ⌘⇧T (для поля запроса в приложении)
 agentmeister translate log             последние записи журнала (без текста промптов)
 
 Хук UserPromptSubmit отправляет провайдеру только сообщения с нелатинскими буквами, короче """ + str(MAX_CHARS) + """ знаков,
@@ -546,6 +566,7 @@ agentmeister translate key             save an OpenRouter or Google AI Studio ke
 agentmeister translate provider [name] openrouter (default) or google
 agentmeister translate model [<id>]    model for the current provider, default restores the usual one
 agentmeister translate check [text]    translate a sample and show the latency
+agentmeister translate text            translate stdin the way ⌘⇧T does (for the app's prompt field)
 agentmeister translate log             recent log lines (no prompt text)
 
 The UserPromptSubmit hook sends to the provider only messages with non-Latin letters, shorter than """ + str(MAX_CHARS) + """
@@ -606,6 +627,8 @@ def main():
         return 0
     if cmd == "check":
         return cmd_check(rest[1:])
+    if cmd == "text":
+        return cmd_text()
     if cmd == "log":
         lines = recent(30)
         print("\n".join(lines) if lines else tr("Журнал пуст.", "The log is empty."))
