@@ -587,8 +587,10 @@ def hook(codex=False):
         try:
             ch.send(msg)
             sent = True
+            channels.record(ch.name)
         except channels.SendError as e:
             log_error(f"{ch.name}: {e}")
+            channels.record(ch.name, e)
     current = load_state(sid) if codex else st
     if sent and current.get("prompt_at") == st.get("prompt_at"):
         current["notified"] = True
@@ -782,16 +784,14 @@ def main():
         return 0
     if rest[0] == "test":
         return test()
-    if rest[0] == "telegram":
-        return telegram.main(rest[1:])
-    if rest[0] in ("tossling", "phone"):
-        return phone(rest[1:])
-    if rest[0] == "ntfy":
-        return ntfy_channel.main(rest[1:])
-    if rest[0] == "bark":
-        return bark_channel.main(rest[1:])
-    if rest[0] == "gotify":
-        return gotify_channel.main(rest[1:])
+    handlers = {"telegram": telegram.main, "tossling": phone, "phone": phone, "ntfy": ntfy_channel.main,
+                "bark": bark_channel.main, "gotify": gotify_channel.main}
+    if rest[0] in handlers:
+        code = handlers[rest[0]](rest[1:])
+        # удачная проверка или новые ключи снимают старую ошибку канала в окне настроек
+        if code == 0 and rest[1:2] and rest[1] in ("test", "setup", "token", "forget", "server", "off"):
+            channels.record("tossling" if rest[0] == "phone" else rest[0])
+        return code
     usage()
     return 2
 

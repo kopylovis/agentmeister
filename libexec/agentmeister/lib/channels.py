@@ -1,6 +1,9 @@
 """Каналы уведомлений на телефон. Хук notify проходит по ALL и шлет в каждый канал, который подключен и хочет
 это сообщение сейчас: режим always или away, когда ты не за Mac (presence.py). Новый канал добавляется классом
 с name, label, configured(), mode() и send(msg) и строкой в ALL."""
+import json
+import os
+import time
 from typing import NamedTuple
 
 import bark_channel
@@ -9,8 +12,11 @@ import ntfy_alert
 import ntfy_channel
 import presence
 import telegram
+from mnrhlib import CACHE, write_json
 
 MODES = ("off", "away", "always")
+# последняя ошибка отправки по каналам: окно настроек показывает ее в строке канала, удачная отправка стирает
+STATUS = os.path.join(CACHE, "notify", "channels.json")
 
 
 class Message(NamedTuple):
@@ -168,3 +174,28 @@ def targets(approval_pending=lambda: False):
             continue
         out.append(ch)
     return out
+
+
+def last_errors():
+    try:
+        with open(STATUS) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def record(name, error=None):
+    """Запомнить итог отправки в канал: текст ошибки или None после удачной."""
+    data = last_errors()
+    if error is None:
+        if name not in data:
+            return
+        data.pop(name)
+    else:
+        data[name] = {"at": int(time.time()), "text": str(error)[:300]}
+    try:
+        os.makedirs(os.path.dirname(STATUS), exist_ok=True)
+        write_json(STATUS, data)
+    except OSError:
+        pass

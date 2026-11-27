@@ -245,9 +245,20 @@ def build(out):
         "signedIn": {"claude": True, "codex": True}, "retentionDays": 30, "models": {"claude": "opus", "codex": "gpt-5.5"}}
     settings = {
         "errors": {},
-        "notify": {"on": True, "after": 30, "sound": True,
-                   "telegram": {"connected": True, "bot": "demo_agents_bot", "when": "away", "away": 5, "approve": True},
-                   "phone": {"mode": "off", "configured": False}},
+        "notify": {"on": True, "after": 30, "sound": True, "away": 300,
+                   "telegram": {"connected": True, "bot": "demo_agents_bot", "when": "away", "away": 300, "approve": True},
+                   "phone": {"mode": "off", "configured": True},
+                   "tossling": {"mode": "off", "configured": True, "server": "https://tossling.example.com", "source": "cli",
+                                "topic": "agentmeister", "body": "full", "docs": "https://tossling.github.io/docs/install/"},
+                   "ntfy": {"mode": "always", "configured": True, "server": "https://ntfy.sh",
+                            "topic": "agentmeister-q7Lm2vXc9RkTa0pWbE4n", "body": "title", "token": False, "public": True,
+                            "subscribe": "https://ntfy.sh/agentmeister-q7Lm2vXc9RkTa0pWbE4n"},
+                   "bark": {"mode": "away", "configured": True, "server": "https://api.day.app", "body": "full",
+                            "encrypted": True, "public": True,
+                            "error": {"at": int(NOW - 40 * 60), "text": "HTTP 400, the server doesn't know this device key. "
+                                                                         "Copy the key again in the Bark app"}},
+                   "gotify": {"mode": "away", "configured": True, "server": "https://gotify.example.com", "body": "full",
+                              "priority": {"urgent": 8, "normal": 4}}},
         "guard": {"on": True, "log": [stamp(NOW - 26 * 3600, "%d.%m %H:%M") + "  ask   force-push     git push --force origin main",
                                       stamp(NOW - 3 * 3600, "%d.%m %H:%M") + "  hold  rm-root        rm -rf ../build-cache"],
                   "lastHit": int(NOW - 3 * 3600), "logPath": H + "/Library/Logs/mnrh-guard.log", "rules": [

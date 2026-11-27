@@ -4,25 +4,67 @@
   "on": true,
   "after": 30,
   "sound": true,
+  "away": 300,
   "telegram": {
    "connected": true,
    "bot": "demo_agents_bot",
    "when": "away",
-   "away": 5,
+   "away": 300,
    "approve": true
   },
   "phone": {
    "mode": "off",
-   "configured": false
+   "configured": true
+  },
+  "tossling": {
+   "mode": "off",
+   "configured": true,
+   "server": "https://tossling.example.com",
+   "source": "cli",
+   "topic": "agentmeister",
+   "body": "full",
+   "docs": "https://tossling.github.io/docs/install/"
+  },
+  "ntfy": {
+   "mode": "always",
+   "configured": true,
+   "server": "https://ntfy.sh",
+   "topic": "agentmeister-q7Lm2vXc9RkTa0pWbE4n",
+   "body": "title",
+   "token": false,
+   "public": true,
+   "subscribe": "https://ntfy.sh/agentmeister-q7Lm2vXc9RkTa0pWbE4n"
+  },
+  "bark": {
+   "mode": "away",
+   "configured": true,
+   "server": "https://api.day.app",
+   "body": "full",
+   "encrypted": true,
+   "public": true,
+   "error": {
+    "at": 1795809805,
+    "text": "HTTP 400, the server doesn't know this device key. Copy the key again in the Bark app"
+   }
+  },
+  "gotify": {
+   "mode": "away",
+   "configured": true,
+   "server": "https://gotify.example.com",
+   "body": "full",
+   "priority": {
+    "urgent": 8,
+    "normal": 4
+   }
   }
  },
  "guard": {
   "on": true,
   "log": [
-   "26.11 12:00  ask   force-push     git push --force origin main",
-   "27.11 11:00  hold  rm-root        rm -rf ../build-cache"
+   "26.11 21:43  ask   force-push     git push --force origin main",
+   "27.11 20:43  hold  rm-root        rm -rf ../build-cache"
   ],
-  "lastHit": 1795766414,
+  "lastHit": 1795801405,
   "logPath": "/Users/demo/Library/Logs/mnrh-guard.log",
   "rules": [
    {
@@ -82,10 +124,10 @@
   "translateProvider": "google",
   "translateFallback": "openrouter",
   "translateLog": [
-   "2026-11-27 13:10:14 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter",
-   "2026-11-27 13:29:14 3f9c2a1e 182 зн 640 мс переведен",
-   "2026-11-27 13:48:14 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)",
-   "2026-11-27 13:56:14 3f9c2a1e 131 зн 1380 мс переведен"
+   "2026-11-27 22:53:25 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter",
+   "2026-11-27 23:12:25 3f9c2a1e 182 зн 640 мс переведен",
+   "2026-11-27 23:31:25 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)",
+   "2026-11-27 23:39:25 3f9c2a1e 131 зн 1380 мс переведен"
   ],
   "translateMedianMs": 1380,
   "translateLogPath": "/Users/demo/Library/Logs/mnrh-translate.log"

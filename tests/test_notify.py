@@ -33,17 +33,20 @@ _HEADSUP = mock.patch("headsup.from_hook", return_value=0)
 # настоящий config не читается: с подключенным ntfy или Tossling хуки в тестах слали бы настоящие уведомления
 _CONFIG_DIR = tempfile.mkdtemp()
 _CONFIG = mock.patch("mnrhlib.CONFIG", os.path.join(_CONFIG_DIR, "config"))
+_STATUS = mock.patch("channels.STATUS", os.path.join(_CONFIG_DIR, "channels.json"))
 
 
 def setUpModule():
     _TERMINAL_ENV.start()
     _HEADSUP.start()
     _CONFIG.start()
+    _STATUS.start()
     for name in ("AGENTMEISTER_TAB", "ITERM_SESSION_ID", "TERM_PROGRAM", "LC_TERMINAL"):
         os.environ.pop(name, None)
 
 
 def tearDownModule():
+    _STATUS.stop()
     _CONFIG.stop()
     shutil.rmtree(_CONFIG_DIR, True)
     _HEADSUP.stop()
@@ -201,6 +204,10 @@ class PhoneTargets(unittest.TestCase):
             notify.save_state(sid, {"prompt_at": 1000})
             self.assertEqual(notify.hook(), 0)
         log.assert_called_once_with("bad: HTTP 500")
+        self.assertEqual(notify.channels.last_errors()["bad"]["text"], "HTTP 500")
+        self.assertNotIn("good", notify.channels.last_errors())
+        notify.channels.record("bad")
+        self.assertEqual(notify.channels.last_errors(), {})
         msg = good.send.call_args.args[0]
         self.assertEqual((msg.agent, msg.project, msg.urgent), ("Claude Code", "agentmeister", True))
 
