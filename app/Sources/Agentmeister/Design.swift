@@ -427,23 +427,26 @@ struct PillStyle: ButtonStyle {
 /// on подсвечивает включенное состояние.
 struct ChipStyle: ButtonStyle {
     var on = false
+    /// Круглая кнопка 26 на 26 только со значком. Подпись кнопке нужно дать через .help и .accessibilityLabel.
+    var iconOnly = false
 
-    func makeBody(configuration: Configuration) -> some View { ChipBody(configuration: configuration, on: on) }
+    func makeBody(configuration: Configuration) -> some View { ChipBody(configuration: configuration, on: on, iconOnly: iconOnly) }
 
     private struct ChipBody: View {
         let configuration: ButtonStyleConfiguration
         let on: Bool
+        let iconOnly: Bool
         @Environment(\.isEnabled) private var enabled
         @State private var hover = false
 
         var body: some View {
             configuration.label
-                .labelStyle(ChipLabelStyle())
+                .labelStyle(ChipLabelStyle(iconOnly: iconOnly))
                 .font(.system(size: 12))
                 .foregroundStyle(on ? Ink.modeOn : hover && enabled ? Ink.text : Ink.muted)
                 .lineLimit(1)
-                .padding(.horizontal, 12)
-                .frame(height: 26)
+                .padding(.horizontal, iconOnly ? 0 : 12)
+                .frame(width: iconOnly ? 26 : nil, height: 26)
                 .background(Capsule().fill(on ? Ink.modeOnBg : hover && enabled ? Ink.hover : .clear))
                 .overlay(Capsule().strokeBorder(on ? Ink.modeOnBorder : Ink.buttonBorder))
                 .contentShape(Capsule())
@@ -453,10 +456,12 @@ struct ChipStyle: ButtonStyle {
     }
 
     private struct ChipLabelStyle: LabelStyle {
+        var iconOnly = false
+
         func makeBody(configuration: Configuration) -> some View {
             HStack(spacing: 6) {
                 configuration.icon.font(.system(size: 11))
-                configuration.title
+                if !iconOnly { configuration.title }
             }
         }
     }
