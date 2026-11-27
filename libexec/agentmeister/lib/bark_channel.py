@@ -3,14 +3,14 @@
 notify_bark_server и notify_bark_body (full или title). Ключ устройства лежит в Связке ключей
 (agentmeister.notify, аккаунт bark).
 
-Шифрование (bark encrypt on): заголовок и текст уходят AES-256-CBC с PKCS7 в поле ciphertext, со случайным IV
+Шифрование (bark encrypt on): заголовок и текст уходят AES-256-CBC с PKCS7 (CommonCrypto) в поле ciphertext, со случайным IV
 в каждом push. Сервер Bark и APNs видят только ключ устройства и уровень уведомления. Ключ шифрования
 (32 символа) лежит в Связке ключей (аккаунт bark-key), его же вводят в приложении Bark."""
 import base64
+import ctypes
 import json
 import secrets
 import string
-import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -72,17 +72,31 @@ def random_text(n):
     return "".join(secrets.choice(ALPHABET) for _ in range(n))
 
 
+def _commoncrypto():
+    lib = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+    fn = lib.CCCrypt
+    fn.restype = ctypes.c_int32
+    fn.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_char_p, ctypes.c_size_t, ctypes.c_char_p,
+                   ctypes.c_char_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+    return fn
+
+
 def encrypt(data, key, iv):
-    """AES-256-CBC с PKCS7 через системный openssl, как в примере из документации Bark. Ключ и IV там
-    строки ASCII, openssl ждет их в hex."""
+    """AES-256-CBC с PKCS7, как расшифровывает приложение Bark (ключ и IV там строки ASCII). Шифрует CommonCrypto
+    прямо в этом процессе: у openssl enc ключ передается только аргументом -K, а аргументы видны в ps."""
+    plain, k, v = data.encode(), key.encode(), iv.encode()
+    if len(k) != KEY_LEN or len(v) != IV_LEN:
+        raise BarkError("ключ шифрования или IV неверной длины")
+    out = ctypes.create_string_buffer(len(plain) + 16)
+    moved = ctypes.c_size_t(0)
     try:
-        r = subprocess.run(["/usr/bin/openssl", "enc", "-aes-256-cbc", "-K", key.encode().hex(), "-iv", iv.encode().hex()],
-                           input=data.encode(), capture_output=True, timeout=10)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        raise BarkError(f"openssl не запустился: {e}") from None
-    if r.returncode != 0:
-        raise BarkError(f"openssl: {r.stderr.decode(errors='replace').strip()}")
-    return base64.b64encode(r.stdout).decode()
+        # kCCEncrypt 0, kCCAlgorithmAES 0, kCCOptionPKCS7Padding 1
+        status = _commoncrypto()(0, 0, 1, k, len(k), v, plain, len(plain), out, len(out), ctypes.byref(moved))
+    except (OSError, AttributeError) as e:
+        raise BarkError(f"CommonCrypto недоступен: {e}") from None
+    if status != 0:
+        raise BarkError(f"CommonCrypto вернул {status}")
+    return base64.b64encode(out.raw[:moved.value]).decode()
 
 
 def request(title, body, urgent=False):
