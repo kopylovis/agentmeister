@@ -927,7 +927,8 @@ The same notifications can go to Telegram when you're away from the Mac: the scr
 touched the mouse and keyboard for 2 minutes. `agentmeister notify telegram` connects a bot: create it with
 @BotFather, enter the token (or copy it and run the command outside a terminal, and agentmeister takes the token
 from the clipboard and clears it), then press Start in the chat with the bot. The token is kept in the Keychain
-(`mnrh-telegram`); the config only holds the chat id. `telegram test` sends a test message,
+(service `agentmeister.notify`, account `telegram`; before 1.29 it was `mnrh-telegram`, which is copied over and kept
+for older versions until `telegram off`); the config only holds the chat id. `telegram test` sends a test message,
 `agentmeister notify away <sec>` sets how long without input counts as away for Telegram and Tossling alike
 (`telegram away <sec>` does the same), `telegram always` sends every time, and
 `telegram off` disconnects and deletes the token. If you're looking at Claude's tab but have walked away, the
