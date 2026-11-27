@@ -1658,6 +1658,9 @@ final class AppTerminalView: LocalProcessTerminalView {
         view.imageScaling = .scaleAxesIndependently
         view.autoresizingMask = [.width, .height]
         view.wantsLayer = true
+        // фон терминала рисует контейнер, а не сам SwiftTerm, и снимок вне букв прозрачен. Без своего фона
+        // сквозь него видно живой экран, когда Claude Code уже вернулся из редактора
+        view.layer?.backgroundColor = nativeBackgroundColor.cgColor
         // чуть притушить, чтобы карточка читалась
         let dim = CALayer()
         dim.backgroundColor = NSColor.black.withAlphaComponent(0.22).cgColor
