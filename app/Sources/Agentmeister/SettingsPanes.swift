@@ -171,8 +171,8 @@ struct ModesPane: View {
     private func description(_ name: String) -> String {
         switch name {
         case "guard":
-            return l.t("Спрашивает перед рискованным вызовом, а не запрещает его. В режиме auto держит вызов, и агент спрашивает тебя в чате. Остальное решают обычные разрешения агента.",
-                       "Asks before a risky call instead of refusing. In auto mode it holds the call and the agent asks you in the chat. Everything else is left to the agent's normal permissions.")
+            return l.t("Перед рискованным вызовом Codex просит подтверждение в чате. Claude Code использует свои разрешения, а в режиме auto тоже спрашивает в чате.",
+                       "Codex asks for confirmation in chat before a risky call. Claude Code uses its permission prompt and asks in chat in auto mode.")
         case "humanize":
             return l.t("Правила письма без примет нейросети для Claude Code и Codex. Касаются ответов, коммитов, PR и документации, но не самого кода.",
                        "Writing rules without AI tells for Claude Code and Codex. They cover replies, commits, PRs and docs, not the code itself.")

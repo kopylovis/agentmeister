@@ -224,11 +224,26 @@ class CodexHarness(unittest.TestCase):
             self.assertEqual(path.read_text(), installed)
             groups = json.loads(installed)["hooks"]
             self.assertEqual(groups["UserPromptSubmit"][0], custom)
-            self.assertEqual(set(groups), set(codex_harness.HOOK_EVENTS + codex_harness.NOTIFY_EVENTS))
+            self.assertEqual(set(groups), {event for events in codex_harness.HOOK_COMMANDS.values() for event in events})
             self.assertEqual(codex_harness.configured_humanize_hooks(), len(codex_harness.HOOK_EVENTS))
             self.assertEqual(codex_harness.configured_hooks("notify-hook"), len(codex_harness.NOTIFY_EVENTS))
             codex_harness.configure_hooks(True)
             self.assertEqual(json.loads(path.read_text()), original)
+
+    def test_existing_tool_hooks_keep_their_matchers_on_setup(self):
+        with tempfile.TemporaryDirectory() as home, patch.dict(os.environ, {"CODEX_HOME": home}):
+            path = Path(home) / "hooks.json"
+            guard = {"type": "command", "command": "agentmeister guard-hook"}
+            group = {"matcher": "Bash|Read|Edit|Write", "hooks": [guard]}
+            path.write_text(json.dumps({"hooks": {"PreToolUse": [group]}}))
+            codex_harness.configure_hooks(False)
+            installed = json.loads(path.read_text())["hooks"]["PreToolUse"]
+            self.assertEqual([g["matcher"] for g in installed if g["hooks"][0]["command"] == guard["command"]],
+                             [group["matcher"]])
+            self.assertEqual(codex_harness.configured_hooks("guard-hook"), 1)
+            codex_harness.configure_hooks(True)
+            self.assertEqual(json.loads(path.read_text())["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
+                             guard["command"])
 
     def test_labels_apply_to_existing_agentmeister_hooks(self):
         def hook(command, **metadata):

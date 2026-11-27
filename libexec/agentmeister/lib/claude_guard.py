@@ -1,4 +1,6 @@
 import calendar
+import datetime
+import fcntl
 import fnmatch
 import hashlib
 import json
@@ -9,7 +11,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import BADGES, CACHE, HOME, badge, read_config, tilde, write_config, write_json
+from mnrhlib import BADGES, CACHE, HOME, badge, read_config, tilde, tr, write_config, write_json
 
 LOG = os.path.join(HOME, "Library", "Logs", "mnrh-guard.log")
 TAIL = 4 << 20
@@ -656,6 +658,15 @@ def check(tool, inp, cwd, skip=()):
     cwd = os.path.normpath(cwd or os.getcwd())
     if tool == "Bash":
         return check_bash(str(inp.get("command") or ""), cwd, skip)
+    if tool == "apply_patch":
+        for kind, path in re.findall(r"^\*\*\* (Add File|Update File|Delete File|Move to): (.+)$",
+                                     str(inp.get("command") or ""), re.M):
+            path = os.path.normpath(os.path.join(cwd, os.path.expanduser(path.strip())))
+            if is_secret(path):
+                rule = "secrets-delete" if kind == "Delete File" else "secrets-read"
+                if rule not in skip:
+                    return rule, f"правка файла с секретом {tilde(path)}"
+        return None
     found = None
     if tool == "Grep":
         # Grep с output_mode content выводит строки файла в переписку так же, как Read
@@ -696,7 +707,7 @@ def save_pending(sid, data):
     write_json(path, data)
 
 
-def last_user(path):
+def last_user(path, codex=False):
     try:
         size = os.path.getsize(path)
         with open(path, "rb") as f:
@@ -705,13 +716,27 @@ def last_user(path):
     except (OSError, TypeError):
         return "", 0
     for raw in reversed(chunk.split(b"\n")):
-        if not re.search(rb'"type":\s*"user"', raw):
+        if b'"user"' not in raw and not (codex and b'"user_message"' in raw):
             continue
         try:
             o = json.loads(raw.decode("utf-8", "replace"))
         except ValueError:
             continue
-        if o.get("isMeta") or o.get("isCompactSummary"):
+        if codex:
+            message = o.get("payload") or {}
+            if o.get("type") == "response_item" and message.get("type") == "message" and message.get("role") == "user":
+                blocks = message.get("content") or []
+                text = blocks[0].get("text", "") if len(blocks) == 1 and blocks[0].get("type") == "input_text" else ""
+            elif o.get("type") == "event_msg" and message.get("type") == "user_message":
+                text = message.get("message", "")
+            else:
+                continue
+            try:
+                ts = datetime.datetime.fromisoformat(o["timestamp"].replace("Z", "+00:00")).timestamp()
+            except (KeyError, ValueError, TypeError):
+                ts = 0
+            return text if isinstance(text, str) else "", ts
+        if o.get("type") != "user" or o.get("isMeta") or o.get("isCompactSummary"):
             continue
         c = (o.get("message") or {}).get("content")
         text = c if isinstance(c, str) else "\n".join(
@@ -726,13 +751,49 @@ def last_user(path):
     return "", 0
 
 
-def decide(payload):
+def codex_decision(payload, rule, why):
+    sid = payload.get("session_id")
+    reason = {"permissionDecision": "deny", "permissionDecisionReason": f"agentmeister guard: {why}"}
+    if not sid:
+        return reason
+    # Bind confirmation to the directory and full input, including every file in a patch.
+    request = [sid, payload.get("agent_id"), payload.get("cwd"), payload.get("tool_name"), payload["tool_input"]]
+    key = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()[:16]
+    state_id = "codex-" + sid
+    now = time.time()
+    os.makedirs(GUARD_STATE, mode=0o700, exist_ok=True)
+    with open(os.path.join(GUARD_STATE, "codex.lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        pending = {k: v for k, v in load_pending(state_id).items() if now - v < 3600}
+        reply, stamp = last_user(payload.get("transcript_path"), codex=True)
+        answer = reply.strip().casefold()
+        if (key in pending and stamp > pending[key] and
+                (answer in ("да " + key, "yes " + key) or
+                 (len(pending) == 1 and answer in ("да", "yes")))):
+            del pending[key]
+            save_pending(state_id, pending)
+            log(f"allow {rule:<14} Codex {key}")
+            return None
+        pending[key] = now
+        save_pending(state_id, pending)
+        reply = tr("да", "yes") + (" " + key if len(pending) > 1 else "")
+    log(f"hold  {rule:<14} Codex {key}")
+    hold_badge(sid, rule)
+    reason["permissionDecisionReason"] += tr(
+        f'. Спроси у пользователя, разрешает ли он этот вызов. После ответа "{reply}" повтори его.',
+        f'. Ask the user to confirm this exact action with "{reply}", then retry.')
+    return reason
+
+
+def decide(payload, codex=False):
     tool = payload.get("tool_name") or ""
     inp = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     found = check(tool, inp, payload.get("cwd"), skipped())
     if not found:
         return None
     rule, why = found
+    if codex or "turn_id" in payload:
+        return codex_decision(payload, rule, why)
     mode = payload.get("permission_mode") or "default"
     what = str(inp.get("command") or inp.get("file_path") or "")[:200].replace("\n", " ")
     if mode not in ("bypassPermissions", "auto", "dontAsk"):
@@ -768,10 +829,12 @@ def hook():
     if not isinstance(payload, dict) or not on:
         return 0
     try:
-        out = decide(payload)
+        out = decide(payload, "--codex" in sys.argv)
     except Exception as e:
         log(f"error {e!r}")
-        return 0
+        if "--codex" not in sys.argv and "turn_id" not in payload:
+            return 0
+        out = {"permissionDecision": "deny", "permissionDecisionReason": "Agentmeister guard could not check this call."}
     if out:
         print(json.dumps({"hookSpecificOutput": dict({"hookEventName": "PreToolUse"}, **out)}, ensure_ascii=False))
     return 0

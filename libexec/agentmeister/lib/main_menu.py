@@ -76,8 +76,8 @@ ITEMS = [
      "Messages in Russian and other languages are translated through OpenRouter, and the agent gets the English "
      "text next to the original. Anything that looks like keys or tokens is not sent."),
     ("mode guard", "🔒", "Вопрос перед опасным", "Ask before risky commands",
-     "Перед чтением файлов с ключами и перед опасными командами Claude Code спросит разрешение.",
-     "Claude Code asks before it reads key files or runs a risky command."),
+     "Перед чтением файлов с ключами и перед опасными командами агент спросит разрешение.",
+     "Claude Code and Codex ask before reading key files or running risky commands."),
     ("mode buildlog", "🔨", "Выжимка сборок", "Build digest",
      "Длинный вывод Gradle и xcodebuild сжимается до ошибок и упавших тестов, чтобы не тратить контекст.",
      "Long Gradle and xcodebuild output is cut down to errors and failed tests, so it does not eat "
