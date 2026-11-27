@@ -634,7 +634,7 @@ struct ProjectSessionRow: View {
                     SessionDot(status: status, open: status != nil || tab != nil, size: 8)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
-                            if session.kind == .codex { AgentBadge(agent: .codex, size: 14) }
+                            AgentBadge(agent: session.kind == .codex ? .codex : .claude, size: 14)
                             Text(session.title.isEmpty ? l.untitled : session.title)
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(Ink.text)
