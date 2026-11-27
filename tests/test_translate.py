@@ -173,6 +173,7 @@ class Editor(unittest.TestCase):
         out, status = self.edit("Посмотри на [Image #1] и исправь отступ\n", "Look at [Image #1] and fix the padding")
         self.assertEqual(out, "Look at [Image #1] and fix the padding\n\n(Reply in Russian.)\n")
         self.assertEqual((status["state"], status["ok"]), ("done", True))
+        self.assertEqual(status["english"], "Look at [Image #1] and fix the padding\n\n(Reply in Russian.)")
         self.assertEqual(self.execs, [])
         self.assertFalse(os.path.exists(os.path.join(self.dir, f"edit-{self.TAB}.json")))
 
