@@ -357,6 +357,7 @@ struct SidebarRail: View {
 /// переключаются плитками, а ниже строка host-run со ссылкой в его настройки.
 struct RailStatusButton: View {
     @EnvironmentObject var backend: Backend
+    @ObservedObject private var updates = Updates.shared
     @State private var open = false
 
     var l: L { L(backend.state.lang) }
@@ -448,25 +449,66 @@ struct RailStatusButton: View {
                      "Click a mode to switch it, hover to see what it does."))
                 .font(.system(size: 12)).foregroundStyle(Ink.muted)
                 .fixedSize(horizontal: false, vertical: true)
-            if let h = backend.state.hostRun {
+            // в демо Sparkle не запущен, строка обновлений там все равно видна для снимка
+            let canUpdate = updates.available || Demo.active
+            if backend.state.hostRun != nil || canUpdate {
                 Divider()
-                HStack(spacing: 8) {
-                    GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
-                    Text(h.running ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
-                                   : l.t("host-run не запущен", "host-run isn't running"))
-                        .font(.system(size: 13))
-                    Spacer()
-                    SettingsLink { Text(l.t("Список", "List")).font(.system(size: 12)) }
-                        .buttonStyle(.link)
+                VStack(spacing: 2) {
+                    if let h = backend.state.hostRun {
+                        // вся строка ведет в настройки host-run со списком команд
+                        SettingsLink {
+                            row {
+                                GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
+                                Text(h.running ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
+                                               : l.t("host-run не запущен", "host-run isn't running"))
+                            }
+                        }
+                        .buttonStyle(.hover(8, .overlay))
                         .simultaneousGesture(TapGesture().onEnded {
                             UserDefaults.standard.set("proxy", forKey: "settingsSection")
                             open = false
                         })
+                        .help(l.t("Настройки host-run и список команд", "host-run settings and its command list"))
+                    }
+                    if canUpdate {
+                        if let version = updates.ready {
+                            Button { open = false; updates.installNow() } label: {
+                                row {
+                                    Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
+                                    Text(l.t("Перезапустить и обновить до \(version)", "Restart to update to \(version)"))
+                                }
+                            }
+                            .buttonStyle(.hover(8, .overlay))
+                        } else {
+                            Button { open = false; updates.check() } label: {
+                                row {
+                                    Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(Ink.muted)
+                                    Text(l.t("Проверить обновления…", "Check for Updates…"))
+                                }
+                            }
+                            .buttonStyle(.hover(8, .overlay))
+                        }
+                    }
                 }
+                .padding(.horizontal, -8)
             }
         }
         .padding(14)
         .frame(width: 320)
+    }
+
+    /// Строка окошка на всю ширину: значок, текст и стрелка, нажимается целиком.
+    private func row<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 8) {
+            content()
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Ink.faint)
+        }
+        .font(.system(size: 13))
+        .foregroundStyle(Ink.text)
+        .padding(.horizontal, 8)
+        .frame(height: 32)
+        .contentShape(Rectangle())
     }
 }
 
