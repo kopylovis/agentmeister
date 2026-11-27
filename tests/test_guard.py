@@ -9,6 +9,20 @@ import claude_guard as g  # noqa: E402
 import mnrhlib  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
+# тесты сверяют русские тексты, а без lang в config язык берется из macOS
+RU = patch.object(mnrhlib, "lang", lambda: "ru")
+RU_HERE = patch.object(g, "lang", lambda: "ru")
+
+
+def setUpModule():
+    RU.start()
+    RU_HERE.start()
+
+
+def tearDownModule():
+    RU_HERE.stop()
+    RU.stop()
+
 # Домашняя папка для проверок guard. С настоящей HOME под /tmp (песочница, CI) правила для временных папок
 # и для домашней папки накладывались бы друг на друга, и Destructive падал.
 FAKE_HOME = "/Users/guard-test-home"

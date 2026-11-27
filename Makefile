@@ -83,10 +83,10 @@ test:
 	@printf '%s\n' 'В современном мире это потенциально может помочь. Буду честен, время покажет. citeturn0search0' | ./bin/agentmeister humanize check - | grep -c 'вступление-штамп\|модальная вата\|показная честность\|пустой прогноз\|след чат' | grep -q 5
 	@./bin/agentmeister humanize rules | grep -q '## 7. Проверка перед отправкой'
 	@cd /tmp && $(CURDIR)/bin/agentmeister guard test 'git push -f origin master' | grep -q destructive
-	@$(CURDIR)/bin/agentmeister guard test 'git push origin master' | grep -q пропущу
-	@$(CURDIR)/bin/agentmeister guard test 'rm -rf build' | grep -q пропущу
+	@$(CURDIR)/bin/agentmeister guard test 'git push origin master' | grep -q 'пропущу\|would allow'
+	@$(CURDIR)/bin/agentmeister guard test 'rm -rf build' | grep -q 'пропущу\|would allow'
 	@$(CURDIR)/bin/agentmeister guard test 'rm -rf ~/Documents/old' | grep -q destructive
-	@$(CURDIR)/bin/agentmeister guard test 'bundle exec fastlane beta' | grep -q пропущу
+	@$(CURDIR)/bin/agentmeister guard test 'bundle exec fastlane beta' | grep -q 'пропущу\|would allow'
 	@$(CURDIR)/bin/agentmeister guard test 'cat fastlane/.env.default' | grep -q secrets-read
 	@$(CURDIR)/bin/agentmeister guard test 'rm -rf ~/.ssh' | grep -q secrets-delete
 	@$(CURDIR)/bin/agentmeister guard test 'security delete-generic-password -s x' | grep -q secrets-delete
