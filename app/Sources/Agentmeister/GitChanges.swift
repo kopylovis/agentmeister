@@ -130,6 +130,11 @@ struct DiffColumns {
         }
         .font(.system(size: 11))
         .monospacedDigit()
+        .lineLimit(1)
+        // длинное имя файла не сжимает столбцы: иначе число переносилось на две строки и уезжало из столбца,
+        // укорачиваются имя и папка
+        .fixedSize()
+        .layoutPriority(2)
     }
 
     private func cell(_ sign: String, _ n: Int, _ width: Int, _ color: Color) -> some View {
