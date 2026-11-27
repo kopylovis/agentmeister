@@ -706,7 +706,7 @@ struct NotifyPane: View {
             }
             GlassSection {
                 SettingsRow(l.t("Телефон через ntfy", "Phone through ntfy"),
-                            l.t("Канал claude в Tossling, вопросы и запросы с высоким приоритетом", "The claude channel in Tossling, questions and requests at high priority"),
+                            l.t("Канал agentmeister в Tossling, вопросы и запросы с высоким приоритетом", "The agentmeister channel in Tossling, questions and requests at high priority"),
                             titleFont: .system(size: 17, weight: .semibold)) {
                     SegmentedCapsule(selection: Binding(get: { n.phone.mode }, set: { run(["notify", "phone", $0]) }),
                                      options: [("off", l.t("Выкл", "Off"), nil), ("away", l.t("Когда я не за Mac", "When I'm away"), nil), ("always", l.t("Всегда", "Always"), nil)],

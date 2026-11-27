@@ -101,7 +101,7 @@ SELECTED = {
 
 
 def usage():
-    topic = ntfy_alert.CLAUDE_TOPIC
+    topic = ntfy_alert.AGENTMEISTER_TOPIC
     print(tr("agentmeister notify              уведомления, когда Claude ждёт тебя: состояние",
              "agentmeister notify              notifications when Claude is waiting for you: status"))
     print(tr("agentmeister notify on | off     включить или выключить",
@@ -577,8 +577,8 @@ def hook(codex=False):
             log_error(f"telegram: {e}")
     if to_tossling:
         try:
-            ntfy_alert.publish(ntfy_alert.CLAUDE_TOPIC, "\n\n".join(p for p in (title, body) if p),
-                               title=f"{project}: {head}", priority=3 if payload.get("hook_event_name") == "Stop" else 4)
+            ntfy_alert.publish(ntfy_alert.AGENTMEISTER_TOPIC, "\n\n".join(p for p in (title, body) if p),
+                               title=f"{agent}: {head}", priority=3 if event == "Stop" else 4)
             sent = True
         except ntfy_alert.AlertError as e:
             log_error(f"tossling: {e}")
@@ -626,8 +626,8 @@ def status():
               "Claude (Push when actions required), в Telegram и Tossling они не дублируются")
     mode = ntfy_alert.phone_mode()
     print("Tossling: " + {"off": "выключено — agentmeister notify phone away",
-                       "away": f"когда ты не за Mac, канал «{ntfy_alert.CLAUDE_TOPIC}»",
-                       "always": f"всегда, канал «{ntfy_alert.CLAUDE_TOPIC}»"}[mode])
+                       "away": f"когда ты не за Mac, канал «{ntfy_alert.AGENTMEISTER_TOPIC}»",
+                       "always": f"всегда, канал «{ntfy_alert.AGENTMEISTER_TOPIC}»"}[mode])
 
 
 def test():
@@ -660,14 +660,14 @@ def phone(rest):
             return 1
         write_config(notify_phone="away" if value == "on" else value)
         print({"off": "В Tossling больше не отправляю",
-               "always": f"Отправляю в Tossling всегда, канал «{ntfy_alert.CLAUDE_TOPIC}»"}.get(
-            value, f"Отправляю в Tossling, когда ты не за Mac, канал «{ntfy_alert.CLAUDE_TOPIC}»"))
-        print(f"На телефоне: Tossling → Уведомления → + → канал {ntfy_alert.CLAUDE_TOPIC}")
+               "always": f"Отправляю в Tossling всегда, канал «{ntfy_alert.AGENTMEISTER_TOPIC}»"}.get(
+            value, f"Отправляю в Tossling, когда ты не за Mac, канал «{ntfy_alert.AGENTMEISTER_TOPIC}»"))
+        print(f"На телефоне: Tossling → Уведомления → + → канал {ntfy_alert.AGENTMEISTER_TOPIC}")
         return 0
     if value == "test":
         try:
-            ntfy_alert.publish(ntfy_alert.CLAUDE_TOPIC, "Так будут приходить вопросы и ответы Claude Code.",
-                               title="Claude Code: проверка")
+            ntfy_alert.publish(ntfy_alert.AGENTMEISTER_TOPIC, "Сюда приходят уведомления от Claude Code и Codex.",
+                               title="Agentmeister: проверка канала")
         except ntfy_alert.AlertError as e:
             print(f"Не отправил: {e}")
             return 1
