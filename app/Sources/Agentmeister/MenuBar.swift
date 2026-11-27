@@ -6,6 +6,13 @@ import SwiftUI
 /// Показ включается в Настройках > Основные, по умолчанию включен.
 enum MenuBarPrefs {
     static let showKey = "menuBar.show"
+    /// Закрытое окно не завершает приложение, пока есть значок в строке меню. По умолчанию выключено.
+    static let keepRunningKey = "app.keepRunningWhenClosed"
+
+    static var keepsRunning: Bool {
+        let d = UserDefaults.standard
+        return d.bool(forKey: keepRunningKey) && (d.object(forKey: showKey) as? Bool ?? true)
+    }
 }
 
 /// Сводное состояние сессий для значка: ждущая важнее работающей, работающая важнее простоя.

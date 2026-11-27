@@ -34,6 +34,18 @@ final class Updates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUStandard
         available = true
     }
 
+    /// Sparkle сам проверяет appcast раз в день. Переключатель в Настройках > Основные.
+    var autoCheck: Bool {
+        get { controller?.updater.automaticallyChecksForUpdates ?? false }
+        set { controller?.updater.automaticallyChecksForUpdates = newValue; objectWillChange.send() }
+    }
+
+    /// Sparkle сам скачивает новую версию и ставит ее при выходе (SUAutomaticallyUpdate). Выключено, значит спросит.
+    var autoInstall: Bool {
+        get { controller?.updater.automaticallyDownloadsUpdates ?? false }
+        set { controller?.updater.automaticallyDownloadsUpdates = newValue; objectWillChange.send() }
+    }
+
     /// Когда Sparkle последний раз проверял обновления, для окна "О программе".
     var lastCheck: Date? { controller?.updater.lastUpdateCheckDate }
 

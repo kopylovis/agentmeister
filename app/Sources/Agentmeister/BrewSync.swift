@@ -13,11 +13,14 @@ enum BrewSync {
     private static let syncedKey = "brewSyncedVersion"
     private static let attemptsKey = "brewSyncAttempts"
     private static let maxAttempts = 24
+    /// Переключатель в Настройках > Основные, по умолчанию включено.
+    static let enabledKey = "app.brewSync"
+    static var enabled: Bool { UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true }
     private static let queue = DispatchQueue(label: "agentmeister.brew-sync", qos: .utility)
 
     @MainActor
     static func start() {
-        guard Updates.distributed, !Demo.active,
+        guard Updates.distributed, !Demo.active, enabled,
               let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         else { return }
         queue.async { attempt(version) }
