@@ -70,6 +70,11 @@ ITEMS = [
      "примет сгенерированного текста.",
      "Every session starts with writing rules, so replies, commits and docs come out without the marks "
      "of generated text."),
+    ("mode translate", "💬", "Перевод на английский", "Translate to English",
+     "Сообщения на русском и других языках переводятся через OpenRouter, агент получает английский текст "
+     "рядом с оригиналом. Похожее на ключи и токены не отправляется.",
+     "Messages in Russian and other languages are translated through OpenRouter, and the agent gets the English "
+     "text next to the original. Anything that looks like keys or tokens is not sent."),
     ("mode guard", "🔒", "Вопрос перед опасным", "Ask before risky commands",
      "Перед чтением файлов с ключами и перед опасными командами Claude Code спросит разрешение.",
      "Claude Code asks before it reads key files or runs a risky command."),
@@ -127,6 +132,9 @@ def mode_on(name):
         if name == "humanize":
             import humanize
             return humanize.enabled()
+        if name == "translate":
+            import translate
+            return translate.enabled()
         if name == "guard":
             import claude_guard
             return claude_guard.enabled()

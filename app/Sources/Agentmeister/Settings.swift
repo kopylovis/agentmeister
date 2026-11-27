@@ -80,6 +80,11 @@ struct SettingsData: Decodable {
         let buildlogLines: Int
         let buildlogDir: String
         let lidReady: Bool
+        /// Откуда ключ OpenRouter для translate: file, env или nil, если его нет.
+        let translateKey: String?
+        let translateModel: String?
+        let translateLog: [String]?
+        let translateLogPath: String?
     }
 
     let notify: Notify?

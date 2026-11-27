@@ -161,7 +161,7 @@ def main():
     proxy = {"configured": True, "running": True, "port": 17890, "current": "main", "blocked": False, "exit": "KZ",
              "protocol": "vless", "ip": "203.0.113.24", "node": "kz-almaty-1", "defaultRoute": "proxy", "sessions": 3,
              "defaultSubscription": None, "subscriptions": subs}
-    modes = {"humanize": True, "guard": True, "buildlog": True, "notify": True, "lid": False, "alias": True}
+    modes = {"humanize": True, "translate": True, "guard": True, "buildlog": True, "notify": True, "lid": False, "alias": True}
     state = {
         "version": "1.23.0", "lang": "en", "langSetting": "en", "projectsDir": D, "projectsDirs": [D],
         "generatedAt": NOW, "errors": {},
@@ -190,7 +190,11 @@ def main():
         "hostRun": {"running": True, "pid": 4211, "version": "3", "commands": [
             {"name": "orbit-ios-build", "cwd": D + "/orbit-ios", "run": ["xcodebuild", "-scheme", "Orbit", "build"], "args": False},
             {"name": "ledger-api-deploy", "cwd": D + "/ledger-api", "run": ["fly", "deploy"], "args": True}]},
-        "modesInfo": {"buildlogDays": 7, "buildlogLines": 40, "buildlogDir": H + "/.cache/mnrh/buildlog", "lidReady": False},
+        "modesInfo": {"buildlogDays": 7, "buildlogLines": 40, "buildlogDir": H + "/.cache/mnrh/buildlog", "lidReady": False,
+                      "translateKey": "file", "translateModel": "google/gemini-3.1-flash-lite",
+                      "translateLog": ["2026-11-27 10:41:07 3f9c2a1e 182 зн 640 мс переведен",
+                                       "2026-11-27 10:44:51 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)"],
+                      "translateLogPath": H + "/Library/Logs/mnrh-translate.log"},
         "proxy": dict(proxy, country="KZ"), "modes": modes,
         "claude": {"installed": True, "path": "/opt/homebrew/bin/claude", "version": "2.3.1", "installedVia": "brew",
                    "model": "opus", "signedIn": True, "email": "dev@example.com", "plan": "Max"},

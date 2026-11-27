@@ -49,6 +49,7 @@ agentmeister agent-update claude|codex  обновить агента тем с�
 
 # Режимы: on, off
 agentmeister humanize       правила письма для Claude Code и Codex
+agentmeister translate      перевод промптов на английский через OpenRouter; key, check
 agentmeister guard          вопрос перед чтением ключей и опасными командами
 agentmeister buildlog       Claude получает выжимку длинного вывода сборок
 agentmeister notify         уведомления, когда Claude ждет; telegram, phone
@@ -620,6 +621,7 @@ Maven Central и Gradle Plugin Portal и показывает, что обнов
 | `/shot <приложение> [вопрос]` | снимок окна, Claude смотрит на него и отвечает |
 | `/ask <проект> <вопрос>` | ответ из другого проекта от отдельного Claude |
 | `/humanize` | переключить правила письма; `on`, `off`, `status` |
+| `/translate` | переключить перевод промптов на английский; `on`, `off`, `status` |
 | `/import-codex` | перенести контекст сохраненной сессии Codex в этот разговор |
 
 ## Правила письма: `agentmeister humanize`
@@ -630,6 +632,20 @@ Maven Central и Gradle Plugin Portal и показывает, что обнов
 Та же настройка включает правила и для Codex (см. выше). `agentmeister humanize rules` показывает правила,
 `humanize check <файл>` (`-` читает stdin) находит явные признаки нейросети в тексте, а `humanize log`
 показывает результаты проверки ответов.
+
+## Перевод промптов: `agentmeister translate`
+
+По умолчанию выключено. С `agentmeister translate on` (или `/translate`, или переключателем в приложении) хук
+`UserPromptSubmit` отправляет твое сообщение в OpenRouter (по умолчанию `google/gemini-3.1-flash-lite`, другую
+модель задает `translate model <id>`) и добавляет английский перевод рядом с оригиналом. Агент работает по
+переводу, при расхождении верит оригиналу и отвечает на твоем языке. Ключ сохраняет `agentmeister translate key`,
+он ложится в `~/.config/mnrh/openrouter-key` с правами 600.
+
+С Mac уходят только сообщения с нелатинскими буквами. Слэш-команды, текст длиннее 4000 знаков и все, что похоже
+на секрет (ключи API, токены, приватные ключи, JWT, ссылки на подписки proxy, адреса с паролем или токеном),
+не отправляются. В журнале `~/Library/Logs/mnrh-translate.log` остаются время, длина и итог, текста там нет.
+`translate check [текст]` переводит пример и показывает задержку. Идея взята из
+[translate-hooks](https://github.com/AndrewK404/translate-hooks).
 
 ## Где мы остановились
 

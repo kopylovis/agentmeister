@@ -95,8 +95,8 @@ struct MainView: View {
                 ui.showNewSession = true
             case "project":
                 ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
-            case "settings":
-                UserDefaults.standard.set("proxy", forKey: "settingsSection")
+            case "settings", "settings-modes":
+                UserDefaults.standard.set(Demo.scene == "settings" ? "proxy" : "modes", forKey: "settingsSection")
                 openSettings()
                 // окно настроек высокое, чтобы раздел proxy с подписками поместился целиком
                 try? await Task.sleep(for: .seconds(1))
@@ -111,7 +111,7 @@ struct MainView: View {
             }
             // у окна настроек нет свертывания и масштаба, и их кнопки серые. На скриншоте они цветные, как у
             // обычного окна. Кнопку закрытия под листом macOS гасит в любом случае, ее перекрашивает shoot.py
-            if Demo.scene == "settings",
+            if Demo.scene.hasPrefix("settings"),
                let settings = NSApp.windows.first(where: { $0.isVisible && $0.title != "Agentmeister Demo" && $0.frame.width > 300 }) {
                 settings.styleMask.formUnion([.miniaturizable, .resizable])
             }
@@ -531,6 +531,7 @@ struct SidebarFooter: View {
     private func modeHint(_ key: String) -> String {
         switch key {
         case "humanize": return l.t("текст без примет нейросети", "writing without AI tells")
+        case "translate": return l.t("промпты агенту на английском", "prompts reach the agent in English")
         case "guard": return l.t("спросит перед опасной командой", "asks before risky commands")
         case "notify": return l.t("скажет, что агент ждет", "pings when an agent waits")
         case "buildlog": return l.t("выжимка длинных сборок", "digest of long builds")
@@ -540,7 +541,7 @@ struct SidebarFooter: View {
     }
 
     /// Порядок из макета. Режимы, которых нет в ответе app-state, не показываются.
-    private static let order = ["humanize", "guard", "notify", "buildlog", "lid"]
+    private static let order = ["humanize", "translate", "guard", "notify", "buildlog", "lid"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

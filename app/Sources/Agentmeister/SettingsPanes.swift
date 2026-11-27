@@ -27,6 +27,8 @@ struct ModesPane: View {
     let reload: () async -> Void
     @State private var test = "git push --force origin main"
     @State private var result: GuardTest?
+    @State private var orKey = ""
+    @State private var keyNote: (String, Bool)?
 
     var l: L { L(backend.state.lang) }
 
@@ -106,6 +108,7 @@ struct ModesPane: View {
                                  "Writing rules without AI tells for Claude Code and Codex. They cover replies, commits, PRs and docs, not the code itself."),
                              meta: nil)
                     let info = data?.modesInfo
+                    translateCard(on: modes["translate"], info: info)
                     modeCard("buildlog", on: modes["buildlog"],
                              l.t("Когда сборка Gradle, xcodebuild, swift, npm, pytest или make выводит больше \(info?.buildlogLines ?? 200) строк или 20 КБ, агент получает выжимку с ошибками и итогами.",
                                  "When a Gradle, xcodebuild, swift, npm, pytest or make build prints more than \(info?.buildlogLines ?? 200) lines or 20 KB, the agent gets a digest with errors and totals."),
@@ -145,6 +148,72 @@ struct ModesPane: View {
             if let meta {
                 Text(meta.0).font(.system(size: 12)).foregroundStyle(meta.1)
             }
+        }
+    }
+
+    /// translate: переключатель, ключ OpenRouter и последние записи журнала (в журнале нет текста промптов).
+    private func translateCard(on: Bool?, info: SettingsData.ModesInfo?) -> some View {
+        GlassSection(spacing: 10) {
+            HStack {
+                Text("translate").font(.system(size: 17, weight: .semibold))
+                Spacer()
+                HeaderSwitch(label: "translate", on: on ?? false) { run(["translate", $0 ? "on" : "off"]) }
+            }
+            Note(text: l.t("Сообщения на русском и других нелатинских языках переводятся через OpenRouter, агент получает английский текст рядом с оригиналом и отвечает на твоем языке. Слэш-команды, длинные вставки и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
+                           "Messages in Russian and other non-Latin languages are translated through OpenRouter, and the agent gets the English text next to the original and replies in your language. Slash commands, long pastes and anything that looks like keys, tokens or proxy links are not sent."))
+            let source = info?.translateKey
+            Text(source == "file" ? l.t("Ключ OpenRouter сохранен", "OpenRouter key saved")
+                 : source == "env" ? l.t("Ключ из OPENROUTER_API_KEY", "Key from OPENROUTER_API_KEY")
+                 : l.t("Ключа OpenRouter нет, без него перевод не работает", "No OpenRouter key, nothing is translated without it"))
+                .font(.system(size: 12))
+                .foregroundStyle(source == nil ? Ink.amber : Ink.teal)
+            HStack(spacing: 8) {
+                SecureField("sk-or-v1-…", text: $orKey)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .monospaced))
+                    .onSubmit(saveKey)
+                    .accessibilityLabel(l.t("Ключ OpenRouter", "OpenRouter key"))
+                Button(l.t("Сохранить", "Save"), action: saveKey)
+                    .buttonStyle(PillStyle(small: true))
+                    .disabled(orKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                if source == "file" {
+                    Button(l.t("Удалить", "Remove")) { run(["translate", "key", "rm"]) }
+                        .buttonStyle(PillStyle(small: true))
+                }
+            }
+            if let keyNote {
+                Text(keyNote.0).font(.system(size: 12)).foregroundStyle(keyNote.1 ? Ink.teal : Ink.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let model = info?.translateModel {
+                Text(l.t("Модель ", "Model ") + model).font(.system(size: 12)).foregroundStyle(Ink.muted)
+            }
+            let lines = info?.translateLog ?? []
+            if !lines.isEmpty {
+                Text(lines.joined(separator: "\n"))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Ink.text2)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
+            }
+            if let path = info?.translateLogPath, !lines.isEmpty {
+                Button(tilde(path)) { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+                    .buttonStyle(.textLink)
+                    .font(.system(size: 12))
+            }
+        }
+    }
+
+    private func saveKey() {
+        let key = orKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        Task {
+            let r = await Task.detached(priority: .userInitiated) { Backend.runWithInput(["translate", "key"], input: key) }.value
+            if r.ok { orKey = "" }
+            keyNote = (r.ok ? l.t("Ключ сохранен", "Key saved") : r.text, r.ok)
+            await reload()
         }
     }
 

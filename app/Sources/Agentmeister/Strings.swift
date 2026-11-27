@@ -56,6 +56,7 @@ struct L {
     func modeTitle(_ key: String) -> String {
         switch key {
         case "humanize": return t("Без примет нейросети", "No AI tells")
+        case "translate": return t("Перевод на английский", "Translate to English")
         case "guard": return t("Спрашивать перед опасным", "Ask before risky commands")
         case "buildlog": return t("Выжимка сборки", "Build digest")
         case "notify": return t("Уведомления", "Notifications")

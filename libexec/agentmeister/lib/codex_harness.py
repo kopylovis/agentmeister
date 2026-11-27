@@ -17,7 +17,7 @@ from mnrhlib import CM, HOME, LOCAL_CLI, RESTART_QUEUE, ROOT, UUID_RE, find_proj
 
 HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop")
 NOTIFY_EVENTS = ("UserPromptSubmit", "PermissionRequest", "Stop")
-HOOK_COMMANDS = {"humanize-hook": HOOK_EVENTS, "notify-hook": NOTIFY_EVENTS}
+HOOK_COMMANDS = {"humanize-hook": HOOK_EVENTS, "notify-hook": NOTIFY_EVENTS, "translate-hook": ("UserPromptSubmit",)}
 HOOK_LABELS = {
     "approve-hook": "Agentmeister approvals",
     "buildlog-hook": "Agentmeister build digest",
@@ -26,6 +26,7 @@ HOOK_LABELS = {
     "notice": "Agentmeister session start",
     "notify-hook": "Agentmeister notifications",
     "session-end": "Agentmeister session cleanup",
+    "translate-hook": "Agentmeister translate",
 }
 MCP = "agentmeister"
 MCP_ARGS = ["--harness", "codex", "mcp"]
@@ -370,6 +371,8 @@ def configure_hooks(remove):
                 handler = {"type": "command", "command": hook_command(f"{name} --codex")}
                 if name == "humanize-hook" and event != "Stop":
                     handler["additionalContextLimit"] = 0
+                if name == "translate-hook":
+                    handler.update({"timeout": 15, "additionalContextLimit": 0})
                 if name == "notify-hook" and event != "UserPromptSubmit":
                     handler.update({"async": True, "timeout": 60})
                 groups.append({"hooks": [handler]})

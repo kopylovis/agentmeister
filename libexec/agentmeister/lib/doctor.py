@@ -291,6 +291,7 @@ def check_modes():
     conf = read_config()
     states = [f"{name} {tr('вкл', 'on') if on else tr('выкл', 'off')}" for name, on in
               (("guard", conf.get("guard", "on") != "off"), ("humanize", conf.get("humanize", "off") == "on"),
+               ("translate", conf.get("translate", "off") == "on"),
                ("buildlog", conf.get("buildlog", "on") != "off"))]
     return [("ok", tr("режимы: ", "modes: ") + ", ".join(states))]
 

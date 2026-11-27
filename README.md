@@ -51,6 +51,7 @@ agentmeister agent-update claude|codex  update an agent the way it was installed
 
 # Modes: on, off
 agentmeister humanize       writing rules for Claude Code and Codex
+agentmeister translate      translate prompts to English via OpenRouter; key, check
 agentmeister guard          ask before touching keys and risky commands
 agentmeister buildlog       Claude gets a digest of long build output
 agentmeister notify         tell you when Claude is waiting; telegram, phone
@@ -611,6 +612,7 @@ cached for 6 hours. Claude gets the same through the `deps_outdated` tool.
 | `/shot <app> [question]` | screenshot of a window that Claude looks at and answers about |
 | `/ask <project> <question>` | an answer from another project by a separate Claude |
 | `/humanize` | switch the writing rules; `on`, `off`, `status` |
+| `/translate` | switch prompt translation to English; `on`, `off`, `status` |
 | `/import-codex` | bring the context of a saved Codex session into this conversation |
 
 ## Writing rules: `agentmeister humanize`
@@ -621,6 +623,20 @@ writing rules from `share/agentmeister/humanize.md` at the start of a session an
 found into the next turn. The same setting turns the rules on for Codex (see above). `agentmeister humanize rules`
 prints the rules, `humanize check <file>` (`-` reads stdin) finds obvious AI markers in a text, and
 `humanize log` shows the results of the reply checks.
+
+## Prompt translation: `agentmeister translate`
+
+Off by default. With `agentmeister translate on` (or `/translate`, or the switch in the app), the
+`UserPromptSubmit` hook sends your message to OpenRouter (`google/gemini-3.1-flash-lite` by default, change it
+with `translate model <id>`) and adds the English translation next to the original. The agent works from the
+translation, keeps your wording when the two differ, and replies in your language. Save the key with
+`agentmeister translate key`, it goes to `~/.config/mnrh/openrouter-key` with mode 600.
+
+Only messages with non-Latin letters leave the Mac. Slash commands, texts over 4000 characters and anything
+that looks like a secret (API keys, tokens, private keys, JWT, proxy subscription links, URLs with a password
+or a token) are not sent. The log in `~/Library/Logs/mnrh-translate.log` keeps the time, length and result,
+not the text. `translate check [text]` translates a sample and shows the latency. The idea comes from
+[translate-hooks](https://github.com/AndrewK404/translate-hooks).
 
 ## Where we left off
 
