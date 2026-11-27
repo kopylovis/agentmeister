@@ -404,7 +404,7 @@ struct ProjectView: View {
                     ShortcutStore.shared.label(.ask)) { typeOrOpen("/ask ") }
             toolRow(l.t("Снимок окна", "Window screenshot"), l.t("Simulator, Chrome, любое приложение", "Simulator, Chrome, any app"),
                     ShortcutStore.shared.label(.shot)) { typeOrOpen("/shot ") }
-            toolRow(l.t("Заметки к релизу", "Release notes"), l.t("\"Что нового\" на русском и английском для fastlane", "\"What's new\" in Russian and English for fastlane"),
+            toolRow(l.t("Заметки к релизу", "Release notes"), l.t("\"Что нового\" для fastlane на языках проекта", "\"What's new\" for fastlane in the project's languages"),
                     data?.tools?.releaseSince.map { l.t("с ", "since ") + $0 } ?? "") { openWithPrompt("/release-notes") }
             toolRow(l.t("Устаревшие зависимости", "Outdated dependencies"), l.t("Gradle и libs.versions.toml", "Gradle and libs.versions.toml"),
                     data?.tools?.gradle == true ? "" : l.t("нет Gradle", "no Gradle"), enabled: data?.tools?.gradle == true) { utility(["deps", path]) }

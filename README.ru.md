@@ -639,7 +639,7 @@ Maven Central и Gradle Plugin Portal и показывает, что обнов
 | `/slim` | сжать эту сессию и открыть её снова; `/slim list` — другие |
 | `/where` | где остановились: git, прошлая сессия в проекте, бэклог, что дальше |
 | `/todo` | бэклог: `/todo` — список, `/todo <текст>` — добавить, `/todo done 2` — сделано |
-| `/release-notes` | «Что нового» на русском и английском для fastlane |
+| `/release-notes` | «Что нового» для fastlane на языках проекта |
 | `/parallel <задача>` | та же задача в отдельной ветке во втором окне; `--fork` — с этой перепиской; `/parallel list` |
 | `/shot <приложение> [вопрос]` | снимок окна, Claude смотрит на него и отвечает |
 | `/ask <проект> <вопрос>` | ответ из другого проекта от отдельного Claude |
@@ -715,7 +715,8 @@ Maven Central и Gradle Plugin Portal и показывает, что обнов
 `libs.versions.toml` (`appversion`/`versionName`) или `versionName`/`MARKETING_VERSION`,
 коммиты с прошлого релиза — от последнего тега, последнего запуска fastlane
 (`fastlane/report.xml`) или прошлых заметок, что новее, — и сессии Claude за этот период.
-Claude пишет «Что нового» на ru-RU и en-US до 500 символов (влезает в Google Play; App
+Claude пишет «Что нового» на языках из `fastlane/metadata` (или из строки `release_locales=en-US,ru-RU`
+в `~/.config/mnrh/config`, по умолчанию en-US) до 500 символов (влезает в Google Play; App
 Store и TestFlight — 4000, RuStore — 5000, Firebase — 16000), показывает и после согласия
 сохраняет в `fastlane/release_notes/<версия>.<язык>.txt`, а если есть
 `fastlane/metadata` — ещё в `changelogs/<versionCode>.txt` и `release_notes.txt`. Fastfile

@@ -5,7 +5,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import find_project, run, tilde
+from mnrhlib import find_project, read_config, run, tilde
 import claude_search
 
 LIMITS = {"play": 500, "appstore": 4000, "testflight": 4000, "rustore": 5000, "firebase": 16000}
@@ -94,7 +94,14 @@ def locales(root):
         name = os.path.basename(d)
         if re.match(r"^[a-z]{2}(-[A-Z]{2})?$", name):
             found.add(name)
-    return sorted(found) or ["ru-RU", "en-US"]
+    return sorted(found) or default_locales()
+
+
+def default_locales():
+    """Языки, когда в fastlane/metadata их не видно: release_locales=en-US,de-DE в config, по умолчанию en-US."""
+    raw = read_config().get("release_locales", "")
+    picked = [x.strip() for x in raw.split(",") if re.match(r"^[a-z]{2}(-[A-Z]{2})?$", x.strip())]
+    return picked or ["en-US"]
 
 
 def context(project=None, since=None, cwd=None):
