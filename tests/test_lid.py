@@ -9,12 +9,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
                                 "libexec", "agentmeister", "lib"))
 import claude_lid as lid  # noqa: E402
 
-PS = """  101 /bin/zsh -l
-  202 caffeinate -is /Users/me/.local/bin/claude --resume 1234
-  303 caffeinate -is claude
-  404 caffeinate -i make
-  505 /usr/bin/python3 proxy.py run -- caffeinate -is claude
-  606 caffeinate -is /opt/claude-tools/bin/claude-wrapper
+PS = """  101     1 /bin/zsh -l
+  202   101 caffeinate -is /Users/me/.local/bin/claude --resume 1234
+  303   101 caffeinate -is claude
+  404   101 caffeinate -i make
+  505   101 /usr/bin/python3 proxy.py run -- caffeinate -is claude
+  606   101 caffeinate -is /opt/claude-tools/bin/claude-wrapper
+  900     1 /Applications/Agentmeister.app/Contents/MacOS/Agentmeister
+  707   900 /usr/bin/caffeinate -is -w 811
+  808   101 caffeinate -is -w 811
+  909   900 /usr/bin/caffeinate -i -w 812 make
 """
 
 
@@ -27,7 +31,7 @@ class Lid(unittest.TestCase):
 
     def test_sessions_are_caffeinate_wrapping_claude(self):
         lid.run = lambda cmd, **kw: PS
-        self.assertEqual(lid.sessions(), [202, 303])
+        self.assertEqual(lid.sessions(), [202, 303, 707])
 
     def test_not_ready_without_rule(self):
         lid.SUDOERS = "/nonexistent-cm/sudoers.d/mnrh-pmset"
