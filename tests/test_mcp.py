@@ -192,3 +192,33 @@ class ParallelFinishInBackground(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnglishDescriptions(unittest.TestCase):
+    def listed(self, lang, harness=None):
+        conf = tempfile.mkdtemp(prefix="cm-mcp-lang-")
+        try:
+            os.makedirs(os.path.join(conf, "mnrh"))
+            with open(os.path.join(conf, "mnrh", "config"), "w") as f:
+                f.write(f"lang={lang}\n")
+            env = dict(os.environ, XDG_CONFIG_HOME=conf, PYTHONDONTWRITEBYTECODE="1")
+            env.pop("MNRH_MCP_HARNESS", None)
+            if harness:
+                env["MNRH_MCP_HARNESS"] = harness
+            r = subprocess.run([os.path.join(ROOT, "bin", "agentmeister"), "mcp"], input=request(1, "tools/list"),
+                               capture_output=True, text=True, env=env, timeout=30)
+            return json.loads(r.stdout.splitlines()[0])["result"]["tools"]
+        finally:
+            shutil.rmtree(conf, True)
+
+    def test_no_russian_in_tool_descriptions_with_lang_en(self):
+        import re
+        for harness in (None, "codex"):
+            for tool in self.listed("en", harness):
+                self.assertNotRegex(json.dumps(tool, ensure_ascii=False).replace("текст", ""), re.compile("[А-Яа-яЁё]"),
+                                    tool["name"])
+
+    def test_russian_stays_with_lang_ru(self):
+        names = {t["name"]: t for t in self.listed("ru")}
+        self.assertIn("Перезапустить", names["restart"]["description"])
+        self.assertEqual(set(names), {t["name"] for t in self.listed("en")})
