@@ -60,6 +60,7 @@ help() {
 
 Режимы (on, off)
   agentmeister humanize            правила письма без признаков нейросети; check <файл>, rules
+  agentmeister translate           перевод промптов на английский через OpenRouter; key, check, log
   agentmeister guard               вопрос перед чтением ключей и опасными командами; test, log
   agentmeister buildlog            выжимка длинного вывода сборок для Claude; test <файл>
   agentmeister notify              уведомления, когда Claude ждет; after <сек>, test, telegram
@@ -119,6 +120,8 @@ case "${1:-}" in
   ask) exec /usr/bin/python3 "$(dirname "$MENU")/claude_ask.py" "$@" ;;
   release-notes) exec /usr/bin/python3 "$(dirname "$MENU")/release_notes.py" "$@" ;;
   statusline) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_status.py" "$@" ;;
+  translate-hook) grep -qsx "translate=on" "$CONF" || exit 0; exec /usr/bin/python3 "$(dirname "$MENU")/translate.py" "$@" ;;
+  translate) exec /usr/bin/python3 "$(dirname "$MENU")/translate.py" "$@" ;;
   humanize|humanize-hook) exec /usr/bin/python3 "$(dirname "$MENU")/humanize.py" "$@" ;;
   buildlog|buildlog-hook) exec /usr/bin/python3 "$(dirname "$MENU")/claude_buildlog.py" "$@" ;;
   guard|guard-hook) exec /usr/bin/python3 "$(dirname "$MENU")/claude_guard.py" "$@" ;;

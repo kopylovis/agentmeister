@@ -72,7 +72,14 @@
   "buildlogDays": 7,
   "buildlogLines": 40,
   "buildlogDir": "/Users/demo/.cache/mnrh/buildlog",
-  "lidReady": false
+  "lidReady": false,
+  "translateKey": "file",
+  "translateModel": "google/gemini-3.1-flash-lite",
+  "translateLog": [
+   "2026-11-27 10:41:07 3f9c2a1e 182 зн 640 мс переведен",
+   "2026-11-27 10:44:51 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)"
+  ],
+  "translateLogPath": "/Users/demo/Library/Logs/mnrh-translate.log"
  },
  "proxy": {
   "configured": true,
@@ -117,6 +124,7 @@
  },
  "modes": {
   "humanize": true,
+  "translate": true,
   "guard": true,
   "buildlog": true,
   "notify": true,

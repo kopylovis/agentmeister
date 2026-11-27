@@ -571,6 +571,32 @@ final class Backend: ObservableObject {
         }
     }
 
+    /// Команда agentmeister с текстом на stdin, для секретов: в аргументах их видно в ps.
+    nonisolated static func runWithInput(_ args: [String], input: String) -> (ok: Bool, text: String) {
+        if Demo.active { return (true, "") }
+        guard LoginEnvironment.found else { return (false, "agentmeister isn't in PATH") }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: LoginEnvironment.agentmeister)
+        task.arguments = args
+        task.environment = LoginEnvironment.shared
+        let out = Pipe(), inPipe = Pipe()
+        task.standardOutput = out
+        task.standardError = out
+        task.standardInput = inPipe
+        do {
+            try task.run()
+            inPipe.fileHandleForWriting.write(Data((input + "\n").utf8))
+            try? inPipe.fileHandleForWriting.close()
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            task.waitUntilExit()
+            let text = String(decoding: data, as: UTF8.self)
+                .replacingOccurrences(of: "\u{1b}\\[[0-9;]*m", with: "", options: .regularExpression)
+            return (task.terminationStatus == 0, text.trimmingCharacters(in: .whitespacesAndNewlines))
+        } catch {
+            return (false, error.localizedDescription)
+        }
+    }
+
     nonisolated static func run(_ args: [String]) -> Result<Data, Error> {
         if Demo.active { return Demo.response(args) }  // демо для скриншотов: готовые ответы, ничего не запускается
         guard LoginEnvironment.found else {

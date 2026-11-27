@@ -1,6 +1,6 @@
 """Тексты команд Claude Code (~/.claude/commands/*.md), которые ставит agentmeister setup."""
 
-EXTRA_COMMANDS = ["todo", "where", "release-notes", "parallel", "shot", "ask", "humanize", "import-codex"]
+EXTRA_COMMANDS = ["todo", "where", "release-notes", "parallel", "shot", "ask", "humanize", "translate", "import-codex"]
 
 
 EXTRA_SLASH = {
@@ -92,6 +92,16 @@ allowed-tools: Bash(agentmeister humanize:*)
 
 Если выше написано «включена» и есть свод правил, с этого ответа строго следуй ему во всём, что пишешь людям.
 Если «выключена», правила больше не обязательны. Ответь пользователю одной короткой фразой, в каком состоянии режим.
+""",
+    "translate": """---
+description: agentmeister translate: перевод промптов на английский через OpenRouter; /translate переключает, on, off, status
+allowed-tools: Bash(agentmeister translate:*)
+---
+!`agentmeister translate switch $ARGUMENTS`
+
+Ответь пользователю одной короткой фразой, в каком состоянии перевод. Если выше сказано, что ключа нет, добавь,
+что ключ можно скопировать в буфер обмена и выполнить `! agentmeister translate key --clipboard` или вставить
+в карточку translate в разделе "Режимы" приложения agentmeister. Сам ключ в чат не вставлять.
 """,
 }
 
