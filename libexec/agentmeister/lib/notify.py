@@ -551,6 +551,7 @@ def hook(codex=False):
     if not on_mac and not to_phone and not to_tossling:
         return 0
     head, body = what
+    agent = "Codex" if codex else "Claude Code"
     cwd = payload.get("cwd") or ""
     project = "~" if cwd.rstrip("/") == HOME else os.path.basename(cwd.rstrip("/")) or ("Codex" if codex else "Claude")
     title = "" if codex else session_title(sid, transcript)
@@ -569,7 +570,8 @@ def hook(codex=False):
             log_error(result)
     if to_phone:
         try:
-            telegram.send(f"{project}: {head}", title, body)
+            subtitle = "\n".join(part for part in (project if cwd else "", title) if part)
+            telegram.send(f"{agent}: {head}", subtitle, body)
             sent = True
         except telegram.TelegramError as e:
             log_error(f"telegram: {e}")

@@ -96,7 +96,9 @@ def guard_warning(tool, inp, cwd):
 def message(payload, title=""):
     tool = str(payload.get("tool_name") or "?")
     body, note, cut = render(tool, payload.get("tool_input"))
-    parts = [f"<b>{html.escape(project_name(payload.get('cwd')))}: нужно разрешение</b>"]
+    parts = ["<b>Claude Code: нужно разрешение</b>"]
+    if payload.get("cwd"):
+        parts.append(f"<i>{html.escape(project_name(payload['cwd']))}</i>")
     if title:
         parts.append(f"<i>{html.escape(title)}</i>")
     if payload.get("agent_type"):
