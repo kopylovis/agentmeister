@@ -4,7 +4,7 @@
  "max": 500,
  "entries": [
   {
-   "ts": 1795775714.557962,
+   "ts": 1795816686.676746,
    "headline": "The retry loop resends webhooks with the same idempotency key, so a partner that ignores the key will book the payment twice.",
    "project": "ledger-api",
    "cwd": "/Users/demo/Developer/ledger-api",
@@ -13,7 +13,7 @@
    "times": 1
   },
   {
-   "ts": 1795766414.557962,
+   "ts": 1795807386.676746,
    "headline": "Dark mode reads the theme from a cookie that the CDN caches for an hour, so some users will see the old theme after switching.",
    "project": "atlas-web",
    "cwd": "/Users/demo/Developer/atlas-web",
@@ -22,7 +22,7 @@
    "times": 1
   },
   {
-   "ts": 1795683614.557962,
+   "ts": 1795724586.676746,
    "headline": "The Postgres 17 plan drops the old replica before the new one has caught up, so reads go to the primary for a while.",
    "project": "infra",
    "cwd": "/Users/demo/Developer/infra",

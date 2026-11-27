@@ -6,7 +6,13 @@
  "projectsDirs": [
   "/Users/demo/Developer"
  ],
- "generatedAt": 1795777214.557962,
+ "sessionDefaults": {
+  "mode": "caffeinate",
+  "remoteControl": true,
+  "restartUpdate": true,
+  "askModel": "sonnet"
+ },
+ "generatedAt": 1795818186.676746,
  "errors": {},
  "projects": [
   {
@@ -32,7 +38,7 @@
    "cwd": "/Users/demo/Developer/ledger-api",
    "title": "Повторы с паузой для платежных вебхуков",
    "branch": "webhook-retries",
-   "mtime": 1795777094.557962,
+   "mtime": 1795818066.676746,
    "size": 2400000,
    "running": true,
    "cwdExists": true,
@@ -43,7 +49,7 @@
    "cwd": "/Users/demo/Developer/ledger-api",
    "title": "Ключи идемпотентности для POST /transfers",
    "branch": "main",
-   "mtime": 1795766414.557962,
+   "mtime": 1795807386.676746,
    "size": 5100000,
    "running": false,
    "cwdExists": true,
@@ -54,7 +60,7 @@
    "cwd": "/Users/demo/Developer/atlas-web",
    "title": "Темная тема для страницы оплаты",
    "branch": "billing-dark",
-   "mtime": 1795776614.557962,
+   "mtime": 1795817586.676746,
    "size": 1300000,
    "running": true,
    "cwdExists": true,
@@ -65,7 +71,7 @@
    "cwd": "/Users/demo/Developer/atlas-web",
    "title": "Починить нестабильный e2e-тест оплаты",
    "branch": "main",
-   "mtime": 1795683614.557962,
+   "mtime": 1795724586.676746,
    "size": 3800000,
    "running": false,
    "cwdExists": true,
@@ -76,7 +82,7 @@
    "cwd": "/Users/demo/Developer/infra",
    "title": "План перехода на Postgres 17",
    "branch": "main",
-   "mtime": 1795604414.557962,
+   "mtime": 1795645386.676746,
    "size": 900000,
    "running": false,
    "cwdExists": true,
@@ -87,7 +93,7 @@
    "cwd": "/Users/demo/Developer/orbit-ios",
    "title": "Виджет ближайших запусков",
    "branch": "widget",
-   "mtime": 1795345214.557962,
+   "mtime": 1795386186.676746,
    "size": 7200000,
    "running": false,
    "cwdExists": true,
@@ -100,12 +106,12 @@
    "cwd": "/Users/demo/Developer/orbit-ios",
    "title": "Снимочные тесты списка запусков",
    "branch": "snapshots",
-   "mtime": 1795776914.557962,
+   "mtime": 1795817886.676746,
    "size": 1100000,
    "running": true,
    "cwdExists": true,
    "agent": "codex",
-   "created": 1795774214.557962
+   "created": 1795815186.676746
   }
  ],
  "live": [],
