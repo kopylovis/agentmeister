@@ -826,19 +826,13 @@ struct ProjectRow: View {
             .contentShape(Rectangle())
             .simultaneousGesture(TapGesture().onEnded { ui.projectScreen = ui.projectScreen == project.path ? nil : project.path })
             if hover {
-                Button {
-                    if AgentPrefs.defaultAgent == "ask" {
-                        ui.newSessionProject = project.path
-                        ui.showNewSession = true
-                    } else {
-                        workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path,
-                                                  agent: AgentPrefs.defaultAgent == "codex" ? .codex : .claude,
-                                                  direct: backend.state.proxy?.defaultRoute == "direct",
-                                                  subscription: backend.state.defaultSubscription))
-                    }
+                Menu {
+                    ProjectLaunchActions(project: project)
                 } label: {
                     Image(systemName: "plus").frame(width: 22, height: 22)
                 }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
                 .buttonStyle(.hover(6))
                 .help(l.newSession)
                 .accessibilityLabel(l.newSession)
@@ -1007,13 +1001,50 @@ struct SessionPreviewScreen: View {
     }
 }
 
+private struct ProjectLaunchActions: View {
+    @EnvironmentObject var workspace: Workspace
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var ui: UIState
+    let project: AppState.Project?
+
+    var body: some View {
+        let l = L(backend.state.lang)
+        let proxy = backend.state.proxy
+        let routes: [Bool] = proxy?.configured != true ? [true]
+            : proxy?.defaultRoute == "direct" ? [true, false] : [false, true]
+        ForEach(routes, id: \.self) { direct in
+            Section(direct ? l.directly
+                    : l.t("Через proxy", "Via proxy") + (backend.state.defaultSubscription.map { " " + $0 } ?? "")) {
+                Button("Claude Code") { openNew(.claude, direct: direct) }
+                Button("Codex") { openNew(.codex, direct: direct) }
+                Button(l.t("Терминал", "Terminal")) { openNew(nil, direct: direct) }
+            }
+        }
+    }
+
+    private func openNew(_ agent: LaunchSpec.Agent?, direct: Bool) {
+        guard let project else {
+            ui.showNewSession = true
+            return
+        }
+        let state = backend.state
+        let subscription = direct ? nil : state.defaultSubscription
+        if let agent {
+            workspace.open(LaunchSpec(projectName: project.name, projectPath: project.path, agent: agent,
+                                      direct: direct, subscription: subscription))
+        } else {
+            workspace.openTerminal(name: project.name, path: project.path, direct: direct,
+                                   state: state, subscription: subscription)
+        }
+    }
+}
+
 /// Полоса вкладок: одна стеклянная капсула, выбранная вкладка светлее, в конце "+". Когда вкладки не помещаются,
 /// края ленты затухают, а по бокам стоят счетчики вкладок за краем. Счетчик открывает их список, желтая точка на
 /// нем значит, что за краем вкладка ждет ответа.
 struct TabStrip: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var backend: Backend
-    @EnvironmentObject var ui: UIState
     /// Вкладка, которую сейчас тащат, и ее сдвиг от своего места в ряду. Вкладка едет под курсором сама, без
     /// системной копии: системный drag and drop отставал от курсора, после отпускания доигрывал анимацию и
     /// зависал, если вкладку бросали мимо полосы.
@@ -1108,17 +1139,7 @@ struct TabStrip: View {
             // "+" спрашивает, что открыть в проекте текущей вкладки и как: через proxy (подписка по умолчанию) или
             // напрямую. Первым идет маршрут по умолчанию из настроек proxy. Без настроенного proxy только напрямую
             Menu {
-                let proxy = backend.state.proxy
-                let routes: [Bool] = proxy?.configured != true ? [true]
-                    : proxy?.defaultRoute == "direct" ? [true, false] : [false, true]
-                ForEach(routes, id: \.self) { direct in
-                    Section(direct ? l.directly
-                            : l.t("Через proxy", "Via proxy") + (backend.state.defaultSubscription.map { " " + $0 } ?? "")) {
-                        Button("Claude Code") { openNew(.claude, direct: direct) }
-                        Button("Codex") { openNew(.codex, direct: direct) }
-                        Button(l.t("Терминал", "Terminal")) { openNew(nil, direct: direct) }
-                    }
-                }
+                ProjectLaunchActions(project: currentProject)
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .medium))
@@ -1201,23 +1222,11 @@ struct TabStrip: View {
         dragOffset = translation - dragShift
     }
 
-    /// Новая вкладка из меню "+": агент или терминал (nil) в проекте текущей вкладки, через proxy или напрямую.
-    private func openNew(_ agent: LaunchSpec.Agent?, direct: Bool) {
-        guard let spec = workspace.current.map({ workspace.root(of: $0).spec }) else {
-            ui.showNewSession = true
-            return
-        }
-        let state = backend.state
-        let project = state.project(containing: spec.projectPath)
-        let name = project?.name ?? spec.projectName
-        let path = project?.path ?? spec.projectPath
-        guard let agent else {
-            workspace.openTerminal(name: name, path: path, direct: direct, state: state,
-                                   subscription: direct ? nil : state.defaultSubscription)
-            return
-        }
-        workspace.open(LaunchSpec(projectName: name, projectPath: path, agent: agent, direct: direct,
-                                  subscription: direct ? nil : state.defaultSubscription))
+    private var currentProject: AppState.Project? {
+        guard let tab = workspace.current else { return nil }
+        let spec = workspace.root(of: tab).spec
+        return backend.state.project(containing: spec.projectPath)
+            ?? AppState.Project(name: spec.projectName, path: spec.projectPath)
     }
 
     /// Отпустили: вкладка сразу встает на свое место в ряду.
