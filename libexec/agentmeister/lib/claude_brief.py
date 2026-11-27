@@ -5,7 +5,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import HOME, project_root, read_config, run, tilde
+from mnrhlib import HOME, project_root, read_config, run, tilde, tr
 import claude_search
 import mnrh_todo
 
@@ -31,12 +31,13 @@ def ago(ts):
         return ts[:16]
     s = time.time() - t
     if s < 3600:
-        return f"{max(1, int(s // 60))} мин назад"
+        n = max(1, int(s // 60))
+        return tr(f"{n} мин назад", f"{n} min ago")
     if s < 86400:
-        return f"{int(s // 3600)} ч назад"
+        return tr(f"{int(s // 3600)} ч назад", f"{int(s // 3600)} h ago")
     if s < 2 * 86400:
-        return "вчера"
-    return f"{int(s // 86400)} дн назад"
+        return tr("вчера", "yesterday")
+    return tr(f"{int(s // 86400)} дн назад", f"{int(s // 86400)} days ago")
 
 
 def git_part(root):
@@ -48,16 +49,17 @@ def git_part(root):
     log = run(["git", "-C", root, "log", "-5", "--format=%h %ar: %s"]).strip().splitlines()
     tag = run(["git", "-C", root, "describe", "--tags", "--abbrev=0"]).strip()
     since = run(["git", "-C", root, "rev-list", "--count", f"{tag}..HEAD"]).strip() if tag else ""
-    head = f"Ветка {branch}"
+    head = tr(f"Ветка {branch}", f"Branch {branch}")
     if status:
-        head += f", незакоммичено файлов: {len(status)}"
+        head += tr(f", незакоммичено файлов: {len(status)}", f", uncommitted files: {len(status)}")
     if ahead and ahead != "0":
-        head += f", не запушено коммитов: {ahead}"
+        head += tr(f", не запушено коммитов: {ahead}", f", unpushed commits: {ahead}")
     lines = [head]
     if tag:
-        lines.append(f"Последний тег {tag}, коммитов после него: {since or '?'}")
+        lines.append(tr(f"Последний тег {tag}, коммитов после него: {since or '?'}",
+                        f"Last tag {tag}, commits since: {since or '?'}"))
     if log:
-        lines.append("Последние коммиты:")
+        lines.append(tr("Последние коммиты:", "Recent commits:"))
         lines += [f"  {l}" for l in log]
     return lines, {"branch": branch, "dirty": len(status), "ahead": ahead}
 
@@ -94,12 +96,13 @@ def session_part(sid, data):
     asks = [m for m in msgs if m[0] == "user"]
     replies = [m for m in msgs if m[0] == "claude"]
     title = claude_search.title(sid, data)
-    lines = [f"Прошлая сессия в этом проекте: «{title}» ({sid[:8]}), последняя активность {ago(data.get('last'))}"]
+    lines = [tr(f"Прошлая сессия в этом проекте: «{title}» ({sid[:8]}), последняя активность {ago(data.get('last'))}",
+                f"Previous session in this project: \"{title}\" ({sid[:8]}), last active {ago(data.get('last'))}")]
     if asks:
-        lines.append("Последний запрос пользователя:")
+        lines.append(tr("Последний запрос пользователя:", "The user's last request:"))
         lines.append(clip(asks[-1][2], ASK_CHARS))
     if replies:
-        lines.append("Последний ответ Claude:")
+        lines.append(tr("Последний ответ Claude:", "Claude's last reply:"))
         lines.append(clip(replies[-1][2], LAST_CHARS))
     return lines, title
 
@@ -107,7 +110,7 @@ def session_part(sid, data):
 def build(cwd, exclude=None):
     root = project_root(cwd)
     name = "~" if root == HOME else os.path.basename(root)
-    lines = [f"Проект {name} ({tilde(root)})."]
+    lines = [tr(f"Проект {name} ({tilde(root)}).", f"Project {name} ({tilde(root)}).")]
     git_lines, g = git_part(root)
     lines += git_lines
     sid, data = last_session(root, cwd, exclude)
@@ -115,40 +118,48 @@ def build(cwd, exclude=None):
     if data:
         sess, title = session_part(sid, data)
         lines += [""] + sess
-        lines.append(f"Подробнее: session_read id={sid[:8]} at=-10.")
+        lines.append(tr(f"Подробнее: session_read id={sid[:8]} at=-10.", f"More: session_read id={sid[:8]} at=-10."))
     todos = mnrh_todo.open_items(root)
     if todos:
         lines += ["", mnrh_todo.fmt(root, todos)]
     short = []
     if title:
-        short.append(f"прошлая сессия «{clip(title, 50)}» ({ago(data.get('last'))})")
+        short.append(tr(f"прошлая сессия «{clip(title, 50)}» ({ago(data.get('last'))})",
+                        f"previous session \"{clip(title, 50)}\" ({ago(data.get('last'))})"))
     if g.get("dirty"):
-        short.append(f"незакоммичено {g['dirty']}")
+        short.append(tr(f"незакоммичено {g['dirty']}", f"uncommitted {g['dirty']}"))
     if todos:
-        short.append(f"в бэклоге {len(todos)}")
+        short.append(tr(f"в бэклоге {len(todos)}", f"backlog {len(todos)}"))
     return "\n".join(lines), short
 
 
 def context_for_model(cwd, exclude=None):
     text, short = build(cwd, exclude)
-    head = ("agentmeister: справка о проекте на старте сессии. Это фон: не пересказывай её без запроса, но используй, "
-            "когда пользователь спрашивает, где остановились, что дальше или ссылается на прошлую работу.\n\n")
-    user = ("agentmeister: " + " · ".join(short) + " · /where — подробнее") if short else ""
+    head = tr("agentmeister: справка о проекте на старте сессии. Это фон: не пересказывай её без запроса, но используй, "
+              "когда пользователь спрашивает, где остановились, что дальше или ссылается на прошлую работу.\n\n",
+              "agentmeister: project notes at session start. This is background: don't retell it unprompted, but use "
+              "it when the user asks where things stand, what's next, or refers to earlier work.\n\n")
+    user = ("agentmeister: " + " · ".join(short) + tr(" · /where — подробнее", " · /where for more")) if short else ""
     return head + text, user
 
 
 def cli(args):
     if args[:1] in (["-h"], ["--help"]):
-        print("agentmeister brief         где мы остановились: git, прошлая сессия в этом проекте, бэклог")
-        print("agentmeister brief on|off  показывать ли эту справку Claude при старте новой сессии")
+        print(tr("agentmeister brief         где мы остановились: git, прошлая сессия в этом проекте, бэклог",
+                 "agentmeister brief         where things stand: git, the previous session in this project, backlog"))
+        print(tr("agentmeister brief on|off  показывать ли эту справку Claude при старте новой сессии",
+                 "agentmeister brief on|off  whether Claude gets these notes when a new session starts"))
         print()
-        print("В Claude Code: /where. При старте новой сессии хук SessionStart передаёт справку Claude")
-        print("как фон, а тебе показывает одну строку.")
+        print(tr("В Claude Code: /where. При старте новой сессии хук SessionStart передаёт справку Claude\n"
+                 "как фон, а тебе показывает одну строку.",
+                 "In Claude Code: /where. When a new session starts, the SessionStart hook passes the notes to\n"
+                 "Claude as background and shows you one line."))
         return 0
     if args[:1] in (["on"], ["off"]):
         from mnrhlib import write_config
         write_config(brief=args[0])
-        print(f"Справка при старте сессии {'включена' if args[0] == 'on' else 'выключена'}")
+        print(tr(f"Справка при старте сессии {'включена' if args[0] == 'on' else 'выключена'}",
+                 f"Session-start notes {'on' if args[0] == 'on' else 'off'}"))
         return 0
     exclude = os.environ.get("CLAUDE_CODE_SESSION_ID")
     text, _ = build(os.getcwd(), exclude)

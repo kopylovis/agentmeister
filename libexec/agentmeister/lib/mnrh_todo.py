@@ -3,7 +3,7 @@ import os
 import re
 import time
 
-from mnrhlib import CONFIG, HOME, find_project, tilde
+from mnrhlib import CONFIG, HOME, find_project, tilde, tr
 
 TODO_DIR = os.path.join(os.path.dirname(CONFIG), "todo")
 ITEM = re.compile(r"^- \[( |x)\] (\d{4}-\d{2}-\d{2})(?: → (\d{4}-\d{2}-\d{2}))? (.*)$")
@@ -49,7 +49,7 @@ def open_items(root):
 
 def fmt(root, items=None, title=True):
     items = open_items(root) if items is None else items
-    head = f"Бэклог {key_of(root)}: " + (f"{len(items)}" if items else "пусто")
+    head = tr(f"Бэклог {key_of(root)}: ", f"Backlog {key_of(root)}: ") + (f"{len(items)}" if items else tr("пусто", "empty"))
     lines = [head] if title else []
     lines += [f"  {i}. {it['text']}  ({it['added']})" for i, it in enumerate(items, 1)]
     return "\n".join(lines)
@@ -58,13 +58,14 @@ def fmt(root, items=None, title=True):
 def add(root, text):
     text = " ".join(text.split())
     if not text:
-        return "Пустая задача, нечего добавлять.", True
+        return tr("Пустая задача, нечего добавлять.", "The task is empty, nothing to add."), True
     items = load(root)
     if any(not it["done"] and it["text"].lower() == text.lower() for it in items):
-        return f"Уже есть в бэклоге {key_of(root)}: {text}", False
+        return tr(f"Уже есть в бэклоге {key_of(root)}: {text}", f"Already in the {key_of(root)} backlog: {text}"), False
     items.append({"done": False, "added": time.strftime("%Y-%m-%d"), "closed": None, "text": text})
     save(root, items)
-    return f"Добавил в бэклог {key_of(root)} (№{len([i for i in items if not i['done']])}): {text}", False
+    n = len([i for i in items if not i['done']])
+    return tr(f"Добавил в бэклог {key_of(root)} (№{n}): {text}", f"Added to the {key_of(root)} backlog (#{n}): {text}"), False
 
 
 def pick(root, ref):
@@ -76,8 +77,9 @@ def pick(root, ref):
     if len(hits) == 1:
         return hits[0], None
     if hits:
-        return None, f"«{ref}» подходит к нескольким задачам, дай номер:\n{fmt(root, hits, title=False)}"
-    return None, f"Нет открытой задачи «{ref}».\n{fmt(root)}"
+        return None, tr(f"«{ref}» подходит к нескольким задачам, дай номер:", f"\"{ref}\" matches several tasks, give a number:") + \
+            f"\n{fmt(root, hits, title=False)}"
+    return None, tr(f"Нет открытой задачи «{ref}».", f"No open task \"{ref}\".") + f"\n{fmt(root)}"
 
 
 def done(root, ref):
@@ -90,7 +92,7 @@ def done(root, ref):
             x.update(done=True, closed=time.strftime("%Y-%m-%d"))
             break
     save(root, items)
-    return f"Готово: {it['text']}\n{fmt(root)}", False
+    return tr("Готово: ", "Done: ") + f"{it['text']}\n{fmt(root)}", False
 
 
 def remove(root, ref):
@@ -99,7 +101,7 @@ def remove(root, ref):
         return err, True
     items = [x for x in load(root) if not (not x["done"] and x["text"] == it["text"] and x["added"] == it["added"])]
     save(root, items)
-    return f"Удалил: {it['text']}\n{fmt(root)}", False
+    return tr("Удалил: ", "Removed: ") + f"{it['text']}\n{fmt(root)}", False
 
 
 def everything():
@@ -112,7 +114,7 @@ def everything():
         if opened:
             lines.append(f"{name}: {len(opened)}")
             lines += [f"  {i}. {t}" for i, t in enumerate(opened, 1)]
-    return "\n".join(lines) or "Бэклоги пусты.", False
+    return "\n".join(lines) or tr("Бэклоги пусты.", "All backlogs are empty."), False
 
 
 def root_for(project, cwd=None):
@@ -122,26 +124,32 @@ def root_for(project, cwd=None):
 
 LIST_TOOL = {
     "name": "todo_list",
-    "description": ("Бэклог проекта: задачи «на потом», которые живут между сессиями (в отличие от списка задач "
-                    "внутри сессии). Без project — проект текущей сессии; all=true — открытые задачи всех проектов."),
+    "description": tr("Бэклог проекта: задачи «на потом», которые живут между сессиями (в отличие от списка задач "
+                      "внутри сессии). Без project — проект текущей сессии; all=true — открытые задачи всех проектов.",
+                      "The project backlog: tasks for later that live across sessions (unlike the in-session task "
+                      "list). Without project, the current session's project; all=true lists open tasks of all projects."),
     "annotations": {"readOnlyHint": True},
     "inputSchema": {"type": "object", "properties": {
-        "project": {"type": "string", "description": "имя папки проекта или путь"},
-        "all": {"type": "boolean", "description": "все проекты"}}},
+        "project": {"type": "string", "description": tr("имя папки проекта или путь", "project folder name or path")},
+        "all": {"type": "boolean", "description": tr("все проекты", "all projects")}}},
 }
 ADD_TOOL = {
     "name": "todo_add",
-    "description": ("Добавить задачу в бэклог проекта, когда пользователь просит записать, запомнить или отложить "
-                    "что-то на потом. Одна задача — одна короткая строка, понятная без контекста этой сессии."),
+    "description": tr("Добавить задачу в бэклог проекта, когда пользователь просит записать, запомнить или отложить "
+                      "что-то на потом. Одна задача — одна короткая строка, понятная без контекста этой сессии.",
+                      "Add a task to the project backlog when the user asks to note, remember or postpone something. "
+                      "One task is one short line that makes sense without this session's context."),
     "inputSchema": {"type": "object", "properties": {
         "text": {"type": "string"}, "project": {"type": "string"}}, "required": ["text"]},
 }
 DONE_TOOL = {
     "name": "todo_done",
-    "description": ("Отметить задачу бэклога сделанной (или remove=true — удалить без отметки): номер из todo_list "
-                    "или кусок текста. Вызывай, когда задача из бэклога действительно сделана или пользователь просит."),
+    "description": tr("Отметить задачу бэклога сделанной (или remove=true — удалить без отметки): номер из todo_list "
+                      "или кусок текста. Вызывай, когда задача из бэклога действительно сделана или пользователь просит.",
+                      "Mark a backlog task done (or remove=true to delete it without marking): a number from todo_list "
+                      "or part of the text. Call it when a backlog task is actually done or the user asks."),
     "inputSchema": {"type": "object", "properties": {
-        "item": {"type": "string", "description": "номер или кусок текста"},
+        "item": {"type": "string", "description": tr("номер или кусок текста", "number or part of the text")},
         "project": {"type": "string"}, "remove": {"type": "boolean"}}, "required": ["item"]},
 }
 TOOLS = [LIST_TOOL, ADD_TOOL, DONE_TOOL]
@@ -161,15 +169,23 @@ def handle(name, a, cwd=None):
 
 
 def usage():
-    print("agentmeister todo                 бэклог этого проекта (папка git, где ты сейчас)")
-    print("agentmeister todo <текст>         добавить задачу; то же: agentmeister todo add <текст>")
-    print("agentmeister todo done <N|текст>  отметить сделанной")
-    print("agentmeister todo rm <N|текст>    удалить")
-    print("agentmeister todo all             открытые задачи всех проектов")
-    print("agentmeister todo -p <проект> …   для другого проекта")
-    print()
-    print(f"Хранится в {tilde(TODO_DIR)}/<проект>.md. В Claude Code: /todo, инструменты todo_list, todo_add,")
-    print("todo_done, а при старте сессии Claude видит открытые задачи проекта.")
+    print(tr("""agentmeister todo                 бэклог этого проекта (папка git, где ты сейчас)
+agentmeister todo <текст>         добавить задачу; то же: agentmeister todo add <текст>
+agentmeister todo done <N|текст>  отметить сделанной
+agentmeister todo rm <N|текст>    удалить
+agentmeister todo all             открытые задачи всех проектов
+agentmeister todo -p <проект> …   для другого проекта
+""", """agentmeister todo                 this project's backlog (the git folder you're in)
+agentmeister todo <text>          add a task; same as agentmeister todo add <text>
+agentmeister todo done <N|text>   mark done
+agentmeister todo rm <N|text>     remove
+agentmeister todo all             open tasks of all projects
+agentmeister todo -p <project> …  for another project
+"""))
+    print(tr(f"Хранится в {tilde(TODO_DIR)}/<проект>.md. В Claude Code: /todo, инструменты todo_list, todo_add,\n"
+             "todo_done, а при старте сессии Claude видит открытые задачи проекта.",
+             f"Stored in {tilde(TODO_DIR)}/<project>.md. In Claude Code: /todo, the todo_list, todo_add and\n"
+             "todo_done tools, and Claude sees the project's open tasks when a session starts."))
 
 
 def cli(args):
