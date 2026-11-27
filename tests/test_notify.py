@@ -27,14 +27,22 @@ _TERMINAL_ENV = mock.patch.dict(os.environ)
 _HEADSUP = mock.patch("headsup.from_hook", return_value=0)
 
 
+# настоящий config не читается: с подключенным ntfy или Tossling хуки в тестах слали бы настоящие уведомления
+_CONFIG_DIR = tempfile.mkdtemp()
+_CONFIG = mock.patch("mnrhlib.CONFIG", os.path.join(_CONFIG_DIR, "config"))
+
+
 def setUpModule():
     _TERMINAL_ENV.start()
     _HEADSUP.start()
+    _CONFIG.start()
     for name in ("AGENTMEISTER_TAB", "ITERM_SESSION_ID", "TERM_PROGRAM", "LC_TERMINAL"):
         os.environ.pop(name, None)
 
 
 def tearDownModule():
+    _CONFIG.stop()
+    shutil.rmtree(_CONFIG_DIR, True)
     _HEADSUP.stop()
     _TERMINAL_ENV.stop()
 
@@ -192,6 +200,136 @@ class PhoneTargets(unittest.TestCase):
         log.assert_called_once_with("bad: HTTP 500")
         msg = good.send.call_args.args[0]
         self.assertEqual((msg.agent, msg.project, msg.urgent), ("Claude Code", "agentmeister", True))
+
+
+class NtfyChannel(unittest.TestCase):
+    """Канал ntfy: случайный канал, авторизация, только заголовок на ntfy.sh, CLI."""
+
+    def setUp(self):
+        with open(notify.ntfy_channel.read_config.__globals__["CONFIG"], "w"):
+            pass
+        self.keys = {}
+        for name, fn in (("find", lambda account, service="agentmeister.notify": self.keys.get((service, account), "")),
+                         ("save", lambda account, value, label, service="agentmeister.notify": self.keys.update({(service, account): value}) or True),
+                         ("delete", lambda account, service="agentmeister.notify": self.keys.pop((service, account), None))):
+            patcher = mock.patch.object(notify.keychain, name, fn)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def cli(self, *args, stdin=""):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.object(sys, "stdin", io.StringIO(stdin)):
+            code = notify.ntfy_channel.main(list(args))
+        return code, out.getvalue()
+
+    def sent(self, title="t", text="m", priority=3):
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            notify.ntfy_channel.send(title, text, priority)
+        req = urlopen.call_args.args[0]
+        return req.full_url, req.get_header("Authorization"), json.loads(req.data)
+
+    def test_setup_makes_random_topic_and_turns_on(self):
+        pin_lang(self, "en")
+        code, out = self.cli("setup")
+        self.assertEqual(code, 0)
+        topic = notify.ntfy_channel.topic()
+        self.assertRegex(topic, r"^agentmeister-[A-Za-z0-9]{20}$")
+        self.assertEqual((notify.ntfy_channel.mode(), notify.ntfy_channel.body_mode()), ("away", "title"))
+        self.assertIn("https://ntfy.sh/" + topic, out)
+        self.assertIn("anyone who knows the topic name", out)
+        self.cli("topic", "new")
+        self.assertNotEqual(notify.ntfy_channel.topic(), topic)
+
+    def test_public_server_without_token(self):
+        self.cli("setup", "--topic", "agentmeister-abc")
+        url, auth, data = self.sent("Claude Code: Done", "proj", 3)
+        self.assertEqual((url, auth), ("https://ntfy.sh", None))
+        self.assertEqual(data, {"topic": "agentmeister-abc", "message": "proj", "title": "Claude Code: Done",
+                                "priority": 3, "icon": notify.ntfy_alert.AGENTMEISTER_ICON})
+
+    def test_own_server_with_token_or_login(self):
+        self.assertEqual(self.cli("setup", "--server", "https://ntfy.example.com/", "--topic", "ag")[0], 0)
+        self.assertEqual(notify.ntfy_channel.body_mode(), "full")
+        self.assertEqual(self.cli("token", stdin="tk_abc\n")[0], 0)
+        self.assertEqual(self.keys, {("agentmeister.notify", "ntfy"): "tk_abc"})
+        self.assertEqual(self.sent()[:2], ("https://ntfy.example.com", "Bearer tk_abc"))
+        self.cli("token", stdin="me:pw")
+        self.assertEqual(self.sent()[1], "Basic bWU6cHc=")
+        self.cli("forget")
+        self.assertEqual((self.keys, notify.ntfy_channel.configured(), notify.ntfy_channel.mode()), ({}, False, "off"))
+
+    def test_bad_input(self):
+        self.assertEqual(self.cli("setup", "--server", "ntfy.example.com")[0], 2)
+        self.assertEqual(self.cli("setup", "--topic", "bad topic")[0], 2)
+        self.assertFalse(notify.ntfy_channel.configured())
+        self.assertEqual(self.cli("away")[0], 1)
+
+    def test_hook_sends_only_title_and_project_to_ntfy_sh(self):
+        pin_lang(self, "en")
+        self.cli("setup", "--topic", "agentmeister-abc")
+        self.cli("always")
+        sid = "c812d4fa-e535-463a-8369-f1433fa25652"
+        payload = {"session_id": sid, "hook_event_name": "Notification", "notification_type": "permission_prompt",
+                   "message": "Claude needs your permission to use Bash", "cwd": "/work/secret-project"}
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(notify, "STATE", tmp), \
+                mock.patch.object(notify, "enabled", return_value=True), \
+                mock.patch.object(notify, "app_tab", return_value=sid), \
+                mock.patch.object(notify, "watching", return_value=True), \
+                mock.patch.object(notify, "session_title", return_value="Rotate the prod keys"), \
+                mock.patch.object(notify.telegram, "configured", return_value=False), \
+                mock.patch.object(notify.ntfy_alert, "endpoint", return_value=None), \
+                mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))), \
+                mock.patch("urllib.request.urlopen") as urlopen:
+            notify.save_state(sid, {"prompt_at": 1000})
+            self.assertEqual(notify.hook(), 0)
+        data = json.loads(urlopen.call_args.args[0].data)
+        self.assertEqual((data["title"], data["message"], data["priority"]),
+                         ("Claude Code: Permission needed", "secret-project", 4))
+
+
+class TosslingPreset(unittest.TestCase):
+    """Tossling как пресет ntfy: настройки tossling CLI или адрес вручную с токеном из Связки ключей."""
+
+    def setUp(self):
+        self.conf = notify.ntfy_alert.read_config.__globals__["CONFIG"]
+        with open(self.conf, "w"):
+            pass
+        self.keys = {}
+        patcher = mock.patch.object(notify.keychain, "find",
+                                    lambda account, service="agentmeister.notify": self.keys.get((service, account), ""))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_old_phone_mode_is_read_and_replaced(self):
+        with open(self.conf, "w") as f:
+            f.write("notify_phone=always\n")
+        self.assertEqual(notify.ntfy_alert.phone_mode(), "always")
+        notify.ntfy_alert.set_mode("away")
+        with open(self.conf) as f:
+            self.assertEqual(f.read(), "notify_tossling=away\n")
+
+    def test_endpoint_from_cli_then_manual(self):
+        cli = {"server": "https://t.example.com/", "token": "tk_room"}
+        with mock.patch.object(notify.ntfy_alert, "tossling_config", return_value=cli):
+            self.assertEqual(notify.ntfy_alert.endpoint(), ("https://t.example.com", "tk_room"))
+            self.assertEqual(notify.ntfy_alert.source(), "cli")
+            # другой сервер вручную: токен комнаты от него не годится, нужен токен публикации
+            notify.write_config(notify_tossling_server="https://other.example.com")
+            self.assertIsNone(notify.ntfy_alert.endpoint())
+            self.keys[("agentmeister.notify", "tossling")] = "tk_pub"
+            self.assertEqual(notify.ntfy_alert.endpoint(), ("https://other.example.com", "tk_pub"))
+            self.assertEqual(notify.ntfy_alert.source(), "manual")
+
+    def test_token_saved_before_129_is_still_read(self):
+        self.keys[("agentmeister.tossling", "https://t.example.com")] = "tk_old"
+        with mock.patch.object(notify.ntfy_alert, "tossling_config", return_value={}):
+            notify.write_config(notify_tossling_server="https://t.example.com")
+            self.assertEqual(notify.ntfy_alert.endpoint(), ("https://t.example.com", "tk_old"))
+
+    def test_title_only_body(self):
+        msg = notify.channels.Message("Codex", "Answer needed", "app", "Session", "Which branch?", True)
+        self.assertEqual(notify.channels.ntfy_text(msg, "title"), ("Codex: Answer needed", "app"))
+        self.assertEqual(notify.channels.ntfy_text(msg, "full"), ("Codex: Answer needed", "Session\n\nWhich branch?"))
 
 
 class HelpText(unittest.TestCase):

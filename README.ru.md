@@ -967,7 +967,7 @@ Terminal и iTerm2 (по tty, как `/restart`), а в Android Studio, VS Code 
 `mnrh-telegram`, он копируется в новое место и остается для старых версий до `telegram off`), в конфиге — только
 номер чата.
 `telegram test` — пробное сообщение, `agentmeister notify away <сек>` — через сколько секунд без
-ввода считать, что тебя нет, порог общий для Telegram и Tossling (`telegram away <сек>` делает то же),
+ввода считать, что тебя нет, порог общий для всех каналов на телефон (`telegram away <сек>` делает то же),
 `telegram always` — присылать всегда, `telegram off` — отключить и
 удалить токен. Если ты смотришь на вкладку Claude, но отошёл, уведомление придёт только в
 Telegram. Ошибки отправки пишутся в `~/.cache/mnrh/notify/errors.log`.
@@ -994,22 +994,42 @@ Mac. Нажатия принимаются только из чата, где п
 приходит с его предупреждением, но кнопка разрешает его так же, как ответ в терминале. Включай,
 только если у аккаунта Telegram есть пароль и двухэтапная проверка.
 
-Или в [Tossling](https://github.com/Tossling/tossling-server) на телефоне, через свой сервер Tossling. Для этого
-на Mac должен стоять Tossling, подключенный к этому серверу ([установка](https://tossling.github.io/docs/install/)),
-agentmeister берет сервер и токен у `tossling config`. `agentmeister notify phone away` — когда тебя нет за Mac,
-`phone always` — всегда, `phone off` — выключить, `phone test` — пробное. В настройках уведомлений Tossling подпишись
-на канал `agentmeister`. Заголовок начинается с Claude Code или Codex. Вопросы и просьбы о разрешении приходят
-с высоким приоритетом. Если сервер требует токен отправителя проекта, сохрани его в Связке ключей на Mac.
-Укажи адрес своего сервера без завершающего слеша. Команда спросит токен.
+Или в [Tossling](https://github.com/Tossling/tossling-server) на телефоне, через свой сервер Tossling. Если на Mac
+стоит Tossling, подключенный к этому серверу ([установка](https://tossling.github.io/docs/install/)), agentmeister
+берет сервер и токен у `tossling config`. `agentmeister notify tossling away` присылает, когда тебя нет за Mac,
+`tossling always` всегда, `tossling off` выключает, `tossling test` шлет пробное (`notify phone ...` это старое имя,
+оно работает). В настройках уведомлений Tossling подпишись на канал `agentmeister`. Заголовок начинается с Claude Code
+или Codex. Вопросы и просьбы о разрешении приходят с высоким приоритетом. `tossling body title` шлет только заголовок
+и проект, без названия сессии, вопроса и команды, `tossling body full` возвращает текст.
+
+Без приложения Tossling на Mac задай сервер вручную и дай
+[токен публикации проекта](https://tossling.github.io/docs/server/projects/) для канала `agentmeister`. Токен
+читается из ввода или stdin и лежит в Связке ключей (`agentmeister.notify`, аккаунт `tossling`). Токен, сохраненный
+до 1.29 под `agentmeister.tossling`, тоже читается.
 
 ```sh
-security add-generic-password -U -s agentmeister.tossling -a https://tossling.example.com -w
+agentmeister notify tossling server https://tossling.example.com
+agentmeister notify tossling token
+agentmeister notify tossling away
 ```
+
+`tossling server auto` возвращает настройки из приложения Tossling.
+
+Или в [ntfy](https://github.com/binwiederhier/ntfy), на ntfy.sh или свой сервер, с приложением ntfy для
+[Android](https://github.com/binwiederhier/ntfy-android) или [iPhone](https://github.com/binwiederhier/ntfy-ios).
+`agentmeister notify ntfy setup` выбирает случайный канал вида `agentmeister-` и 20 букв и цифр, включает отправку,
+когда тебя нет за Mac, и пишет, на какой канал подписаться. На ntfy.sh канал читает любой, кто знает его имя, поэтому
+не показывай его никому, новое имя дает `ntfy topic new`. По той же причине на ntfy.sh по умолчанию уходят только
+заголовок и проект (`ntfy body full` шлет все). Свой сервер: `ntfy setup --server https://ntfy.example.com`. Если он
+требует вход, `ntfy token` берет токен (`tk_...`) или `логин:пароль` из ввода или stdin в Связку ключей
+(`agentmeister.notify`, аккаунт `ntfy`). Чтобы push на iPhone приходил сразу, своему серверу нужен
+`upstream-base-url: "https://ntfy.sh"`. Еще есть `ntfy away | always | off | test`, `ntfy token off` и `ntfy forget`,
+он удаляет настройки и токен.
 
 С Remote Control Claude Code сам присылает push в приложение Claude на телефоне. Если сессия
 подключена (`/remote-control`, `--remote-control` или «Enable Remote Control for all sessions») и в
 `/config` включено **Push when actions required** (`inputNeededNotifEnabled`), agentmeister не шлёт
-запросы разрешения и вопросы этой сессии в Telegram и Tossling, чтобы они не приходили дважды;
+запросы разрешения и вопросы этой сессии в каналы на телефон, чтобы они не приходили дважды;
 уведомление на Mac остаётся. Подключение agentmeister видит по `CLAUDE_CODE_BRIDGE_SESSION_ID`:
 Claude Code v2.1.199 и новее задаёт его в командах хуков, пока Remote Control подключён. «Готово» и
 «ждёт тебя» уходят как раньше: о них Claude присылает push, только если сам решит. Если в `/config`

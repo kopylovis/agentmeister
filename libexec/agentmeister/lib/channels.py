@@ -4,6 +4,7 @@
 from typing import NamedTuple
 
 import ntfy_alert
+import ntfy_channel
 import presence
 import telegram
 
@@ -58,7 +59,17 @@ class Telegram(Channel):
             raise SendError(str(e)) from None
 
 
+def ntfy_text(msg, body):
+    """Заголовок и текст для ntfy. В режиме title на сервер уходит только "Агент: что случилось" и проект:
+    без названия сессии, текста вопроса и команды."""
+    title = f"{msg.agent}: {msg.head}"
+    if body == "title":
+        return title, msg.project or msg.head
+    return title, "\n\n".join(p for p in (msg.title, msg.body) if p)
+
+
 class Tossling(Channel):
+    """Пресет ntfy: сервер Tossling, канал agentmeister, сервер и токен у tossling на этом Mac или вручную."""
     name = "tossling"
     label = "Tossling"
 
@@ -69,14 +80,32 @@ class Tossling(Channel):
         return ntfy_alert.phone_mode() if self.configured() else "off"
 
     def send(self, msg):
+        title, text = ntfy_text(msg, ntfy_alert.body_mode())
         try:
-            ntfy_alert.publish(ntfy_alert.AGENTMEISTER_TOPIC, "\n\n".join(p for p in (msg.title, msg.body) if p),
-                               title=f"{msg.agent}: {msg.head}", priority=4 if msg.urgent else 3)
+            ntfy_alert.publish(ntfy_alert.AGENTMEISTER_TOPIC, text, title=title, priority=4 if msg.urgent else 3)
         except ntfy_alert.AlertError as e:
             raise SendError(str(e)) from None
 
 
-ALL = (Telegram(), Tossling())
+class Ntfy(Channel):
+    name = "ntfy"
+    label = "ntfy"
+
+    def configured(self):
+        return ntfy_channel.configured()
+
+    def mode(self):
+        return ntfy_channel.mode()
+
+    def send(self, msg):
+        title, text = ntfy_text(msg, ntfy_channel.body_mode())
+        try:
+            ntfy_channel.send(title, text, priority=4 if msg.urgent else 3)
+        except ntfy_alert.AlertError as e:
+            raise SendError(str(e)) from None
+
+
+ALL = (Telegram(), Tossling(), Ntfy())
 
 
 def by_name(name):
