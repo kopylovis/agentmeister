@@ -550,12 +550,28 @@ struct Sidebar: View {
 /// Низ боковой панели: режимы капсулами и состояние host-run.
 struct SidebarFooter: View {
     @EnvironmentObject var backend: Backend
+    @ObservedObject private var updates = Updates.shared
     @AppStorage("layout.modesOpen") private var modesOpen = true
 
     var l: L { L(backend.state.lang) }
 
     /// Короткое описание режима под его именем.
     private func modeHint(_ key: String) -> String { Self.hint(key, l) }
+
+    /// Строка под режимами: значок, текст и стрелка, нажимается целиком.
+    private func footerRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        HStack(spacing: 8) {
+            content()
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Ink.faint)
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(Ink.muted)
+        .lineLimit(1)
+        .padding(.horizontal, 6)
+        .frame(height: 28)
+        .contentShape(Rectangle())
+    }
 
     /// То же описание для узкой панели проектов (RailStatusButton).
     static func hint(_ key: String, _ l: L) -> String {
@@ -612,17 +628,44 @@ struct SidebarFooter: View {
             }
             .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             }
-            if let h = backend.state.hostRun {
-                HStack(spacing: 8) {
-                    GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
-                    Text(h.running
-                         ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
-                         : l.t("host-run не запущен", "host-run isn't running"))
+            VStack(spacing: 0) {
+                if let h = backend.state.hostRun {
+                    // вся строка ведет в настройки host-run со списком команд
+                    SettingsLink {
+                        footerRow {
+                            GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
+                            Text(h.running
+                                 ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
+                                 : l.t("host-run не запущен", "host-run isn't running"))
+                        }
+                    }
+                    .buttonStyle(.hover(8, .overlay))
+                    .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
+                    .help(l.t("Настройки host-run и список команд", "host-run settings and its command list"))
                 }
-                .font(.system(size: 12))
-                .foregroundStyle(Ink.muted)
-                .padding(.top, 4)
+                // в демо Sparkle не запущен, строка обновлений там все равно видна для снимка
+                if updates.available || Demo.active {
+                    if let version = updates.ready {
+                        Button { updates.installNow() } label: {
+                            footerRow {
+                                Image(systemName: "arrow.down.circle.fill").foregroundStyle(Color.accentColor)
+                                Text(l.t("Перезапустить и обновить до \(version)", "Restart to update to \(version)"))
+                            }
+                        }
+                        .buttonStyle(.hover(8, .overlay))
+                    } else {
+                        Button { updates.check() } label: {
+                            footerRow {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                                Text(l.t("Проверить обновления…", "Check for Updates…"))
+                            }
+                        }
+                        .buttonStyle(.hover(8, .overlay))
+                    }
+                }
             }
+            .padding(.top, 2)
+            .padding(.horizontal, -6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(.snappy(duration: 0.28), value: modesOpen)
