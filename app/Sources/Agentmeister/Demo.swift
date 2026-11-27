@@ -52,6 +52,39 @@ enum Demo {
         return (try? JSONDecoder().decode([Tab].self, from: data)) ?? []
     }
 
+    /// Сцена subtasks (и subtasks-list с открытым списком закончившихся): у выбранной вкладки фоновые агенты
+    /// и команды, идущие и закончившиеся, чтобы проверить ряд подзадач без настоящей сессии.
+    static var subtasks: Bool { active && scene.hasPrefix("subtasks") }
+
+    static func subAgents() -> [SubAgent] {
+        let now = Date()
+        return [
+            SubAgent(id: "demo-a1", description: "Audit the webhook retry policy", type: "Explore", file: "", modified: now, finished: false),
+            SubAgent(id: "demo-a2", description: "Find callers of the old ledger API", type: "Explore", file: "",
+                     modified: now.addingTimeInterval(-240), finished: true),
+        ]
+    }
+
+    static func shells() -> [BackgroundShell] {
+        let now = Date()
+        func shell(_ id: String, _ text: String, _ status: String?, _ code: Int?, _ ago: Double) -> BackgroundShell {
+            BackgroundShell(id: id, description: text, command: text, output: nil, started: now.addingTimeInterval(-ago - 600),
+                            status: status, exitCode: code, finishedAt: status == nil ? nil : now.addingTimeInterval(-ago))
+        }
+        return [
+            shell("demo-s1", "Merge PR 460 when its new CI is green", nil, nil, 0),
+            shell("demo-s2", "Merge PRs 464 and 465 when green", nil, nil, 0),
+            shell("demo-s3", "Merge PR 459 when its CI is green", nil, nil, 0),
+            shell("demo-s4", "Resume merging remaining mobile and monitoring PRs", nil, nil, 0),
+            shell("demo-s5", "Merge PR 425 when its CI is green", nil, nil, 0),
+            shell("demo-s6", "Merge security, scripts, generator and pipeline PRs", nil, nil, 0),
+            shell("demo-s7", "Run check.sh and full pytest on current master", "completed", 0, 660),
+            shell("demo-s8", "Merge PR 462 when its CI is green", "completed", 0, 120),
+            shell("demo-s9", "Merge orphaned PRs as their CI turns green", "killed", nil, 300),
+            shell("demo-s10", "Merge mobile and monitoring PRs as CI turns green", "failed", 1, 420),
+        ]
+    }
+
     static func screenPath(_ name: String) -> String? {
         dir.map { ($0 as NSString).appendingPathComponent(name) }
     }

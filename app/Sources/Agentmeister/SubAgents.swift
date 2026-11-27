@@ -12,6 +12,23 @@ struct SubAgent: Identifiable, Equatable {
 }
 
 enum SubAgents {
+    private static let lock = NSLock()
+    /// Агенты, которых убрали из ряда подзадач.
+    nonisolated(unsafe) private static var hidden: Set<String> = []
+
+    /// Убирает агента из ряда подзадач до перезапуска приложения.
+    static func hide(_ id: String) {
+        lock.lock()
+        hidden.insert(id)
+        lock.unlock()
+    }
+
+    private static func isHidden(_ id: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return hidden.contains(id)
+    }
+
     /// Агенты сессии, которые идут сейчас или закончили за последние 15 минут, новые первыми.
     static func list(_ sessionId: String) -> [SubAgent] {
         guard let path = SessionContext.file(sessionId) else { return [] }
@@ -24,6 +41,7 @@ enum SubAgents {
             guard let modified = (try? fm.attributesOfItem(atPath: file))?[.modificationDate] as? Date,
                   now.timeIntervalSince(modified) < 15 * 60 else { continue }
             let id = String(name.dropFirst(6).dropLast(6))
+            guard !isHidden(id) else { continue }
             let meta = (fm.contents(atPath: (dir as NSString).appendingPathComponent("agent-\(id).meta.json"))
                 .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }) ?? [:]
             // без метки окончания агент считается идущим, только пока пишет: брошенный упавшей сессией не висит
@@ -211,6 +229,11 @@ struct SubAgentSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 8) {
+                Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 22, height: 22) }
+                    .buttonStyle(.hoverCircle())
+                    .keyboardShortcut(.cancelAction)
+                    .help(l.t("Закрыть (Esc)", "Close (Esc)"))
+                    .accessibilityLabel(l.t("Закрыть", "Close"))
                 Image(systemName: "sparkles").foregroundStyle(Ink.faint).padding(.top, 2)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
@@ -220,9 +243,6 @@ struct SubAgentSheet: View {
                     if let log { stats(log) }
                 }
                 Spacer()
-                Button(l.t("Готово", "Done")) { dismiss() }
-                    .buttonStyle(PillStyle())
-                    .keyboardShortcut(.cancelAction)
             }
             .padding(14)
             Divider()
