@@ -87,7 +87,7 @@ struct SubtaskRow: View {
                     SubtaskChip(tab: tab, selected: tab.id == workspace.selected)
                 }
                 ForEach(runningAgents) { agent in
-                    SubAgentChip(agent: agent, l: l)
+                    SubAgentChip(agent: agent, l: l) { remove(agent: agent.id) }
                 }
                 ForEach(runningShells) { shell in
                     ShellChip(shell: shell, l: l) { remove(shell: shell.id) }
