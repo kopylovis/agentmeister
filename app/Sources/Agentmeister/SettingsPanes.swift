@@ -180,8 +180,8 @@ struct ModesPane: View {
             return l.t("Сообщения на русском и других нелатинских языках переводятся через OpenRouter или Google AI Studio, агент получает английский текст рядом с оригиналом и отвечает на твоем языке. Слэш-команды, длинные вставки и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
                        "Messages in Russian and other non-Latin languages are translated through OpenRouter or Google AI Studio, and the agent gets the English text next to the original and replies in your language. Slash commands, long pastes and anything that looks like keys, tokens or proxy links are not sent.")
         case "buildlog":
-            return l.t("Длинный вывод сборок и тестов Claude Code видит выжимкой: упавшие задачи и тесты, ошибки и предупреждения со строками вокруг, итоговые строки и путь к полному логу.",
-                       "Claude Code sees long build and test output as a digest: failed tasks and tests, errors and warnings with the lines around them, the totals and the path to the full log.")
+            return l.t("Claude Code и Codex получают ошибки и итог сборки вместе с путем к полному логу. В Codex команда сборки возвращает свой код завершения.",
+                       "Claude Code and Codex receive build errors and a summary with the path to the full log. In Codex the build keeps its exit code.")
         default:
             return l.t("Работает вместе с кнопкой \"Не спать\" на вкладке сессии. Кнопка не дает Mac уснуть, пока крышка открыта, а lid держит его и с закрытой крышкой. Отпускает через 2 минуты после последней такой сессии или при 15% батареи.",
                        "Works together with the Stay awake button on a session tab. The button keeps the Mac from sleeping while the lid is open, and lid keeps it awake with the lid closed too. Lets go 2 minutes after the last such session or at 15% battery.")

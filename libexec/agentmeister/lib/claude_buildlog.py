@@ -11,9 +11,11 @@ PostToolUse приходит только после вызова с кодом 
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -458,6 +460,82 @@ def tab_child():
     return 0
 
 
+def codex_build_command(cmd, sid):
+    # Insert the runner directly before the build executable. Leave pipes, redirects,
+    # background jobs and shell scripts alone: their consumers need the original bytes.
+    if not isinstance(cmd, str) or any(c in cmd for c in "\n\r|;<>`()#"):
+        return None
+    parts = cmd.split("&&")
+    if len(parts) > 2:
+        return None
+    try:
+        if len(parts) == 2:
+            cd = shlex.split(parts[0])
+            if cd[:1] != ["cd"] or len(cd) != 2:
+                return None
+        shlex.split(parts[-1])
+    except ValueError:
+        return None
+    if any("&" in part for part in parts):
+        return None
+    invocation = parts[-1]
+    prefix = re.match(r"\s*(?:[A-Za-z_]\w*=[\w./:+-]+\s+)*", invocation).end()
+    command = invocation[prefix:]
+    first = re.match(r"[\w./+-]+(?=\s|$)", command)
+    found = find_build(command)
+    if not first or not found or os.path.basename(first.group()) != found[1]:
+        return None
+    runner = shlex.join([sys.executable, os.path.abspath(__file__), "buildlog-run", sid or "none"])
+    return cmd[:len(cmd) - len(command)] + runner + " " + command
+
+
+def run_build(argv, sid):
+    # Capture before Codex truncates the tool result. The shell still gets the build's exit status.
+    if sys.stdout.isatty():
+        os.execvp(argv[0], argv)
+    directory = os.path.dirname(log_path(sid))
+    try:
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        log = tempfile.NamedTemporaryFile(dir=directory, suffix=".log", delete=False)
+    except OSError:
+        # Workspace-write sandboxes can still write private logs in the temporary directory.
+        try:
+            log = tempfile.NamedTemporaryFile(prefix="agentmeister-build-", suffix=".log", delete=False)
+        except OSError:
+            os.execvp(argv[0], argv)
+    keep = False
+    try:
+        with log:
+            try:
+                result = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT)
+            except FileNotFoundError:
+                print(f"{argv[0]}: command not found", file=sys.stderr)
+                return 127
+            except PermissionError as e:
+                print(e, file=sys.stderr)
+                return 126
+        size = os.path.getsize(log.name)
+        compact = None
+        if size > READ_LIMIT:
+            sample = read_big(log.name, size)
+        else:
+            with open(log.name, encoding="utf-8", errors="replace") as data:
+                sample = data.read()
+        if is_long(sample):
+            compact = shrink(sample, log.name, failed=result.returncode != 0)
+        if compact:
+            keep = True
+            print(compact)
+            prune()
+        else:
+            with open(log.name, "rb") as data:
+                shutil.copyfileobj(data, sys.stdout.buffer)
+        return result.returncode if result.returncode >= 0 else 128 - result.returncode
+    finally:
+        if not keep:
+            os.unlink(log.name)
+
+
 def hook():
     try:
         payload = json.load(sys.stdin)
@@ -465,10 +543,19 @@ def hook():
         return 0
     if not isinstance(payload, dict) or not enabled():
         return 0
+    codex = "--codex" in sys.argv or "turn_id" in payload
     if payload.get("hook_event_name") == "PreToolUse":
         inp = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
         if iterm_target() and tab_label(str(inp.get("command") or "")):
             spawn_tab(payload)
+        if codex:
+            if payload.get("tool_name") != "Bash":
+                return 0
+            command = codex_build_command(inp.get("command"), payload.get("session_id"))
+            if command:
+                print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow",
+                                                         "updatedInput": dict(inp, command=command)}}))
+            return 0
         try:
             new = pre_decide(payload)
         except Exception:
@@ -483,6 +570,8 @@ def hook():
             tab_hook(payload, target)
         except OSError:
             pass
+    if codex:
+        return 0
     try:
         out = decide(payload)
     except Exception:
@@ -508,6 +597,8 @@ def usage():
 
 def main():
     args = sys.argv[1:]
+    if args[:1] == ["buildlog-run"] and len(args) >= 3:
+        return run_build(args[2:], args[1])
     if args[:1] == ["buildlog-hook"]:
         return hook()
     if args[:1] == ["buildlog-tab"]:

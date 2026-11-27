@@ -63,7 +63,7 @@ help() {
   agentmeister humanize            правила письма без признаков нейросети; check <файл>, rules
   agentmeister translate           перевод промптов на английский; key, provider, check, log
   agentmeister guard               вопрос перед чтением ключей и опасными командами; test, log
-  agentmeister buildlog            выжимка длинного вывода сборок для Claude; test <файл>
+  agentmeister buildlog            выжимка длинного вывода сборок для Claude Code и Codex; test <файл>
   agentmeister notify              уведомления, когда Claude ждет; after <сек>, test, telegram
   agentmeister lid                 не засыпать с закрытой крышкой; setup, release, remove
 

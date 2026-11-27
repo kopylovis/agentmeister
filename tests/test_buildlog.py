@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -36,6 +37,35 @@ class Kind(unittest.TestCase):
         for cmd in ("ls -la", "git log", "npm install", "npm run lint", "swift --version", "cat build.gradle",
                     "echo ./gradlew build", "python3 script.py", "grep -r make .", "yarn add react", ""):
             self.assertIsNone(b.build_kind(cmd), cmd)
+
+
+class CodexBuild(unittest.TestCase):
+    def test_short_and_failed_long_builds_keep_their_output_and_exit_code(self):
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            make = root / "gradlew"
+            make.write_text("#!/bin/sh\ncat output\nexit 23\n")
+            make.chmod(0o700)
+            for original, long in (("one line\n", False), (fixture("gradle-failure.log"), True)):
+                (root / "output").write_text(original)
+                cmd = b.codex_build_command('cd . && ./gradlew test', "session")
+                result = subprocess.run(["/bin/sh", "-c", cmd], cwd=tmp, capture_output=True, text=True,
+                                        env=dict(os.environ, HOME=tmp))
+                self.assertEqual(result.returncode, 23, result.stderr)
+                logs = list((root / ".cache/mnrh/logs/session").glob("*.log"))
+                if long:
+                    self.assertLess(len(result.stdout), len(original))
+                    self.assertIn("BUILD FAILED", result.stdout)
+                    self.assertEqual(logs[0].read_text(), original)
+                else:
+                    self.assertEqual(result.stdout, original)
+                    self.assertFalse(logs)
+
+    def test_pipes_and_nonbuilds_pass_through(self):
+        for command in ("make test | tail", "make > result", "make &", "echo make", "make; false", "cd src && ls"):
+            with self.subTest(command=command):
+                self.assertIsNone(b.codex_build_command(command, "session"))
 
 
 class Shrink(unittest.TestCase):
