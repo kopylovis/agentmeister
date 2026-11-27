@@ -234,7 +234,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     @EnvironmentObject var backend: Backend
     @State private var data: SettingsData?
-    @AppStorage("settingsSection") private var section = SettingsSection.proxy.rawValue
+    @AppStorage("settingsSection") private var section = SettingsSection.general.rawValue
 
     var l: L { L(backend.state.lang) }
 
@@ -629,6 +629,9 @@ struct GeneralPane: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage(Appearance.key) private var appearance = Appearance.system.rawValue
     @AppStorage(MenuBarPrefs.showKey) private var showMenuBar = true
+    @AppStorage(MenuBarPrefs.keepRunningKey) private var keepRunning = false
+    @AppStorage(BrewSync.enabledKey) private var brewSync = true
+    @ObservedObject private var updates = Updates.shared
 
     var l: L { L(backend.state.lang) }
 
@@ -677,6 +680,34 @@ struct GeneralPane: View {
                         l.t("Значок показывает, работает ли агент или ждет ответа. В панели открытые сессии, proxy, host-run и новая сессия.",
                             "The icon shows whether an agent is working or waiting for you. Its panel lists open sessions, proxy, host-run and starts a new session.")) {
                 HeaderSwitch(label: l.t("Показывать в строке меню", "Show in menu bar"), on: showMenuBar) { showMenuBar = $0 }
+            }
+            Divider()
+            SettingsRow(l.t("Оставаться в строке меню после закрытия окна", "Keep running in the menu bar when the window closes"),
+                        l.t("Иначе закрытое окно завершает приложение и всех агентов во вкладках. Окно вернет значок в строке меню или Dock.",
+                            "Otherwise closing the window quits the app and every agent in its tabs. The menu bar icon or the Dock brings the window back.")) {
+                HeaderSwitch(label: l.t("Оставаться в строке меню", "Keep running in the menu bar"), on: keepRunning && showMenuBar) { keepRunning = $0 }
+                    .disabled(!showMenuBar)
+            }
+        }
+        if updates.available {
+            GlassSection {
+                Text(l.t("Обновления", "Updates")).font(.system(size: 13, weight: .semibold))
+                SettingsRow(l.t("Проверять обновления", "Check for updates"),
+                            l.t("Раз в день, без этого только из меню приложения.", "Once a day; without it, only from the app menu.")) {
+                    HeaderSwitch(label: l.t("Проверять обновления", "Check for updates"), on: updates.autoCheck) { updates.autoCheck = $0 }
+                }
+                Divider()
+                SettingsRow(l.t("Скачивать и ставить при выходе", "Download and install on quit"),
+                            l.t("Иначе Agentmeister спросит, ставить ли новую версию.", "Otherwise Agentmeister asks before installing a new version.")) {
+                    HeaderSwitch(label: l.t("Ставить обновления", "Install updates"), on: updates.autoInstall) { updates.autoInstall = $0 }
+                        .disabled(!updates.autoCheck)
+                }
+                Divider()
+                SettingsRow(l.t("Обновлять agentmeister и promptsill в Homebrew", "Upgrade agentmeister and promptsill in Homebrew"),
+                            l.t("После обновления приложения, если они стоят из kopylovis/tap. Лог в ~/Library/Logs/Agentmeister/brew-upgrade.log.",
+                                "After the app updates, if they're installed from kopylovis/tap. Log in ~/Library/Logs/Agentmeister/brew-upgrade.log.")) {
+                    HeaderSwitch(label: l.t("Обновлять Homebrew", "Upgrade Homebrew"), on: brewSync) { brewSync = $0 }
+                }
             }
         }
     }

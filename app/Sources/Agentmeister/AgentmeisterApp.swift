@@ -22,7 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         BrewSync.start()
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Закрытое окно завершает приложение, если в Настройках не включено "Оставаться в строке меню".
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { !MenuBarPrefs.keepsRunning }
 
     /// Выход останавливает всех агентов. Если кто-то из них может сейчас работать, сначала спрашиваем.
     /// У Claude Code это статус busy из реестра. Codex статуса не пишет, поэтому занятой считается любая
