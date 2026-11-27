@@ -279,6 +279,17 @@ struct ShellChip: View {
         .help(l.t("Фоновая команда этой сессии. Клик показывает ее вывод.", "A background command of this session. Click to see its output.")
               + "\n" + shell.command)
         .sheet(isPresented: $open) { ShellSheet(shell: shell, l: l, remove: remove) }
+        .contextMenu {
+            Button(l.t("Открыть вывод", "Open output")) { open = true }
+            if shell.status == nil {
+                Button(l.t("Остановить", "Stop")) {
+                    let target = shell
+                    Task.detached(priority: .userInitiated) { _ = BackgroundShells.stop(target) }
+                }
+            } else {
+                Button(l.t("Убрать из ряда", "Remove from the row"), action: remove)
+            }
+        }
     }
 }
 

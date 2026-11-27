@@ -183,6 +183,8 @@ enum SubAgents {
 struct SubAgentChip: View {
     let agent: SubAgent
     let l: L
+    /// Убирает закончившегося агента из ряда.
+    var remove: () -> Void = {}
     @State private var hover = false
     @State private var open = false
 
@@ -211,6 +213,13 @@ struct SubAgentChip: View {
         .help(l.t("Агент внутри этой сессии (\(agent.type)). Клик показывает его переписку.",
                   "An agent inside this session (\(agent.type)). Click to see its transcript."))
         .sheet(isPresented: $open) { SubAgentSheet(agent: agent, l: l) }
+        // остановить агента снаружи нельзя: Claude Code не дает для этого способа, только сама сессия
+        .contextMenu {
+            Button(l.t("Открыть переписку", "Open transcript")) { open = true }
+            if agent.finished {
+                Button(l.t("Убрать из ряда", "Remove from the row"), action: remove)
+            }
+        }
     }
 }
 
