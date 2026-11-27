@@ -166,7 +166,7 @@ def notice_hook(install, rename_rules=()):
                          f"transcripts are kept {days} days (cleanupPeriodDays, your value)")))
 
 
-SETUP_USAGE = f"""agentmeister setup [--country KZ] [--only <имя>]
+SETUP_USAGE = f"""agentmeister setup [--country DE] [--only <имя>]
     поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh, MCP-сервер agentmeister
     и настроить прокси, если он еще не настроен. --country и --only уходят в agentmeister proxy setup
 agentmeister setup --remove    убрать настройку Claude Code
@@ -189,7 +189,7 @@ def setup_args(args):
             print(f"agentmeister setup: не знаю {a}\n\n{SETUP_USAGE}", file=sys.stderr)
             return None
     if opts["country"] and not re.match(r"^[A-Za-z]{2}$", opts["country"]):
-        print("agentmeister setup: --country ждет код страны из двух букв, например KZ", file=sys.stderr)
+        print("agentmeister setup: --country ждет код страны из двух букв, например DE", file=sys.stderr)
         return None
     return opts
 

@@ -175,19 +175,19 @@ def proxy_step(country="", only=""):
                                   f"Change it: agentmeister proxy setup --country {country.upper()}"))
         return "done"
     if not sys.stdin.isatty():
-        print(f"{WARN} " + tr("прокси не настроен, не терминал. Настроить: agentmeister proxy setup --country KZ",
-                              "the proxy isn't set up and this isn't a terminal. Set it up: agentmeister proxy setup --country KZ"))
+        print(f"{WARN} " + tr("прокси не настроен, не терминал. Настроить: agentmeister proxy setup --country DE",
+                              "the proxy isn't set up and this isn't a terminal. Set it up: agentmeister proxy setup --country DE"))
         return None
-    print(tr("Сессии с флагом -x подключаются через сервер из твоей подписки 3x-ui.",
-             "Sessions with -x connect through a server from your 3x-ui subscription."))
+    print(tr("Сессии с флагом -x подключаются через сервер из твоей подписки.",
+             "Sessions with -x connect through a server from your subscription."))
     if ask(tr("Настроить прокси сейчас?", "Set up the proxy now?"),
            [("yes", tr("Да", "Yes"), "yд"), ("no", tr("Пропустить", "Skip"), "nн")]) != "yes":
         print(f"{WARN} " + tr("прокси пропущен. Настроить потом: agentmeister proxy setup",
                               "proxy skipped. Set it up later: agentmeister proxy setup"))
         return "skipped"
     if not country:
-        country = input(tr("Страна выхода, которую проверять при запуске, например KZ (Enter, не проверять): ",
-                           "Exit country to check at start, e.g. KZ (Enter to skip the check): ")).strip()
+        country = input(tr("Страна выхода, которую проверять при запуске, например DE (Enter, не проверять): ",
+                           "Exit country to check at start, e.g. DE (Enter to skip the check): ")).strip()
     code = proxy.setup((["--country", country] if country else []) + (["--only", only] if only else []))
     return "done" if code == 0 else "failed"
 

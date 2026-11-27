@@ -391,7 +391,7 @@ It runs on [mihomo](https://wiki.metacubex.one) (`brew install mihomo`), which s
 and Hysteria2 and uses the first live server from the subscription. One-time setup:
 
 ```bash
-agentmeister proxy setup 'https://…/sub/…' --country KZ   # subscription link, the same one Happ uses
+agentmeister proxy setup 'https://…/sub/…' --country DE   # Clash, mihomo or v2ray subscription link
 agentmeister proxy test                                    # exit IP and country, direct and through the server
 ```
 
@@ -649,8 +649,8 @@ translation, keeps your wording when the two differ, and replies in your languag
 mode 600 and picks the provider by its shape.
 
 Google AI Studio works too (`translate provider google`, model `gemini-3.1-flash-lite`). It is free within
-its limits, but on the free tier Google may use requests to improve its models, from Russia it answers only
-through the proxy, and it sometimes takes 7-15 seconds. When an OpenRouter key is also saved, Google gets
+its limits, but on the free tier Google may use requests to improve its models, where the Gemini API isn't available
+(Russia, for example) it answers only through the proxy, and it sometimes takes 7-15 seconds. When an OpenRouter key is also saved, Google gets
 4 seconds and OpenRouter translates if it is late.
 
 Only messages with non-Latin letters leave the Mac. Slash commands, texts over 4000 characters and anything
