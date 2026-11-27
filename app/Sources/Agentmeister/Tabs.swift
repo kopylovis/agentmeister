@@ -600,6 +600,10 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
             NSSound.beep()
             return
         }
+        guard TranslateKey.saved else {
+            TranslateKey.askToSet()
+            return
+        }
         let fm = FileManager.default
         try? fm.createDirectory(atPath: Workspace.translateDir, withIntermediateDirectories: true)
         for suffix in [".status.json", ".cancel"] { try? fm.removeItem(atPath: editFile(suffix)) }
@@ -1619,6 +1623,37 @@ enum BrowserSettings {
     }
 }
 
+/// Ключ переводчика для ⌘⇧T: файл в ~/.config/mnrh, как его сохраняет agentmeister translate key, или переменная
+/// окружения. Без ключа перевод не начнется, вместо этого окно с переходом в настройки.
+@MainActor
+enum TranslateKey {
+    static var saved: Bool {
+        let env = LoginEnvironment.shared
+        let config = env["XDG_CONFIG_HOME"].map { ($0 as NSString).appendingPathComponent("mnrh") }
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent(".config/mnrh")
+        let files = ["openrouter-key", "gemini-key"].map { (config as NSString).appendingPathComponent($0) }
+        let inFile = files.contains { path in
+            (try? String(contentsOfFile: path, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        return inFile || ["OPENROUTER_API_KEY", "GEMINI_API_KEY"].contains { env[$0]?.isEmpty == false }
+    }
+
+    static func askToSet() {
+        let l = L(Backend.main?.state.lang ?? "ru")
+        let alert = NSAlert()
+        alert.messageText = l.t("Нет ключа переводчика", "No translator key")
+        alert.informativeText = l.t("Чтобы переводить строку ввода, нужен ключ OpenRouter или Google AI Studio. Его сохраняют в Настройки → Режимы → translate.",
+                                    "Translating the input line needs an OpenRouter or Google AI Studio key. Save it in Settings → Modes → translate.")
+        alert.addButton(withTitle: l.t("Открыть настройки", "Open Settings"))
+        alert.addButton(withTitle: l.t("Отмена", "Cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        UserDefaults.standard.set("modes", forKey: "settingsSection")
+        UserDefaults.standard.set("translate", forKey: "modes.selected")
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        NSApp.activate()
+    }
+}
+
 /// Терминал вкладки. Отличается от SwiftTerm одним: ссылки http и https из вкладки через proxy может открыть
 /// во встроенном браузере. Во вкладке входа так всегда, пока включен браузер для агента. В остальных вкладках
 /// место берется из настройки, по умолчанию приложение спрашивает (LinkPlaceSheet).
@@ -1655,7 +1690,10 @@ final class AppTerminalView: LocalProcessTerminalView {
         image.addRepresentation(rep)
         let view = NSImageView(frame: bounds)
         view.image = image
-        view.imageScaling = .scaleAxesIndependently
+        // окно могут растянуть, пока идет перевод: снимок не тянется, а стоит в своем размере у верхнего левого
+        // угла, остальное фон терминала. Через секунду-две Claude Code перерисует экран под новый размер
+        view.imageScaling = .scaleNone
+        view.imageAlignment = .alignTopLeft
         view.autoresizingMask = [.width, .height]
         view.wantsLayer = true
         // фон терминала рисует контейнер, а не сам SwiftTerm, и снимок вне букв прозрачен. Без своего фона
