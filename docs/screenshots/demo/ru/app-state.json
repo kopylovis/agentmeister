@@ -1,0 +1,175 @@
+{
+ "version": "1.23.0",
+ "lang": "ru",
+ "langSetting": "ru",
+ "projectsDir": "/Users/demo/Developer",
+ "projectsDirs": [
+  "/Users/demo/Developer"
+ ],
+ "generatedAt": 1795777214.557962,
+ "errors": {},
+ "projects": [
+  {
+   "name": "atlas-web",
+   "path": "/Users/demo/Developer/atlas-web"
+  },
+  {
+   "name": "infra",
+   "path": "/Users/demo/Developer/infra"
+  },
+  {
+   "name": "ledger-api",
+   "path": "/Users/demo/Developer/ledger-api"
+  },
+  {
+   "name": "orbit-ios",
+   "path": "/Users/demo/Developer/orbit-ios"
+  }
+ ],
+ "sessions": [
+  {
+   "id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000001",
+   "cwd": "/Users/demo/Developer/ledger-api",
+   "title": "Повторы с паузой для платежных вебхуков",
+   "branch": "webhook-retries",
+   "mtime": 1795777094.557962,
+   "size": 2400000,
+   "running": true,
+   "cwdExists": true,
+   "agent": "claude"
+  },
+  {
+   "id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000002",
+   "cwd": "/Users/demo/Developer/ledger-api",
+   "title": "Ключи идемпотентности для POST /transfers",
+   "branch": "main",
+   "mtime": 1795766414.557962,
+   "size": 5100000,
+   "running": false,
+   "cwdExists": true,
+   "agent": "claude"
+  },
+  {
+   "id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000003",
+   "cwd": "/Users/demo/Developer/atlas-web",
+   "title": "Темная тема для страницы оплаты",
+   "branch": "billing-dark",
+   "mtime": 1795776614.557962,
+   "size": 1300000,
+   "running": true,
+   "cwdExists": true,
+   "agent": "claude"
+  },
+  {
+   "id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000004",
+   "cwd": "/Users/demo/Developer/atlas-web",
+   "title": "Починить нестабильный e2e-тест оплаты",
+   "branch": "main",
+   "mtime": 1795683614.557962,
+   "size": 3800000,
+   "running": false,
+   "cwdExists": true,
+   "agent": "claude"
+  },
+  {
+   "id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000005",
+   "cwd": "/Users/demo/Developer/infra",
+   "title": "План перехода на Postgres 17",
+   "branch": "main",
+   "mtime": 1795604414.557962,
+   "size": 900000,
+   "running": false,
+   "cwdExists": true,
+   "agent": "claude"
+  },
+  {
+   "id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000006",
+   "cwd": "/Users/demo/Developer/orbit-ios",
+   "title": "Виджет ближайших запусков",
+   "branch": "widget",
+   "mtime": 1795345214.557962,
+   "size": 7200000,
+   "running": false,
+   "cwdExists": true,
+   "agent": "claude"
+  }
+ ],
+ "codexSessions": [
+  {
+   "id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000007",
+   "cwd": "/Users/demo/Developer/orbit-ios",
+   "title": "Снимочные тесты списка запусков",
+   "branch": "snapshots",
+   "mtime": 1795776914.557962,
+   "size": 1100000,
+   "running": true,
+   "cwdExists": true,
+   "agent": "codex",
+   "created": 1795774214.557962
+  }
+ ],
+ "live": [],
+ "proxy": {
+  "configured": true,
+  "running": true,
+  "port": 17890,
+  "current": "main",
+  "blocked": false,
+  "exit": "KZ",
+  "protocol": "vless",
+  "ip": "203.0.113.24",
+  "node": "kz-almaty-1",
+  "defaultRoute": "proxy",
+  "sessions": 3,
+  "defaultSubscription": null,
+  "subscriptions": [
+   {
+    "name": "main",
+    "port": 17892,
+    "country": "KZ",
+    "exit": "KZ",
+    "inCascade": true,
+    "blocked": false
+   },
+   {
+    "name": "backup",
+    "port": 17891,
+    "country": "KZ",
+    "exit": "KZ",
+    "inCascade": true,
+    "blocked": false
+   },
+   {
+    "name": "work",
+    "port": 17893,
+    "country": "SE",
+    "exit": "SE",
+    "inCascade": false,
+    "blocked": false
+   }
+  ]
+ },
+ "modes": {
+  "humanize": true,
+  "translate": true,
+  "guard": true,
+  "buildlog": true,
+  "notify": true,
+  "lid": false,
+  "alias": true
+ },
+ "hostRun": {
+  "running": true,
+  "commands": 4,
+  "log": "/Users/demo/.local/state/mnrh/host-run/host-run.log"
+ },
+ "signedIn": {
+  "claude": true,
+  "codex": true
+ },
+ "retentionDays": 30,
+ "models": {
+  "claude": "opus",
+  "codex": "gpt-5.5"
+ }
+}

@@ -1,5 +1,6 @@
 """Данные демо для скриншотов README: выдуманные проекты, сессии, подписки proxy и текст во вкладках.
-Пишет docs/screenshots/demo/*.json и *.txt. Приложение читает их в отладочной сборке с --demo (Demo.swift)."""
+Пишет docs/screenshots/demo/*.json и *.txt на английском и docs/screenshots/demo/ru/ на русском. Приложение читает
+их в отладочной сборке с --demo, русские с --demo-lang ru (Demo.swift)."""
 import importlib.machinery
 import importlib.util
 import json
@@ -15,7 +16,13 @@ NOW = time.time()
 
 E = "\x1b["
 R, B, DIM = E + "0m", E + "1m", E + "2m"
+LANG = "en"
 W = 104  # столько колонок у терминала во вкладке демо: длиннее терминал перенес бы строку, короче линия не дойдет до края
+
+
+def t(en, ru):
+    """Текст демо на языке LANG: README на английском и README.ru.md снимаются каждый на своем."""
+    return ru if LANG == "ru" else en
 
 
 def bg(rgb):
@@ -110,7 +117,7 @@ def sill(project, branch, model, ctx, five_hour, week, proxy, detail="vless 203.
                             "seven_day": {"used_percentage": week, "resets_at": PS_NOW + 4 * 86400}},
             "prompt_cache": {"caching_observed": True, "warm": True, "ttl": "5m", "expires_at": PS_NOW + 212,
                              "requests": 14}}
-    PS.OPTS.update({"lang": "en", "ascii": False, "color": True, "links": False})
+    PS.OPTS.update({"lang": LANG, "ascii": False, "color": True, "links": False})
     PS.cached = lambda name, ttl, fn, background=False: demo[name.split("-")[0]]
     PS.git_op = lambda git_dir: None
     PS.badges = lambda d, cwd, now=None: []
@@ -144,9 +151,11 @@ def status(*parts, proxy):
 def screens():
     return {
         "claude.txt":
-            title("Webhook retries") + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/ledger-api{R}\n\n"
-            + ask("Add retry with backoff to the payment webhook handler and cover it with tests")
-            + f"{DOT} I'll check how webhook delivery works now, then wrap the provider call.\n\n"
+            title(t("Webhook retries", "Повторы вебхуков")) + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/ledger-api{R}\n\n"
+            + ask(t("Add retry with backoff to the payment webhook handler and cover it with tests",
+                    "Добавь повторы с паузой в обработчик платежных вебхуков и покрой их тестами"))
+            + f"{DOT} " + t("I'll check how webhook delivery works now, then wrap the provider call.",
+                           "Посмотрю, как сейчас доставляются вебхуки, и оберну вызов провайдера.") + "\n\n"
             + tool("Read", "src/webhooks/payments.ts", "Read 142 lines")
             + tool("Grep", '"deliverWebhook", path: "src"', "Found 3 files")
             + f"{TOOL} {B}Update{R}(src/webhooks/payments.ts)\n"
@@ -158,32 +167,41 @@ def screens():
                     (51, "+", "  })")])
             + tool("Write", "test/webhooks/retry.test.ts", "Wrote 64 lines to test/webhooks/retry.test.ts")
             + tool("Bash", "npm test -- webhooks", f"{GR}PASS{R}{GY} payments.test.ts (12)  {GR}PASS{R}{GY} retry.test.ts (5)")
-            + f"{DOT} Delivery now retries 5xx answers and timeouts after 0.5, 1, 2 and 4 seconds,\n"
-              f"  five tries in total. A 4xx answer fails at once, so a bad signature doesn't\n"
-              f"  hammer the provider. All 17 webhook tests pass.\n\n"
-            + ask("Also log each retry with the attempt number")
+            + f"{DOT} " + t("Delivery now retries 5xx answers and timeouts after 0.5, 1, 2 and 4 seconds,\n"
+                            "  five tries in total. A 4xx answer fails at once, so a bad signature doesn't\n"
+                            "  hammer the provider. All 17 webhook tests pass.",
+                            "Теперь доставка повторяет ответы 5xx и таймауты через 0,5, 1, 2 и 4 секунды,\n"
+                            "  всего пять попыток. Ответ 4xx сразу считается ошибкой, и плохая подпись не\n"
+                            "  заваливает провайдера запросами. Все 17 тестов вебхуков проходят.") + "\n\n"
+            + ask(t("Also log each retry with the attempt number", "Еще пиши в лог каждую попытку с ее номером"))
             + tool("Update", "src/webhooks/retry.ts", "Updated src/webhooks/retry.ts with 4 additions")
-            + f"{DOT} Each retry now logs the event id, the attempt number and the delay before the next try.\n\n"
+            + f"{DOT} " + t("Each retry now logs the event id, the attempt number and the delay before the next try.",
+                           "Каждая попытка теперь пишет в лог id события, номер попытки и паузу до следующей.") + "\n\n"
             + box('Try "open a PR for this"')
             + sill("ledger-api", "webhook-retries", "Opus 5.5", 31, 18, 42, "main KZ", changed=3),
         "claude2.txt":
-            title("Billing dark mode") + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/atlas-web{R}\n\n"
-            + ask("The billing page ignores dark mode, fix it without touching brand colors")
+            title(t("Billing dark mode", "Темная тема")) + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/atlas-web{R}\n\n"
+            + ask(t("The billing page ignores dark mode, fix it without touching brand colors",
+                    "Страница оплаты не видит темную тему, поправь, не трогая фирменные цвета"))
             + tool("Read", "app/billing/page.tsx", "Read 211 lines")
             + tool("Update", "app/billing/invoice-table.tsx", "Updated with 9 additions and 9 removals")
             + tool("Bash", "pnpm test billing", f"{GR}✓{R}{GY} 23 passed")
-            + f"{DOT} The invoice table hard-coded #fff and #111. It now uses the surface and text\n"
-              f"  tokens and follows the system theme. Brand colors are untouched.\n\n"
+            + f"{DOT} " + t("The invoice table hard-coded #fff and #111. It now uses the surface and text\n"
+                            "  tokens and follows the system theme. Brand colors are untouched.",
+                            "В таблице счетов были зашиты #fff и #111. Теперь она берет токены фона и текста\n"
+                            "  и следует теме системы. Фирменные цвета не тронуты.") + "\n\n"
             + box("")
             + sill("atlas-web", "billing-dark", "Opus 5.5", 12, 18, 42, "backup KZ", detail="hysteria2 198.51.100.7", ahead=1),
         "codex.txt":
-            title("Launch list snapshots") + f"{B}>_ OpenAI Codex{R} {GY}(v0.98.0) · gpt-5.5 · ~/Developer/orbit-ios{R}\n\n"
-            f"{CY}›{R} Add snapshot tests for the launch list in light and dark mode\n\n"
+            title(t("Launch list snapshots", "Снимки запусков")) + f"{B}>_ OpenAI Codex{R} {GY}(v0.98.0) · gpt-5.5 · ~/Developer/orbit-ios{R}\n\n"
+            f"{CY}›{R} " + t("Add snapshot tests for the launch list in light and dark mode",
+                             "Добавь снимочные тесты списка запусков в светлой и темной теме") + "\n\n"
             f"{GY}•{R} Explored\n  {GY}└ Read LaunchListView.swift, LaunchRow.swift{R}\n\n"
             f"{GY}•{R} Edited Tests/LaunchListSnapshotTests.swift {GR}(+58 -0){R}\n\n"
             f"{GY}•{R} Ran xcodebuild test -scheme Orbit -only-testing:OrbitTests/LaunchListSnapshotTests\n"
             f"  {GY}└{R} {GR}Test Suite 'LaunchListSnapshotTests' passed (4 tests, 3.2 s){R}\n\n"
-            f"{GY}•{R} Four snapshots cover the list in light and dark mode, with and without a delay.\n\n"
+            f"{GY}•{R} " + t("Four snapshots cover the list in light and dark mode, with and without a delay.",
+                             "Четыре снимка покрывают список в светлой и темной теме, с задержкой и без.") + "\n\n"
             + status("orbit-ios", "gpt-5.5", "41% context left", proxy="proxy work SE"),
         "terminal.txt":
             f"{GR}demo@mac{R} {CY}~/Developer/infra{R} {GY}main{R}\n$ git push\n"
@@ -200,8 +218,8 @@ def session(i, project, title, branch, ago, size, agent="claude", running=False)
             "mtime": NOW - ago, "size": size, "running": running, "cwdExists": True, "agent": agent}
 
 
-def main():
-    os.makedirs(OUT, exist_ok=True)
+def build(out):
+    os.makedirs(out, exist_ok=True)
     subs = [{"name": "main", "port": 17892, "country": "KZ", "exit": "KZ", "inCascade": True, "blocked": False},
             {"name": "backup", "port": 17891, "country": "KZ", "exit": "KZ", "inCascade": True, "blocked": False},
             {"name": "work", "port": 17893, "country": "SE", "exit": "SE", "inCascade": False, "blocked": False}]
@@ -210,17 +228,17 @@ def main():
              "defaultSubscription": None, "subscriptions": subs}
     modes = {"humanize": True, "translate": True, "guard": True, "buildlog": True, "notify": True, "lid": False, "alias": True}
     state = {
-        "version": "1.23.0", "lang": "en", "langSetting": "en", "projectsDir": D, "projectsDirs": [D],
+        "version": "1.23.0", "lang": LANG, "langSetting": LANG, "projectsDir": D, "projectsDirs": [D],
         "generatedAt": NOW, "errors": {},
         "projects": [{"name": n, "path": f"{D}/{n}"} for n in ("atlas-web", "infra", "ledger-api", "orbit-ios")],
         "sessions": [
-            session(1, "ledger-api", "Retry with backoff for payment webhooks", "webhook-retries", 120, 2_400_000, running=True),
-            session(2, "ledger-api", "Idempotency keys on POST /transfers", "main", 3 * 3600, 5_100_000),
-            session(3, "atlas-web", "Dark mode for the billing page", "billing-dark", 600, 1_300_000, running=True),
-            session(4, "atlas-web", "Fix the flaky checkout e2e test", "main", 26 * 3600, 3_800_000),
-            session(5, "infra", "Postgres 17 upgrade plan", "main", 2 * 86400, 900_000),
-            session(6, "orbit-ios", "Widget for upcoming launches", "widget", 5 * 86400, 7_200_000)],
-        "codexSessions": [dict(session(7, "orbit-ios", "Snapshot tests for the launch list", "snapshots", 300, 1_100_000,
+            session(1, "ledger-api", t("Retry with backoff for payment webhooks", "Повторы с паузой для платежных вебхуков"), "webhook-retries", 120, 2_400_000, running=True),
+            session(2, "ledger-api", t("Idempotency keys on POST /transfers", "Ключи идемпотентности для POST /transfers"), "main", 3 * 3600, 5_100_000),
+            session(3, "atlas-web", t("Dark mode for the billing page", "Темная тема для страницы оплаты"), "billing-dark", 600, 1_300_000, running=True),
+            session(4, "atlas-web", t("Fix the flaky checkout e2e test", "Починить нестабильный e2e-тест оплаты"), "main", 26 * 3600, 3_800_000),
+            session(5, "infra", t("Postgres 17 upgrade plan", "План перехода на Postgres 17"), "main", 2 * 86400, 900_000),
+            session(6, "orbit-ios", t("Widget for upcoming launches", "Виджет ближайших запусков"), "widget", 5 * 86400, 7_200_000)],
+        "codexSessions": [dict(session(7, "orbit-ios", t("Snapshot tests for the launch list", "Снимочные тесты списка запусков"), "snapshots", 300, 1_100_000,
                                        agent="codex", running=True), created=NOW - 3000)],
         "live": [], "proxy": proxy, "modes": modes,
         "hostRun": {"running": True, "commands": 4, "log": H + "/.local/state/mnrh/host-run/host-run.log"},
@@ -266,40 +284,55 @@ def main():
         "path": D + "/ledger-api", "name": "ledger-api", "errors": {},
         "git": {"branch": "webhook-retries", "dirty": 3,
                 "commits": [{"sha": sha, "time": int(NOW - ago), "subject": text} for sha, ago, text in commits]},
-        "last": {"id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000001", "title": "Retry with backoff for payment webhooks",
+        "last": {"id": "0c1d2e3f-4a5b-4c6d-8e7f-000000000001", "title": t("Retry with backoff for payment webhooks", "Повторы с паузой для платежных вебхуков"),
                  "last": NOW - 120, "size": 2_400_000,
-                 "summary": "Webhook delivery retries 5xx and timeouts, 17 tests pass."},
-        "todos": [{"n": 1, "text": "Alert when a webhook gives up after five tries", "done": False},
-                  {"n": 2, "text": "Document the idempotency key header", "done": False},
-                  {"n": 3, "text": "Move ledger checks to the nightly job", "done": True}],
-        "parallel": [{"branch": "rate-limit-headers", "task": "Return Retry-After on 429", "ahead": "2",
+                 "summary": t("Webhook delivery retries 5xx and timeouts, 17 tests pass.",
+                             "Доставка вебхуков повторяет 5xx и таймауты, 17 тестов проходят.")},
+        "todos": [{"n": 1, "text": t("Alert when a webhook gives up after five tries", "Предупреждать, когда вебхук сдается после пяти попыток"), "done": False},
+                  {"n": 2, "text": t("Document the idempotency key header", "Описать заголовок ключа идемпотентности"), "done": False},
+                  {"n": 3, "text": t("Move ledger checks to the nightly job", "Перенести проверки ledger в ночную задачу"), "done": True}],
+        "parallel": [{"branch": "rate-limit-headers", "task": t("Return Retry-After on 429", "Отдавать Retry-After при 429"), "ahead": "2",
                       "dirty": 0, "running": True, "path": D + "/ledger-api/.worktrees/rate-limit-headers"}],
         "tools": {"releaseSince": "v2.4.0", "gradle": False}}
     notes = [(NOW - 25 * 60, "ledger-api", "Heads up", 1,
-              "The retry loop resends webhooks with the same idempotency key, so a partner that ignores the key "
-              "will book the payment twice."),
+              t("The retry loop resends webhooks with the same idempotency key, so a partner that ignores the key "
+                "will book the payment twice.",
+                "Цикл повторов шлет вебхук с тем же ключом идемпотентности, и партнер, который ключ не проверяет, "
+                "проведет платеж дважды.")),
              (NOW - 3 * 3600, "atlas-web", "You should know", 1,
-              "Dark mode reads the theme from a cookie that the CDN caches for an hour, so some users will see "
-              "the old theme after switching."),
+              t("Dark mode reads the theme from a cookie that the CDN caches for an hour, so some users will see "
+                "the old theme after switching.",
+                "Темная тема читается из cookie, которую CDN кэширует на час, и часть пользователей после "
+                "переключения увидит старую тему.")),
              (NOW - 26 * 3600, "infra", "Heads up", 2,
-              "The Postgres 17 plan drops the old replica before the new one has caught up, so reads go to the "
-              "primary for a while."),
-             (None, None, None, 1, "The force push guard is off for this project, so a rebase can overwrite main.")]
+              t("The Postgres 17 plan drops the old replica before the new one has caught up, so reads go to the "
+                "primary for a while.",
+                "План Postgres 17 удаляет старую реплику раньше, чем новая ее догонит, и какое-то время чтение "
+                "идет в основную базу.")),
+             (None, None, None, 1, t("The force push guard is off for this project, so a rebase can overwrite main.",
+                                    "Защита от force push в этом проекте выключена, rebase может переписать main."))]
     headsup = {"path": H + "/.local/state/mnrh/headsup.jsonl", "plugin": True, "max": 500, "entries": [
         {"ts": ts, "headline": text, "project": proj, "cwd": f"{D}/{proj}" if proj else None, "session": None,
          "tag": tag, "times": times} for ts, proj, tag, times, text in notes]}
     for name, data in (("app-state.json", state), ("app-state-settings.json", settings), ("tabs.json", tabs),
                        ("app-state-project.json", project), ("app-state-headsup.json", headsup)):
-        with open(os.path.join(OUT, name), "w") as f:
+        with open(os.path.join(out, name), "w") as f:
             json.dump(data, f, indent=1, ensure_ascii=False)
     for theme in PALETTES:
         use(theme)
         for name, text in screens().items():
             if theme == "light":
                 name = name.replace(".txt", "-light.txt")
-            with open(os.path.join(OUT, name), "w") as f:
+            with open(os.path.join(out, name), "w") as f:
                 # у агента курсор стоит в поле ввода, а не под строкой состояния: прячем курсор терминала
                 f.write(text if name.startswith("terminal") else text + E + "?25l")
+
+
+
+def main():
+    global LANG
+    for LANG, out in (("en", OUT), ("ru", os.path.join(OUT, "ru"))):
+        build(out)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@
 В Claude Code также есть перезапуск и сжатие сессии, уведомления и вопросы перед опасными командами.
 
 <p align="center">
-  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/main-dark.png"><img src="docs/screenshots/main-light.png" width="900" alt="Agentmeister с вкладками Claude Code, Codex и терминала, каждая через свою подписку proxy"></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ru/main-dark.png"><img src="docs/screenshots/ru/main-light.png" width="900" alt="Agentmeister с вкладками Claude Code, Codex и терминала, каждая через свою подписку proxy"></picture>
 </p>
 
 Меню говорит на языке macOS, русском или английском. Часть сообщений, например `agentmeister -h` и
@@ -105,23 +105,23 @@ agentmeister или promptsill стоят из Homebrew, после обновл
 
 <table>
   <tr>
-    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/new-session-dark.png"><img src="docs/screenshots/new-session-light.png" alt="Лист новой сессии с агентом, маршрутом и подпиской"></picture></td>
-    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/project-dark.png"><img src="docs/screenshots/project-light.png" alt="Экран проекта с сессиями, инструментами, бэклогом и параллельной задачей"></picture></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ru/new-session-dark.png"><img src="docs/screenshots/ru/new-session-light.png" alt="Лист новой сессии с агентом, маршрутом и подпиской"></picture></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ru/project-dark.png"><img src="docs/screenshots/ru/project-light.png" alt="Экран проекта с сессиями, инструментами, бэклогом и параллельной задачей"></picture></td>
   </tr>
   <tr>
     <td>Новая сессия: агент, маршрут, подписка proxy и как начать.</td>
     <td>Экран проекта: сессии, инструменты, бэклог, параллельные задачи и последние коммиты.</td>
   </tr>
   <tr>
-    <td colspan="2"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png"><img src="docs/screenshots/settings-light.png" alt="Настройки proxy с тремя подписками"></picture></td>
+    <td colspan="2"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ru/settings-dark.png"><img src="docs/screenshots/ru/settings-light.png" alt="Настройки proxy с тремя подписками"></picture></td>
   </tr>
   <tr>
     <td colspan="2">Настройки proxy: выход, маршрут и подписка по умолчанию, список подписок. main и backup в KZ
     идут по очереди для просто <code>-x</code>, work в SE только отдельно.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="docs/screenshots/main-light.png" alt="Главное окно в светлой теме"></td>
-    <td width="50%"><img src="docs/screenshots/main-dark.png" alt="Главное окно в темной теме"></td>
+    <td width="50%"><img src="docs/screenshots/ru/main-light.png" alt="Главное окно в светлой теме"></td>
+    <td width="50%"><img src="docs/screenshots/ru/main-dark.png" alt="Главное окно в темной теме"></td>
   </tr>
   <tr>
     <td colspan="2">Светлая и темная тема. Приложение следует за macOS или всегда светлое либо темное, это

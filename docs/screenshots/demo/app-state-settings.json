@@ -19,10 +19,10 @@
  "guard": {
   "on": true,
   "log": [
-   "26.11 11:42  ask   force-push     git push --force origin main",
-   "27.11 10:42  hold  rm-root        rm -rf ../build-cache"
+   "26.11 12:00  ask   force-push     git push --force origin main",
+   "27.11 11:00  hold  rm-root        rm -rf ../build-cache"
   ],
-  "lastHit": 1795765327,
+  "lastHit": 1795766414,
   "logPath": "/Users/demo/Library/Logs/mnrh-guard.log",
   "rules": [
    {
@@ -82,10 +82,10 @@
   "translateProvider": "google",
   "translateFallback": "openrouter",
   "translateLog": [
-   "2026-11-27 12:52:07 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter",
-   "2026-11-27 13:11:07 3f9c2a1e 182 зн 640 мс переведен",
-   "2026-11-27 13:30:07 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)",
-   "2026-11-27 13:38:07 3f9c2a1e 131 зн 1380 мс переведен"
+   "2026-11-27 13:10:14 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter",
+   "2026-11-27 13:29:14 3f9c2a1e 182 зн 640 мс переведен",
+   "2026-11-27 13:48:14 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)",
+   "2026-11-27 13:56:14 3f9c2a1e 131 зн 1380 мс переведен"
   ],
   "translateMedianMs": 1380,
   "translateLogPath": "/Users/demo/Library/Logs/mnrh-translate.log"

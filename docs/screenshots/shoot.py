@@ -1,5 +1,6 @@
-"""Снимки экрана для README из демо: python3 docs/screenshots/shoot.py [--theme dark|light|both] [--out папка]
-[сцена ...]. Без сцен снимаются README_SCENES, без --theme обе темы.
+"""Снимки экрана для README из демо: python3 docs/screenshots/shoot.py [--theme dark|light|both]
+[--lang en|ru|both] [--out папка] [сцена ...]. Без сцен снимаются README_SCENES, без --theme и --lang обе темы
+и оба языка. Русские снимки ложатся в подпапку ru.
 Сначала собрать приложение (swift build в app/ или host-run agentmeister-app-build) и данные (make_demo.py,
 draw_icons.py). Скрипт запускает отладочную сборку с --demo для каждой сцены, снимает ее окно по pid процесса
 (настоящее приложение рядом не мешает) и кладет <сцена>-<тема>.png в docs/screenshots или в --out."""
@@ -21,6 +22,8 @@ SCENES = {"main": ("main", 7), "new-session": ("sheet", 8), "project": ("main", 
 # сцены, которые показывает README
 README_SCENES = ["main", "new-session", "project", "settings"]
 THEMES = ["dark", "light"]
+# язык снимка: английские для README.md в docs/screenshots, русские для README.ru.md в docs/screenshots/ru
+LOCALES = {"en": "en_US", "ru": "ru_RU"}
 LIST_JS = r'''
 ObjC.import('CoreGraphics');
 function run(argv) {
@@ -45,12 +48,13 @@ def windows(pid):
     return [w for w in json.loads(r.stdout or "[]") if w["layer"] == 0 and w["w"] > 200]
 
 
-def shoot(scene, theme, out_dir):
+def shoot(scene, theme, out_dir, lang="en"):
     kind, wait = SCENES[scene]
-    # английский интерфейс и формат чисел, какой бы язык ни стоял в системе. Тема и цвета терминала заданы
+    # язык интерфейса и формат чисел из lang, какой бы язык ни стоял в системе. Тема и цвета терминала заданы
     # аргументами, а не настройками демо: снимок не зависит от того, что осталось от прошлых запусков
-    args = [APP, "--demo", os.path.join(HERE, "demo"), "--scene", scene,
-            "-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-appearance", theme, "-terminal.colors", "window"]
+    args = [APP, "--demo", os.path.join(HERE, "demo"), "--scene", scene, "--demo-lang", lang,
+            "-AppleLanguages", f"({lang})", "-AppleLocale", LOCALES[lang], "-appearance", theme,
+            "-terminal.colors", "window"]
     if scene != "rail":
         # раскладка как у нового пользователя: боковая панель открыта, списки проектов и режимов развернуты
         args += ["-layout.sidebarCollapsed", "NO", "-layout.projectsOpen", "YES", "-layout.modesOpen", "YES",
@@ -75,21 +79,21 @@ def shoot(scene, theme, out_dir):
             sys.exit(f"{scene}: окно не нашлось среди {ws}")
         out = os.path.join(out_dir, f"{scene}-{theme}.png")
         lights = ["osascript", "-l", "JavaScript", os.path.join(HERE, "lights.js"), out]
-        for attempt in range(4):
+        for attempt in range(6):
             subprocess.run(["screencapture", "-x", "-l", str(target["id"]), out], check=True)
             subprocess.run(["sips", "-Z", "2200", out], capture_output=True)
-            # три серые кнопки: окно снялось неактивным, macOS не всегда отдает фокус, пока человек работает
-            # в другом приложении. Пробуем еще раз
-            if subprocess.run(lights + ["check"], capture_output=True, text=True).stdout.strip() != "3":
+            # меньше цветных кнопок, чем должно быть: окно снялось неактивным, macOS не всегда отдает фокус, пока
+            # человек работает в другом приложении. Под листом кнопка закрытия серая всегда. Пробуем еще раз
+            colors = subprocess.run(lights + ["colors"], capture_output=True, text=True).stdout.strip()
+            if colors == "3" or (kind == "sheet" and colors == "2"):
                 break
             subprocess.run(["osascript", "-l", "JavaScript", "-e", ACTIVATE_JS, str(proc.pid)], capture_output=True)
             time.sleep(2)
-        # серые кнопки неактивного окна перекрашиваются по образцу lights.png. Кнопку закрытия под листом macOS
-        # гасит и в настоящем окне, ее оставляем как есть
-        gray = subprocess.run(lights + ["check"], capture_output=True, text=True).stdout.strip()
-        if kind != "sheet" or gray == "3":
-            print(scene, subprocess.run(lights + ["fix"], capture_output=True, text=True).stdout.strip())
-        print(out)
+        # у неактивного окна не только серые кнопки, но и тень меньше и выделение бледнее. Такой снимок не
+        # перекрашиваем, а снимаем сцену заново
+        active = colors == "3" or (kind == "sheet" and colors == "2")
+        print(out if active else f"{out}: окно неактивно")
+        return active
     finally:
         proc.send_signal(signal.SIGTERM)
         proc.wait(timeout=10)
@@ -98,13 +102,21 @@ def shoot(scene, theme, out_dir):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--theme", choices=THEMES + ["both"], default="both")
-    parser.add_argument("--out", default=HERE)
+    parser.add_argument("--lang", choices=list(LOCALES) + ["both"], default="both")
+    parser.add_argument("--out", help="папка для снимков, по умолчанию docs/screenshots и docs/screenshots/ru")
     parser.add_argument("scenes", nargs="*", metavar="scene", help=", ".join(SCENES))
     opts = parser.parse_args()
     unknown = [name for name in opts.scenes if name not in SCENES]
     if unknown:
         parser.error(f"нет таких сцен: {', '.join(unknown)}")
-    os.makedirs(opts.out, exist_ok=True)
-    for name in opts.scenes or README_SCENES:
-        for theme in THEMES if opts.theme == "both" else [opts.theme]:
-            shoot(name, theme, opts.out)
+    failed = []
+    for lang in LOCALES if opts.lang == "both" else [opts.lang]:
+        out = os.path.join(opts.out or HERE, "ru") if lang == "ru" else opts.out or HERE
+        os.makedirs(out, exist_ok=True)
+        for name in opts.scenes or README_SCENES:
+            for theme in THEMES if opts.theme == "both" else [opts.theme]:
+                # до трех запусков сцены, пока окно не снимется активным
+                if not any(shoot(name, theme, out, lang) for _ in range(3)):
+                    failed.append(os.path.join(out, f"{name}-{theme}.png"))
+    if failed:
+        sys.exit("сняты неактивными, переснять, когда мак свободен: " + ", ".join(failed))
