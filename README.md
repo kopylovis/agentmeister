@@ -953,7 +953,9 @@ masked command can't be fully read from the phone; the message says so, and then
 it touches keys comes with guard's warning, but the button allows it just like the terminal prompt would. Turn it
 on only if your Telegram account has a password and two-step verification.
 
-Or to Tossling on your phone through your own ntfy: `agentmeister notify phone away` when you're away from the
+Or to [Tossling](https://github.com/Tossling/tossling-server) on your phone, through your own Tossling server. It
+needs Tossling on the Mac connected to that server ([install](https://tossling.github.io/docs/install/)):
+agentmeister takes the server and token from `tossling config`. `agentmeister notify phone away` sends when you're away from the
 Mac, `phone always` every time, `phone off` to turn it off, `phone test` for a test. Subscribe to `agentmeister` in
 Tossling's notification settings. The title starts with Claude Code or Codex. Questions and permission requests
 use high priority. If the server requires a project publisher token, save it in the Mac keychain. Use your
