@@ -1134,7 +1134,8 @@ struct TabStrip: View {
             .accessibilityLabel(l.newTab)
         }
         .padding(4)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        // капсула вокруг капсул вкладок: радиус 22 + отступ 4, углы идут параллельно
+        .glassEffect(.regular, in: Capsule())
     }
 
     /// Число вкладок за краем со стрелкой в его сторону. Клик открывает их список. Без скрытых вкладок у этого края
