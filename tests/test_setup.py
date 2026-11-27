@@ -242,6 +242,23 @@ class Setup(unittest.TestCase):
             assert {"notify-app", "proxy"} <= set(setup_steps.pending()[0])
         """, promptsill=True)
 
+    def test_user_commands_with_our_names_are_kept(self):
+        mine = "---\ndescription: my own todo list\n---\ncat TODO.md\n"
+        out, after = sandbox({".claude/commands/todo.md": mine, ".claude/commands/where.md": "old !`mnrh brief`\n"}, """
+            import notify
+            import setup_cmd as s
+
+            s.CLAUDE_BIN = "sh"
+            s.configure_mcp = lambda remove: []
+            notify.ensure_app = lambda: True
+            assert s.setup([]) == 0
+            print("---")
+            assert s.setup(["--remove"]) == 0
+        """, promptsill=True)
+        self.assertIn("/todo: в ~/.claude/commands/todo.md твоя команда", out)
+        self.assertEqual(after[".claude/commands/todo.md"], mine)
+        self.assertNotIn(".claude/commands/where.md", after)
+
     def test_codex_hint_in_help_and_after_setup_steps(self):
         out, _ = sandbox({}, """
             import notify

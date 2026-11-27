@@ -195,7 +195,7 @@ UUID. Claude прочитает переписку, план, ветку Git и 
 трогают, `agentmeister alias off` убирает только свой.
 
 Homebrew ставит заодно mihomo для `agentmeister -x`. `agentmeister setup` кладёт команды `/restart`,
-`/forget`, `/slim` и другие в `~/.claude/commands`, хуки в `~/.claude/settings.json`, хук zsh в `~/.zshrc`
+`/forget`, `/slim` и другие в `~/.claude/commands` (свою команду с тем же именем не трогает), хуки в `~/.claude/settings.json`, хук zsh в `~/.zshrc`
 и регистрирует MCP-сервер `agentmeister`. Если прокси еще не настроен, setup спрашивает, настроить
 ли его сейчас (`--country KZ` сразу задает страну выхода). Если нет строки состояния
 [promptsill](https://github.com/kopylovis/promptsill), предлагает поставить ее через Homebrew.

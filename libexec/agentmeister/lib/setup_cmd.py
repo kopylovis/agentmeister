@@ -28,6 +28,21 @@ ZSHRC = os.path.join(os.environ.get("ZDOTDIR") or HOME, ".zshrc")
 CODEX_SETUP = "agentmeister --harness codex setup"
 
 
+# Файл команды наш, если вызывает agentmeister или его прежние имена. Свою /todo.md или /ask.md пользователя
+# setup не перезаписывает и setup --remove не удаляет.
+OURS = re.compile(r"agentmeister|claudemeister|\bmnrh\b")
+
+
+def command_is_ours(path):
+    try:
+        with open(path) as f:
+            return bool(OURS.search(f.read()))
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+
+
 def is_zsh_hook(line):
     return any(m in line for m in ZSH_MARKERS)
 
@@ -256,7 +271,7 @@ def setup(args):
     if opts["remove"]:
         for f in [COMMAND_FILE, FORGET_FILE, FRESH_FILE, SLIM_FILE, OLD_FORGET_FILE] + \
                 [os.path.join(COMMANDS, f"{n}.md") for n in EXTRA_COMMANDS]:
-            if os.path.exists(f):
+            if os.path.exists(f) and command_is_ours(f):
                 os.remove(f)
         notice_hook(False, legacy_names)
         lines = zshrc_lines()
@@ -274,9 +289,14 @@ def setup(args):
     pages = [(COMMAND_FILE, SLASH), (FORGET_FILE, FORGET_SLASH), (FRESH_FILE, FRESH_SLASH), (SLIM_FILE, SLIM_SLASH)] + \
         [(os.path.join(COMMANDS, f"{n}.md"), EXTRA_SLASH[n]) for n in EXTRA_COMMANDS]
     for path, text in pages:
+        name = os.path.basename(path)[:-3]
+        if not command_is_ours(path):
+            print(tr(f"! /{name}: в {tilde(path)} твоя команда, не трогаю",
+                     f"! /{name}: {tilde(path)} is your own command, leaving it as is"))
+            continue
         with open(path, "w") as f:
             f.write(text)
-        print(f"✓ /{os.path.basename(path)[:-3]} → {tilde(path)}")
+        print(f"✓ /{name} → {tilde(path)}")
 
     # до хуков: если promptsill поставится сейчас, notice_hook сразу пропишет его в statusLine
     promptsill = setup_steps.promptsill_step()
