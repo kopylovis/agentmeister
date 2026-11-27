@@ -163,4 +163,7 @@ main|new-session|project|settings`. Данные выдуманные (`docs/scr
 `docs/screenshots/draw_icons.py`). В демо приложение не вызывает agentmeister, не читает настоящие сессии и не
 пишет tabs.json, front.json и focus.json, а горячая клавиша, обновления и мастер первого запуска выключены.
 `python3 docs/screenshots/shoot.py` запускает каждую сцену и снимает ее окно по pid, настоящее приложение рядом
-не мешает.
+не мешает. Каждая сцена снимается в темной и светлой теме (`-appearance`), в `<сцена>-dark.png` и
+`<сцена>-light.png`. `--theme dark|light` снимает одну тему, `--out <папка>` кладет снимки не в docs/screenshots.
+Текст вкладок `make_demo.py` пишет в двух вариантах, `claude.txt` с цветами темной темы Claude Code и
+`claude-light.txt` со светлыми. Светлое окно демо берет второй.

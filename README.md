@@ -14,7 +14,7 @@ In Claude Code, you can restart or slim the current session, get notified when C
 commands before they run.
 
 <p align="center">
-  <img src="docs/screenshots/main.png" width="900" alt="Agentmeister with Claude Code, Codex and terminal tabs, each through its own proxy subscription">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/main-dark.png"><img src="docs/screenshots/main-light.png" width="900" alt="Agentmeister with Claude Code, Codex and terminal tabs, each through its own proxy subscription"></picture>
 </p>
 
 The menu follows the macOS language, Russian or English. Some messages, such as `agentmeister -h` and
@@ -106,19 +106,27 @@ app does and how to build it is described in [app/README.md](app/README.md), in 
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/new-session.png" alt="New session sheet with agent, route and subscription"></td>
-    <td width="50%"><img src="docs/screenshots/project.png" alt="Project screen with sessions, tools, backlog and a parallel task"></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/new-session-dark.png"><img src="docs/screenshots/new-session-light.png" alt="New session sheet with agent, route and subscription"></picture></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/project-dark.png"><img src="docs/screenshots/project-light.png" alt="Project screen with sessions, tools, backlog and a parallel task"></picture></td>
   </tr>
   <tr>
     <td>A new session: agent, route, proxy subscription and how to start.</td>
     <td>The project screen: sessions, tools, backlog, parallel tasks and recent commits.</td>
   </tr>
   <tr>
-    <td colspan="2"><img src="docs/screenshots/settings.png" alt="Proxy settings with three subscriptions"></td>
+    <td colspan="2"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png"><img src="docs/screenshots/settings-light.png" alt="Proxy settings with three subscriptions"></picture></td>
   </tr>
   <tr>
     <td colspan="2">Proxy settings: the exit, the default route and subscription, and the subscriptions. main and backup
     in KZ form the order for plain <code>-x</code>, work in SE is used only on its own.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/main-light.png" alt="Main window in the light theme"></td>
+    <td width="50%"><img src="docs/screenshots/main-dark.png" alt="Main window in the dark theme"></td>
+  </tr>
+  <tr>
+    <td colspan="2">The light and dark themes. The app follows macOS or stays light or dark, Settings → General →
+    Appearance. The terminal switches with the window. The other screenshots on this page follow your GitHub theme.</td>
   </tr>
 </table>
 
