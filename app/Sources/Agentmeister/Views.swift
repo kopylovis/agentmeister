@@ -2106,13 +2106,16 @@ struct InspectorView: View {
     }
 }
 
-/// Панель сессии по макету: заголовок, карточка с агентом и маршрутом, кнопки, host-run.
+/// Панель сессии: заголовок со статусом, затем сворачиваемые секции. Маршрут цепочкой от агента до выхода,
+/// действия плитками с подписями, изменения рабочей копии, бэклог и host-run.
 struct TabInspector: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var ui: UIState
     @ObservedObject var tab: TerminalTab
     @AppStorage("restartWithUpdate") private var withUpdate = true
+    /// Свернутые секции через запятую: route, actions, changes, backlog, hostrun.
+    @AppStorage("inspector.collapsed") private var collapsed = ""
     /// Git и бэклог проекта вкладки из app-state project. Обновляются при смене вкладки и раз в минуту.
     @State private var project: ProjectData?
     /// Изменения рабочей копии: git status раз в 5 секунд, пока инспектор открыт.
@@ -2122,125 +2125,84 @@ struct TabInspector: View {
 
     var body: some View {
         let saved = backend.state.sessions.first { $0.id == tab.sessionId }
-        let proxy = backend.state.proxy
         let claude = tab.spec.utility == nil && tab.spec.agent == .claude
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 10) {
-                    SectionCaption(text: l.t("Сессия", "Session"))
-                    Text(saved?.title.isEmpty == false ? saved!.title : tab.title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .lineLimit(3)
-                }
-                .padding(.horizontal, 4)
+            VStack(alignment: .leading, spacing: 0) {
+                header(title: saved?.title.isEmpty == false ? saved!.title : tab.title,
+                       branch: project?.git?.branch ?? saved?.branch)
 
-                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 9) {
-                    row(l.agent, agentTitle)
-                    GridRow {
-                        Text(l.route).foregroundStyle(Ink.faint).frame(width: 76, alignment: .leading)
-                        if tab.spec.proxied {
-                            Text(["proxy " + (proxy?.exit ?? ""), [proxy?.protocol, proxy?.ip].compactMap { $0 }.joined(separator: " ")]
-                                    .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.joined(separator: ", "))
-                                .foregroundStyle(Ink.teal)
-                        } else {
-                            Text(l.directly).foregroundStyle(Ink.direct)
-                        }
-                    }
-                    row(l.t("Песочница", "Sandbox"), tab.spec.proxied ? "sandbox-exec" : l.t("нет", "none"))
-                    if let branch = project?.git?.branch ?? saved?.branch, !branch.isEmpty {
-                        row(l.t("Ветка", "Branch"), branch + ((project?.git?.dirty ?? 0) > 0 ? " ±\(project!.git!.dirty)" : ""), mono: true)
-                    }
-                    GridRow {
-                        Text(l.t("Активна", "Active")).foregroundStyle(Ink.faint).frame(width: 76, alignment: .leading)
-                        if tab.running {
-                            TimelineView(.periodic(from: .now, by: 30)) { context in
-                                Text(l.duration(context.date.timeIntervalSince(tab.startedAt)))
-                            }
-                        } else {
-                            Text(l.exited + (tab.exitCode.map { ", \($0)" } ?? ""))
-                        }
-                    }
+                InspectorSection(title: l.route, open: open("route")) {
+                    RouteChain(nodes: routeNodes, direct: !tab.spec.proxied)
                 }
-                .font(.system(size: 12))
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
 
-                FlowLayout(spacing: 6) {
-                    CapsuleButton(title: l.restart) {
-                        tab.restartPreferred(note: l.updating)
-                    }
-                    if claude && tab.sessionId != nil {
-                        CapsuleButton(title: l.slim) { tab.slim(note: l.slimming) }
-                    }
-                    if tab.spec.utility == nil {
-                        CapsuleButton(title: l.t("С чистого листа", "Fresh start")) { tab.fresh() }
-                    }
-                    if claude {
-                        CapsuleButton(title: l.forget, destructive: true) { ui.forgetting = tab }
-                    }
-                }
-                .padding(.horizontal, 2)
-                if claude {
-                    Toggle(l.t("Перезапускать с обновлением агента", "Update the agent when restarting"), isOn: $withUpdate)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Ink.text2)
-                        .padding(.horizontal, 4)
+                InspectorSection(title: l.t("Действия", "Actions"), open: open("actions")) {
+                    actionTiles(claude: claude)
                 }
 
                 if tab.spec.utility == nil, let changes {
-                    ChangesCard(snapshot: changes, l: l)
-                }
-
-                if let h = backend.state.hostRun {
-                    VStack(alignment: .leading, spacing: 8) {
-                        SectionCaption(text: "host-run")
-                        HStack(spacing: 8) {
-                            GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
-                            Text(h.running ? l.t("исполнитель работает", "the runner is running") : l.t("исполнитель не запущен", "the runner isn't running"))
-                                .foregroundStyle(h.running ? Ink.teal : Ink.amber)
+                    let numbers = DiffColumns(changes.files)
+                    InspectorSection(title: l.t("Изменения", "Changes"), open: open("changes")) {
+                        if !changes.files.isEmpty {
+                            Text("\(changes.files.count)").foregroundStyle(Ink.faint)
+                            Spacer(minLength: 4)
+                            numbers.cells(numbers.totalAdded, numbers.totalRemoved)
                         }
-                        Text(l.commands(h.commands) + l.t(" в белом списке", " in the allowlist"))
-                            .foregroundStyle(Ink.muted)
-                        SettingsLink {
-                            Text(l.t("Весь белый список", "Full allowlist")).foregroundStyle(Ink.link)
-                        }
-                        .buttonStyle(.textLink)
-                        .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
+                    } content: {
+                        ChangesList(snapshot: changes, numbers: numbers, l: l)
                     }
-                    .font(.system(size: 12))
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
                 }
 
                 let todos = (project?.todos ?? []).filter { !$0.done }
                 if tab.spec.utility == nil, !todos.isEmpty {
-                    VStack(alignment: .leading, spacing: 9) {
-                        SectionCaption(text: l.t("Бэклог проекта", "Project backlog"))
-                        ForEach(todos.prefix(6), id: \.self) { item in
-                            Button {
-                                if let n = item.n { markDone(n) }
-                            } label: {
-                                HStack(alignment: .top, spacing: 8) {
-                                    Image(systemName: "square").foregroundStyle(Ink.muted)
-                                    Text(item.text).foregroundStyle(Ink.text).multilineTextAlignment(.leading)
-                                    Spacer(minLength: 0)
+                    InspectorSection(title: l.t("Бэклог", "Backlog"), open: open("backlog")) {
+                        Text("\(todos.count)").foregroundStyle(Ink.faint)
+                    } content: {
+                        VStack(alignment: .leading, spacing: 1) {
+                            ForEach(todos.prefix(6), id: \.self) { item in
+                                Button {
+                                    if let n = item.n { markDone(n) }
+                                } label: {
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Image(systemName: "square").foregroundStyle(Ink.muted)
+                                        Text(item.text).foregroundStyle(Ink.text).multilineTextAlignment(.leading)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 3)
+                                    .contentShape(Rectangle())
                                 }
-                                .contentShape(Rectangle())
+                                .buttonStyle(.hover(6))
+                                .help(l.t("Отметить сделанной", "Mark done"))
                             }
-                            .buttonStyle(.hover(6))
-                            .help(l.t("Отметить сделанной", "Mark done"))
+                        }
+                        .padding(.horizontal, -4)
+                    }
+                }
+
+                if let h = backend.state.hostRun {
+                    InspectorSection(title: "host-run", open: open("hostrun")) {
+                        Spacer(minLength: 4)
+                        GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot, size: 6)
+                    } content: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(h.running ? l.t("Исполнитель работает", "The runner is running") : l.t("Исполнитель не запущен", "The runner isn't running"))
+                                .foregroundStyle(h.running ? Ink.teal : Ink.amber)
+                            HStack(spacing: 4) {
+                                Text(l.commands(h.commands) + l.t(" в белом списке.", " in the allowlist."))
+                                    .foregroundStyle(Ink.muted)
+                                SettingsLink {
+                                    Text(l.t("Открыть", "Open")).foregroundStyle(Ink.link)
+                                }
+                                .buttonStyle(.textLink)
+                                .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
+                            }
                         }
                     }
-                    .font(.system(size: 12))
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
                 }
+                Rectangle().fill(Ink.hairline).frame(height: 1)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 16)
+            .font(.system(size: 12))
+            .padding(.bottom, 16)
         }
         .task(id: tab.spec.projectPath) {
             changes = nil
@@ -2260,12 +2222,121 @@ struct TabInspector: View {
         }
     }
 
-    /// "Claude Code, opus high" как в макете: модель из флагов вкладки, иначе из настроек агента.
-    private var agentTitle: String {
+    /// Заголовок сессии, под ним статус процесса и ветка.
+    private func header(title: String, branch: String?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .lineLimit(3)
+                .textSelection(.enabled)
+            HStack(spacing: 6) {
+                GlowDot(color: tab.running ? Ink.tealDot : Ink.amberDot, size: 6)
+                if tab.running {
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        Text(l.t("Работает ", "Running ") + l.duration(context.date.timeIntervalSince(tab.startedAt)))
+                    }
+                    .foregroundStyle(Ink.teal)
+                } else {
+                    Text(l.exited.prefix(1).uppercased() + l.exited.dropFirst() + (tab.exitCode.map { ", \($0)" } ?? ""))
+                        .foregroundStyle(Ink.direct)
+                }
+                Spacer(minLength: 6)
+                if let branch, !branch.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.branch").font(.system(size: 10))
+                        Text(branch).font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                    }
+                    .foregroundStyle(Ink.faint)
+                    .help(branch)
+                }
+            }
+            .font(.system(size: 11.5))
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 16)
+        .padding(.bottom, 14)
+    }
+
+    /// Узлы маршрута: агент, затем песочница, mihomo и выход для proxy или одно прямое подключение.
+    private var routeNodes: [RouteChain.Node] {
+        let agent = RouteChain.Node(title: agentName, detail: agentModel ?? "")
+        guard tab.spec.proxied else {
+            return [agent, .init(title: l.t("Напрямую", "Direct connection"), detail: l.t("без песочницы", "no sandbox"), color: Ink.direct)]
+        }
+        let proxy = backend.state.proxy
+        let exit = [proxy?.exit, proxy?.protocol].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+        return [agent,
+                .init(title: "sandbox-exec", detail: l.t("без прямой сети", "no direct network")),
+                .init(title: "mihomo", detail: "127.0.0.1:\(proxy?.port ?? 17890)", mono: true),
+                .init(title: exit.isEmpty ? "proxy" : exit, detail: proxy?.ip ?? "", color: Ink.teal, mono: true)]
+    }
+
+    private func actionTiles(claude: Bool) -> some View {
+        let tiles = tileList(claude: claude)
+        let rows = stride(from: 0, to: tiles.count, by: 2).map { Array(tiles[$0..<min($0 + 2, tiles.count)]) }
+        return Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+            ForEach(rows.indices, id: \.self) { i in
+                GridRow {
+                    ForEach(rows[i].indices, id: \.self) { j in rows[i][j] }
+                    if rows[i].count == 1 { Color.clear.gridCellUnsizedAxes([.horizontal, .vertical]) }
+                }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Плитки по виду вкладки: Slim только у сессии Claude с id, Forget только у Claude.
+    private func tileList(claude: Bool) -> [ActionTile] {
+        var tiles: [ActionTile] = [
+            ActionTile(icon: "arrow.clockwise", title: l.restart,
+                       hint: l.t("та же сессия, с того же места", "same session, picks up where it stopped"),
+                       highlighted: !tab.running,
+                       toggle: claude ? $withUpdate : nil, toggleTitle: l.t("сначала обновить", "update first")) {
+                tab.restartPreferred(note: l.updating)
+            }
+        ]
+        if claude && tab.sessionId != nil {
+            tiles.append(ActionTile(icon: "arrow.down.right.and.arrow.up.left", title: l.slim,
+                                    hint: l.t("убрать старые скриншоты и длинные выводы", "drop old screenshots and long outputs")) {
+                tab.slim(note: l.slimming)
+            })
+        }
+        if tab.spec.utility == nil {
+            tiles.append(ActionTile(icon: "sparkles", title: l.t("С чистого листа", "Fresh start"),
+                                    hint: l.t("пустой контекст, эта сессия останется в /resume", "empty context, this one stays in /resume")) {
+                tab.fresh()
+            })
+        }
+        if claude {
+            tiles.append(ActionTile(icon: "trash", title: l.forget,
+                                    hint: l.t("удалить без следа и открыть чистую", "delete without a trace, open a clean one"),
+                                    destructive: true) {
+                ui.forgetting = tab
+            })
+        }
+        return tiles
+    }
+
+    /// Привязка к свернутости секции, хранится в inspector.collapsed.
+    private func open(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { !collapsed.split(separator: ",").contains(Substring(id)) },
+            set: { isOpen in
+                var set = Set(collapsed.split(separator: ",").map(String.init))
+                if isOpen { set.remove(id) } else { set.insert(id) }
+                collapsed = set.sorted().joined(separator: ",")
+            })
+    }
+
+    private var agentName: String {
         guard tab.spec.utility == nil else { return "agentmeister" }
-        let name = tab.spec.agent == .codex ? "Codex" : "Claude Code"
-        let model = tab.spec.modelFlag ?? (backend.state.models?[tab.spec.agent.rawValue] ?? nil)
-        return model.map { name + ", " + $0 } ?? name
+        return tab.spec.agent == .codex ? "Codex" : "Claude Code"
+    }
+
+    /// Модель из флагов вкладки, иначе из настроек агента.
+    private var agentModel: String? {
+        guard tab.spec.utility == nil else { return nil }
+        return tab.spec.modelFlag ?? (backend.state.models?[tab.spec.agent.rawValue] ?? nil)
     }
 
     private func markDone(_ n: Int) {
@@ -2275,15 +2346,166 @@ struct TabInspector: View {
             project = await Backend.json(["app-state", "project", path])
         }
     }
+}
 
-    private func row(_ title: String, _ value: String, mono: Bool = false) -> some View {
-        GridRow {
-            Text(title).foregroundStyle(Ink.faint).frame(width: 76, alignment: .leading)
-            Text(value)
-                .font(mono ? .system(size: 12, design: .monospaced) : .system(size: 12))
-                .lineLimit(2)
-                .textSelection(.enabled)
+/// Секция инспектора: строка с шевроном сворачивает ее, справа счетчик или статус. Сверху тонкая линия.
+struct InspectorSection<Trailing: View, Content: View>: View {
+    let title: String
+    @Binding var open: Bool
+    @ViewBuilder var trailing: () -> Trailing
+    @ViewBuilder var content: () -> Content
+
+    init(title: String, open: Binding<Bool>, @ViewBuilder trailing: @escaping () -> Trailing, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self._open = open
+        self.trailing = trailing
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle().fill(Ink.hairline).frame(height: 1)
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { open.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Ink.faint)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                        .frame(width: 10)
+                    Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Ink.text)
+                    trailing()
+                }
+                .font(.system(size: 11))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.hover(0))
+            if open {
+                content()
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
+    }
+}
+
+extension InspectorSection where Trailing == EmptyView {
+    init(title: String, open: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) {
+        self.init(title: title, open: open, trailing: { EmptyView() }, content: content)
+    }
+}
+
+/// Маршрут цепочкой: точки на линии сверху вниз, последняя залита. Прямое подключение рисуется пунктиром.
+struct RouteChain: View {
+    struct Node: Hashable {
+        var title: String
+        var detail: String
+        var color: Color = Ink.text
+        var mono = false
+    }
+    let nodes: [Node]
+    var direct = false
+
+    var body: some View {
+        let accent = direct ? Ink.direct : Ink.tealDot
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(nodes.indices, id: \.self) { i in
+                let last = i == nodes.count - 1
+                HStack(alignment: .top, spacing: 8) {
+                    ZStack(alignment: .top) {
+                        if !last {
+                            VLine()
+                                .stroke(accent.opacity(direct ? 1 : 0.55), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: direct ? [3, 3] : []))
+                                .frame(width: 2)
+                                .padding(.top, 12)
+                        }
+                        Circle()
+                            .strokeBorder(accent, lineWidth: 2)
+                            .background(Circle().fill(last ? accent : Ink.card))
+                            .frame(width: 10, height: 10)
+                            .padding(.top, 2)
+                    }
+                    .frame(width: 14)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    (Text(nodes[i].title).fontWeight(.medium).foregroundColor(nodes[i].color)
+                     + Text(nodes[i].detail.isEmpty ? "" : "  " + nodes[i].detail)
+                        .font(nodes[i].mono ? .system(size: 11, design: .monospaced) : .system(size: 11))
+                        .foregroundColor(Ink.faint))
+                        .textSelection(.enabled)
+                        .padding(.bottom, last ? 0 : 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
+    }
+}
+
+/// Вертикальная линия по центру рамки.
+struct VLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        }
+    }
+}
+
+/// Плитка действия: значок и название, под ними что действие делает. Клик по плитке запускает действие,
+/// переключатель внутри (у Restart) работает отдельно.
+struct ActionTile: View {
+    let icon: String
+    let title: String
+    let hint: String
+    var destructive = false
+    var highlighted = false
+    var toggle: Binding<Bool>? = nil
+    var toggleTitle = ""
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 11, weight: .semibold)).frame(width: 14)
+                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+            }
+            .foregroundStyle(destructive ? Ink.red : Ink.text)
+            Text(hint)
+                .font(.system(size: 11))
+                .foregroundStyle(Ink.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            if let toggle {
+                Toggle(isOn: toggle) {
+                    Text(toggleTitle).font(.system(size: 11)).foregroundStyle(Ink.muted)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .padding(.top, 3)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(shape.fill(hover ? (destructive ? Ink.redChip : Ink.hover) : Ink.card))
+        .overlay(shape.strokeBorder(highlighted ? Color.accentColor : hover ? (destructive ? Ink.redBorder : Ink.buttonBorder) : .clear))
+        .contentShape(shape)
+        .onTapGesture(perform: action)
+        .onHover { hover = $0 }
+        .pointerStyle(.link)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, action)
     }
 }
 
