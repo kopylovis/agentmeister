@@ -14,6 +14,7 @@ import urllib.request
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import secret
 from mnrhlib import HOME, read_config, tilde, write_config
+import keychain
 import presence
 from presence import away_after
 
@@ -89,9 +90,8 @@ def token():
 
 
 def save_token(value):
-    r = subprocess.run(["security", "add-generic-password", "-U", "-s", SERVICE, "-a", ACCOUNT,
-                        "-l", "Agentmeister Telegram bot", "-w", value], capture_output=True, text=True, timeout=10)
-    if r.returncode != 0:
+    # через keychain.save: токен уходит в security через stdin, не аргументом
+    if not keychain.save(ACCOUNT, value, "Agentmeister Telegram bot", service=SERVICE):
         raise TelegramError("не сохранил токен в Связку ключей")
 
 

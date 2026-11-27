@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shlex
 import shutil
 import sys
 import tempfile
@@ -350,8 +351,12 @@ class Keychain(unittest.TestCase):
     """Токен бота живет под agentmeister.notify/telegram. Старая запись mnrh-telegram/bot копируется туда
     и остается для старых версий, пока канал не отключат."""
 
-    def fake_security(self, store):
+    def fake_security(self, store, argv=None):
         def run(cmd, **kw):
+            if argv is not None:
+                argv.append(list(cmd))
+            if cmd == ["security", "-i"]:  # команда с секретом приходит через stdin
+                cmd = ["security"] + shlex.split(kw["input"])
             op, service, account = cmd[1], cmd[cmd.index("-s") + 1], cmd[cmd.index("-a") + 1]
             key = (service, account)
             if op == "find-generic-password":
@@ -373,6 +378,14 @@ class Keychain(unittest.TestCase):
         store = {("mnrh-telegram", "bot"): "123:old", ("agentmeister.notify", "telegram"): "456:new"}
         with mock.patch.object(telegram.subprocess, "run", self.fake_security(store)):
             self.assertEqual(telegram.token(), "456:new")
+
+    def test_token_never_in_argv(self):
+        store, argv = {}, []
+        token = '123:a"b\\c d'
+        with mock.patch.object(telegram.subprocess, "run", self.fake_security(store, argv)):
+            telegram.save_token(token)
+        self.assertEqual(store, {("agentmeister.notify", "telegram"): token})
+        self.assertFalse([cmd for cmd in argv if any("123:" in part for part in cmd)])
 
     def test_forget_removes_both(self):
         store = {("mnrh-telegram", "bot"): "123:old", ("agentmeister.notify", "telegram"): "456:new"}
