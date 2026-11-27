@@ -620,6 +620,7 @@ def settings():
             out["errors"][name] = f"{type(e).__name__}: {e}"
 
     def notify():
+        import bark_channel
         import ntfy_alert
         import ntfy_channel
         import presence
@@ -643,7 +644,10 @@ def settings():
                 "ntfy": {"mode": ntfy_channel.mode(), "configured": ntfy_channel.configured(),
                          "server": ntfy_channel.server(), "topic": ntfy_channel.topic() or None,
                          "body": ntfy_channel.body_mode(), "token": bool(ntfy_channel.token()),
-                         "public": ntfy_channel.public(), "subscribe": ntfy_channel.subscribe_url() or None}}
+                         "public": ntfy_channel.public(), "subscribe": ntfy_channel.subscribe_url() or None},
+                "bark": {"mode": bark_channel.mode(), "configured": bark_channel.configured(),
+                         "server": bark_channel.server(), "body": bark_channel.body_mode(),
+                         "encrypted": bool(bark_channel.crypto_key()), "public": bark_channel.public()}}
 
     def guard():
         import claude_guard

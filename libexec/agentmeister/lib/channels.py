@@ -3,6 +3,7 @@
 с name, label, configured(), mode() и send(msg) и строкой в ALL."""
 from typing import NamedTuple
 
+import bark_channel
 import ntfy_alert
 import ntfy_channel
 import presence
@@ -105,7 +106,25 @@ class Ntfy(Channel):
             raise SendError(str(e)) from None
 
 
-ALL = (Telegram(), Tossling(), Ntfy())
+class Bark(Channel):
+    name = "bark"
+    label = "Bark"
+
+    def configured(self):
+        return bark_channel.configured()
+
+    def mode(self):
+        return bark_channel.mode()
+
+    def send(self, msg):
+        title, text = ntfy_text(msg, bark_channel.body_mode())
+        try:
+            bark_channel.send(title, text, urgent=msg.urgent)
+        except bark_channel.BarkError as e:
+            raise SendError(str(e)) from None
+
+
+ALL = (Telegram(), Tossling(), Ntfy(), Bark())
 
 
 def by_name(name):
