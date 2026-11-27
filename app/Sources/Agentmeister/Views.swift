@@ -605,7 +605,9 @@ struct SidebarFooter: View {
     static func hint(_ key: String, _ l: L) -> String {
         switch key {
         case "humanize": return l.t("текст без примет нейросети", "writing without AI tells")
-        case "translate": return l.t("перевод рядом с оригиналом", "translation next to the original")
+        case "translate":
+            let key = ShortcutStore.shared.label(.translateInput)
+            return TranslateKey.saved ? l.t("\(key) переводит ввод", "\(key) translates the input") : l.t("\(key), нет ключа", "\(key), no key")
         case "guard": return l.t("спросит перед опасной командой", "asks before risky commands")
         case "notify": return l.t("скажет, что агент ждет", "pings when an agent waits")
         case "buildlog": return l.t("выжимка длинных сборок", "digest of long builds")
@@ -998,6 +1000,9 @@ struct DetailView: View {
                     }
                     .overlay {
                         if let tab = workspace.current { InputTranslationOverlay(tab: tab).clipShape(.windowCard) }
+                    }
+                    .overlay {
+                        if let tab = workspace.current { TranslateKeyCard(tab: tab).clipShape(.windowCard) }
                     }
             }
         }
@@ -2196,6 +2201,98 @@ struct InputTranslationOverlay: View {
                                    "The translator didn't answer in 20 seconds, the text is unchanged.")
         case .failed(let why)?: return why.isEmpty ? nil : why
         default: return nil
+        }
+    }
+}
+
+/// ⌘⇧T без ключа переводчика: карточка во вкладке с полем для ключа. Провайдер определяется по виду ключа,
+/// ключ сохраняет agentmeister translate key, после этого сразу идет перевод. Esc или клик мимо закрывают.
+struct TranslateKeyCard: View {
+    @EnvironmentObject var backend: Backend
+    @ObservedObject var tab: TerminalTab
+    @State private var key = ""
+    @State private var saving = false
+    @State private var error: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        if tab.askingKey {
+            let l = L(backend.state.lang)
+            ZStack {
+                Rectangle().fill(.black.opacity(0.38))
+                    .contentShape(Rectangle())
+                    .onTapGesture { close() }
+                card(l)
+            }
+            .onExitCommand { close() }
+            .onAppear { focused = true }
+        }
+    }
+
+    private func card(_ l: L) -> some View {
+        let provider = TranslateKey.provider(key)
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 9) {
+                Circle().fill(Ink.amber).frame(width: 7, height: 7).shadow(color: Ink.amber.opacity(0.8), radius: 4)
+                Text(l.t("Ключ для перевода", "Translator key")).font(.system(size: 14, weight: .semibold)).foregroundStyle(Ink.strong)
+            }
+            Text(l.t("Вставь ключ OpenRouter или Google AI Studio. Он ляжет в ~/.config/mnrh с правами 600, как через agentmeister translate key. Строка ввода осталась как была.",
+                     "Paste an OpenRouter or Google AI Studio key. It goes to ~/.config/mnrh with mode 600, as with agentmeister translate key. The input line is unchanged."))
+                .font(.system(size: 12.5)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                SecureField("sk-or-v1-…  /  AQ.… / AIza…", text: $key)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12.5, design: .monospaced))
+                    .focused($focused)
+                    .onSubmit { save(l) }
+                    .accessibilityLabel(l.t("Ключ переводчика", "Translator key"))
+                Text(error ?? (trimmed.isEmpty ? l.t("Провайдер определится по ключу", "The key tells which provider it is")
+                               : provider.map { l.t("Похоже на ключ \($0), перевод пойдет через него", "Looks like a \($0) key, translation goes through it") }
+                               ?? l.t("Не похоже на ключ OpenRouter или Google AI Studio", "Doesn't look like an OpenRouter or Google AI Studio key")))
+                    .font(.system(size: 12))
+                    .foregroundStyle(error != nil || (provider == nil && !trimmed.isEmpty) ? Ink.red : provider != nil ? Ink.teal : Ink.faint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 14) {
+                Link(l.t("Ключ OpenRouter", "OpenRouter key"), destination: URL(string: "https://openrouter.ai/settings/keys")!)
+                Link(l.t("Ключ Google AI Studio", "Google AI Studio key"), destination: URL(string: "https://aistudio.google.com/apikey")!)
+            }
+            .font(.system(size: 12))
+            HStack(spacing: 8) {
+                PillButton(title: l.t("Сохранить и перевести", "Save and translate"), prominent: true, small: true, busy: saving) { save(l) }
+                    .disabled(provider == nil || saving)
+                PillButton(title: l.t("Отмена", "Cancel"), small: true) { close() }
+                Spacer(minLength: 0)
+                Text(l.t("Esc закроет", "Esc closes")).font(.system(size: 11)).foregroundStyle(Ink.faint)
+            }
+        }
+        .frame(width: 380, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+    }
+
+    private func close() {
+        key = ""
+        error = nil
+        tab.askingKey = false
+        tab.view.window?.makeFirstResponder(tab.view)
+    }
+
+    private func save(_ l: L) {
+        let value = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard TranslateKey.provider(value) != nil, !saving else { return }
+        saving = true
+        Task {
+            let r = await Task.detached(priority: .userInitiated) { Backend.runWithInput(["translate", "key"], input: value) }.value
+            saving = false
+            guard r.ok else {
+                error = r.text.isEmpty ? l.t("Ключ не сохранился", "The key wasn't saved") : r.text
+                return
+            }
+            close()
+            tab.translateInput()
         }
     }
 }
