@@ -86,8 +86,10 @@ struct MainView: View {
             // окно демо отличается от настоящего заголовком, и снимки одного размера
             if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true || $0.title == "Agentmeister" }) {
                 window.title = "Agentmeister Demo"
-                // в сцене tabs-list окно узкое, чтобы вкладки не поместились в полосу
-                window.setFrame(NSRect(x: 40, y: 40, width: Demo.scene == "tabs-list" ? 1000 : 1440, height: 880), display: true)
+                // в сцене tabs-list окно узкое, чтобы вкладки не поместились в полосу, в bar-narrow чтобы панель
+                // сессии прокручивалась
+                window.setFrame(NSRect(x: 40, y: 40, width: Demo.scene == "bar-narrow" ? 760 : Demo.scene == "tabs-list" ? 1000 : 1440, height: 880),
+                                display: true)
                 // снимок с активным окном: цветные кнопки, даже если фокус был у другого приложения
                 NSApp.activate(ignoringOtherApps: true)
                 window.makeKeyAndOrderFront(nil)
@@ -1634,6 +1636,8 @@ struct InfoBar: View {
     /// Токены в контексте сессии Claude Code, из ее переписки. Читается раз в 10 секунд, как и ветка.
     @State private var context: SessionContext.Usage?
     @State private var contextOpen = false
+    /// Прокрутка левой части: где затухает край и нужен ли разделитель перед кнопками.
+    @State private var scroll = TabStrip.StripScroll()
 
     private func revealFolder() {
         NSWorkspace.shared.open(URL(fileURLWithPath: tab.spec.projectPath, isDirectory: true))
@@ -1682,115 +1686,82 @@ struct InfoBar: View {
         let branch = head ?? backend.state.sessions.first { $0.id == tab.sessionId }?.branch ?? ""
         // порт этой вкладки: у вкладки только через одну подписку он свой
         let port = backend.state.proxy?.port(for: tab.spec.subscription) ?? backend.state.proxy?.port ?? 17890
+        // слева сведения о сессии, они прокручиваются вбок под затухающими краями. Справа кнопки одной группой
+        // значков: в узком окне они не сокращаются и при любой ширине стоят на тех же местах
         HStack(spacing: 8) {
-            if let parent = tab.spec.parent, workspace.tabs.contains(where: { $0.id == parent }) {
-                Chip(action: { workspace.selected = parent }) {
-                    Image(systemName: "arrow.up").font(.system(size: 10, weight: .semibold))
-                    Text(l.t("к агенту", "to the agent"))
-                }
-                .help(l.t("Вернуться к вкладке агента", "Back to the agent's tab"))
-            }
-            Chip(mono: true, action: { revealFolder() }) {
-                Text(tilde(tab.spec.projectPath)).lineLimit(1).truncationMode(.head)
-            }
-            .layoutPriority(2)
-            .help(l.t("Открыть папку в Finder", "Open the folder in Finder"))
-            .contextMenu {
-                Button(l.t("Открыть в Finder", "Open in Finder")) { revealFolder() }
-                Button(l.t("Скопировать путь", "Copy path")) { copy(tab.spec.projectPath) }
-            }
-            if !branch.isEmpty {
-                Chip(mono: true, action: { copyBranch(branch) }) {
-                    Text(l.t("ветка", "branch")).font(.system(size: 12)).foregroundStyle(Ink.faint)
-                    Text(copied ? l.t("скопировано", "copied") : branch).lineLimit(1)
-                }
-                .layoutPriority(1)
-                .help(l.t("Скопировать имя ветки", "Copy the branch name"))
-            }
-            if tab.spec.utility != nil {
-                Chip(foreground: Ink.muted, action: { openProxySettings() }) {
-                    Text(tab.spec.proxied ? l.t("proxy run, сеть через 127.0.0.1:\(port)", "proxy run, network via 127.0.0.1:\(port)")
-                                          : l.t("команда agentmeister", "agentmeister command"))
-                }
-            } else if tab.spec.proxied {
-                Chip(background: Ink.tealChip, foreground: Ink.teal, action: { openProxySettings() }) {
-                    Text(tab.spec.agent == .codex
-                         ? l.t("строгий профиль, сеть только через mihomo", "strict profile, network only through mihomo")
-                         : l.t("sandbox-exec, сеть через 127.0.0.1:\(port)", "sandbox-exec, network via 127.0.0.1:\(port)"))
-                }
-                .help(l.t("Настройки proxy и host-run", "Proxy and host-run settings"))
-            } else {
-                Chip(foreground: Ink.direct, action: { openProxySettings() }) {
-                    Text(l.t("напрямую, без sandbox-exec", "direct, no sandbox-exec"))
-                }
-                .help(l.t("Настройки proxy и host-run", "Proxy and host-run settings"))
-            }
-            if tab.spec.utility == nil && tab.spec.agent == .claude {
-                Button {
-                    if !tab.setRemoteControl(!tab.spec.remoteControl) { ui.confirmingRemote = tab }
-                } label: {
-                    Label("Remote Control", systemImage: "iphone")
-                }
-                .buttonStyle(ChipStyle(on: tab.spec.remoteControl))
-                // короткие переключатели не сокращаются, место уступают длинные чипы маршрута и перезапуска
-                .layoutPriority(1)
-                .help(remoteControlHelp)
-                .accessibilityAddTraits(tab.spec.remoteControl ? .isSelected : [])
-            }
-            if tab.spec.utility == nil {
-                Button {
-                    tab.setAwake(!tab.spec.awake)
-                } label: {
-                    Label(l.t("Не спать", "Stay awake"), systemImage: "timer")
-                }
-                .buttonStyle(ChipStyle(on: tab.spec.awake))
-                .layoutPriority(1)
-                .help(l.t("Mac не уснет, пока идет эта сессия", "The Mac stays awake while this session runs"))
-                .accessibilityAddTraits(tab.spec.awake ? .isSelected : [])
-            }
-            if tab.spec.utility == nil, let usage = context {
-                contextChip(usage)
-            }
-            if !tab.running {
-                Text(l.exited + (tab.exitCode.map { ", \($0)" } ?? ""))
-                    .font(.system(size: 12))
-                    .foregroundStyle(Ink.faint)
-            }
-            Spacer(minLength: 0)
-            if tab.spec.agent == .codex && tab.spec.utility == nil {
-                Button { workspace.moveToClaude(tab) } label: { Label(l.moveToClaude, systemImage: "arrow.right.circle") }
-                    .buttonStyle(ChipStyle())
-                    .disabled(tab.sessionId == nil)
-                    .help(tab.sessionId == nil
-                          ? l.t("Тред Codex появится после первого запроса", "The Codex thread appears after the first request")
-                          : l.t("Новая вкладка Claude Code с контекстом этой сессии Codex", "A new Claude Code tab with this Codex session's context"))
-            }
-            if tab.spec.utility == nil {
-                Button { if tab.spec.proxied { ui.confirmingDirect = tab } else { tab.switchRoute() } } label: {
-                    Label(tab.spec.proxied ? l.t("Перезапустить напрямую", "Restart without proxy")
-                                           : l.t("Перезапустить через proxy", "Restart via proxy"),
-                          systemImage: tab.spec.proxied ? "arrow.triangle.2.circlepath" : "shield")
-                }
-                .buttonStyle(ChipStyle())
-                .help(tab.spec.proxied ? l.t("Та же сессия, но без песочницы и proxy", "The same session without the sandbox and proxy")
-                                       : l.t("Та же сессия в песочнице, сеть через mihomo", "The same session in the sandbox, network through mihomo"))
-                if !SubscriptionSwitchMenu.options(tab: tab, proxy: backend.state.proxy).isEmpty {
-                    Menu {
-                        SubscriptionSwitchMenu(tab: tab, inline: true)
-                    } label: {
-                        Label(tab.spec.proxied ? tab.spec.routeLabel(l, proxy: backend.state.proxy) : l.t("Подписка", "Subscription"),
-                              systemImage: "point.3.connected.trianglepath.dotted")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if let parent = tab.spec.parent, workspace.tabs.contains(where: { $0.id == parent }) {
+                        Chip(action: { workspace.selected = parent }) {
+                            Image(systemName: "arrow.up").font(.system(size: 10, weight: .semibold))
+                            Text(l.t("к агенту", "to the agent"))
+                        }
+                        .help(l.t("Вернуться к вкладке агента", "Back to the agent's tab"))
                     }
-                    .menuStyle(.button)
-                    .buttonStyle(ChipStyle())
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .help(l.t("Перезапустить ту же сессию через другую подписку proxy", "Restart the same session through another proxy subscription"))
+                    Chip(mono: true, action: { revealFolder() }) {
+                        Text(tilde(tab.spec.projectPath)).lineLimit(1)
+                    }
+                    .help(l.t("Открыть папку в Finder", "Open the folder in Finder"))
+                    .contextMenu {
+                        Button(l.t("Открыть в Finder", "Open in Finder")) { revealFolder() }
+                        Button(l.t("Скопировать путь", "Copy path")) { copy(tab.spec.projectPath) }
+                    }
+                    if !branch.isEmpty {
+                        Chip(mono: true, action: { copyBranch(branch) }) {
+                            Text(l.t("ветка", "branch")).font(.system(size: 12)).foregroundStyle(Ink.faint)
+                            Text(copied ? l.t("скопировано", "copied") : branch).lineLimit(1)
+                        }
+                        .help(l.t("Скопировать имя ветки", "Copy the branch name"))
+                    }
+                    if tab.spec.utility != nil {
+                        Chip(foreground: Ink.muted, action: { openProxySettings() }) {
+                            Text(tab.spec.proxied ? l.t("proxy run, сеть через 127.0.0.1:\(port)", "proxy run, network via 127.0.0.1:\(port)")
+                                                  : l.t("команда agentmeister", "agentmeister command"))
+                        }
+                    } else if tab.spec.proxied {
+                        Chip(background: Ink.tealChip, foreground: Ink.teal, action: { openProxySettings() }) {
+                            Text(tab.spec.agent == .codex
+                                 ? l.t("строгий профиль, сеть только через mihomo", "strict profile, network only through mihomo")
+                                 : l.t("sandbox-exec, сеть через 127.0.0.1:\(port)", "sandbox-exec, network via 127.0.0.1:\(port)"))
+                        }
+                        .help(l.t("Настройки proxy и host-run", "Proxy and host-run settings"))
+                    } else {
+                        Chip(foreground: Ink.direct, action: { openProxySettings() }) {
+                            Text(l.t("напрямую, без sandbox-exec", "direct, no sandbox-exec"))
+                        }
+                        .help(l.t("Настройки proxy и host-run", "Proxy and host-run settings"))
+                    }
+                    if !tab.running {
+                        Text(l.exited + (tab.exitCode.map { ", \($0)" } ?? ""))
+                            .font(.system(size: 12))
+                            .foregroundStyle(Ink.faint)
+                    }
                 }
-            } else {
-                Button { tab.restart() } label: { Label(l.restart, systemImage: "arrow.clockwise") }
-                    .buttonStyle(ChipStyle())
             }
+            .frame(height: 26)
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .onScrollGeometryChange(for: TabStrip.StripScroll.self) { geo in
+                TabStrip.StripScroll(offset: geo.contentOffset.x, content: geo.contentSize.width, width: geo.containerSize.width)
+            } action: { _, now in
+                scroll = now
+            }
+            // край затухает, только когда за ним что-то есть
+            .mask {
+                HStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: scroll.left ? 28 : 0)
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: scroll.right ? 28 : 0)
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: scroll.left)
+            .animation(.easeOut(duration: 0.15), value: scroll.right)
+            if scroll.overflows {
+                Rectangle().fill(Ink.hairline).frame(width: 1, height: 18)
+            }
+            controls
+                .fixedSize()
         }
         .padding(.horizontal, 4)
         .task(id: tab.sessionId) {
@@ -1816,25 +1787,97 @@ struct InfoBar: View {
 }
 
 extension InfoBar {
-    /// "контекст 279k / 1M" и полоска от окна модели, если окно известно (promptsill у Claude, rollout у Codex),
-    /// иначе только число. С 200 тыс. (или 80% окна поменьше) желтый. Клик открывает выбор, чем сжать.
-    func contextChip(_ usage: SessionContext.Usage) -> some View {
-        let over = usage.over
-        let used = SessionContext.short(usage.used)
-        return Chip(foreground: over ? Ink.amber : Ink.text2, action: tab.running && tab.sessionId != nil ? { contextOpen = true } : nil) {
-            Text(l.t("контекст", "context") + " " + used + (usage.size.map { " / " + SessionContext.short($0) } ?? ""))
-                .monospacedDigit()
-            if let size = usage.size {
-                Capsule().fill(Ink.hairline)
-                    .frame(width: 28, height: 4)
-                    .overlay(alignment: .leading) {
-                        Capsule().fill(over ? Ink.amberDot : Ink.text2.opacity(0.6))
-                            .frame(width: 28 * min(1, Double(usage.used) / Double(size)), height: 4)
+    /// Кнопки справа, только значки. Подписи в подсказках и для VoiceOver.
+    @ViewBuilder
+    var controls: some View {
+        HStack(spacing: 8) {
+            if tab.spec.agent == .codex && tab.spec.utility == nil {
+                Button { workspace.moveToClaude(tab) } label: { Label(l.moveToClaude, systemImage: "arrow.right.circle") }
+                    .buttonStyle(ChipStyle(iconOnly: true))
+                    .accessibilityLabel(l.moveToClaude)
+                    .disabled(tab.sessionId == nil)
+                    .help(l.moveToClaude + ". " + (tab.sessionId == nil
+                          ? l.t("Тред Codex появится после первого запроса", "The Codex thread appears after the first request")
+                          : l.t("Новая вкладка Claude Code с контекстом этой сессии Codex", "A new Claude Code tab with this Codex session's context")))
+            }
+            if tab.spec.utility == nil && tab.spec.agent == .claude {
+                Button {
+                    if !tab.setRemoteControl(!tab.spec.remoteControl) { ui.confirmingRemote = tab }
+                } label: {
+                    Label("Remote Control", systemImage: "iphone")
+                }
+                .buttonStyle(ChipStyle(on: tab.spec.remoteControl, iconOnly: true))
+                .accessibilityLabel("Remote Control")
+                .help("Remote Control. " + remoteControlHelp)
+                .accessibilityAddTraits(tab.spec.remoteControl ? .isSelected : [])
+            }
+            if tab.spec.utility == nil {
+                Button {
+                    tab.setAwake(!tab.spec.awake)
+                } label: {
+                    Label(l.t("Не спать", "Stay awake"), systemImage: "timer")
+                }
+                .buttonStyle(ChipStyle(on: tab.spec.awake, iconOnly: true))
+                .accessibilityLabel(l.t("Не спать", "Stay awake"))
+                .help(l.t("Не спать. Mac не уснет, пока идет эта сессия", "Stay awake. The Mac stays awake while this session runs"))
+                .accessibilityAddTraits(tab.spec.awake ? .isSelected : [])
+            }
+            if tab.spec.utility == nil, let usage = context {
+                contextChip(usage)
+            }
+            if tab.spec.utility == nil {
+                let title = tab.spec.proxied ? l.t("Перезапустить напрямую", "Restart without proxy")
+                                             : l.t("Перезапустить через proxy", "Restart via proxy")
+                Button { if tab.spec.proxied { ui.confirmingDirect = tab } else { tab.switchRoute() } } label: {
+                    Label(title, systemImage: tab.spec.proxied ? "arrow.triangle.2.circlepath" : "shield")
+                }
+                .buttonStyle(ChipStyle(iconOnly: true))
+                .accessibilityLabel(title)
+                .help(title + ". " + (tab.spec.proxied ? l.t("Та же сессия, но без песочницы и proxy", "The same session without the sandbox and proxy")
+                                                       : l.t("Та же сессия в песочнице, сеть через mihomo", "The same session in the sandbox, network through mihomo")))
+                if !SubscriptionSwitchMenu.options(tab: tab, proxy: backend.state.proxy).isEmpty {
+                    let route = tab.spec.proxied ? tab.spec.routeLabel(l, proxy: backend.state.proxy) : l.t("Подписка", "Subscription")
+                    Menu {
+                        SubscriptionSwitchMenu(tab: tab, inline: true)
+                    } label: {
+                        Label(route, systemImage: "point.3.connected.trianglepath.dotted")
                     }
+                    .menuStyle(.button)
+                    .buttonStyle(ChipStyle(iconOnly: true))
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .accessibilityLabel(route)
+                    .help(route + ". " + l.t("Перезапустить ту же сессию через другую подписку proxy", "Restart the same session through another proxy subscription"))
+                }
+            } else {
+                Button { tab.restart() } label: { Label(l.restart, systemImage: "arrow.clockwise") }
+                    .buttonStyle(ChipStyle(iconOnly: true))
+                    .accessibilityLabel(l.restart)
+                    .help(l.restart)
             }
         }
-        .help(l.t("Токенов в контексте сессии" + (usage.size == nil ? "" : " из окна модели") + ". Клик предлагает сжать разговор.",
-                  "Tokens in this session's context" + (usage.size == nil ? "" : " out of the model's window") + ". Click to condense the conversation."))
+    }
+
+    /// Полоска заполнения окна модели, цифры в подсказке. Если окно неизвестно, вместо полоски число токенов.
+    /// С 200 тыс. (или 80% окна поменьше) желтая. Клик открывает выбор, чем сжать.
+    func contextChip(_ usage: SessionContext.Usage) -> some View {
+        let over = usage.over
+        let numbers = SessionContext.short(usage.used) + (usage.size.map { " / " + SessionContext.short($0) } ?? "")
+        return Chip(foreground: over ? Ink.amber : Ink.text2, action: tab.running && tab.sessionId != nil ? { contextOpen = true } : nil) {
+            if let size = usage.size {
+                Capsule().fill(Ink.hairline)
+                    .frame(width: 36, height: 4)
+                    .overlay(alignment: .leading) {
+                        Capsule().fill(over ? Ink.amberDot : Ink.text2.opacity(0.6))
+                            .frame(width: 36 * min(1, Double(usage.used) / Double(size)), height: 4)
+                    }
+            } else {
+                Text(numbers).monospacedDigit()
+            }
+        }
+        .help(l.t("Контекст \(numbers). Токенов в контексте сессии" + (usage.size == nil ? "" : " из окна модели") + ". Клик предлагает сжать разговор.",
+                  "Context \(numbers). Tokens in this session's context" + (usage.size == nil ? "" : " out of the model's window") + ". Click to condense the conversation."))
+        .accessibilityLabel(l.t("Контекст \(numbers)", "Context \(numbers)"))
         .popover(isPresented: $contextOpen, arrowEdge: .bottom) { CompactPopover(tab: tab, usage: usage, l: l) { contextOpen = false } }
     }
 }
