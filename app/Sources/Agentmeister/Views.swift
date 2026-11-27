@@ -527,12 +527,19 @@ struct Sidebar: View {
         List {
             let projects = workspace.sidebarProjects(backend.state)
             ForEach(projects) { project in
-                DisclosureGroup(isExpanded: binding(for: project)) {
-                    ForEach(backend.state.sessions(in: project).prefix(6)) { session in
-                        SessionRow(session: session, project: project)
+                let sessions = backend.state.sessions(in: project).prefix(6)
+                Group {
+                    if sessions.isEmpty {
+                        ProjectRow(project: project)
+                    } else {
+                        DisclosureGroup(isExpanded: binding(for: project)) {
+                            ForEach(sessions) { session in
+                                SessionRow(session: session, project: project)
+                            }
+                        } label: {
+                            ProjectRow(project: project)
+                        }
                     }
-                } label: {
-                    ProjectRow(project: project)
                 }
                 // двигаются только проекты с вкладками: порядок повторяет полосу вкладок
                 .moveDisabled(!workspace.hasTabs(in: project, state: backend.state))
