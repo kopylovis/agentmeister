@@ -102,6 +102,13 @@ struct TabAlert: View {
                               primary: (l.t("Подробнее", "Details"), { utility(["proxy"]) }),
                               secondary: (l.t("Скрыть", "Dismiss"), { backend.exitChange = nil })))
         }
+        if let file = tab.downloadedImage {
+            items.append(Item(id: "download-" + file.path, tone: .teal, icon: "arrow.down.circle",
+                              title: l.t("Копия сохранена в Загрузках", "Saved to Downloads"),
+                              body: file.lastPathComponent, primary: (l.t("Показать в Finder", "Show in Finder"), {
+                                  NSWorkspace.shared.activateFileViewerSelecting([file])
+                              }), secondary: nil))
+        }
         return items.first { !dismissed.contains($0.id) }
     }
 

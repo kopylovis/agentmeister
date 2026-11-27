@@ -199,6 +199,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Перезапуск уже идет: ждем выхода агента, claude update или команду sessions. Повторный запрос до нового
     /// старта ничего не делает, иначе второй claude update убил бы сессию, которую открыл первый.
     private var restarting = false
+    @Published var downloadedImage: URL?
     let view: AppTerminalView
 
     init(spec: LaunchSpec, id: UUID? = nil) {
@@ -1588,7 +1589,69 @@ final class AppTerminalView: LocalProcessTerminalView {
         return path.map { special.contains($0) ? "\\" + String($0) : String($0) }.joined()
     }
 
+    private var downloadPress: (point: NSPoint, label: String?)?
+
+    override func mouseDown(with event: NSEvent) {
+        downloadPress = nil
+        if tab?.spec.codexSession == true, event.clickCount == 1,
+           event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command,
+           let snapshot = terminalContentSnapshot(region: .viewport) {
+            let index = characterIndex(for: event.locationInWindow)
+            let cols = snapshot.dimensions.cols
+            if cols > 0, index >= 0, snapshot.rows.indices.contains(index / cols) {
+                let label = CodexImageDownload.label(in: snapshot.rows[index / cols], at: index % cols)
+                downloadPress = (event.locationInWindow, label)
+            }
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        downloadPress = nil
+        super.mouseDragged(with: event)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if let press = downloadPress,
+           !event.modifierFlags.contains(.command) || hypot(event.locationInWindow.x - press.point.x,
+                                                            event.locationInWindow.y - press.point.y) > 4 {
+            downloadPress = nil
+        }
+        super.mouseUp(with: event)
+        if let label = downloadPress?.label, let tab, let session = tab.sessionId {
+            let project = URL(fileURLWithPath: tab.spec.projectPath, isDirectory: true)
+            saveClickedImage {
+                CodexImageDownload.source(label: label, session: session, project: project)
+            }
+        }
+        downloadPress = nil
+    }
+
+    private func saveClickedImage(_ source: @escaping @Sendable () -> URL?) {
+        Task {
+            do {
+                let saved = try await Task.detached(priority: .userInitiated) { () throws -> URL? in
+                    guard let url = source() else { return nil }
+                    let folder = try FileManager.default.url(for: .downloadsDirectory, in: .userDomainMask,
+                                                             appropriateFor: nil, create: true)
+                    return try CodexImageDownload.save(url, in: folder)
+                }.value
+                if let saved { tab?.downloadedImage = saved }
+            } catch {
+                NSApp.presentError(error)
+            }
+        }
+    }
+
     override func requestOpenLink(source: TerminalView, request: TerminalLinkRequest) {
+        if downloadPress != nil, let tab {
+            downloadPress = nil
+            let project = URL(fileURLWithPath: tab.spec.projectPath, isDirectory: true)
+            if let link = URL(string: request.link), let url = CodexImageDownload.localImage(link, project: project) {
+                saveClickedImage { url }
+                return
+            }
+        }
         // ссылку из терминала диалога входа диалог открывает сам, там же, где страницу от BROWSER
         if tab?.spec.signInDialog == true, let url = URL(string: request.link), ProxyBrowser.shared.offer(url) {
             return
