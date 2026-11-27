@@ -579,8 +579,12 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         let started = Date()
         var model: String?
         var provider: String?
+        /// Текст строки ввода и перевод: карточка показывает, как один складывается в другой.
+        var original: String?
+        var english: String?
         var issue: Issue?
         var done = false
+        var doneAt: Date?
     }
     @Published var inputTranslation: InputTranslation?
 
@@ -631,12 +635,14 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
                 if o["state"] as? String == "done" {
                     let issue: InputTranslation.Issue? = o["ok"] as? Bool == true ? nil
                         : o["cancelled"] as? Bool == true ? .cancelled : .failed(o["error"] as? String ?? "")
+                    self.inputTranslation?.english = o["english"] as? String
                     self.finishInputTranslation(issue, redraw: true)
                     return
                 }
                 if current.model == nil, let model = o["model"] as? String {
                     current.model = model
                     current.provider = o["provider"] as? String
+                    current.original = o["text"] as? String
                     self.inputTranslation = current
                 }
             }
@@ -653,16 +659,18 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         }
     }
 
-    /// Снимок снимается, когда Claude Code вернулся из редактора и перерисовал экран. Ошибку карточка
-    /// показывает еще немного, отмену и успех нет.
+    /// Снимок снимается, когда Claude Code вернулся из редактора и перерисовал экран, а карточка дописала
+    /// перевод. Ошибку карточка показывает еще немного.
     private func finishInputTranslation(_ issue: InputTranslation.Issue?, redraw: Bool) {
         guard var current = inputTranslation else { return }
         current.done = true
+        current.doneAt = Date()
         current.issue = issue
         inputTranslation = current
         for suffix in [".status.json", ".cancel"] { try? FileManager.default.removeItem(atPath: editFile(suffix)) }
-        let shown = issue == nil || issue == .cancelled ? 0.0 : 1.6
-        DispatchQueue.main.asyncAfter(deadline: .now() + (redraw ? 0.3 : 0) + shown) { [weak self] in
+        let wait = issue == nil ? (current.english == nil ? 0.3 : InputTranslationOverlay.reveal + 0.15)
+            : issue == .cancelled ? (redraw ? 0.3 : 0) : (redraw ? 0.3 : 0) + 1.6
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
             self?.inputTranslation = nil
         }
     }

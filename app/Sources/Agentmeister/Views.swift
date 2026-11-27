@@ -1407,13 +1407,16 @@ struct TabChip: View {
                     .overlay { if selected && !lifted { Capsule().strokeBorder(Ink.hairline) } }
                     .shadow(color: .black.opacity(lifted ? 0.35 : 0), radius: 8, y: 2)
             }
-            // идет перевод строки ввода: по контуру вкладки бежит блик, видно и с другой вкладки
+            // идет перевод строки ввода: по ярлыку вкладки проходит блик, видно и с другой вкладки
             .overlay {
                 if tab.inputTranslation?.done == false {
                     TimelineView(.animation) { context in
-                        let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
-                        Capsule().strokeBorder(AngularGradient(colors: [.clear, Ink.teal, .clear, .clear], center: .center,
-                                                               angle: .degrees(turn * 360)), lineWidth: 1.5)
+                        let p = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4 * 1.6 - 0.3
+                        LinearGradient(stops: [.init(color: .clear, location: min(1, max(0, p - 0.25))),
+                                               .init(color: Ink.teal.opacity(0.22), location: min(1, max(0, p))),
+                                               .init(color: .clear, location: min(1, max(0, p + 0.25)))],
+                                       startPoint: .leading, endPoint: .trailing)
+                            .clipShape(Capsule())
                     }
                     .allowsHitTesting(false)
                 }
@@ -2077,10 +2080,13 @@ struct AgentUpdateOverlay: View {
 }
 
 /// Перевод строки ввода по ⌘⇧T: снимок вкладки поверх терминала (под ним Claude Code в редакторе стер экран)
-/// и карточка с моделью и секундами. Ввод в это время не идет, Esc отменяет.
+/// и карточка. Пока ждем, по тексту строки пробегают случайные буквы, когда перевод пришел, текст слева
+/// направо складывается в английский. Ввод в это время не идет, Esc отменяет.
 struct InputTranslationOverlay: View {
     @EnvironmentObject var backend: Backend
     @ObservedObject var tab: TerminalTab
+    /// Сколько секунд перевод складывается из букв, прежде чем снимок уберут.
+    static let reveal = 0.7
 
     var body: some View {
         if let t = tab.inputTranslation {
@@ -2104,41 +2110,84 @@ struct InputTranslationOverlay: View {
     }
 
     private func card(_ t: TerminalTab.InputTranslation, _ l: L) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                if t.issue == nil {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: t.issue == .cancelled ? "xmark.circle" : "exclamationmark.triangle.fill")
-                        .foregroundStyle(t.issue == .cancelled ? Ink.muted : Ink.amber)
+        TimelineView(.periodic(from: t.started, by: 0.06)) { context in
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    if t.issue == nil || t.issue == .cancelled {
+                        Circle().fill(Ink.teal).frame(width: 7, height: 7)
+                            .shadow(color: Ink.teal.opacity(0.8), radius: 4)
+                            .opacity(t.done ? 1 : 0.45 + 0.55 * abs(sin(context.date.timeIntervalSince(t.started) * 3)))
+                    } else {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Ink.amber)
+                    }
+                    Text(title(t, l)).font(.system(size: 14, weight: .semibold)).foregroundStyle(Ink.strong)
+                    if let model = t.model, t.issue == nil {
+                        Text(model).font(.system(size: 12, design: .monospaced)).foregroundStyle(Ink.muted).lineLimit(1)
+                    }
                 }
-                Text(title(t, l)).font(.system(size: 14, weight: .semibold)).foregroundStyle(Ink.strong)
-            }
-            if let detail = detail(t, l) {
-                Text(detail).font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
-            }
-            if t.issue == nil {
-                TimelineView(.periodic(from: t.started, by: 0.1)) { context in
-                    let secs = context.date.timeIntervalSince(t.started)
-                    Text([t.model, t.provider, String(format: "%.1f", secs).replacingOccurrences(of: ".", with: l.en ? "." : ",") + l.t(" с", " s")]
-                        .compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: 12).monospacedDigit())
-                        .foregroundStyle(Ink.muted)
+                if let text = shownText(t, at: context.date) {
+                    Text(text)
+                        .font(.system(size: 12.5, design: .monospaced))
+                        .foregroundStyle(Ink.teal)
+                        .lineLimit(5)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else if let detail = detail(t, l) {
+                    Text(detail).font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
                 }
-                Text(l.t("Esc отменит, текст останется как был", "Esc cancels and leaves the text as it was"))
-                    .font(.system(size: 11))
-                    .foregroundStyle(Ink.faint)
+                if t.issue == nil, !t.done {
+                    let secs = String(format: "%.1f", context.date.timeIntervalSince(t.started))
+                    Text((l.en ? secs : secs.replacingOccurrences(of: ".", with: ",")) + l.t(" с · Esc отменит", " s · Esc cancels"))
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(Ink.faint)
+                }
             }
         }
-        .frame(width: 320, alignment: .leading)
+        .frame(width: 360, alignment: .leading)
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
 
+    /// Текст в карточке: оригинал с мерцающими буквами, пока ждем, потом раскрытие перевода. Ошибку показывает
+    /// подпись, а не текст.
+    private func shownText(_ t: TerminalTab.InputTranslation, at date: Date) -> String? {
+        guard let original = t.original, !original.isEmpty else { return nil }
+        let tick = Int(date.timeIntervalSinceReferenceDate * 16)
+        if let english = t.english, let doneAt = t.doneAt {
+            let progress = min(1, date.timeIntervalSince(doneAt) / Self.reveal)
+            return Self.scramble(original, into: english, progress: progress, tick: tick)
+        }
+        if t.done { return t.issue == .cancelled ? original : nil }
+        return Self.scramble(original, into: original, progress: 0, tick: tick, noise: 0.18)
+    }
+
+    private static let glyphs = Array("абвгдежзиклмнопрстуфхцчшэюяabcdefghijklmnopqrstuvwxyz")
+
+    /// Первые progress долей текста уже английские, остальное оригинал, где буквы с вероятностью noise
+    /// (или все, когда перевод пришел) заменены случайными. Пробелы и переводы строк остаются на месте.
+    static func scramble(_ from: String, into to: String, progress: Double, tick: Int, noise: Double = 1) -> String {
+        let a = Array(from), b = Array(to)
+        let count = max(a.count, b.count)
+        let settled = Int(Double(count) * progress)
+        var out = ""
+        for i in 0..<count {
+            if i < settled {
+                if i < b.count { out.append(b[i]) }
+                continue
+            }
+            guard i < a.count else { continue }
+            let c = a[i]
+            var h = UInt64(truncatingIfNeeded: i &* 2654435761 &+ tick &* 40503)
+            h ^= h >> 13
+            let roll = Double(h % 1000) / 1000
+            out.append(c.isLetter && roll < noise ? glyphs[Int(h % UInt64(glyphs.count))] : c)
+        }
+        return out
+    }
+
     private func title(_ t: TerminalTab.InputTranslation, _ l: L) -> String {
         switch t.issue {
-        case nil: return l.t("Перевожу на английский", "Translating to English")
+        case nil: return t.done ? l.t("Перевел", "Translated") : l.t("Перевожу", "Translating")
         case .cancelled: return l.t("Перевод отменен", "Translation cancelled")
         default: return l.t("Не перевел", "Not translated")
         }

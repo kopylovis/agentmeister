@@ -300,7 +300,6 @@ def editor_main(args):
         os.remove(cancel)
     except OSError:
         pass
-    _edit_status(tab, state="started", model=model(), provider=info()["name"])
     start = time.monotonic()
     try:
         with open(path, encoding="utf-8") as f:
@@ -308,6 +307,8 @@ def editor_main(args):
     except OSError as e:
         _edit_status(tab, state="done", ok=False, error=str(e))
         return 0
+    # текст нужен карточке перевода в приложении, файл живет до конца перевода и лежит у пользователя
+    _edit_status(tab, state="started", model=model(), provider=info()["name"], text=text.strip())
     import threading
     result = {}
 
@@ -332,7 +333,7 @@ def editor_main(args):
         with open(tmp, "w", encoding="utf-8") as f:
             f.write(english + ("\n" if text.endswith("\n") else ""))
         os.replace(tmp, path)
-        _edit_status(tab, state="done", ok=True, ms=ms)
+        _edit_status(tab, state="done", ok=True, ms=ms, english=english)
         log("input", "переведен", len(text), ms)
     else:
         error = result.get("skip") or result.get("error") or "пустой перевод"
