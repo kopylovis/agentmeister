@@ -2654,9 +2654,11 @@ extension Workspace {
 }
 
 /// Сегментный переключатель-капсула из макета: дорожка и светлый ползунок у выбранного.
+/// Обычный делит доступную ширину поровну, compact берет ширину по подписям (контрол у правого края ряда).
 struct SegmentedCapsule<T: Hashable>: View {
     @Binding var selection: T
     let options: [(T, String, Color?)]
+    var compact = false
 
     var body: some View {
         HStack(spacing: 2) {
@@ -2668,7 +2670,9 @@ struct SegmentedCapsule<T: Hashable>: View {
                     Text(option.1)
                         .fontWeight(.medium)
                         .foregroundStyle(on ? (option.2 ?? Ink.strong) : Ink.muted)
-                        .frame(maxWidth: .infinity)
+                        .lineLimit(compact ? 1 : nil)
+                        .padding(.horizontal, compact ? 14 : 0)
+                        .frame(maxWidth: compact ? nil : .infinity)
                         .frame(height: 30)
                         .background(Capsule().fill(on ? Ink.thumb : .clear).shadow(color: .black.opacity(on ? 0.2 : 0), radius: 3, y: 1))
                         .contentShape(Capsule())
