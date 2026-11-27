@@ -437,8 +437,8 @@ struct ModesPane: View {
                 .padding(.leading, 20)
         }
         if google {
-            Text(l.t("Бесплатно в пределах лимитов, но Google может брать запросы для улучшения моделей. Из России отвечает только через proxy. Временами думает 7-15 секунд, тогда при сохраненном ключе OpenRouter переводит он.",
-                     "Free within limits, but Google may use requests to improve its models. From Russia it answers only through the proxy. It sometimes takes 7-15 seconds, and then OpenRouter translates if its key is saved."))
+            Text(l.t("Бесплатно в пределах лимитов, но Google может брать запросы для улучшения моделей. Там, где Gemini API недоступен (например, в России), отвечает только через proxy. Временами думает 7-15 секунд, тогда при сохраненном ключе OpenRouter переводит он.",
+                     "Free within limits, but Google may use requests to improve its models. Where the Gemini API isn't available (Russia, for example), it answers only through the proxy. It sometimes takes 7-15 seconds, and then OpenRouter translates if its key is saved."))
                 .font(.system(size: 12))
                 .foregroundStyle(Ink.warn)
                 .fixedSize(horizontal: false, vertical: true)

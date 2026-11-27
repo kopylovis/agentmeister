@@ -319,7 +319,7 @@ struct OnboardingView: View {
                     }
                 } else {
                     card {
-                        Text(l.t("Ссылка на подписку 3x-ui", "3x-ui subscription link")).font(.system(size: 12)).foregroundStyle(Ink.muted)
+                        Text(l.t("Ссылка на подписку для Clash, mihomo или v2ray", "Clash, mihomo or v2ray subscription link")).font(.system(size: 12)).foregroundStyle(Ink.muted)
                         TextField("https://example.com/sub/…", text: $subscription)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 12, design: .monospaced))
@@ -327,7 +327,7 @@ struct OnboardingView: View {
                             Text(l.t("Страна выхода", "Exit country")).font(.system(size: 12)).foregroundStyle(Ink.muted)
                             Picker("", selection: $country) {
                                 Text(l.t("Любая рабочая", "Any working")).tag("")
-                                ForEach(["KZ", "SE", "GE", "DE", "NL", "FI", "US"], id: \.self) { Text($0).tag($0) }
+                                ForEach(["DE", "FI", "FR", "GB", "GE", "KZ", "NL", "PL", "SE", "TR", "US"], id: \.self) { Text($0).tag($0) }
                             }
                             .labelsHidden()
                             .frame(width: 150)
