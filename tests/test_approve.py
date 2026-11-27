@@ -88,7 +88,7 @@ class Hook(Base):
         self.assertEqual(out["hookSpecificOutput"], {"hookEventName": "PermissionRequest",
                                                      "decision": {"behavior": "allow"}})
         self.assertIn("rm -rf build", fake.sent["text"])
-        self.assertIn("app: нужно разрешение", fake.sent["text"])
+        self.assertIn("<b>Claude Code: нужно разрешение</b>\n<i>app</i>", fake.sent["text"])
         self.assertIn("answerCallbackQuery", fake.methods())
         # прочитанное подтверждено, кнопки убраны, файлы ожидания стерты
         self.assertIn(("getUpdates", {"offset": 501, "timeout": 0}), fake.calls)

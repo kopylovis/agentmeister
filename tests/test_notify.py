@@ -508,7 +508,8 @@ class CodexNotify(unittest.TestCase):
                 mock.patch.object(notify, "codex_terminal", return_value=None), \
                 mock.patch.object(notify, "iterm_session", return_value=""), \
                 mock.patch.object(notify, "ensure_app", return_value=True), \
-                mock.patch.object(notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(notify.telegram, "wanted", return_value=True), \
+                mock.patch.object(notify.telegram, "send") as send, \
                 mock.patch.object(notify.ntfy_alert, "configured", return_value=False), \
                 mock.patch.object(notify, "post", return_value="ok") as post:
             path = os.path.join(tmp, "rollout.jsonl")
@@ -526,6 +527,9 @@ class CodexNotify(unittest.TestCase):
             self.assertIn("Готово", done[0])
             self.assertEqual(done[2], "Проверки прошли.")
             self.assertIsNone(done[-1])
+            telegram_approval, telegram_done = [call.args for call in send.call_args_list]
+            self.assertEqual(telegram_approval, ("Codex: Нужно разрешение", "project", "Bash"))
+            self.assertEqual(telegram_done, (done[0].replace("project:", "Codex:"), "project", done[2]))
 
 
 if __name__ == "__main__":
