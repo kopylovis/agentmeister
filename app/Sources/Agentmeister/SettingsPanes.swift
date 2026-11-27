@@ -1476,9 +1476,11 @@ struct DoctorPane: View {
     }
 
     /// Чем исправить проверку: та же команда, что советует agentmeister doctor.
-    private func fix(_ check: String) -> [String]? {
-        switch check {
-        case "codex": return ["--harness", "codex", "setup"]
+    private func fix(_ row: DoctorData.Row) -> [String]? {
+        switch row.check {
+        case "codex":
+            if row.text.contains("/hooks") && !row.text.contains("--harness codex setup") { return nil }
+            return ["--harness", "codex", "setup"]
         case "proxy": return ["proxy", "setup"]
         case "lid": return ["lid", "setup"]
         case "modes", "install": return nil
@@ -1603,8 +1605,13 @@ struct DoctorPane: View {
         let collapsible = issues.isEmpty
         let open = !collapsible || expanded.contains(g)
         let bad = issues.filter { $0.level == "bad" }.count
-        let summary = collapsible ? l.t("\(checks(items.count)) в порядке", "\(checks(items.count)) OK")
-                                  : problems(bad: bad, warn: issues.count - bad) + (rest.isEmpty ? "" : l.t(", в порядке \(rest.count)", ", \(rest.count) OK"))
+        let off = rest.filter { $0.level == "off" }.count
+        let ok = rest.count - off
+        let summary = [
+            problems(bad: bad, warn: issues.count - bad),
+            ok > 0 ? l.t("\(checks(ok)) в порядке", "\(checks(ok)) OK") : "",
+            off > 0 ? l.t("выключено \(off)", "\(off) off") : ""
+        ].filter { !$0.isEmpty }.joined(separator: ", ")
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 guard collapsible else { return }
@@ -1702,7 +1709,7 @@ struct DoctorPane: View {
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
             Spacer(minLength: 0)
-            if let args = fix(row.check) {
+            if let args = fix(row) {
                 UtilityButton(title: l.t("Исправить", "Fix"), args: args, prominent: true, small: true)
             }
         }

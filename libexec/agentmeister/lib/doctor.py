@@ -201,18 +201,43 @@ def check_codex_hooks(hooks, name="humanize-hook"):
     events = codex_harness.HOOK_COMMANDS[name]
     if hooks is None:
         count = codex_harness.configured_hooks(name)
+        if count is not None and count < len(events):
+            return "bad", tr(f"{label}, настроено {count} из {len(events)} хуков. Запусти {CODEX_SETUP}.",
+                             f"{label}, {count} of {len(events)} hooks installed. Run {CODEX_SETUP}.")
         shown = count if count is not None else '?'
         return "warn", tr(f"{label}, настроено {shown} из {len(events)} хуков. Статус доверия виден в /hooks.",
                           f"{label}, {shown} of {len(events)} hooks set up. Trust status is in /hooks.")
-    trusted = {hook["eventName"] for hook in hooks if hook.get("enabled") and not hook.get("matcher")
-               and hook.get("trustStatus") == "trusted" and is_hook(hook.get("command"), name)}
-    expected = {event[0].lower() + event[1:] for event in events}
-    count = len(trusted & expected)
-    if count != len(expected):
-        return "bad", tr(f"{label}, подтверждено {count} из {len(expected)} хуков. Проверь {CODEX_SETUP} и /hooks.",
-                         f"{label}, {count} of {len(expected)} hooks trusted. Check {CODEX_SETUP} and /hooks.")
-    return "ok", tr(f"{label}, подтверждено {count} из {len(expected)} хуков",
-                    f"{label}, {count} of {len(expected)} hooks trusted")
+    count = 0
+    missing = []
+    for event in events:
+        event_name = event[0].lower() + event[1:]
+        handlers = [hook for hook in hooks if hook.get("eventName") == event_name
+                    and codex_harness.covers_tools(name, hook.get("matcher")) and is_hook(hook.get("command"), name)
+                    and not (codex_harness.requires_sync(name, event) and hook.get("async"))]
+        if not handlers:
+            missing.append(event)
+        elif any(h.get("enabled") and h.get("trustStatus") == "trusted" for h in handlers):
+            count += 1
+    if count != len(events):
+        fix = (tr(f"Запусти {CODEX_SETUP} для {', '.join(missing)}, затем открой /hooks.",
+                  f"Run {CODEX_SETUP} for {', '.join(missing)}, then open /hooks.") if missing else
+               tr("Проверь этот хук в /hooks.", "Review this hook in /hooks."))
+        return "bad", tr(f"{label}, подтверждено {count} из {len(events)} хуков. {fix}",
+                         f"{label}, {count} of {len(events)} hooks trusted. {fix}")
+    return "ok", tr(f"{label}, подтверждено {count} из {len(events)} хуков",
+                    f"{label}, {count} of {len(events)} hooks trusted")
+
+
+def check_codex_modes(hooks):
+    import main_menu
+    rows = []
+    for name in codex_harness.HOOK_COMMANDS:
+        mode = name.removesuffix("-hook")
+        if main_menu.mode_on(mode):
+            rows.append(check_codex_hooks(hooks, name))
+        else:
+            rows.append(("off", tr(f"Codex {mode} выключен", f"Codex {mode} is off")))
+    return rows
 
 
 def check_codex():
@@ -232,9 +257,7 @@ def check_codex():
                 hooks = request("hooks/list", {"cwds": [cwd]})["data"][0]["hooks"]
             except (OSError, ValueError, KeyError, IndexError):
                 hooks = None
-            rows.append(check_codex_hooks(hooks))
-            if read_config().get("notify", "on") != "off":
-                rows.append(check_codex_hooks(hooks, "notify-hook"))
+            rows.extend(check_codex_modes(hooks))
             skills = request("skills/list", {"cwds": [cwd]})["data"]
     except (OSError, ValueError, KeyError, TypeError):
         return rows + [("bad", tr("Codex App Server не вернул данные установки.",
@@ -275,25 +298,29 @@ def check_lid():
     if not claude_lid.switched_on():
         return [("ok", tr("крышка: выключено, закрытая крышка усыпит Mac (agentmeister lid on)",
                           "lid: off, closing the lid puts the Mac to sleep (agentmeister lid on)"))]
+    if claude_lid.disabled() and not claude_lid.watcher_pid():
+        return [("warn", tr("сон отключен (pmset disablesleep 1), а сторожа нет: agentmeister lid release",
+                            "sleep is disabled (pmset disablesleep 1) with no watcher: agentmeister lid release"))]
     if claude_lid.ready():
         return [("ok", tr(f"крышка: caffeinate-сессии не уснут и с закрытой крышкой (на батарее до "
                           f"{claude_lid.LOW_BATTERY}% заряда)",
                           f"lid: caffeinate sessions stay awake with the lid closed (on battery down to "
                           f"{claude_lid.LOW_BATTERY}%)"))]
-    if claude_lid.disabled() and not claude_lid.watcher_pid():
-        return [("warn", tr("сон отключен (pmset disablesleep 1), а сторожа нет: agentmeister lid release",
-                            "sleep is disabled (pmset disablesleep 1) with no watcher: agentmeister lid release"))]
-    return [("ok", tr("крышка: закрытая крышка усыпит Mac и в caffeinate-сессии (agentmeister lid setup)",
+    return [("warn" if read_config().get("lid") == "on" else "ok", tr("крышка: закрытая крышка усыпит Mac и в caffeinate-сессии (agentmeister lid setup)",
                       "lid: closing the lid puts the Mac to sleep even in caffeinate sessions (agentmeister lid setup)"))]
 
 
 def check_modes():
-    conf = read_config()
-    states = [f"{name} {tr('вкл', 'on') if on else tr('выкл', 'off')}" for name, on in
-              (("guard", conf.get("guard", "on") != "off"), ("humanize", conf.get("humanize", "off") == "on"),
-               ("translate", conf.get("translate", "off") == "on"),
-               ("buildlog", conf.get("buildlog", "on") != "off"))]
-    return [("ok", tr("режимы: ", "modes: ") + ", ".join(states))]
+    import main_menu
+    import translate
+    states = {name: main_menu.mode_on(name) for name in ("humanize", "translate", "guard", "notify", "buildlog", "lid")}
+    summary = ", ".join(f"{name} {tr('вкл', 'on') if on else tr('выкл', 'off')}" for name, on in states.items())
+    rows = [("ok", tr("режимы: ", "modes: ") + summary)]
+    if states.get("translate") and not (translate.key_source() or translate.fallback()):
+        rows.append(("bad", tr("Для translate нужен ключ провайдера. Добавь его в настройках перевода.",
+                               "Translate needs a provider key. Add one in translation settings.")))
+    return rows
+
 
 
 CHECKS = [check_install, check_commands, check_settings, check_iterm, check_mcp, check_codex, check_zsh, check_notify, check_proxy,
@@ -304,7 +331,7 @@ def main(args):
     if any(a in ("-h", "--help", "help") for a in args):
         print(USAGE)
         return 0
-    marks = {"ok": OK, "warn": WARN, "bad": BAD}
+    marks = {"ok": OK, "off": "-", "warn": WARN, "bad": BAD}
     worst = "ok"
     for check in CHECKS:
         try:
