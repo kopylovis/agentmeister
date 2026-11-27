@@ -82,7 +82,8 @@ struct MainView: View {
             // окно демо отличается от настоящего заголовком, и снимки одного размера
             if let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true || $0.title == "Agentmeister" }) {
                 window.title = "Agentmeister Demo"
-                window.setFrame(NSRect(x: 40, y: 40, width: 1440, height: 880), display: true)
+                // в сцене tabs-list окно узкое, чтобы вкладки не поместились в полосу
+                window.setFrame(NSRect(x: 40, y: 40, width: Demo.scene == "tabs-list" ? 1000 : 1440, height: 880), display: true)
                 // снимок с активным окном: цветные кнопки, даже если фокус был у другого приложения
                 NSApp.activate(ignoringOtherApps: true)
                 window.makeKeyAndOrderFront(nil)
@@ -902,7 +903,9 @@ struct SessionPreviewScreen: View {
     }
 }
 
-/// Полоса вкладок: одна стеклянная капсула, выбранная вкладка светлее, в конце "+".
+/// Полоса вкладок: одна стеклянная капсула, выбранная вкладка светлее, в конце "+". Когда вкладки не помещаются,
+/// края ленты затухают, а по бокам стоят счетчики вкладок за краем. Счетчик открывает их список, желтая точка на
+/// нем значит, что за краем вкладка ждет ответа.
 struct TabStrip: View {
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var backend: Backend
@@ -922,13 +925,35 @@ struct TabStrip: View {
     /// Левый край перетаскиваемой вкладки до последней перестановки. Пока рамка его не сменила, рамки старые,
     /// и новая перестановка по ним вернула бы вкладку назад.
     @State private var staleX: CGFloat?
+    @State private var position = ScrollPosition(idType: UUID.self)
+    @State private var scroll = StripScroll()
+    /// Край, у которого открыт список скрытых вкладок.
+    @State private var hiddenList: HorizontalEdge? = Demo.active && Demo.scene == "tabs-list" ? .trailing : nil
 
     var l: L { L(backend.state.lang) }
 
     private static let spacing: CGFloat = 2
 
+    struct StripScroll: Equatable {
+        var offset: CGFloat = 0
+        var content: CGFloat = 0
+        var width: CGFloat = 0
+        var overflows: Bool { content > width + 1 }
+        var left: Bool { offset > 1 }
+        var right: Bool { offset + width < content - 1 }
+    }
+
+    /// Вкладки за краем ленты: больше половины вкладки не видно.
+    private func hidden(_ edge: HorizontalEdge) -> [TerminalTab] {
+        workspace.roots.filter { tab in
+            guard let frame = frames[tab.id] else { return false }
+            return edge == .leading ? frame.midX < scroll.offset : frame.midX > scroll.offset + scroll.width
+        }
+    }
+
     var body: some View {
         HStack(spacing: 2) {
+            if scroll.overflows { hiddenCounter(.leading) }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Self.spacing) {
                     // подзадачи живут в своем ряду под агентом, здесь только агенты
@@ -950,8 +975,31 @@ struct TabStrip: View {
                             )
                     }
                 }
+                .scrollTargetLayout()
                 .coordinateSpace(name: "tabstrip")
                 .onPreferenceChange(TabFramesKey.self) { frames = $0 }
+            }
+            .scrollPosition($position)
+            .onScrollGeometryChange(for: StripScroll.self) { geo in
+                StripScroll(offset: geo.contentOffset.x, content: geo.contentSize.width, width: geo.containerSize.width)
+            } action: { _, now in
+                scroll = now
+            }
+            // край затухает, только когда за ним есть вкладки
+            .mask {
+                HStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: scroll.left ? 40 : 0)
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: scroll.right ? 40 : 0)
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: scroll.left)
+            .animation(.easeOut(duration: 0.15), value: scroll.right)
+            if scroll.overflows {
+                hiddenCounter(.trailing)
+                Rectangle().fill(Ink.hairline).frame(width: 1, height: 22).padding(.horizontal, 3)
             }
             // "+" спрашивает, что открыть в проекте текущей вкладки и как: через proxy (подписка по умолчанию) или
             // напрямую. Первым идет маршрут по умолчанию из настроек proxy. Без настроенного proxy только напрямую
@@ -983,6 +1031,43 @@ struct TabStrip: View {
         }
         .padding(4)
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
+    }
+
+    /// Число вкладок за краем со стрелкой в его сторону. Клик открывает их список. Без скрытых вкладок у этого края
+    /// счетчик остается бледной стрелкой, чтобы лента не меняла ширину при прокрутке.
+    private func hiddenCounter(_ edge: HorizontalEdge) -> some View {
+        let tabs = hidden(edge)
+        let shown = Binding(get: { hiddenList == edge }, set: { if !$0 && hiddenList == edge { hiddenList = nil } })
+        return Button { hiddenList = hiddenList == edge ? nil : edge } label: {
+            // точка ожидания: статус вкладок меняется без перерисовки полосы, поэтому раз в 2 секунды
+            TimelineView(.periodic(from: .now, by: 2)) { _ in
+                let waiting = tabs.contains { $0.status == "waiting" || $0.rang }
+                HStack(spacing: 4) {
+                    if edge == .leading { Image(systemName: "chevron.left").font(.system(size: 8, weight: .bold)) }
+                    if waiting { Circle().fill(Ink.amberDot).frame(width: 6, height: 6) }
+                    if !tabs.isEmpty { Text("\(tabs.count)").font(.system(size: 11, weight: .semibold).monospacedDigit()) }
+                    if edge == .trailing { Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)) }
+                }
+                .foregroundStyle(Ink.text2)
+                .padding(.horizontal, 8)
+                .frame(minWidth: 30, minHeight: 26)
+                .background(Capsule().fill(Ink.chip))
+                .contentShape(Capsule())
+            }
+        }
+        .buttonStyle(.hoverCapsule())
+        .disabled(tabs.isEmpty)
+        .opacity(tabs.isEmpty ? 0.35 : 1)
+        .help(edge == .leading ? l.t("Вкладки слева за краем", "Tabs hidden on the left") : l.t("Вкладки справа за краем", "Tabs hidden on the right"))
+        .accessibilityLabel(edge == .leading ? l.t("Вкладки слева за краем", "Tabs hidden on the left") : l.t("Вкладки справа за краем", "Tabs hidden on the right"))
+        .popover(isPresented: shown, arrowEdge: .bottom) {
+            HiddenTabsList(tabs: tabs) { tab in
+                hiddenList = nil
+                workspace.selected = tab.id
+                tab.rang = false
+                withAnimation(.easeOut(duration: 0.25)) { position.scrollTo(id: tab.id, anchor: .center) }
+            }
+        }
     }
 
     /// Вкладка идет за курсором. Когда ее середина заходит за середину соседа, они меняются местами, а сдвиг
@@ -1046,6 +1131,47 @@ private struct TabFramesKey: PreferenceKey {
     static let defaultValue: [UUID: CGRect] = [:]
     static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
         value.merge(nextValue()) { $1 }
+    }
+}
+
+/// Список вкладок за краем полосы: состояние, имя и проект, клик переключает на вкладку.
+private struct HiddenTabsList: View {
+    let tabs: [TerminalTab]
+    let pick: (TerminalTab) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(tabs) { tab in
+                HiddenTabRow(tab: tab) { pick(tab) }
+            }
+        }
+        .padding(8)
+        .frame(width: 360)
+    }
+}
+
+private struct HiddenTabRow: View {
+    @ObservedObject var tab: TerminalTab
+    let pick: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: pick) {
+            HStack(spacing: 10) {
+                SessionDot(status: tab.rang ? "waiting" : tab.status, size: 7).frame(width: 10)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(tab.title).font(.system(size: 13)).foregroundStyle(Ink.text).lineLimit(1)
+                    Text(tab.spec.projectName).font(.system(size: 11)).foregroundStyle(Ink.faint).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 40)
+            .background(RoundedRectangle(cornerRadius: 8).fill(hover ? Ink.hover : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
     }
 }
 
