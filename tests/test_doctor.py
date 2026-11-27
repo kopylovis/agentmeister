@@ -34,6 +34,15 @@ class Doctor(unittest.TestCase):
         self.assertEqual(level, "bad")
         self.assertIn("1 of 3 hooks trusted", text)
 
+    def test_codex_mode_rows_follow_menu_switches_and_actual_hooks(self):
+        with patch("main_menu.mode_on", side_effect=lambda mode: mode in ("translate", "buildlog")):
+            rows = doctor.check_codex_modes([])
+        self.assertEqual([level for level, _ in rows], ["off", "bad", "off", "off", "bad"])
+        hook = dict(command="agentmeister guard-hook", enabled=True, trustStatus="trusted", eventName="preToolUse")
+        for matcher, level in (("Read", "bad"), ("Bash", "bad"), ("Bash|Edit", "ok"), (None, "ok")):
+            self.assertEqual(doctor.check_codex_hooks([dict(hook, matcher=matcher)], "guard-hook")[0], level)
+        self.assertEqual(doctor.check_codex_hooks([dict(hook, **{"async": True})], "guard-hook")[0], "bad")
+
     def test_codex_mcp_does_not_start_an_unrelated_command(self):
         config = {"mcp_servers": {"agentmeister": {"command": "/usr/bin/true", "enabled": True}}}
         with patch.object(doctor, "run") as run:

@@ -138,7 +138,7 @@ When both CLIs are installed, "Open a project" asks which agent to start. The me
 in the selected folder before starting Codex. From the shell, use `agentmeister --harness codex <project>`.
 To resume a known session, pass `-- resume <id>` after the project.
 
-`agentmeister --harness codex setup` installs the humanize hooks and the `$agentmeister` skill. It also
+`agentmeister --harness codex setup` installs the humanize, translate, guard and buildlog hooks and the `$agentmeister` skill. It also
 installs notification hooks and registers MCP tools for the project backlog, release notes and Gradle dependencies.
 
 Trust the new hooks in Codex with `/hooks`. The `agentmeister humanize` command shows the current setting and
@@ -217,7 +217,13 @@ version, the hooks, transcript retention, the status line, the MCP server answer
 the notification app, the proxy, the lid mode and which modes are on. If the hooks still call the old iTerm2
 `cc-status`, it warns that iTerm2 3.7.7 installs `it2 handle-agent-hook` instead. It exits with 1 when something
 is broken and says what fixes it.
-For Codex it checks the CLI, humanize hook trust, MCP response, the `$agentmeister` skill and footer fields.
+For Codex it checks the CLI, MCP response, the `$agentmeister` skill and footer fields. Each enabled hook
+mode needs trusted handlers for its events. Diagnostics lists disabled modes and checks lid support under Mac.
+
+Codex guard checks shell commands and patch paths. Confirm a held call in chat to retry it. With several calls
+pending, use the confirmation shown for that call. Buildlog shortens output from direct build commands such as
+`./gradlew test` or `cd app && make test` and preserves the exit code. Interactive terminals, pipelines and
+redirected output keep their usual behavior.
 
 Update with `brew upgrade agentmeister`. Open sessions pick up the new version on their own: before each
 request the MCP server checks whether its code changed (a `brew upgrade` or a `git pull` in a checkout) and, if
