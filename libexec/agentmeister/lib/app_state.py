@@ -621,6 +621,7 @@ def settings():
 
     def notify():
         import bark_channel
+        import gotify_channel
         import ntfy_alert
         import ntfy_channel
         import presence
@@ -647,7 +648,10 @@ def settings():
                          "public": ntfy_channel.public(), "subscribe": ntfy_channel.subscribe_url() or None},
                 "bark": {"mode": bark_channel.mode(), "configured": bark_channel.configured(),
                          "server": bark_channel.server(), "body": bark_channel.body_mode(),
-                         "encrypted": bool(bark_channel.crypto_key()), "public": bark_channel.public()}}
+                         "encrypted": bool(bark_channel.crypto_key()), "public": bark_channel.public()},
+                "gotify": {"mode": gotify_channel.mode(), "configured": gotify_channel.configured(),
+                           "server": gotify_channel.server() or None, "body": gotify_channel.body_mode(),
+                           "priority": {"urgent": gotify_channel.priority(True), "normal": gotify_channel.priority(False)}}}
 
     def guard():
         import claude_guard

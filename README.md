@@ -1006,6 +1006,15 @@ to enter in the app (Push Encryption, AES256, CBC, pkcs7); then the full text go
 device key. Questions and permission requests arrive as Time Sensitive. Also `bark away | always | off | test`,
 `bark body full | title`, `bark server <url> | auto` and `bark forget`.
 
+Or to [Gotify](https://github.com/gotify/server) on your own server, with the
+[Android app](https://github.com/gotify/android) (Gotify has no iPhone app).
+`agentmeister notify gotify setup https://gotify.example.com` asks for an application token (Apps in the Gotify web
+UI, not a client token) or reads it from stdin, keeps it in the Keychain (`agentmeister.notify`, account `gotify`) and
+turns the channel on for when you're away. The Android app picks the notification by priority: 0 none, 1-3 an icon
+only, 4-7 with sound, 8-10 with sound and vibration. Questions and permission requests go with 8, "done" with 4;
+`gotify priority <questions> <done>` changes that. Also `gotify away | always | off | test`, `gotify body full | title`
+and `gotify forget`.
+
 With Remote Control, Claude Code pushes to the Claude app on your phone itself. If the session is connected
 (`/remote-control`, `--remote-control` or "Enable Remote Control for all sessions") and **Push when actions
 required** is on in `/config` (`inputNeededNotifEnabled`), agentmeister doesn't send permission requests and
