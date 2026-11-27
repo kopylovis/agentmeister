@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import Quit, Screen  # noqa: E402
 from mnrhlib import HOME, project_label, projects_dirs, tilde, tr  # noqa: E402
+import session_defaults  # noqa: E402
 
 SKIP = object()
 
@@ -191,7 +192,7 @@ def flow(screen, dir=None, ask_session=True, mode=None, net=None, harness="claud
         steps.append("mode")
     if net is None and proxy_ready():
         steps.append("net")
-    state = {"dir": dir, "sid": "new", "mode": mode or "caffeinate", "net": net or "direct"}
+    state = {"dir": dir, "sid": "new", "mode": mode or session_defaults.open_mode(), "net": net or "direct"}
     if "net" in steps:
         # подписку, которую с тех пор удалили, заменяет каскад по оставшимся
         remembered = proxy.last()

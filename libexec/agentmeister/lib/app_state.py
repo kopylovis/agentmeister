@@ -407,9 +407,14 @@ def host_run_summary():
     return {"running": running, "commands": count, "log": hr.LOG}
 
 
+def session_defaults_state():
+    import session_defaults
+    return session_defaults.state()
+
+
 def collect():
     state = {"version": version(), "lang": mnrhlib.lang(), "langSetting": lang_setting(), "projectsDir": mnrhlib.projects_dir(),
-             "projectsDirs": mnrhlib.projects_dirs(),
+             "projectsDirs": mnrhlib.projects_dirs(), "sessionDefaults": session_defaults_state(),
              "generatedAt": time.time(), "errors": {}}
     for name, part, empty in (("projects", projects, []), ("sessions", sessions, []), ("live", live, []),
                               ("proxy", proxy_state, None), ("modes", modes, {}), ("hostRun", host_run_summary, None),

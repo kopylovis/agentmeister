@@ -11,6 +11,11 @@ TIMEOUT = 300
 DEFAULT_MODEL = "sonnet"
 
 
+def default_model():
+    import session_defaults
+    return session_defaults.ask_model()
+
+
 def ask(project, question, model=None):
     question = " ".join((question or "").split())
     if not project or not question:
@@ -24,7 +29,7 @@ def ask(project, question, model=None):
               f"Вопрос: {question}")
     env = dict(os.environ, MNRH_CHILD="1")
     cmd = [CLAUDE_BIN, "-p", "--no-session-persistence", "--output-format", "json",
-           "--model", model or DEFAULT_MODEL, "--tools", "Read,Grep,Glob", "--allowedTools", "Read", "Grep", "Glob",
+           "--model", model or default_model(), "--tools", "Read,Grep,Glob", "--allowedTools", "Read", "Grep", "Glob",
            "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
            "--", prompt]
     try:
@@ -43,7 +48,7 @@ def ask(project, question, model=None):
         return f"Claude в {os.path.basename(root)} не справился: {answer or data.get('subtype') or 'пустой ответ'}", True
     u = data.get("usage") or {}
     tokens = sum(u.get(k, 0) for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
-    return f"Ответ из {os.path.basename(root)} ({tilde(root)}, {model or DEFAULT_MODEL}, ~{tokens // 1000}k токенов):\n\n{answer}", False
+    return f"Ответ из {os.path.basename(root)} ({tilde(root)}, {model or default_model()}, ~{tokens // 1000}k токенов):\n\n{answer}", False
 
 
 TOOL = {

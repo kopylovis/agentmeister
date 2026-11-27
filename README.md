@@ -76,6 +76,7 @@ agentmeister setup          commands, hooks, MCP server, zsh hook, promptsill
 agentmeister doctor         check the install
 agentmeister projects-dir   folders of projects; add, remove
 agentmeister lang           interface language: ru, en, auto
+agentmeister defaults       mode and Remote Control of sessions agentmeister opens, /restart update, /ask model
 agentmeister alias          short name am; on, off
 ```
 
@@ -290,6 +291,11 @@ Ctrl+C quits.
 follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in `~/.config/mnrh/config` picks
 one explicitly. `agentmeister lang en` or `ru` writes that line, and `lang auto` removes it. `MNRH_NO_MENU=1`
 skips the menu and goes straight to the project list.
+
+Sessions that `open_claude`, `/parallel` and the menu open start with caffeinate and Remote Control unless you
+change it: `agentmeister defaults mode normal`, `agentmeister defaults remote-control off`. `agentmeister defaults
+restart-update off` makes `/restart` skip `claude update` (`agentmeister restart --update` still updates), and
+`agentmeister defaults ask-model opus` picks the model for `/ask`.
 
 `agentmeister open` lists the folders in the projects folder with their current branch and last commit date.
 Move with ↑↓ and press Enter. A digit jumps to that item (`0` is the home folder, `1` then `0` is the tenth),

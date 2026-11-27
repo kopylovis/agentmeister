@@ -383,7 +383,8 @@ def open_claude(args, cm):
                 else f"Проекта «{project}» нет в {root}.")
         return choices(root, dirs, note), True
     target = found[0]
-    mode = args.get("mode") or "caffeinate"
+    import session_defaults
+    mode = args.get("mode") or session_defaults.open_mode()
     if mode not in MODES:
         return f"Режим бывает caffeinate или normal, а не «{mode}».", True
 
@@ -419,7 +420,7 @@ def open_claude(args, cm):
     sub = os.environ.get("MNRH_PROXY_SUB", "") if net == "-x" else ""
     route = [f"--proxy={sub}"] if re.fullmatch(r"[a-z][a-z0-9-]{0,19}", sub) else [net]
     cmd = [LOCAL_CLI if net == "-x" else cm, "open", target if direct else name, MODES[mode], *route, "--new"]
-    rc = args.get("remote_control", True) is not False
+    rc = args.get("remote_control", session_defaults.remote_control()) is not False
     # имя у --remote-control необязательное: без него первый запрос принялся бы за имя
     extra = (["--remote-control", "home" if name == "~" else name] if rc else []) + \
         (["--continue"] if args.get("continue") else []) + list(args.get("flags") or []) + \

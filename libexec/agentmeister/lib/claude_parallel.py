@@ -118,8 +118,11 @@ def prepare(task, project=None, branch=None, cwd=None, sid=None):
             "copied": copied, "native": native, "dirty": bool(dirty)}, None
 
 
-def start(task, project=None, branch=None, mode="caffeinate", cwd=None, cm=None, permission=None, rc=True,
+def start(task, project=None, branch=None, mode=None, cwd=None, cm=None, permission=None, rc=None,
           fork=False):
+    import session_defaults
+    mode = mode or session_defaults.open_mode()
+    rc = session_defaults.remote_control() if rc is None else rc
     sid = None
     if fork:
         import claude_proc
@@ -478,8 +481,9 @@ TOOLS = [START_TOOL, LIST_TOOL, FINISH_TOOL]
 
 def handle(name, a, cwd=None, cm=None):
     if name == "parallel_task":
-        return start(a.get("task"), a.get("project"), a.get("branch"), a.get("mode") or "caffeinate", cwd, cm,
-                     a.get("permission_mode"), a.get("remote_control", True) is not False, bool(a.get("fork")))
+        rc = a.get("remote_control")
+        return start(a.get("task"), a.get("project"), a.get("branch"), a.get("mode"), cwd, cm,
+                     a.get("permission_mode"), None if rc is None else rc is not False, bool(a.get("fork")))
     if name == "parallel_list":
         return listing(a.get("project"), cwd)
     if a.get("action") == "pr":
@@ -514,7 +518,7 @@ def main():
             opts[args[i]] = args[i + 1]
             i += 2
             continue
-        if args[i] in ("-n", "--no-rc", "--no-merge", "--fork", "--force", "--prepare"):
+        if args[i] in ("-n", "-k", "--no-rc", "--no-merge", "--fork", "--force", "--prepare"):
             opts[args[i]] = True
         else:
             rest.append(args[i])
@@ -535,8 +539,8 @@ def main():
         text, bad = pr(rest[1], opts.get("-p"), merge=not opts.get("--no-merge"), log=lambda t: print(t, flush=True))
     else:
         from mnrhlib import CM
-        text, bad = start(" ".join(rest), opts.get("-p"), opts.get("-b"), "normal" if opts.get("-n") else "caffeinate",
-                          cm=CM, permission=opts.get("--permission-mode"), rc=not opts.get("--no-rc"),
+        text, bad = start(" ".join(rest), opts.get("-p"), opts.get("-b"), "normal" if opts.get("-n") else "caffeinate" if opts.get("-k") else None,
+                          cm=CM, permission=opts.get("--permission-mode"), rc=False if opts.get("--no-rc") else None,
                           fork=bool(opts.get("--fork")))
     print(text)
     return 1 if bad else 0

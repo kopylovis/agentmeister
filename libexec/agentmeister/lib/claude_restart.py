@@ -500,7 +500,9 @@ def cli(args, forget=False, fresh=False):
         print("(установить: agentmeister setup). Лог: " + tilde(LOG))
         return 0
     try:
-        p = restart(update="--no-update" not in args, dry="--dry-run" in args, forget=forget, fresh=fresh)
+        import session_defaults
+        update = "--update" in args or ("--no-update" not in args and session_defaults.restart_update())
+        p = restart(update=update, dry="--dry-run" in args, forget=forget, fresh=fresh)
     except RestartError as e:
         print(f"agentmeister {name}: {e}", file=sys.stderr)
         return 1
