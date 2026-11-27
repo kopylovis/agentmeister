@@ -56,7 +56,8 @@ class Hook(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.mkdtemp()
         self.log = os.path.join(tmp, "translate.log")
-        patches = [mock.patch.object(t, "LOG", self.log), mock.patch.object(t, "enabled", lambda: True)]
+        patches = [mock.patch.object(t, "LOG", self.log), mock.patch.object(t, "enabled", lambda: True),
+                   mock.patch.object(t, "fallback", lambda: None), mock.patch.object(t, "provider", lambda: "openrouter")]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
@@ -64,7 +65,7 @@ class Hook(unittest.TestCase):
     def run_hook(self, payload, result=None, error=None):
         calls = []
 
-        def fake(text, key=None, timeout=t.TIMEOUT):
+        def fake(text, key=None, timeout=t.TIMEOUT, name=None):
             calls.append(text)
             if error:
                 raise error
@@ -130,7 +131,11 @@ class Key(unittest.TestCase):
     def test_saved_with_600(self):
         tmp = tempfile.mkdtemp()
         path = os.path.join(tmp, "sub", "openrouter-key")
-        with mock.patch.object(t, "KEY_FILE", path), mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}):
+        conf = {}
+        with mock.patch.object(t, "key_file", lambda name=None: path), \
+                mock.patch.object(t, "read_config", lambda: conf), \
+                mock.patch.object(t, "write_config", lambda **kw: conf.update(kw)), \
+                mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}):
             self.assertIsNone(t.key_source())
             with mock.patch("sys.stdin", io.StringIO("sk-or-v1-abcdefabcdefabcdef\n")), \
                     mock.patch("sys.stdout", io.StringIO()):
@@ -144,6 +149,39 @@ class Key(unittest.TestCase):
             with mock.patch("sys.stdout", io.StringIO()):
                 self.assertEqual(t.cmd_key(["rm"]), 0)
             self.assertFalse(os.path.exists(path))
+
+
+class Providers(unittest.TestCase):
+    def test_key_picks_provider(self):
+        self.assertEqual(t.key_provider("sk-or-v1-" + "a" * 64), "openrouter")
+        self.assertEqual(t.key_provider("AIza" + "B" * 35), "google")
+        self.assertEqual(t.key_provider("AQ.Ab8RN6" + "x" * 44), "google")
+        self.assertIsNone(t.key_provider("hello world"))
+        self.assertIsNone(t.key_provider("sk-ant-api03-" + "a" * 40))
+
+    def test_google_key_is_a_secret(self):
+        self.assertIn("секрет", t.skip_reason("вот ключ AQ.Ab8RN6" + "x" * 44))
+
+    def test_fallback_after_timeout(self):
+        calls = []
+
+        def fake(text, key=None, timeout=t.TIMEOUT, name=None):
+            calls.append((name, timeout))
+            if name == "google":
+                raise TimeoutError("slow")
+            return "Fix"
+
+        with mock.patch.object(t, "translate", fake), mock.patch.object(t, "provider", lambda: "google"), \
+                mock.patch.object(t, "fallback", lambda: "openrouter"):
+            self.assertEqual(t.translate_any("Почини"), ("Fix", "openrouter"))
+        self.assertEqual(calls[0], ("google", t.FIRST_TIMEOUT))
+        self.assertEqual(calls[1][0], "openrouter")
+        self.assertLessEqual(calls[1][1], t.TIMEOUT)
+        with mock.patch.object(t, "translate", fake), mock.patch.object(t, "provider", lambda: "google"), \
+                mock.patch.object(t, "fallback", lambda: None):
+            with self.assertRaises(TimeoutError):
+                t.translate_any("Почини")
+        self.assertEqual(calls[-1], ("google", t.TIMEOUT))
 
 
 class Request(unittest.TestCase):
@@ -162,16 +200,21 @@ class Request(unittest.TestCase):
             return Resp(json.dumps({"choices": [{"finish_reason": finish, "message": {"content": " Fix it "}}]}).encode())
 
         finish = "stop"
-        with mock.patch("urllib.request.urlopen", fake_open), mock.patch.object(t, "model", lambda: "m/x"):
-            self.assertEqual(t.translate("Почини", key="k"), "Fix it")
+        with mock.patch("urllib.request.urlopen", fake_open), mock.patch.object(t, "model", lambda name=None: "m/x"):
+            self.assertEqual(t.translate("Почини", key="g", name="google"), "Fix it")
+            self.assertEqual(sent["reasoning_effort"], "minimal")
+            self.assertNotIn("reasoning", sent)
+            sent.clear()
+            self.assertEqual(t.translate("Почини", key="k", name="openrouter"), "Fix it")
+            self.assertIn("reasoning", sent)
             self.assertEqual(sent["model"], "m/x")
             self.assertEqual(sent["auth"], "Bearer k")
             self.assertEqual(sent["messages"][1]["content"], "Почини")
             self.assertEqual(sent["timeout"], t.TIMEOUT)
             finish = "length"
             with self.assertRaises(RuntimeError):
-                t.translate("Почини", key="k")
-        with mock.patch.object(t, "api_key", lambda: ""):
+                t.translate("Почини", key="k", name="openrouter")
+        with mock.patch.object(t, "api_key", lambda name=None: ""):
             with self.assertRaises(RuntimeError):
                 t.translate("Почини")
 

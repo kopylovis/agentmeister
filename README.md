@@ -631,7 +631,13 @@ Off by default. With `agentmeister translate on` (or `/translate`, or the switch
 `UserPromptSubmit` hook sends your message to OpenRouter (`google/gemini-3.1-flash-lite` by default, change it
 with `translate model <id>`) and adds the English translation next to the original. The agent works from the
 translation, keeps your wording when the two differ, and replies in your language. Save the key with
-`agentmeister translate key`, it goes to `~/.config/mnrh/openrouter-key` with mode 600.
+`agentmeister translate key` (`--clipboard` takes it from the clipboard), it goes to `~/.config/mnrh` with
+mode 600 and picks the provider by its shape.
+
+Google AI Studio works too (`translate provider google`, model `gemini-3.1-flash-lite`). It is free within
+its limits, but on the free tier Google may use requests to improve its models, from Russia it answers only
+through the proxy, and it sometimes takes 7-15 seconds. When an OpenRouter key is also saved, Google gets
+4 seconds and OpenRouter translates if it is late.
 
 Only messages with non-Latin letters leave the Mac. Slash commands, texts over 4000 characters and anything
 that looks like a secret (API keys, tokens, private keys, JWT, proxy subscription links, URLs with a password

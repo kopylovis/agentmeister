@@ -94,7 +94,7 @@ allowed-tools: Bash(agentmeister humanize:*)
 Если «выключена», правила больше не обязательны. Ответь пользователю одной короткой фразой, в каком состоянии режим.
 """,
     "translate": """---
-description: agentmeister translate: перевод промптов на английский через OpenRouter; /translate переключает, on, off, status
+description: agentmeister translate: перевод промптов на английский через OpenRouter или Google AI Studio; /translate переключает, on, off, status
 allowed-tools: Bash(agentmeister translate:*)
 ---
 !`agentmeister translate switch $ARGUMENTS`

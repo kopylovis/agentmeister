@@ -1,7 +1,7 @@
 """agentmeister translate: перевод промпта на английский для агента.
 
-Хук UserPromptSubmit переводит сообщение пользователя через OpenRouter (по умолчанию Gemini 3.1 Flash Lite)
-и добавляет перевод в контекст. Заменить сам промпт хук не может, поэтому агент видит оба текста, и при
+Хук UserPromptSubmit переводит сообщение пользователя через OpenRouter или Google AI Studio (по умолчанию
+Gemini 3.1 Flash Lite) и добавляет перевод в контекст. Заменить сам промпт хук не может, поэтому агент видит оба текста, и при
 расхождении главным остается оригинал. Отвечает агент на языке пользователя.
 
 Наружу не уходит текст без нелатинских букв, слэш-команды, длинные вставки и все, что похоже на секрет:
@@ -23,13 +23,26 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import CONFIG, HOME, badge, read_config, tilde, tr, write_config  # noqa: E402
 import claude_settings  # noqa: E402
 
-KEY_FILE = os.path.join(os.path.dirname(CONFIG), "openrouter-key")
 LOG = os.path.join(HOME, "Library", "Logs", "mnrh-translate.log")
 HOOK_CMD = "translate-hook"
 HOOK_ROWS = claude_settings.rows(HOOK_CMD)
-DEFAULT_MODEL = "google/gemini-3.1-flash-lite"
-BASE_URL = "https://openrouter.ai/api/v1"
+# Оба отвечают по протоколу OpenAI chat/completions. Google AI Studio бесплатен в пределах лимитов, но на
+# бесплатном уровне Google может брать запросы для улучшения моделей, а из России отвечает только через proxy.
+PROVIDERS = {
+    "openrouter": {"name": "OpenRouter", "url": "https://openrouter.ai/api/v1/chat/completions",
+                   "model": "google/gemini-3.1-flash-lite", "file": "openrouter-key", "env": "OPENROUTER_API_KEY",
+                   "key": r"sk-or-[A-Za-z0-9_-]{16,200}", "hint": "sk-or-v1-...",
+                   "extra": {"reasoning": {"effort": "minimal", "exclude": True}}},
+    "google": {"name": "Google AI Studio", "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+               "model": "gemini-3.1-flash-lite", "file": "gemini-key", "env": "GEMINI_API_KEY",
+               "key": r"(?:AIza[0-9A-Za-z_-]{30,60}|AQ\.[0-9A-Za-z_.-]{30,100})", "hint": "AQ... / AIza...",
+               "extra": {"reasoning_effort": "minimal"}},
+}
+DEFAULT_PROVIDER = "openrouter"
 TIMEOUT = 8.0
+# Бесплатный Google AI Studio временами отвечает 7-15 секунд. Если есть ключ второго провайдера, первому дается
+# столько, а остаток TIMEOUT уходит на второго.
+FIRST_TIMEOUT = 4.0
 MAX_CHARS = 4000
 LOG_LINES = 500
 
@@ -58,7 +71,7 @@ SECRETS = [
     ("токен GitHub", r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})"),
     ("токен Slack", r"\bxox[abposr]-[A-Za-z0-9-]{10,}"),
     ("ключ AWS", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
-    ("ключ Google", r"\bAIza[0-9A-Za-z_-]{30,}"),
+    ("ключ Google", r"\b(?:AIza[0-9A-Za-z_-]{30,}|AQ\.[0-9A-Za-z_.-]{30,})"),
     ("JWT", r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
     ("токен Telegram", r"\b\d{6,12}:[A-Za-z0-9_-]{30,}"),
     ("секрет в присваивании", r"(?i)(?:token|secret|password|passwd|pwd|api[_-]?key|private[_-]?key|credentials?)"
@@ -74,38 +87,57 @@ def enabled():
     return read_config().get("translate", "off") == "on"
 
 
-def model():
-    return read_config().get("translate_model") or DEFAULT_MODEL
+def provider():
+    name = read_config().get("translate_provider")
+    return name if name in PROVIDERS else DEFAULT_PROVIDER
 
 
-def api_key():
+def info(name=None):
+    return PROVIDERS[name or provider()]
+
+
+def key_file(name=None):
+    return os.path.join(os.path.dirname(CONFIG), info(name)["file"])
+
+
+def model(name=None):
+    name = name or provider()
+    return read_config().get(f"translate_model_{name}") or PROVIDERS[name]["model"]
+
+
+def _read_key(name):
     try:
-        with open(KEY_FILE) as f:
-            key = f.read().strip()
-        if key:
-            return key
+        with open(key_file(name)) as f:
+            return f.read().strip()
     except OSError:
-        pass
-    return os.environ.get("OPENROUTER_API_KEY", "").strip()
+        return ""
 
 
-def key_source():
-    try:
-        with open(KEY_FILE) as f:
-            if f.read().strip():
-                return "file"
-    except OSError:
-        pass
-    return "env" if os.environ.get("OPENROUTER_API_KEY", "").strip() else None
+def api_key(name=None):
+    name = name or provider()
+    return _read_key(name) or os.environ.get(PROVIDERS[name]["env"], "").strip()
 
 
-def save_key(key):
-    os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
-    tmp = f"{KEY_FILE}.{os.getpid()}.tmp"
+def key_source(name=None):
+    name = name or provider()
+    if _read_key(name):
+        return "file"
+    return "env" if os.environ.get(PROVIDERS[name]["env"], "").strip() else None
+
+
+def key_provider(key):
+    """Чей это ключ, по виду: sk-or- у OpenRouter, AIza у Google. None, если не похоже ни на один."""
+    return next((name for name, p in PROVIDERS.items() if re.fullmatch(p["key"], key)), None)
+
+
+def save_key(key, name):
+    path = key_file(name)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(key + "\n")
-    os.replace(tmp, KEY_FILE)
+    os.replace(tmp, path)
 
 
 def looks_secret(text):
@@ -137,20 +169,21 @@ def skip_reason(prompt):
     return None
 
 
-def translate(text, key=None, timeout=TIMEOUT):
+def translate(text, key=None, timeout=TIMEOUT, name=None):
     """Перевод на английский. Исключение при любой ошибке, обрезанный ответ тоже ошибка."""
-    key = key or api_key()
+    name = name or provider()
+    p = PROVIDERS[name]
+    key = key or api_key(name)
     if not key:
-        raise RuntimeError(tr("нет ключа OpenRouter", "no OpenRouter key"))
-    body = {
-        "model": model(),
+        raise RuntimeError(tr(f"нет ключа {p['name']}", f"no {p['name']} key"))
+    body = dict({
+        "model": model(name),
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": text}],
         "temperature": 0,
         "max_tokens": 4000,
-        "reasoning": {"effort": "minimal", "exclude": True},
-    }
+    }, **p["extra"])
     req = urllib.request.Request(
-        BASE_URL + "/chat/completions", data=json.dumps(body).encode(), method="POST",
+        p["url"], data=json.dumps(body).encode(), method="POST",
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json", "X-Title": "agentmeister"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -164,6 +197,24 @@ def translate(text, key=None, timeout=TIMEOUT):
     if isinstance(content, list):
         content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
     return str(content or "").strip()
+
+
+def fallback():
+    """Второй провайдер, если у него есть ключ."""
+    return next((name for name in PROVIDERS if name != provider() and api_key(name)), None)
+
+
+def translate_any(text):
+    """(перевод, провайдер). Сначала текущий провайдер, при ошибке второй, если у него есть ключ."""
+    first, second = provider(), fallback()
+    start = time.monotonic()
+    try:
+        return translate(text, timeout=FIRST_TIMEOUT if second else TIMEOUT, name=first), first
+    except Exception:
+        left = TIMEOUT - (time.monotonic() - start)
+        if not second or left < 1:
+            raise
+        return translate(text, timeout=left, name=second), second
 
 
 def context(english):
@@ -219,11 +270,13 @@ def hook():
         return 0
     start = time.monotonic()
     try:
-        english = translate(prompt)
+        english, used = translate_any(prompt)
     except Exception as e:
         log(sid, f"ошибка, {type(e).__name__}: {str(e)[:120]}", len(prompt), int((time.monotonic() - start) * 1000))
         return 0
     ms = int((time.monotonic() - start) * 1000)
+    if used != provider():
+        log(sid, f"{info()['name']} не ответил вовремя, перевел {PROVIDERS[used]['name']}", len(prompt), ms)
     if not english or " ".join(english.split()) == " ".join(prompt.split()):
         log(sid, "перевод совпал с оригиналом", len(prompt), ms)
         return 0
@@ -257,29 +310,35 @@ def set_state(value):
     sync_badge(value == "on")
     if value == "on":
         install_hooks()
-        print(tr("Перевод включен. Сообщения с нелатинскими буквами уйдут в OpenRouter, "
+        name = info()["name"]
+        print(tr(f"Перевод включен. Сообщения с нелатинскими буквами уйдут в {name}, "
                  f"модель {model()}, перевод агент получит вместе с оригиналом.",
-                 f"Translation is on. Messages with non-Latin letters go to OpenRouter, model {model()}, "
+                 f"Translation is on. Messages with non-Latin letters go to {name}, model {model()}, "
                  "and the agent gets the translation next to the original."))
         if not api_key():
-            print(tr("Ключа OpenRouter нет, пока его нет, перевод не работает. Задай его через agentmeister translate key.",
-                     "There is no OpenRouter key, so nothing is translated yet. Set it with agentmeister translate key."))
+            print(tr(f"Ключа {name} нет, пока его нет, перевод не работает. Задай его через agentmeister translate key.",
+                     f"There is no {name} key, so nothing is translated yet. Set it with agentmeister translate key."))
     else:
         print(tr("Перевод выключен, сообщения больше никуда не отправляются.",
                  "Translation is off, messages are no longer sent anywhere."))
 
 
 def status():
-    src = key_source()
-    print(tr(f"Перевод {'включен' if enabled() else 'выключен'}, модель {model()}.",
-             f"Translation is {'on' if enabled() else 'off'}, model {model()}."))
+    src, p = key_source(), info()
+    print(tr(f"Перевод {'включен' if enabled() else 'выключен'}, {p['name']}, модель {model()}.",
+             f"Translation is {'on' if enabled() else 'off'}, {p['name']}, model {model()}."))
     if src == "file":
-        print(tr(f"Ключ OpenRouter в {tilde(KEY_FILE)}.", f"OpenRouter key in {tilde(KEY_FILE)}."))
+        print(tr(f"Ключ в {tilde(key_file())}.", f"Key in {tilde(key_file())}."))
     elif src == "env":
-        print(tr("Ключ OpenRouter из переменной OPENROUTER_API_KEY.", "OpenRouter key from OPENROUTER_API_KEY."))
+        print(tr(f"Ключ из переменной {p['env']}.", f"Key from {p['env']}."))
     else:
-        print(tr("Ключа OpenRouter нет, задай его через agentmeister translate key.",
-                 "No OpenRouter key, set it with agentmeister translate key."))
+        print(tr(f"Ключа {p['name']} нет, задай его через agentmeister translate key.",
+                 f"No {p['name']} key, set it with agentmeister translate key."))
+    if provider() == "google":
+        print(tr("На бесплатном уровне Google может использовать запросы для улучшения моделей. "
+                 "Из России Gemini API отвечает только через proxy, в сессиях с -d перевода не будет.",
+                 "On the free tier Google may use requests to improve its models. From Russia the Gemini API "
+                 "answers only through the proxy, so sessions with -d get no translation."))
     try:
         if claude_settings.missing(claude_settings.load(), HOOK_ROWS):
             print(tr("Хука в Claude Code нет, его подключит agentmeister translate on.",
@@ -300,14 +359,16 @@ def read_key_input(args):
             return ""
     if sys.stdin.isatty():
         import getpass
-        return getpass.getpass(tr("Ключ OpenRouter (sk-or-...): ", "OpenRouter key (sk-or-...): "))
+        return getpass.getpass(tr("Ключ OpenRouter (sk-or-...) или Google AI Studio (AQ... или AIza...): ",
+                                  "OpenRouter (sk-or-...) or Google AI Studio (AQ... or AIza...) key: "))
     return sys.stdin.readline()
 
 
 def cmd_key(args):
     if args[:1] in (["rm"], ["--clear"]):
+        name = args[1] if len(args) > 1 and args[1] in PROVIDERS else provider()
         try:
-            os.remove(KEY_FILE)
+            os.remove(key_file(name))
             print(tr("Ключ удален.", "Key removed."))
         except FileNotFoundError:
             print(tr("Ключа и так нет.", "There is no key."))
@@ -316,12 +377,17 @@ def cmd_key(args):
     if not key:
         print(tr("Пустой ключ, ничего не менял.", "Empty key, nothing changed."), file=sys.stderr)
         return 2
-    if not re.fullmatch(r"[A-Za-z0-9_.:-]{16,200}", key):
-        print(tr("Не похоже на ключ OpenRouter, ничего не менял.", "That doesn't look like an OpenRouter key, nothing changed."),
+    name = key_provider(key)
+    if not name:
+        print(tr("Не похоже на ключ OpenRouter (sk-or-...) или Google AI Studio (AIza...), ничего не менял.",
+                 "That doesn't look like an OpenRouter (sk-or-...) or Google AI Studio (AIza...) key, nothing changed."),
               file=sys.stderr)
         return 2
-    save_key(key)
-    print(tr(f"Ключ сохранен в {tilde(KEY_FILE)}, права 600.", f"Key saved to {tilde(KEY_FILE)}, mode 600."))
+    save_key(key, name)
+    # сохраненный ключ значит, что переводить надо через его провайдера
+    write_config(translate_provider=name)
+    print(tr(f"Ключ {PROVIDERS[name]['name']} сохранен в {tilde(key_file(name))}, права 600. Перевод идет через {PROVIDERS[name]['name']}.",
+             f"{PROVIDERS[name]['name']} key saved to {tilde(key_file(name))}, mode 600. Translation goes through {PROVIDERS[name]['name']}."))
     return 0
 
 
@@ -345,22 +411,26 @@ def usage():
     print(tr("""agentmeister translate                 состояние
 agentmeister translate on | off        перевод промптов на английский для Claude Code и Codex
 agentmeister translate switch [on|off] то же для /translate
-agentmeister translate key             сохранить ключ OpenRouter: спросит или прочитает stdin, --clipboard из буфера; rm удалит
-agentmeister translate model [<id>]    модель OpenRouter, по умолчанию """ + DEFAULT_MODEL + """
+agentmeister translate key             сохранить ключ OpenRouter или Google AI Studio: спросит или прочитает
+                                       stdin, --clipboard из буфера; провайдер выберется по ключу; rm удалит
+agentmeister translate provider [имя]  openrouter (по умолчанию) или google
+agentmeister translate model [<id>]    модель у текущего провайдера, default вернет обычную
 agentmeister translate check [текст]   перевести пример и показать задержку
 agentmeister translate log             последние записи журнала (без текста промптов)
 
-Хук UserPromptSubmit отправляет в OpenRouter только сообщения с нелатинскими буквами, короче """ + str(MAX_CHARS) + """ знаков,
+Хук UserPromptSubmit отправляет провайдеру только сообщения с нелатинскими буквами, короче """ + str(MAX_CHARS) + """ знаков,
 без слэш-команд и без того, что похоже на ключи, токены и ссылки proxy. Перевод добавляется к оригиналу.""",
              """agentmeister translate                 status
 agentmeister translate on | off        translate prompts to English for Claude Code and Codex
 agentmeister translate switch [on|off] the same for /translate
-agentmeister translate key             save the OpenRouter key: prompts or reads stdin, --clipboard from the clipboard; rm removes it
-agentmeister translate model [<id>]    OpenRouter model, default """ + DEFAULT_MODEL + """
+agentmeister translate key             save an OpenRouter or Google AI Studio key: prompts or reads stdin,
+                                       --clipboard from the clipboard; the key picks the provider; rm removes it
+agentmeister translate provider [name] openrouter (default) or google
+agentmeister translate model [<id>]    model for the current provider, default restores the usual one
 agentmeister translate check [text]    translate a sample and show the latency
 agentmeister translate log             recent log lines (no prompt text)
 
-The UserPromptSubmit hook sends to OpenRouter only messages with non-Latin letters, shorter than """ + str(MAX_CHARS) + """
+The UserPromptSubmit hook sends to the provider only messages with non-Latin letters, shorter than """ + str(MAX_CHARS) + """
 characters, not slash commands and with nothing that looks like keys, tokens or proxy links. The translation
 is added next to the original."""))
 
@@ -401,8 +471,18 @@ def main():
         if len(rest) == 1:
             print(model())
             return 0
-        write_config(translate_model=None if rest[1] in ("default", "-") else rest[1])
+        write_config(**{f"translate_model_{provider()}": None if rest[1] in ("default", "-") else rest[1]})
         print(tr(f"Модель {model()}.", f"Model {model()}."))
+        return 0
+    if cmd == "provider":
+        if len(rest) == 1:
+            print(provider())
+            return 0
+        if rest[1] not in PROVIDERS:
+            print(tr("Провайдер openrouter или google.", "The provider is openrouter or google."), file=sys.stderr)
+            return 2
+        write_config(translate_provider=rest[1])
+        status()
         return 0
     if cmd == "check":
         return cmd_check(rest[1:])
