@@ -391,6 +391,61 @@ class BarkChannel(unittest.TestCase):
         self.assertEqual((self.keys, notify.bark_channel.mode()), ({}, "off"))
 
 
+class GotifyChannel(unittest.TestCase):
+    """Gotify: свой сервер, токен приложения в заголовке, приоритеты для Android-клиента."""
+
+    def setUp(self):
+        empty_config(self)
+        self.keys = {}
+        for name, fn in (("find", lambda account, service="agentmeister.notify": self.keys.get((service, account), "")),
+                         ("save", lambda account, value, label, service="agentmeister.notify": self.keys.update({(service, account): value}) or True),
+                         ("delete", lambda account, service="agentmeister.notify": self.keys.pop((service, account), None))):
+            patcher = mock.patch.object(notify.keychain, name, fn)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def cli(self, *args, stdin=""):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.object(sys, "stdin", io.StringIO(stdin)):
+            code = notify.gotify_channel.main(list(args))
+        return code, out.getvalue()
+
+    def sent(self, urgent):
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            notify.gotify_channel.send("Codex: Done", "app", urgent)
+        req = urlopen.call_args.args[0]
+        return req.full_url, req.get_header("X-gotify-key"), json.loads(req.data)
+
+    def test_setup_and_priorities(self):
+        self.assertEqual(self.cli("setup", "https://gotify.example.com/", stdin="AbCdEf123\n")[0], 0)
+        self.assertEqual(self.keys, {("agentmeister.notify", "gotify"): "AbCdEf123"})
+        self.assertEqual((notify.gotify_channel.mode(), notify.gotify_channel.body_mode()), ("away", "full"))
+        self.assertEqual(self.sent(True), ("https://gotify.example.com/message", "AbCdEf123",
+                                           {"title": "Codex: Done", "message": "app", "priority": 8}))
+        self.assertEqual(self.sent(False)[2]["priority"], 4)
+        self.assertEqual(self.cli("priority", "10", "0")[0], 0)
+        self.assertEqual((self.sent(True)[2]["priority"], self.sent(False)[2]["priority"]), (10, 0))
+        self.assertEqual(self.cli("priority", "11", "4")[0], 2)
+
+    def test_bad_input(self):
+        self.assertEqual(self.cli("setup", "gotify.example.com", stdin="x")[0], 2)
+        self.assertEqual(self.cli("setup", "https://gotify.example.com", stdin="")[0], 1)
+        self.assertFalse(notify.gotify_channel.configured())
+        self.assertEqual(self.cli("away")[0], 1)
+
+    def test_client_token_is_explained(self):
+        self.cli("setup", "https://gotify.example.com", stdin="client-token")
+        err = notify.gotify_channel.urllib.error.HTTPError("https://gotify.example.com/message", 401, "x", {}, io.BytesIO(b"{}"))
+        with mock.patch("urllib.request.urlopen", side_effect=err), \
+                self.assertRaisesRegex(notify.gotify_channel.GotifyError, "токен приложения"):
+            notify.gotify_channel.send("t", "m")
+
+    def test_forget(self):
+        self.cli("setup", "https://gotify.example.com", stdin="t")
+        self.cli("forget")
+        self.assertEqual((self.keys, notify.gotify_channel.server(), notify.gotify_channel.mode()), ({}, "", "off"))
+
+
 class TosslingPreset(unittest.TestCase):
     """Tossling как пресет ntfy: настройки tossling CLI или адрес вручную с токеном из Связки ключей."""
 

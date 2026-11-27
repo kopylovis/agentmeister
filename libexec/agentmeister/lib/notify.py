@@ -15,6 +15,7 @@ from mnrhlib import CACHE, HOME, UUID_RE, read_config, settings_name, settings_p
 from swiftagent import SwiftAgent
 import bark_channel
 import channels
+import gotify_channel
 import keychain
 import ntfy_alert
 import ntfy_channel
@@ -132,6 +133,8 @@ def usage():
              "agentmeister notify ntfy        also send to ntfy (ntfy.sh or your own server): connect, -h for more"))
     print(tr("agentmeister notify bark        ещё и в Bark на iPhone, можно с шифрованием: подключить, -h подробнее",
              "agentmeister notify bark        also send to Bark on the iPhone, encryption optional: connect, -h for more"))
+    print(tr("agentmeister notify gotify      ещё и в Gotify на Android, свой сервер: подключить, -h подробнее",
+             "agentmeister notify gotify      also send to Gotify on Android, your own server: connect, -h for more"))
     print(tr("  … telegram test | off | always | away <сек>", "  … telegram test | off | always | away <sec>"))
     print(tr("  … telegram approve on | off  разрешать и отклонять запросы Claude кнопками в Telegram, когда ты не за Mac",
              "  … telegram approve on | off  allow or deny Claude's requests with Telegram buttons when you are away from the Mac"))
@@ -633,6 +636,7 @@ def status():
     print(tossling_describe())
     print(ntfy_channel.describe())
     print(bark_channel.describe())
+    print(gotify_channel.describe())
 
 
 def tossling_describe():
@@ -786,6 +790,8 @@ def main():
         return ntfy_channel.main(rest[1:])
     if rest[0] == "bark":
         return bark_channel.main(rest[1:])
+    if rest[0] == "gotify":
+        return gotify_channel.main(rest[1:])
     usage()
     return 2
 

@@ -1036,6 +1036,15 @@ agentmeister notify tossling away
 Вопросы и запросы разрешений приходят как Time Sensitive. Еще есть `bark away | always | off | test`,
 `bark body full | title`, `bark server <url> | auto` и `bark forget`.
 
+Или в [Gotify](https://github.com/gotify/server) на своем сервере, с [приложением для
+Android](https://github.com/gotify/android) (для iPhone у Gotify приложения нет).
+`agentmeister notify gotify setup https://gotify.example.com` спрашивает токен приложения (Apps в веб-панели Gotify,
+не токен клиента) или берет его из stdin, кладет в Связку ключей (`agentmeister.notify`, аккаунт `gotify`) и включает
+отправку, когда тебя нет за Mac. Приложение для Android выбирает вид уведомления по приоритету: 0 без уведомления, 1-3
+только значок, 4-7 со звуком, 8-10 со звуком и вибрацией. Вопросы и запросы разрешений уходят с 8, "готово" с 4,
+поменять можно командой `gotify priority <вопросы> <готово>`. Еще есть `gotify away | always | off | test`,
+`gotify body full | title` и `gotify forget`.
+
 С Remote Control Claude Code сам присылает push в приложение Claude на телефоне. Если сессия
 подключена (`/remote-control`, `--remote-control` или «Enable Remote Control for all sessions») и в
 `/config` включено **Push when actions required** (`inputNeededNotifEnabled`), agentmeister не шлёт

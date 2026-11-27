@@ -4,6 +4,7 @@
 from typing import NamedTuple
 
 import bark_channel
+import gotify_channel
 import ntfy_alert
 import ntfy_channel
 import presence
@@ -124,7 +125,25 @@ class Bark(Channel):
             raise SendError(str(e)) from None
 
 
-ALL = (Telegram(), Tossling(), Ntfy(), Bark())
+class Gotify(Channel):
+    name = "gotify"
+    label = "Gotify"
+
+    def configured(self):
+        return gotify_channel.configured()
+
+    def mode(self):
+        return gotify_channel.mode()
+
+    def send(self, msg):
+        title, text = ntfy_text(msg, gotify_channel.body_mode())
+        try:
+            gotify_channel.send(title, text, urgent=msg.urgent)
+        except gotify_channel.GotifyError as e:
+            raise SendError(str(e)) from None
+
+
+ALL = (Telegram(), Tossling(), Ntfy(), Bark(), Gotify())
 
 
 def by_name(name):
