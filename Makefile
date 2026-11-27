@@ -77,9 +77,10 @@ test:
 	@echo junk | ./bin/agentmeister humanize-hook | wc -c | grep -q '^ *0$$'
 	@printf '%s\n' '---' '- `X` — пояснение' | ./bin/agentmeister humanize check - | grep 'разделитель' | grep -q '\-\-\-'
 	@printf '%s\n' '- `X` — пояснение' | ./bin/agentmeister humanize check - | grep -q 'термин — пояснение'
-	@printf '%s\n' 'Еще «тест» ёж. Итог: да. Причина: нет.' | ./bin/agentmeister humanize check - | grep 'елочки' | grep -q 'шт'
-	@printf '%s\n' 'Еще «тест» ёж. Итог: да. Причина: нет.' | ./bin/agentmeister humanize check - | grep 'точками' | grep -q 'шт'
-	@printf '%s\n' 'Итог: да. Причина: нет.' | ./bin/agentmeister humanize check - | grep -q 'двоеточия'
+	@printf '%s\n' 'Еще «тест» ёж. Итог: да. Причина: нет.' | MNRH_HUMANIZE_TYPOGRAPHY=on ./bin/agentmeister humanize check - | grep 'елочки' | grep -q 'шт'
+	@printf '%s\n' 'Еще «тест» ёж. Итог: да. Причина: нет.' | MNRH_HUMANIZE_TYPOGRAPHY=on ./bin/agentmeister humanize check - | grep 'точками' | grep -q 'шт'
+	@printf '%s\n' 'Итог: да. Причина: нет.' | MNRH_HUMANIZE_TYPOGRAPHY=on ./bin/agentmeister humanize check - | grep -q 'двоеточия'
+	@! printf '%s\n' 'Еще «тест» ёж. Итог: да. Причина: нет.' | MNRH_HUMANIZE_TYPOGRAPHY=off ./bin/agentmeister humanize check - | grep -q 'точками\|елочки\|двоеточия'
 	@printf '%s\n' 'В современном мире это потенциально может помочь. Буду честен, время покажет. citeturn0search0' | ./bin/agentmeister humanize check - | grep -c 'вступление-штамп\|модальная вата\|показная честность\|пустой прогноз\|след чат' | grep -q 5
 	@./bin/agentmeister humanize rules | grep -q '## 7. Проверка перед отправкой'
 	@cd /tmp && $(CURDIR)/bin/agentmeister guard test 'git push -f origin master' | grep -q destructive

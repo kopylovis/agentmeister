@@ -5,11 +5,13 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, CLAUDE_HOME, HOME, UUID_RE, badge, read_config, tilde, write_config
+from mnrhlib import CACHE, CLAUDE_HOME, HOME, UUID_RE, badge, read_config, tilde, tr, write_config
 import claude_settings
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
 RULES = os.path.join(ROOT, "share", "agentmeister", "humanize.md")
+# Строгая типографика (прямые кавычки, без е с точками, без двоеточий) подключается отдельно: humanize_typography=on
+TYPOGRAPHY = os.path.join(ROOT, "share", "agentmeister", "humanize-typography.md")
 STATE = os.path.join(CACHE, "humanize")
 LOG = os.path.join(HOME, "Library", "Logs", "mnrh-humanize.log")
 SETTINGS = claude_settings.PATH
@@ -24,9 +26,9 @@ REMINDER = ("agentmeister humanization включена, правила пись
             "Без \"не только... но и\", троек, \"от... до...\", хвостов \"..., подчеркивая\". Длинное тире только "
             "где его требует грамматика (в английском никогда), пункты списка \"термин — пояснение\" запрещены. "
             "Без жирного, нумерованных жирных и курсивных подзаголовков, \"---\", списков \"Заголовок: текст\" и эмодзи. "
-            "Кавычки только прямые \"\", елочки нельзя. Букву е с точками не пиши, только е. Двоеточий избегай. "
             "Текст, который пользователь отправит людям, пиши как сообщение в мессенджере (правило 4.7). "
             "Перед отправкой перечитай по разделу 7.")
+TYPOGRAPHY_REMINDER = " Кавычки только прямые \"\", елочки нельзя. Букву е с точками не пиши, только е. Двоеточий избегай."
 OFF_NOTE = "agentmeister humanization выключена, правила письма из этой сессии больше не обязательны, пиши как обычно."
 
 S = r"(?:^|(?<=[.!?…]\s)|(?<=\n))"
@@ -278,12 +280,35 @@ def sync_badge(on):
     badge("mnrh-humanize", {"text": "humanize", "color": "green"} if on else None)
 
 
+def typography():
+    """Строгая типографика из humanize-typography.md: humanize_typography=on в config, по умолчанию выключена.
+    MNRH_HUMANIZE_TYPOGRAPHY=on|off перекрывает config (для проверок в Makefile)."""
+    forced = os.environ.get("MNRH_HUMANIZE_TYPOGRAPHY")
+    if forced in ("on", "off"):
+        return forced == "on"
+    return read_config().get("humanize_typography", "off") == "on"
+
+
+def reminder():
+    if not typography():
+        return REMINDER
+    head, sep, tail = REMINDER.partition(" Текст, который")
+    return head + TYPOGRAPHY_REMINDER + sep + tail
+
+
 def rules_text():
     try:
         with open(RULES) as f:
-            return f.read()
+            text = f.read()
     except OSError:
         return ""
+    if typography():
+        try:
+            with open(TYPOGRAPHY) as f:
+                text = text.rstrip("\n") + "\n" + f.read()
+        except OSError:
+            pass
+    return text
 
 
 def log(line):
@@ -342,8 +367,10 @@ def check(text):
     clean = prose(text)
     hits = []
     raw = re.sub(r"`[^`\n]*`", "", re.sub(r"(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$", "", text))
-    for name, rx in (("елочки и лапки", r"[«»„“”]"), ("буква е с точками", r"[ёЁ]"), ("типографский апостроф", r"[’‘]"),
-                     ("невидимые и редкие символы", INVISIBLE.pattern)):
+    strict = typography()
+    rules = ((("елочки и лапки", r"[«»„“”]"), ("буква е с точками", r"[ёЁ]"), ("типографский апостроф", r"[’‘]"))
+             if strict else ()) + (("невидимые и редкие символы", INVISIBLE.pattern),)
+    for name, rx in rules:
         found = [m.start() for m in re.finditer(rx, raw)]
         if found:
             hits.append((raw.count("\n", 0, found[0]) + 1, name, f"{len(found)} шт."))
@@ -351,7 +378,7 @@ def check(text):
     if len(nbsp) >= NBSP_LIMIT:
         hits.append((raw.count("\n", 0, nbsp[0]) + 1, "неразрывные пробелы", f"{len(nbsp)} шт., человек столько не ставит"))
     colons = [m.start() for m in re.finditer(r"[^\s:/\d]:(?=[ \t]+\S)", clean)]
-    if len(colons) > 1:
+    if strict and len(colons) > 1:
         hits.append((clean.count("\n", 0, colons[0]) + 1, "двоеточия", f"{len(colons)} посреди фраз"))
 
     def line_of(pos):
@@ -441,7 +468,7 @@ def hook(codex=False):
         hits = read_mark(sid, "hits")
         mark(sid, "hits", False)
         if on:
-            text = REMINDER if primed else rules_text()
+            text = reminder() if primed else rules_text()
             if hits and primed:
                 text += f"\nВ прошлом ответе проверка нашла: {hits}. Не повторяй этого."
             if text:
@@ -497,6 +524,7 @@ def usage():
     print("agentmeister humanize on | off         переключить режим для Claude Code и Codex")
     print("agentmeister humanize switch [on|off]  то же для /humanize в Claude Code")
     print("agentmeister humanize rules            показать правила письма")
+    print("agentmeister humanize typography on|off  строгая типографика: прямые кавычки, без е с точками, без двоеточий")
     print("agentmeister humanize check <файл>     найти явные признаки нейросети в тексте (- читает stdin)")
     print("agentmeister humanize log              показать результаты проверки ответов")
     print()
@@ -549,6 +577,15 @@ def main():
             print(f"Не понял «{want}»: on, off или пусто, чтобы переключить.", file=sys.stderr)
             return 2
         set_state(want, inside=bool(os.environ.get("CLAUDECODE")))
+        return 0
+    if cmd == "typography" and len(rest) in (1, 2):
+        if len(rest) == 2:
+            if rest[1] not in ("on", "off"):
+                print("agentmeister humanize typography on|off", file=sys.stderr)
+                return 2
+            write_config(humanize_typography=None if rest[1] == "off" else "on")
+        print(tr("Строгая типографика (прямые кавычки, без е с точками, без двоеточий): ",
+                 "Strict typography (straight quotes, no ё, no colons): ") + ("on" if typography() else "off"))
         return 0
     if cmd == "rules":
         print(rules_text(), end="")

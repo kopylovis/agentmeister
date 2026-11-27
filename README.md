@@ -643,7 +643,10 @@ writing rules from `share/agentmeister/humanize.md` at the start of a session an
 `UserPromptSubmit` reminds of them with every message, and the `Stop` hook checks the reply and passes what it
 found into the next turn. The same setting turns the rules on for Codex (see above). `agentmeister humanize rules`
 prints the rules, `humanize check <file>` (`-` reads stdin) finds obvious AI markers in a text, and
-`humanize log` shows the results of the reply checks.
+`humanize log` shows the results of the reply checks. `agentmeister humanize typography on` adds a stricter
+typography section (straight quotes only, no letter ё, no colons mid-sentence) from
+`share/agentmeister/humanize-typography.md`, and the checks start flagging those too. It's off by default, the
+same switch is in Settings → Modes → humanize.
 
 ## Prompt translation: `agentmeister translate`
 
