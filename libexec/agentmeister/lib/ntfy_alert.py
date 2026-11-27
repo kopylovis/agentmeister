@@ -17,7 +17,7 @@ INSTALL_DOCS = "https://tossling.github.io/docs/install/"
 PROJECTS_DOCS = "https://tossling.github.io/docs/server/projects/"
 AGENTMEISTER_TOPIC = "agentmeister"
 AGENTMEISTER_ICON = "https://raw.githubusercontent.com/kopylovis/agentmeister/main/docs/icon.png"
-# До 1.29 токен публикации лежал здесь, аккаунтом был адрес сервера
+# До 1.30 токен публикации лежал здесь, аккаунтом был адрес сервера
 PUBLISHER_SERVICE = "agentmeister.tossling"
 KEYCHAIN_ACCOUNT = "tossling"
 MODES = ("off", "away", "always")

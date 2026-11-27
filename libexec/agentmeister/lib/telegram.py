@@ -21,7 +21,7 @@ from presence import away_after
 # Секреты каналов уведомлений лежат в Связке ключей под одним сервисом, аккаунт по имени канала
 SERVICE = "agentmeister.notify"
 ACCOUNT = "telegram"
-# Здесь токен лежал до 1.29. Запись не удаляется, пока канал не отключат: ее читают старые версии Agentmeister
+# Здесь токен лежал до 1.28.1. Запись не удаляется, пока канал не отключат: ее читают старые версии Agentmeister
 OLD_KEYCHAIN = ("mnrh-telegram", "bot")
 API = "https://api.telegram.org/bot{}/{}"
 TOKEN_RE = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")

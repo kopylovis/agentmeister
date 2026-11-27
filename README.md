@@ -967,7 +967,7 @@ The same notifications can go to Telegram when you're away from the Mac: the scr
 touched the mouse and keyboard for 2 minutes. `agentmeister notify telegram` connects a bot: create it with
 @BotFather, enter the token (or copy it and run the command outside a terminal, and agentmeister takes the token
 from the clipboard and clears it), then press Start in the chat with the bot. The token is kept in the Keychain
-(service `agentmeister.notify`, account `telegram`; before 1.29 it was `mnrh-telegram`, which is copied over and kept
+(service `agentmeister.notify`, account `telegram`; before 1.28.1 it was `mnrh-telegram`, which is copied over and kept
 for older versions until `telegram off`); the config only holds the chat id. `telegram test` sends a test message,
 `agentmeister notify away <sec>` sets how long without input counts as away for all phone channels
 (`telegram away <sec>` does the same), `telegram always` sends every time, and
@@ -1006,7 +1006,7 @@ settings. The title starts with Claude Code or Codex. Questions and permission r
 Without the Tossling app on the Mac, set the server by hand and give a
 [project publisher token](https://tossling.github.io/docs/server/projects/) for the `agentmeister` channel. The
 token is read from the prompt or from stdin and kept in the Keychain (`agentmeister.notify`, account `tossling`).
-A token saved before 1.29 under `agentmeister.tossling` is still read.
+A token saved before 1.30 under `agentmeister.tossling` is still read.
 
 ```sh
 agentmeister notify tossling server https://tossling.example.com
