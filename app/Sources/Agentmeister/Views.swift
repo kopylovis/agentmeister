@@ -327,6 +327,8 @@ struct MainView: View {
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             workspace.takeFocusRequest(state: backend.state)
             workspace.takeOpenRequests(state: backend.state)
+            workspace.watchTranslations()
+            workspace.takeTranslations()
             workspace.trackCodexThreads()
         }
     }

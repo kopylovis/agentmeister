@@ -1258,6 +1258,56 @@ final class Workspace: ObservableObject {
         }
     }
 
+    // MARK: Перевод вместо оригинала
+
+    /// Хук agentmeister translate кладет сюда <id>.json, когда промпт во вкладке Claude Code надо заменить переводом,
+    /// и ждет ответа <id>.reply.json. Здесь же метки sent-<сессия>, по ним хук узнает повторную отправку.
+    static let translateDir = (appDir as NSString).appendingPathComponent("translate")
+    private var translateWatch: DispatchSourceFileSystemObject?
+
+    /// Следить за папкой обмена. Хук ждет ответа меньше двух секунд, раз в секунду забирать запросы мало.
+    func watchTranslations() {
+        guard translateWatch == nil else { return }
+        try? FileManager.default.createDirectory(atPath: Self.translateDir, withIntermediateDirectories: true)
+        let fd = Darwin.open(Self.translateDir, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: .main)
+        source.setEventHandler { [weak self] in MainActor.assumeIsolated { self?.takeTranslations() } }
+        source.setCancelHandler { Darwin.close(fd) }
+        source.resume()
+        translateWatch = source
+    }
+
+    func takeTranslations() {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: Self.translateDir) else { return }
+        for name in names where name.hasSuffix(".json") && !name.hasSuffix(".reply.json") {
+            let id = String(name.dropLast(5))
+            let path = (Self.translateDir as NSString).appendingPathComponent(name)
+            guard id.range(of: Self.sessionPattern, options: .regularExpression) != nil,
+                  let data = fm.contents(atPath: path) else { continue }
+            try? fm.removeItem(atPath: path)
+            let reply = ["ok": translationRequest(data)]
+            if let out = try? JSONSerialization.data(withJSONObject: reply) {
+                try? out.write(to: URL(fileURLWithPath: (Self.translateDir as NSString).appendingPathComponent(id + ".reply.json")),
+                               options: .atomic)
+            }
+        }
+    }
+
+    /// Запрос должен прийти из идущей вкладки Claude Code этого окна и от ее же сессии.
+    private func translationRequest(_ data: Data) -> Bool {
+        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let original = o["original"] as? String, let english = o["english"] as? String,
+              let session = o["session"] as? String, !english.isEmpty,
+              let from = (o["from"] as? String).flatMap(UUID.init(uuidString:)),
+              let at = o["at"] as? Double, Date().timeIntervalSince1970 - at < 10,
+              let tab = tabs.first(where: { $0.id == from && $0.running }), tab.spec.claudeSession,
+              tab.sessionId.map({ $0.lowercased() == session.lowercased() }) ?? true else { return false }
+        let mark = (Self.translateDir as NSString).appendingPathComponent("sent-" + session)
+        return tab.view.resubmitTranslation(original: original, english: english, mark: mark)
+    }
+
     struct OpenRefusal: Error { let text: String }
 
     /// Запрос открыть вкладку. Он должен прийти из открытой вкладки этого окна (id в AGENTMEISTER_TAB), папка
@@ -1623,6 +1673,114 @@ final class AppTerminalView: LocalProcessTerminalView {
         guard let viewport = terminalContentSnapshot(region: .viewport) else { return [] }
         let top = viewport.liveTopRow
         return terminalContentSnapshot(region: .rows(top..<(top + viewport.dimensions.rows)))?.rows ?? []
+    }
+
+    // MARK: Перевод вместо оригинала
+
+    /// Хук перевода заблокировал промпт, и Claude Code возвращает его в строку ввода. Когда текст вернулся, стираем
+    /// его и отправляем перевод, картинки заново путями к файлам. false, если взяться нельзя: в промпте картинка,
+    /// которую вставляла не эта вкладка, или перевод потерял номер картинки. Тогда хук оставит оригинал с переводом.
+    func resubmitTranslation(original: String, english: String, mark: String) -> Bool {
+        syncImageSession()
+        let numbers = Self.imageNumbers(original)
+        guard numbers == Self.imageNumbers(english) else { return false }
+        var files: [Int: URL] = [:]
+        for number in numbers {
+            guard let url = pastedImages[number], FileManager.default.fileExists(atPath: url.path) else { return false }
+            files[number] = url
+        }
+        poll(timeout: 2, until: { Self.sameInput(self.inputText(), original) }) { [weak self] back in
+            // текст не вернулся или его уже правят руками: не трогаем, промпт остается пользователю
+            guard let self, back else { return }
+            let lines = original.components(separatedBy: "\n").count
+            let cols = self.terminalContentSnapshot(region: .viewport)?.dimensions.cols ?? 80
+            let rows = original.count / max(10, cols - 8)
+            self.send(txt: String(repeating: "\u{15}\u{7f}", count: min(400, lines + rows + 3)))
+            self.poll(timeout: 1, until: { Self.inputCleared(self.inputText(), of: original) }) { [weak self] cleared in
+                guard let self, cleared else { return }
+                let before = self.imageTokenCounts()
+                for piece in Self.translationPieces(english, files: files) {
+                    switch piece {
+                    case .text(let text): self.pasteText(text)
+                    case .image(let url): self.pasteClaudeImages([url], text: Self.escaped(url.path))
+                    }
+                }
+                // Claude Code превращает путь в [Image #N] не сразу, без этого Enter ушел бы с голым путем
+                self.poll(timeout: 3, until: { self.imageTokenCounts().filter { $0.value > before[$0.key, default: 0] }.count >= files.count }) { [weak self] _ in
+                    guard let self, self.tab?.running == true else { return }
+                    FileManager.default.createFile(atPath: mark, contents: nil)
+                    self.send(txt: "\r")
+                }
+            }
+        }
+        return true
+    }
+
+    enum TranslationPiece: Equatable {
+        case text(String)
+        case image(URL)
+    }
+
+    /// Перевод кусками: текст вставкой, [Image #N] путем к файлу этой картинки.
+    static func translationPieces(_ english: String, files: [Int: URL]) -> [TranslationPiece] {
+        var pieces: [TranslationPiece] = []
+        var rest = english[...]
+        while let match = rest.firstMatch(of: #/\[Image #(\d+)\]/#) {
+            let head = String(rest[..<match.range.lowerBound])
+            if !head.isEmpty { pieces.append(.text(head)) }
+            if let number = Int(match.output.1), let url = files[number] {
+                pieces.append(.image(url))
+            } else {
+                pieces.append(.text(String(match.output.0)))
+            }
+            rest = rest[match.range.upperBound...]
+        }
+        if !rest.isEmpty { pieces.append(.text(String(rest))) }
+        return pieces
+    }
+
+    static func imageNumbers(_ text: String) -> [Int] {
+        text.matches(of: #/\[Image #(\d+)\]/#).compactMap { Int($0.output.1) }.sorted()
+    }
+
+    /// Строка ввода Claude Code: строки между двумя последними горизонтальными линиями, без значка ❯.
+    private func inputText() -> String {
+        Self.inputText(liveRows().map { $0.cells.map(\.text).joined() })
+    }
+
+    static func inputText(_ rows: [String]) -> String {
+        let rules = rows.indices.filter { rows[$0].filter { $0 == "─" }.count >= 20 }
+        guard rules.count >= 2 else { return "" }
+        let (top, bottom) = (rules[rules.count - 2], rules[rules.count - 1])
+        var text = rows[(top + 1)..<bottom].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.hasPrefix("❯") || text.hasPrefix(">") { text.removeFirst() }
+        return text
+    }
+
+    /// Одинаковый текст без учета пробелов и переносов: Claude Code переносит длинные строки сам.
+    static func sameInput(_ screen: String, _ prompt: String) -> Bool {
+        let squeeze = { (s: String) in s.filter { !$0.isWhitespace } }
+        let a = squeeze(screen)
+        return !a.isEmpty && a == squeeze(prompt)
+    }
+
+    /// Оригинала в строке больше нет: ни его начала, ни конца. Пустая строка показывает подсказку, поэтому
+    /// пустоту не проверяем.
+    static func inputCleared(_ screen: String, of prompt: String) -> Bool {
+        let squeeze = { (s: String) in s.filter { !$0.isWhitespace } }
+        let a = squeeze(screen), b = squeeze(prompt)
+        return !a.contains(b.prefix(8)) && !a.contains(b.suffix(8))
+    }
+
+    /// Проверять условие каждые 50 мс, пока не выполнится или не выйдет время, потом done(выполнилось ли).
+    private func poll(timeout: Double, until check: @escaping () -> Bool, done: @escaping (Bool) -> Void) {
+        let deadline = Date().addingTimeInterval(timeout)
+        func step() {
+            if check() { done(true); return }
+            guard Date() < deadline else { done(false); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { step() }
+        }
+        step()
     }
 
     private func imageTokenCounts() -> [Int: Int] {
