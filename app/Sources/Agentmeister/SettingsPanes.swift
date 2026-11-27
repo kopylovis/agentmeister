@@ -445,8 +445,21 @@ struct ModesPane: View {
             if let model = info?.translateModel {
                 GridRow {
                     fieldLabel(l.t("Модель", "Model"))
-                    Text(model).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 4) {
+                        CommitField(value: model, placeholder: model) { run(["translate", "model", $0.isEmpty ? "default" : $0]) }
+                            .frame(maxWidth: 280)
+                        Text(l.t("Пустое поле возвращает модель по умолчанию. Это agentmeister translate model.",
+                                 "An empty field brings back the default model. Same as agentmeister translate model."))
+                            .font(.system(size: 11)).foregroundStyle(Ink.faint)
+                    }
                 }
+            }
+            GridRow {
+                fieldLabel(l.t("Языки", "Languages"))
+                Text(l.t("кириллица, CJK, арабский, иврит и другие нелатинские письменности. Текст латиницей (немецкий, испанский, польский) уходит агенту как есть.",
+                         "Cyrillic, CJK, Arabic, Hebrew and other non-Latin scripts. Text in Latin script (German, Spanish, Polish) goes to the agent as is."))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             GridRow {
                 fieldLabel(l.t("Запасной", "Fallback"))
@@ -759,6 +772,26 @@ struct NotifyPane: View {
 }
 
 /// Узкое числовое поле, 64 точки. Значение уходит по Enter или при потере фокуса.
+/// Текстовое поле, которое отправляет значение по Enter. Пустое значение тоже отправляется.
+struct CommitField: View {
+    let value: String
+    var placeholder = ""
+    let commit: (String) -> Void
+    @State private var text = ""
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(size: 12, design: .monospaced))
+            .onAppear { text = value }
+            .onChange(of: value) { text = value }
+            .onSubmit {
+                let v = text.trimmingCharacters(in: .whitespaces)
+                if v != value { commit(v) }
+            }
+    }
+}
+
 struct NumberField: View {
     let value: Int
     let commit: (Int) -> Void
