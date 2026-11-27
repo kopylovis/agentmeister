@@ -1,4 +1,4 @@
-"""agentmeister lid: Mac не засыпает от закрытой крышки, пока идут caffeinate-сессии Claude.
+"""agentmeister lid: Mac не засыпает от закрытой крышки, пока идут caffeinate-сессии Claude Code или Codex.
 
 caffeinate -is держит Mac от простоя, а от сети и с закрытой крышкой. На батарее крышку
 перебивает только pmset disablesleep 1: его держит сторож, пока жива хоть одна caffeinate-сессия
@@ -29,7 +29,7 @@ OFF = [PMSET, "-a", "disablesleep", "0"]
 GRACE = 120  # перезапуск сессии с claude update бывает дольше минуты
 POLL = 15
 LOW_BATTERY = 15
-SESSION = re.compile(r"^caffeinate(\s+-\S+)*\s+\S*/?claude(\s|$)")
+SESSION = re.compile(r"^(?:\S*/)?caffeinate(?:\s+-\S+)*\s+(?:\S*/)?(?:claude|codex)(?:\s|$)")
 # "Не спать" во вкладке приложения: caffeinate -is -w <pid оболочки вкладки>, родитель сам Agentmeister
 APP_SESSION = re.compile(r"^(\S*/)?caffeinate(\s+-\S+)*\s+-w\s+\d+\s*$")
 APP = re.compile(r"(^|/)Agentmeister$")
@@ -56,7 +56,7 @@ def set_disabled(on):
 
 
 def sessions():
-    """pid caffeinate, которые держат сессии Claude: agentmeister -k, open_claude, перезапуск и кнопка
+    """pid caffeinate, которые держат сессии Claude Code или Codex: agentmeister -k, open_claude, перезапуск и кнопка
     "Не спать" во вкладке приложения."""
     procs = {}
     for line in run(["ps", "-axo", "pid=,ppid=,args="]).splitlines():
@@ -203,7 +203,7 @@ def setup():
     os.remove(tmp)
     if r.returncode:
         sys.exit("не поставил")
-    print("Готово. Caffeinate-сессии Claude теперь не дают Mac уснуть и с закрытой крышкой на батарее.")
+    print("Готово. Caffeinate-сессии Claude Code и Codex теперь не дают Mac уснуть и с закрытой крышкой на батарее.")
 
 
 def remove():
@@ -223,7 +223,7 @@ def status_lines():
         return lines
     n = len(sessions())
     if disabled():
-        lines.append(f"Крышка: Mac не уснёт и с закрытой крышкой, caffeinate-сессий Claude {n}"
+        lines.append(f"Крышка: Mac не уснёт и с закрытой крышкой, caffeinate-сессий {n}"
                      + (f", сторож pid {watcher_pid()}" if watcher_pid() else ", сторожа нет: agentmeister lid release"))
     else:
         lines.append("Крышка: правило есть, сейчас не держу" + (f" (сессий {n}, сторож их подхватит)" if n else ""))
@@ -234,7 +234,7 @@ def main(args):
     cmd = args[0] if args else "status"
     if cmd in ("-h", "--help"):
         print("agentmeister lid           держит ли сейчас крышка Mac от сна")
-        print("agentmeister lid setup     правило sudoers для pmset: caffeinate-сессии Claude не уснут и с закрытой")
+        print("agentmeister lid setup     правило sudoers для pmset: caffeinate-сессии агентов не уснут и с закрытой")
         print(f"                            крышкой на батарее (до {LOW_BATTERY}% заряда)")
         print("agentmeister lid on | off  включить или выключить (on без правила сначала поставит его)")
         print("agentmeister lid release   отпустить сейчас, до следующей caffeinate-сессии")
@@ -254,7 +254,7 @@ def main(args):
             setup()
         if sessions():
             keep()  # сессии уже идут: держать их сейчас, а не со следующей
-        print("Включено: caffeinate-сессии Claude не уснут и с закрытой крышкой.")
+        print("Включено: caffeinate-сессии агентов не уснут и с закрытой крышкой.")
     elif cmd == "off":
         write_config(lid="off")
         release()
