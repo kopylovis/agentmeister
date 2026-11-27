@@ -1,0 +1,4 @@
+#!/bin/bash
+# EDITOR для вкладок Claude Code в Agentmeister: по ⌘⇧T переводит строку ввода на месте, иначе открывает
+# обычный редактор пользователя (AGENTMEISTER_EDITOR). Подробности в lib/translate.py, editor_main.
+exec /usr/bin/python3 -B "$(dirname "$0")/lib/translate.py" editor "$@"

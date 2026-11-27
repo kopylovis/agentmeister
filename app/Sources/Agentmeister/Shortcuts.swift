@@ -158,7 +158,7 @@ struct KeyCombo: Codable, Hashable {
 /// Действия с горячей клавишей, которую можно поменять в Настройки → Горячие клавиши.
 enum ShortcutAction: String, CaseIterable, Identifiable {
     case newSession, newTab, newTerminal, closeTab, previousPrompt, nextPrompt, nextTab, previousTab, waitingTab, restart, parallel
-    case palette, library, usage, ask, shot, inspector, sidebar, showApp
+    case palette, library, usage, ask, shot, translateInput, inspector, sidebar, showApp
 
     var id: String { rawValue }
 
@@ -180,6 +180,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         case .usage: return KeyCombo("u", [.command, .shift], code: kVK_ANSI_U)
         case .ask: return KeyCombo("a", [.command, .shift], code: kVK_ANSI_A)
         case .shot: return KeyCombo("s", [.command, .shift], code: kVK_ANSI_S)
+        case .translateInput: return KeyCombo("t", [.command, .shift], code: kVK_ANSI_T)
         case .inspector: return KeyCombo("i", [.command, .option], code: kVK_ANSI_I)
         case .sidebar: return KeyCombo("s", [.command, .control], code: kVK_ANSI_S)
         // ⌥Space не берем: его занимает ChatGPT
@@ -205,6 +206,7 @@ enum ShortcutAction: String, CaseIterable, Identifiable {
         case .usage: return l.t("Статистика", "Usage")
         case .ask: return l.t("Спросить другой проект", "Ask another project")
         case .shot: return l.t("Снимок окна", "Window screenshot")
+        case .translateInput: return l.t("Перевести ввод на английский", "Translate the input to English")
         case .inspector: return l.inspector
         case .sidebar: return l.t("Свернуть или развернуть проекты", "Collapse or expand projects")
         case .showApp: return l.t("Показать Agentmeister из любого приложения", "Show Agentmeister from any app")

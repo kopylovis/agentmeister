@@ -605,7 +605,7 @@ struct SidebarFooter: View {
     static func hint(_ key: String, _ l: L) -> String {
         switch key {
         case "humanize": return l.t("текст без примет нейросети", "writing without AI tells")
-        case "translate": return l.t("промпты агенту на английском", "prompts reach the agent in English")
+        case "translate": return l.t("перевод рядом с оригиналом", "translation next to the original")
         case "guard": return l.t("спросит перед опасной командой", "asks before risky commands")
         case "notify": return l.t("скажет, что агент ждет", "pings when an agent waits")
         case "buildlog": return l.t("выжимка длинных сборок", "digest of long builds")
@@ -995,6 +995,9 @@ struct DetailView: View {
                     }
                     .overlay {
                         if let tab = workspace.current { AgentUpdateOverlay(tab: tab) }
+                    }
+                    .overlay {
+                        if let tab = workspace.current { InputTranslationOverlay(tab: tab).clipShape(.windowCard) }
                     }
             }
         }
@@ -1403,6 +1406,17 @@ struct TabChip: View {
                 Capsule().fill(selected || lifted ? Ink.thumb : hover ? Ink.chip : .clear)
                     .overlay { if selected && !lifted { Capsule().strokeBorder(Ink.hairline) } }
                     .shadow(color: .black.opacity(lifted ? 0.35 : 0), radius: 8, y: 2)
+            }
+            // идет перевод строки ввода: по контуру вкладки бежит блик, видно и с другой вкладки
+            .overlay {
+                if tab.inputTranslation?.done == false {
+                    TimelineView(.animation) { context in
+                        let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
+                        Capsule().strokeBorder(AngularGradient(colors: [.clear, Ink.teal, .clear, .clear], center: .center,
+                                                               angle: .degrees(turn * 360)), lineWidth: 1.5)
+                    }
+                    .allowsHitTesting(false)
+                }
             }
             // поднятая вкладка на стекле, как в Finder: соседняя под ней видна размытой, а не просвечивает
             .glassEffect(lifted ? .regular : .identity, in: Capsule())
@@ -2058,6 +2072,86 @@ struct AgentUpdateOverlay: View {
             .contentShape(Rectangle())
             .onTapGesture {}
             .transition(.opacity)
+        }
+    }
+}
+
+/// Перевод строки ввода по ⌘⇧T: снимок вкладки поверх терминала (под ним Claude Code в редакторе стер экран)
+/// и карточка с моделью и секундами. Ввод в это время не идет, Esc отменяет.
+struct InputTranslationOverlay: View {
+    @EnvironmentObject var backend: Backend
+    @ObservedObject var tab: TerminalTab
+
+    var body: some View {
+        if let t = tab.inputTranslation {
+            let l = L(backend.state.lang)
+            ZStack {
+                if let snapshot = t.snapshot {
+                    Image(nsImage: snapshot)
+                        .resizable()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .saturation(0.6)
+                        .brightness(-0.12)
+                } else {
+                    Rectangle().fill(Ink.terminalBg)
+                }
+                card(t, l)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {}
+            .transition(.opacity)
+        }
+    }
+
+    private func card(_ t: TerminalTab.InputTranslation, _ l: L) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                if t.issue == nil {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: t.issue == .cancelled ? "xmark.circle" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(t.issue == .cancelled ? Ink.muted : Ink.amber)
+                }
+                Text(title(t, l)).font(.system(size: 14, weight: .semibold)).foregroundStyle(Ink.strong)
+            }
+            if let detail = detail(t, l) {
+                Text(detail).font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            if t.issue == nil {
+                TimelineView(.periodic(from: t.started, by: 0.1)) { context in
+                    let secs = context.date.timeIntervalSince(t.started)
+                    Text([t.model, t.provider, String(format: "%.1f", secs).replacingOccurrences(of: ".", with: l.en ? "." : ",") + l.t(" с", " s")]
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(Ink.muted)
+                }
+                Text(l.t("Esc отменит, текст останется как был", "Esc cancels and leaves the text as it was"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(Ink.faint)
+            }
+        }
+        .frame(width: 320, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+    }
+
+    private func title(_ t: TerminalTab.InputTranslation, _ l: L) -> String {
+        switch t.issue {
+        case nil: return l.t("Перевожу на английский", "Translating to English")
+        case .cancelled: return l.t("Перевод отменен", "Translation cancelled")
+        default: return l.t("Не перевел", "Not translated")
+        }
+    }
+
+    private func detail(_ t: TerminalTab.InputTranslation, _ l: L) -> String? {
+        switch t.issue {
+        case .notOpened?: return l.t("Claude Code не открыл строку ввода. Закрой меню или диалог и нажми еще раз.",
+                                     "Claude Code didn't open the input line. Close the menu or dialog and try again.")
+        case .timeout?: return l.t("Переводчик не ответил за 20 секунд, текст остался как был.",
+                                   "The translator didn't answer in 20 seconds, the text is unchanged.")
+        case .failed(let why)?: return why.isEmpty ? nil : why
+        default: return nil
         }
     }
 }

@@ -64,13 +64,19 @@ enum LoginEnvironment {
         return dirs.joined(separator: ":")
     }
 
-    /// restart_job.py рядом с тем agentmeister, который запускают вкладки. Нет его, и вкладка без перезапуска.
-    static let restartJob: String? = {
+    /// Файл рядом с тем agentmeister, который запускают вкладки, или nil, если в этой версии CLI его нет.
+    private static func besideCLI(_ relative: String) -> String? {
         let real = (agentmeister as NSString).resolvingSymlinksInPath
         let root = ((real as NSString).deletingLastPathComponent as NSString).deletingLastPathComponent
-        let job = (root as NSString).appendingPathComponent("libexec/agentmeister/lib/restart_job.py")
-        return FileManager.default.fileExists(atPath: job) ? job : nil
-    }()
+        let path = (root as NSString).appendingPathComponent(relative)
+        return FileManager.default.fileExists(atPath: path) ? path : nil
+    }
+
+    /// restart_job.py рядом с тем agentmeister, который запускают вкладки. Нет его, и вкладка без перезапуска.
+    static let restartJob: String? = besideCLI("libexec/agentmeister/lib/restart_job.py")
+
+    /// EDITOR вкладок Claude Code: по ⌘⇧T переводит строку ввода, иначе открывает обычный редактор.
+    static let translateEditor: String? = besideCLI("libexec/agentmeister/translate-editor")
 
     /// CLI, который едет внутри приложения (Contents/Resources/agentmeister), его кладет туда bundle.sh.
     static let bundledCLI: String? = {

@@ -3,6 +3,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -125,6 +127,86 @@ class Hook(unittest.TestCase):
         with mock.patch.object(t, "enabled", lambda: False):
             out, calls = self.run_hook(self.event("Исправь баг"), result="Fix")
         self.assertEqual((out, calls), ("", []))
+
+
+class Editor(unittest.TestCase):
+    TAB = "0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0"
+
+    def setUp(self):
+        tmp = tempfile.mkdtemp()
+        self.dir = os.path.join(tmp, "edit")
+        os.makedirs(self.dir)
+        self.file = os.path.join(tmp, "claude-prompt.md")
+        self.execs = []
+        patches = [mock.patch.object(t, "EDIT_DIR", self.dir), mock.patch.object(t, "LOG", os.path.join(tmp, "log")),
+                   mock.patch.object(t, "app_tab", lambda: self.TAB), mock.patch.object(t, "fallback", lambda: None),
+                   mock.patch.object(t, "provider", lambda: "openrouter"), mock.patch.object(t, "model", lambda name=None: "m"),
+                   mock.patch.object(t.os, "execv", lambda *a: self.execs.append(a))]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+
+    def edit(self, text, result="", request=True, delay=0, cancel_after=None):
+        with open(self.file, "w") as f:
+            f.write(text)
+        if request:
+            open(os.path.join(self.dir, f"edit-{self.TAB}.json"), "w").close()
+
+        def fake(text, key=None, timeout=t.TIMEOUT, name=None):
+            time.sleep(delay)
+            return result
+
+        if cancel_after is not None:
+            threading.Timer(cancel_after, lambda: open(os.path.join(self.dir, f"edit-{self.TAB}.cancel"), "w").close()).start()
+        with mock.patch.object(t, "translate", fake):
+            t.editor_main([self.file])
+        with open(self.file) as f:
+            out = f.read()
+        try:
+            with open(os.path.join(self.dir, f"edit-{self.TAB}.status.json")) as f:
+                status = json.load(f)
+        except FileNotFoundError:
+            status = None
+        return out, status
+
+    def test_translates_in_place_with_images_and_reply_language(self):
+        out, status = self.edit("Посмотри на [Image #1] и исправь отступ\n", "Look at [Image #1] and fix the padding")
+        self.assertEqual(out, "Look at [Image #1] and fix the padding\n\n(Reply in Russian.)\n")
+        self.assertEqual((status["state"], status["ok"]), ("done", True))
+        self.assertEqual(self.execs, [])
+        self.assertFalse(os.path.exists(os.path.join(self.dir, f"edit-{self.TAB}.json")))
+
+    def test_without_request_opens_own_editor(self):
+        with mock.patch.dict(os.environ, {"AGENTMEISTER_EDITOR": "nano -w"}):
+            out, status = self.edit("Привет\n", "Hi", request=False)
+        self.assertEqual(out, "Привет\n")
+        self.assertIsNone(status)
+        self.assertEqual(self.execs[0][1][:3], ["/bin/sh", "-c", 'nano -w "$@"'])
+        self.assertEqual(self.execs[0][1][-1], self.file)
+
+    def test_stale_request_opens_own_editor(self):
+        req = os.path.join(self.dir, f"edit-{self.TAB}.json")
+        open(req, "w").close()
+        os.utime(req, (time.time() - 60, time.time() - 60))
+        self.edit("Привет\n", "Hi", request=False)
+        self.assertEqual(len(self.execs), 1)
+
+    def test_lost_image_keeps_original(self):
+        out, status = self.edit("Посмотри на [Image #1]\n", "Look at the picture")
+        self.assertEqual(out, "Посмотри на [Image #1]\n")
+        self.assertFalse(status["ok"])
+        self.assertIn("картинки", status["error"])
+
+    def test_cancel_keeps_original(self):
+        out, status = self.edit("Исправь баг\n", "Fix the bug", delay=0.5, cancel_after=0.1)
+        self.assertEqual(out, "Исправь баг\n")
+        self.assertTrue(status["cancelled"])
+
+    def test_english_and_secrets_are_not_sent(self):
+        out, status = self.edit("fix the bug\n", "x")
+        self.assertEqual((out, status["ok"]), ("fix the bug\n", False))
+        out, status = self.edit("ключ sk-or-v1-0123456789abcdef0123456789abcdef\n", "x")
+        self.assertIn("секрет", status["error"])
 
 
 class Key(unittest.TestCase):

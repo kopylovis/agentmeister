@@ -247,6 +247,13 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         env["AGENTMEISTER_TAB"] = tab.uuidString.lowercased()
         // классический режим Claude Code: переписка в прокрутке терминала, ⌘F по ней ищет (Settings > Terminal)
         if spec.agent == .claude && TerminalPrefs.classicRenderer { env["CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"] = "1" }
+        // ⌘⇧T: Ctrl+G открывает строку ввода в EDITOR, а он переводит ее и сразу выходит. Свой редактор
+        // пользователя остается в AGENTMEISTER_EDITOR, обычный Ctrl+G открывает его
+        if spec.claudeSession, let editor = LoginEnvironment.translateEditor, !editor.contains(" ") {
+            env["AGENTMEISTER_EDITOR"] = env["VISUAL"] ?? env["EDITOR"] ?? "vi"
+            env["VISUAL"] = editor
+            env["EDITOR"] = editor
+        }
         if let job = LoginEnvironment.restartJob {
             // тот же признак, что ставит restart.zsh: claude_restart пишет задание для хука, а не ищет вкладку iTerm2
             env["MNRH_RESTART_HOOK"] = "2"
@@ -557,6 +564,107 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// Вписать текст в строку ввода агента, не отправляя. Палитра так подставляет /ask, /shot и другие команды.
     func type(_ text: String) {
         view.send(txt: text)
+    }
+
+    // MARK: Перевод строки ввода (⌘⇧T)
+
+    /// Идет перевод строки ввода. Claude Code на это время уходит в редактор и стирает экран, поэтому поверх
+    /// терминала лежит снимок вкладки, сделанный до Ctrl+G, а на нем карточка перевода.
+    struct InputTranslation {
+        enum Issue: Equatable {
+            case notOpened, timeout, cancelled
+            case failed(String)
+        }
+        let snapshot: NSImage?
+        let started = Date()
+        var model: String?
+        var provider: String?
+        var issue: Issue?
+        var done = false
+    }
+    @Published var inputTranslation: InputTranslation?
+
+    var canTranslateInput: Bool { spec.claudeSession && running && LoginEnvironment.translateEditor != nil }
+
+    private func editFile(_ suffix: String) -> String {
+        (Workspace.translateDir as NSString).appendingPathComponent("edit-" + id.uuidString.lowercased() + suffix)
+    }
+
+    /// Запрос для translate-editor, снимок поверх терминала и Ctrl+G. Редактор переводит файл со строкой ввода
+    /// и пишет ход работы в edit-<вкладка>.status.json.
+    func translateInput() {
+        guard canTranslateInput, inputTranslation == nil else {
+            NSSound.beep()
+            return
+        }
+        let fm = FileManager.default
+        try? fm.createDirectory(atPath: Workspace.translateDir, withIntermediateDirectories: true)
+        for suffix in [".status.json", ".cancel"] { try? fm.removeItem(atPath: editFile(suffix)) }
+        guard fm.createFile(atPath: editFile(".json"), contents: Data("{}".utf8)) else {
+            NSSound.beep()
+            return
+        }
+        inputTranslation = InputTranslation(snapshot: view.snapshotImage())
+        view.send(txt: "\u{07}")
+        watchInputTranslation(since: Date(), cancelSent: false)
+    }
+
+    /// Esc во время перевода: редактор выйдет, не трогая текст.
+    func cancelInputTranslation() {
+        guard inputTranslation?.done == false else { return }
+        FileManager.default.createFile(atPath: editFile(".cancel"), contents: nil)
+    }
+
+    private func watchInputTranslation(since start: Date, cancelSent: Bool) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self, var current = self.inputTranslation, !current.done else { return }
+            let fm = FileManager.default
+            let elapsed = Date().timeIntervalSince(start)
+            // запрос так и лежит: Ctrl+G не открыл редактор, например на экране диалог или меню
+            if elapsed > 1.5, fm.fileExists(atPath: self.editFile(".json")) {
+                try? fm.removeItem(atPath: self.editFile(".json"))
+                self.finishInputTranslation(.notOpened, redraw: false)
+                return
+            }
+            if let data = fm.contents(atPath: self.editFile(".status.json")),
+               let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if o["state"] as? String == "done" {
+                    let issue: InputTranslation.Issue? = o["ok"] as? Bool == true ? nil
+                        : o["cancelled"] as? Bool == true ? .cancelled : .failed(o["error"] as? String ?? "")
+                    self.finishInputTranslation(issue, redraw: true)
+                    return
+                }
+                if current.model == nil, let model = o["model"] as? String {
+                    current.model = model
+                    current.provider = o["provider"] as? String
+                    self.inputTranslation = current
+                }
+            }
+            var cancelSent = cancelSent
+            if elapsed > 20, !cancelSent {
+                self.cancelInputTranslation()
+                cancelSent = true
+            }
+            if elapsed > 25 {
+                self.finishInputTranslation(.timeout, redraw: true)
+                return
+            }
+            self.watchInputTranslation(since: start, cancelSent: cancelSent)
+        }
+    }
+
+    /// Снимок снимается, когда Claude Code вернулся из редактора и перерисовал экран. Ошибку карточка
+    /// показывает еще немного, отмену и успех нет.
+    private func finishInputTranslation(_ issue: InputTranslation.Issue?, redraw: Bool) {
+        guard var current = inputTranslation else { return }
+        current.done = true
+        current.issue = issue
+        inputTranslation = current
+        for suffix in [".status.json", ".cancel"] { try? FileManager.default.removeItem(atPath: editFile(suffix)) }
+        let shown = issue == nil || issue == .cancelled ? 0.0 : 1.6
+        DispatchQueue.main.asyncAfter(deadline: .now() + (redraw ? 0.3 : 0) + shown) { [weak self] in
+            self?.inputTranslation = nil
+        }
     }
 
     /// Та же сессия через proxy, но через другую подписку: nil значит по очереди по всем.
@@ -1152,6 +1260,8 @@ final class Workspace: ObservableObject {
         : (NSHomeDirectory() as NSString).appendingPathComponent(".cache/mnrh/app")
     static let frontFile = (appDir as NSString).appendingPathComponent("front.json")
     static let focusFile = (appDir as NSString).appendingPathComponent("focus.json")
+    /// Обмен с translate-editor при переводе строки ввода: edit-<вкладка>.json, .status.json и .cancel.
+    static let translateDir = (appDir as NSString).appendingPathComponent("translate")
 
     /// Записать, какая вкладка выбрана и активно ли окно. Хук уведомлений не шлет уведомление о вкладке,
     /// на которую ты и так смотришь.
@@ -1519,10 +1629,26 @@ final class AppTerminalView: LocalProcessTerminalView {
     }
 
     override func paste(_ sender: Any) {
+        if tab?.inputTranslation != nil { return }
         if !pasteImage() { super.paste(sender) }
     }
 
+    /// Вкладка как картинка: ее кладут поверх терминала, пока Claude Code переводит строку ввода в редакторе.
+    func snapshotImage() -> NSImage? {
+        guard bounds.width > 0, bounds.height > 0, let rep = bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        cacheDisplay(in: bounds, to: rep)
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(rep)
+        return image
+    }
+
     static func handleImagePaste(_ event: NSEvent) -> NSEvent? {
+        // во время перевода строки ввода клавиши во вкладку не идут, Esc отменяет перевод; сочетания с ⌘ работают
+        if let view = event.window?.firstResponder as? AppTerminalView, let tab = view.tab, tab.inputTranslation != nil,
+           !event.modifierFlags.contains(.command) {
+            if event.keyCode == 53 { tab.cancelInputTranslation() }  // Esc
+            return nil
+        }
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         guard modifiers == .control || modifiers == .command,
               event.characters == "\u{16}" || event.charactersIgnoringModifiers?.lowercased() == "v",
