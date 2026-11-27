@@ -118,9 +118,10 @@ struct ModesPane: View {
         case "humanize":
             return l.t("текст агента, но не код", "replies, commits, PRs and docs")
         case "translate":
-            let name = providerName(info?.translateProvider)
-            if info?.translateKey == nil { return name + l.t(", нет ключа", ", no key") }
-            return name + (info?.translateMedianMs.map { l.t(", медиана ", ", median ") + duration($0) } ?? "")
+            let key = ShortcutStore.shared.label(.translateInput)
+            if info?.translateKey == nil { return l.t("\(key), нет ключа", "\(key), no key") }
+            return key + " · " + providerName(info?.translateProvider)
+                + (info?.translateMedianMs.map { l.t(", медиана ", ", median ") + duration($0) } ?? "")
         case "buildlog":
             return l.t("больше \(info?.buildlogLines ?? 200) строк или 20 КБ", "over \(info?.buildlogLines ?? 200) lines or 20 KB")
         case "lid":
@@ -154,9 +155,12 @@ struct ModesPane: View {
                 Spacer(minLength: 0)
                 // без правила sudoers lid on спросил бы пароль, а здесь нет терминала: сначала "Настроить"
                 let locked = name == "lid" && !(info?.lidReady ?? false)
-                HeaderSwitch(label: name, on: isOn(name)) { run([name, $0 ? "on" : "off"]) }
-                    .disabled(locked)
-                    .help(locked ? l.t("Сначала настрой lid", "Set lid up first") : "")
+                // у translate главное ⌘⇧T, он работает без переключателя: переключатель стал флажком автоперевода в панели
+                if name != "translate" {
+                    HeaderSwitch(label: name, on: isOn(name)) { run([name, $0 ? "on" : "off"]) }
+                        .disabled(locked)
+                        .help(locked ? l.t("Сначала настрой lid", "Set lid up first") : "")
+                }
             }
             switch name {
             case "guard": guardPanel
@@ -177,8 +181,9 @@ struct ModesPane: View {
             return l.t("Правила письма без примет нейросети для Claude Code и Codex. Касаются ответов, коммитов, PR и документации, но не самого кода.",
                        "Writing rules without AI tells for Claude Code and Codex. They cover replies, commits, PRs and docs, not the code itself.")
         case "translate":
-            return l.t("Сообщения на русском и других нелатинских языках переводятся через OpenRouter или Google AI Studio, агент получает английский текст рядом с оригиналом и отвечает на твоем языке. Заменить сообщение хук не может, поэтому агент видит оба текста и токенов уходит немного больше, а не меньше. Перевод нужен, чтобы агент рассуждал по-английски и сверял перевод с оригиналом. Чтобы ушел только английский, нажми \(ShortcutStore.shared.label(.translateInput)) во вкладке Claude Code: строка ввода переведется на месте, и перед отправкой ее можно проверить. Слэш-команды, длинные вставки и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
-                       "Messages in Russian and other non-Latin languages are translated through OpenRouter or Google AI Studio, and the agent gets the English text next to the original and replies in your language. A hook can't replace the message, so the agent sees both texts and it costs a few more tokens, not fewer. The translation helps the agent reason in English and check it against the original. To send English only, press \(ShortcutStore.shared.label(.translateInput)) in a Claude Code tab: the input line is translated in place, so you can check it before sending. Slash commands, long pastes and anything that looks like keys, tokens or proxy links are not sent.")
+            let key = ShortcutStore.shared.label(.translateInput)
+            return l.t("\(key) во вкладке Claude Code переводит строку ввода на английский прямо на месте, через OpenRouter или Google AI Studio. Перевод видно до отправки, агент получает только английский и отвечает на твоем языке. Картинки остаются, Esc отменяет. Слэш-команды и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
+                       "\(key) in a Claude Code tab translates the input line to English in place, through OpenRouter or Google AI Studio. You see the translation before sending, the agent gets English only and replies in your language. Images stay, Esc cancels. Slash commands and anything that looks like keys, tokens or proxy links are not sent.")
         case "buildlog":
             return l.t("Claude Code и Codex получают ошибки и итог сборки вместе с путем к полному логу. В Codex команда сборки возвращает свой код завершения.",
                        "Claude Code and Codex receive build errors and a summary with the path to the full log. In Codex the build keeps its exit code.")
@@ -393,6 +398,12 @@ struct ModesPane: View {
                     }
                 }
             }
+            GridRow {
+                fieldLabel(l.t("Клавиша", "Shortcut"))
+                Text(l.t("\(ShortcutStore.shared.label(.translateInput)), меняется в разделе \"Горячие клавиши\"",
+                         "\(ShortcutStore.shared.label(.translateInput)), change it under Shortcuts"))
+                    .foregroundStyle(Ink.text)
+            }
             if let model = info?.translateModel {
                 GridRow {
                     fieldLabel(l.t("Модель", "Model"))
@@ -412,6 +423,19 @@ struct ModesPane: View {
             }
         }
         .font(.system(size: 13))
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(l.t("Добавлять перевод к сообщениям без \(ShortcutStore.shared.label(.translateInput))",
+                       "Add a translation to messages sent without \(ShortcutStore.shared.label(.translateInput))"),
+                   isOn: Binding(get: { isOn("translate") }, set: { run(["translate", $0 ? "on" : "off"]) }))
+                .toggleStyle(.checkbox)
+                .font(.system(size: 13))
+            Text(l.t("Для iTerm2, Codex и сообщений, отправленных без перевода. Хук не может заменить сообщение, поэтому агент видит и оригинал, и перевод, и токенов уходит немного больше.",
+                     "For iTerm2, Codex and messages sent untranslated. A hook can't replace the message, so the agent sees both the original and the translation, which costs a few more tokens."))
+                .font(.system(size: 12))
+                .foregroundStyle(Ink.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, 20)
+        }
         if google {
             Text(l.t("Бесплатно в пределах лимитов, но Google может брать запросы для улучшения моделей. Из России отвечает только через proxy. Временами думает 7-15 секунд, тогда при сохраненном ключе OpenRouter переводит он.",
                      "Free within limits, but Google may use requests to improve its models. From Russia it answers only through the proxy. It sometimes takes 7-15 seconds, and then OpenRouter translates if its key is saved."))

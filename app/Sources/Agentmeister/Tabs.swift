@@ -586,6 +586,8 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         var doneAt: Date?
     }
     @Published var inputTranslation: InputTranslation?
+    /// ⌘⇧T без ключа переводчика: во вкладке карточка с полем для ключа (TranslateKeyCard).
+    @Published var askingKey = false
 
     var canTranslateInput: Bool { spec.claudeSession && running && LoginEnvironment.translateEditor != nil }
 
@@ -601,7 +603,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
             return
         }
         guard TranslateKey.saved else {
-            TranslateKey.askToSet()
+            askingKey = true
             return
         }
         let fm = FileManager.default
@@ -1624,7 +1626,7 @@ enum BrowserSettings {
 }
 
 /// Ключ переводчика для ⌘⇧T: файл в ~/.config/mnrh, как его сохраняет agentmeister translate key, или переменная
-/// окружения. Без ключа перевод не начнется, вместо этого окно с переходом в настройки.
+/// окружения. Без ключа перевод не начнется, вместо этого во вкладке карточка с полем для ключа.
 @MainActor
 enum TranslateKey {
     static var saved: Bool {
@@ -1638,19 +1640,12 @@ enum TranslateKey {
         return inFile || ["OPENROUTER_API_KEY", "GEMINI_API_KEY"].contains { env[$0]?.isEmpty == false }
     }
 
-    static func askToSet() {
-        let l = L(Backend.main?.state.lang ?? "ru")
-        let alert = NSAlert()
-        alert.messageText = l.t("Нет ключа переводчика", "No translator key")
-        alert.informativeText = l.t("Чтобы переводить строку ввода, нужен ключ OpenRouter или Google AI Studio. Его сохраняют в Настройки → Режимы → translate.",
-                                    "Translating the input line needs an OpenRouter or Google AI Studio key. Save it in Settings → Modes → translate.")
-        alert.addButton(withTitle: l.t("Открыть настройки", "Open Settings"))
-        alert.addButton(withTitle: l.t("Отмена", "Cancel"))
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        UserDefaults.standard.set("modes", forKey: "settingsSection")
-        UserDefaults.standard.set("translate", forKey: "modes.selected")
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        NSApp.activate()
+    /// Чей ключ по виду, как key_provider в translate.py: nil, если не похож ни на один.
+    nonisolated static func provider(_ key: String) -> String? {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if key.wholeMatch(of: #/sk-or-[A-Za-z0-9_-]{16,200}/#) != nil { return "OpenRouter" }
+        if key.wholeMatch(of: #/(?:AIza[0-9A-Za-z_-]{30,60}|AQ\.[0-9A-Za-z_.-]{30,100})/#) != nil { return "Google AI Studio" }
+        return nil
     }
 }
 

@@ -16,3 +16,11 @@ import Testing
         #expect(InputTranslationOverlay.scramble(ru, into: ru, progress: 0, tick: tick).hasPrefix("[Image #10] "))
     }
 }
+
+@Test func translateKeyProviderByShape() {
+    #expect(TranslateKey.provider("sk-or-v1-0123456789abcdef0123") == "OpenRouter")
+    #expect(TranslateKey.provider("  AIza" + String(repeating: "x", count: 35) + "\n") == "Google AI Studio")
+    #expect(TranslateKey.provider("AQ." + String(repeating: "A", count: 40)) == "Google AI Studio")
+    #expect(TranslateKey.provider("sk-ant-api03-abc") == nil)
+    #expect(TranslateKey.provider("") == nil)
+}
