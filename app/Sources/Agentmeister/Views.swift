@@ -1369,9 +1369,12 @@ struct TabChip: View {
             .padding(.trailing, 14)
             .frame(minWidth: 160, maxWidth: 240, minHeight: 44, maxHeight: 44)
             // невыбранная вкладка под курсором получает светлую подложку, как в Finder
+            // выбранная без тени: полоса вкладок обрезала ее снизу, в светлой теме это было видно. Вместо тени
+            // тонкая обводка, чтобы белая капсула не сливалась со светлым фоном. Тень только у поднятой вкладки
             .background {
                 Capsule().fill(selected || lifted ? Ink.thumb : hover ? Ink.chip : .clear)
-                    .shadow(color: .black.opacity(lifted ? 0.35 : selected ? 0.25 : 0), radius: lifted ? 8 : 4, y: 2)
+                    .overlay { if selected && !lifted { Capsule().strokeBorder(Ink.hairline) } }
+                    .shadow(color: .black.opacity(lifted ? 0.35 : 0), radius: 8, y: 2)
             }
             // поднятая вкладка на стекле, как в Finder: соседняя под ней видна размытой, а не просвечивает
             .glassEffect(lifted ? .regular : .identity, in: Capsule())
