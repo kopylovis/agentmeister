@@ -369,8 +369,10 @@ class BarkChannel(unittest.TestCase):
         self.assertRegex(key, r"^[A-Za-z0-9]{32}$")
         self.assertIn("Key " + key, out)
         self.assertEqual(notify.bark_channel.body_mode(), "full")
-        _, first = self.sent()
-        _, second = self.sent()
+        # ключ не уходит в аргументы другой программы: шифрует CommonCrypto в этом процессе
+        with mock.patch.object(notify.subprocess, "run", side_effect=AssertionError("subprocess")):
+            _, first = self.sent()
+            _, second = self.sent()
         self.assertEqual(set(first), {"device_key", "level", "ciphertext", "iv"})
         self.assertNotEqual(first["iv"], second["iv"])
         self.assertEqual(self.decrypt(first), {"title": "Claude Code: Answer needed", "body": "Which branch?",
