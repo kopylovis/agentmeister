@@ -2346,7 +2346,7 @@ struct TabInspector: View {
     /// Плитки по виду вкладки: Slim только у сессии Claude с id, Forget только у Claude.
     private func tileList(claude: Bool) -> [ActionTile] {
         var tiles: [ActionTile] = [
-            ActionTile(icon: "arrow.clockwise", title: l.restart,
+            ActionTile(icon: "arrow.clockwise", title: l.t("Перезапуск", "Restart"),
                        hint: l.t("та же сессия, с того же места", "same session, picks up where it stopped"),
                        highlighted: !tab.running,
                        toggle: claude ? $withUpdate : nil, toggleTitle: l.t("сначала обновить", "update first")) {
@@ -2533,9 +2533,14 @@ struct ActionTile: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
+            // плитки в два столбца узкие: русское название переносится на вторую строку, а одно длинное слово
+            // чуть сжимается, но не обрезается
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: icon).font(.system(size: 11, weight: .semibold)).frame(width: 14)
-                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                Text(title).font(.system(size: 12, weight: .semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(destructive ? Ink.red : Ink.text)
             Text(hint)
