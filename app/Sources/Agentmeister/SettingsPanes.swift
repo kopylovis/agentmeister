@@ -182,8 +182,8 @@ struct ModesPane: View {
                        "Writing rules without AI tells for Claude Code and Codex. They cover replies, commits, PRs and docs, not the code itself.")
         case "translate":
             let key = ShortcutStore.shared.label(.translateInput)
-            return l.t("\(key) во вкладке Claude Code переводит строку ввода на английский прямо на месте, через OpenRouter или Google AI Studio. Перевод видно до отправки, агент получает только английский и отвечает на твоем языке. Картинки остаются, Esc отменяет. Слэш-команды и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
-                       "\(key) in a Claude Code tab translates the input line to English in place, through OpenRouter or Google AI Studio. You see the translation before sending, the agent gets English only and replies in your language. Images stay, Esc cancels. Slash commands and anything that looks like keys, tokens or proxy links are not sent.")
+            return l.t("\(key) во вкладке Claude Code или Codex переводит строку ввода на английский прямо на месте, через OpenRouter или Google AI Studio. Перевод видно до отправки, агент получает только английский и отвечает на твоем языке. Картинки остаются, Esc отменяет. Слэш-команды и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
+                       "\(key) in a Claude Code or Codex tab translates the input line to English in place, through OpenRouter or Google AI Studio. You see the translation before sending, the agent gets English only and replies in your language. Images stay, Esc cancels. Slash commands and anything that looks like keys, tokens or proxy links are not sent.")
         case "buildlog":
             return l.t("Claude Code и Codex получают ошибки и итог сборки вместе с путем к полному логу. В Codex команда сборки возвращает свой код завершения.",
                        "Claude Code and Codex receive build errors and a summary with the path to the full log. In Codex the build keeps its exit code.")
@@ -429,8 +429,8 @@ struct ModesPane: View {
                    isOn: Binding(get: { isOn("translate") }, set: { run(["translate", $0 ? "on" : "off"]) }))
                 .toggleStyle(.checkbox)
                 .font(.system(size: 13))
-            Text(l.t("Для iTerm2, Codex и сообщений, отправленных без перевода. Хук не может заменить сообщение, поэтому агент видит и оригинал, и перевод, и токенов уходит немного больше.",
-                     "For iTerm2, Codex and messages sent untranslated. A hook can't replace the message, so the agent sees both the original and the translation, which costs a few more tokens."))
+            Text(l.t("Для iTerm2 и сообщений, отправленных без перевода. Хук не может заменить сообщение, поэтому агент видит и оригинал, и перевод, и токенов уходит немного больше.",
+                     "For iTerm2 and messages sent untranslated. A hook can't replace the message, so the agent sees both the original and the translation, which costs a few more tokens."))
                 .font(.system(size: 12))
                 .foregroundStyle(Ink.muted)
                 .fixedSize(horizontal: false, vertical: true)

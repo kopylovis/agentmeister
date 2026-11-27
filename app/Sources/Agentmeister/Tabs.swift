@@ -247,9 +247,9 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         env["AGENTMEISTER_TAB"] = tab.uuidString.lowercased()
         // классический режим Claude Code: переписка в прокрутке терминала, ⌘F по ней ищет (Settings > Terminal)
         if spec.agent == .claude && TerminalPrefs.classicRenderer { env["CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN"] = "1" }
-        // ⌘⇧T: Ctrl+G открывает строку ввода в EDITOR, а он переводит ее и сразу выходит. Свой редактор
-        // пользователя остается в AGENTMEISTER_EDITOR, обычный Ctrl+G открывает его
-        if spec.claudeSession, let editor = LoginEnvironment.translateEditor, !editor.contains(" ") {
+        // ⌘⇧T: Ctrl+G открывает строку ввода в EDITOR (у Claude Code и у Codex), а он переводит ее и сразу
+        // выходит. Свой редактор пользователя остается в AGENTMEISTER_EDITOR, обычный Ctrl+G открывает его
+        if spec.claudeSession || spec.codexSession, let editor = LoginEnvironment.translateEditor, !editor.contains(" ") {
             env["AGENTMEISTER_EDITOR"] = env["VISUAL"] ?? env["EDITOR"] ?? "vi"
             env["VISUAL"] = editor
             env["EDITOR"] = editor
@@ -589,7 +589,25 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     /// ⌘⇧T без ключа переводчика: во вкладке карточка с полем для ключа (TranslateKeyCard).
     @Published var askingKey = false
 
-    var canTranslateInput: Bool { spec.claudeSession && running && LoginEnvironment.translateEditor != nil }
+    var canTranslateInput: Bool {
+        (spec.claudeSession || spec.codexSession) && running && LoginEnvironment.translateEditor != nil && editorKey != nil
+    }
+
+    /// Чем агент открывает строку ввода во внешнем редакторе. Claude Code всегда Ctrl+G. Codex тоже, если клавишу
+    /// не переназначили в ~/.codex/config.toml (open_external_editor), а переназначенную понимаем только ctrl-<буква>.
+    var editorKey: String? {
+        guard spec.codexSession else { return "\u{07}" }
+        let home = LoginEnvironment.shared["CODEX_HOME"] ?? (NSHomeDirectory() as NSString).appendingPathComponent(".codex")
+        let config = (try? String(contentsOfFile: (home as NSString).appendingPathComponent("config.toml"), encoding: .utf8)) ?? ""
+        return Self.codexEditorKey(config)
+    }
+
+    nonisolated static func codexEditorKey(_ config: String) -> String? {
+        guard let match = config.firstMatch(of: #/(?m)^\s*open_external_editor\s*=\s*"([^"]*)"/#) else { return "\u{07}" }
+        guard let letter = String(match.output.1).lowercased().wholeMatch(of: #/ctrl-([a-z])/#)?.output.1.unicodeScalars.first
+        else { return nil }
+        return String(UnicodeScalar(UInt8(letter.value - 96)))
+    }
 
     private func editFile(_ suffix: String) -> String {
         (Workspace.translateDir as NSString).appendingPathComponent("edit-" + id.uuidString.lowercased() + suffix)
@@ -615,7 +633,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         }
         view.freeze()
         inputTranslation = InputTranslation()
-        view.send(txt: "\u{07}")
+        view.send(txt: editorKey ?? "\u{07}")
         watchInputTranslation(since: Date(), cancelSent: false)
     }
 

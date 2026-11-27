@@ -2084,7 +2084,7 @@ struct AgentUpdateOverlay: View {
     }
 }
 
-/// Перевод строки ввода по ⌘⇧T: карточка над снимком терминала (под снимком Claude Code в редакторе стер экран). Пока ждем, по тексту строки пробегают случайные буквы, когда перевод пришел, текст слева
+/// Перевод строки ввода по ⌘⇧T: карточка над снимком терминала (под снимком Claude Code или Codex в редакторе стер экран). Пока ждем, по тексту строки пробегают случайные буквы, когда перевод пришел, текст слева
 /// направо складывается в английский. Ввод в это время не идет, Esc отменяет.
 struct InputTranslationOverlay: View {
     @EnvironmentObject var backend: Backend
@@ -2195,8 +2195,8 @@ struct InputTranslationOverlay: View {
 
     private func detail(_ t: TerminalTab.InputTranslation, _ l: L) -> String? {
         switch t.issue {
-        case .notOpened?: return l.t("Claude Code не открыл строку ввода. Закрой меню или диалог и нажми еще раз.",
-                                     "Claude Code didn't open the input line. Close the menu or dialog and try again.")
+        case .notOpened?: return l.t("Агент не открыл строку ввода в редакторе. Закрой меню или диалог и нажми еще раз.",
+                                     "The agent didn't open the input line in the editor. Close the menu or dialog and try again.")
         case .timeout?: return l.t("Переводчик не ответил за 20 секунд, текст остался как был.",
                                    "The translator didn't answer in 20 seconds, the text is unchanged.")
         case .failed(let why)?: return why.isEmpty ? nil : why
