@@ -14,7 +14,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 APP = os.path.join(ROOT, "app", ".build", "out", "Products", "Debug", "Agentmeister")
 # сцена: (что снимать, через сколько секунд)
 SCENES = {"main": ("main", 7), "new-session": ("sheet", 8), "project": ("main", 8), "settings": ("settings", 9),
-          "settings-modes": ("settings", 9), "headsup": ("settings", 9)}
+          "settings-modes": ("settings", 9), "rail": ("main", 8), "headsup": ("settings", 9)}
 LIST_JS = r'''
 ObjC.import('CoreGraphics');
 function run(argv) {

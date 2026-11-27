@@ -96,6 +96,8 @@ struct MainView: View {
             case "new-session":
                 ui.newSessionProject = workspace.current?.spec.projectPath
                 ui.showNewSession = true
+            case "rail":
+                ui.sidebarCollapsed = true
             case "project":
                 ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
             case "settings", "settings-modes", "headsup":
@@ -553,7 +555,10 @@ struct SidebarFooter: View {
     var l: L { L(backend.state.lang) }
 
     /// Короткое описание режима под его именем.
-    private func modeHint(_ key: String) -> String {
+    private func modeHint(_ key: String) -> String { Self.hint(key, l) }
+
+    /// То же описание для узкой панели проектов (RailStatusButton).
+    static func hint(_ key: String, _ l: L) -> String {
         switch key {
         case "humanize": return l.t("текст без примет нейросети", "writing without AI tells")
         case "translate": return l.t("промпты агенту на английском", "prompts reach the agent in English")
@@ -566,7 +571,7 @@ struct SidebarFooter: View {
     }
 
     /// Порядок из макета. Режимы, которых нет в ответе app-state, не показываются.
-    private static let order = ["humanize", "translate", "guard", "notify", "buildlog", "lid"]
+    static let order = ["humanize", "translate", "guard", "notify", "buildlog", "lid"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

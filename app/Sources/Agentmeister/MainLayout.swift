@@ -338,38 +338,135 @@ struct SidebarRail: View {
                     .blurBar(edge: .top, fade: false)
             }
             .safeAreaBar(edge: .bottom, spacing: 0) {
-            if let h = backend.state.hostRun {
-                // исполнитель host-run: значок терминала и точка состояния, клик открывает его настройки
-                SettingsLink {
-                    Image(systemName: "terminal")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Ink.text2)
-                        .frame(width: 32, height: 32)
-                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Ink.chip))
-                        .overlay(alignment: .bottomTrailing) {
-                            Circle().fill(h.running ? SessionDot.idle : Ink.amberDot)
-                                .frame(width: 8, height: 8)
-                                .padding(2)
-                                .background(Circle().fill(Color(nsColor: .windowBackgroundColor)))
-                                .offset(x: 2, y: 2)
-                        }
-                }
-                .buttonStyle(.hover(8, .overlay))
-                .simultaneousGesture(TapGesture().onEnded { UserDefaults.standard.set("proxy", forKey: "settingsSection") })
-                .help(h.running ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
-                                : l.t("host-run не запущен", "host-run isn't running"))
-                .accessibilityLabel(h.running ? l.t("host-run работает", "host-run running") : l.t("host-run не запущен", "host-run isn't running"))
-                // закрепленный значок без своей подложки, от списка его отделяет линия
-                .frame(maxWidth: .infinity)
-                .padding(.top, 10)
-                .padding(.bottom, 14)
-                .overlay(alignment: .top) {
-                    Rectangle().fill(Ink.hairline).frame(height: 1)
-                }
-                .blurBar(edge: .bottom, fade: false)
-            }
+                // режимы и host-run одной кнопкой: точки режимов, сколько включено, точка host-run в углу
+                RailStatusButton()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 10)
+                    .padding(.bottom, 14)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(Ink.hairline).frame(height: 1)
+                    }
+                    .blurBar(edge: .bottom, fade: false)
             }
         .frame(maxHeight: .infinity)
+    }
+}
+
+/// Низ узкой панели проектов: одна кнопка на режимы и host-run. На ней точка на каждый режим (залитая, если
+/// включен), "включено / всего" и точка состояния host-run в углу. Клик открывает окошко, где режимы
+/// переключаются плитками, а ниже строка host-run со ссылкой в его настройки.
+struct RailStatusButton: View {
+    @EnvironmentObject var backend: Backend
+    @State private var open = false
+
+    var l: L { L(backend.state.lang) }
+    private var keys: [String] { SidebarFooter.order.filter { backend.state.modes[$0] != nil } }
+    private func on(_ key: String) -> Bool { backend.state.modes[key] ?? false }
+
+    var body: some View {
+        let count = keys.filter(on).count
+        let host = backend.state.hostRun
+        Button { open.toggle() } label: {
+            VStack(spacing: 4) {
+                HStack(spacing: 3) {
+                    ForEach(keys, id: \.self) { key in
+                        Circle()
+                            .fill(on(key) ? Color.accentColor : .clear)
+                            .overlay(Circle().strokeBorder(on(key) ? .clear : Ink.muted, lineWidth: 1))
+                            .frame(width: 5, height: 5)
+                    }
+                }
+                Text("\(count) / \(keys.count)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(open ? Ink.modeOn : Ink.text2)
+            .frame(width: 52, height: 44)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(open ? Ink.modeOnBg : Ink.chip))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(open ? Ink.modeOnBorder : .clear))
+            .overlay(alignment: .bottomTrailing) {
+                if let host {
+                    Circle().fill(host.running ? SessionDot.idle : Ink.amberDot)
+                        .frame(width: 8, height: 8)
+                        .padding(2)
+                        .background(Circle().fill(Color(nsColor: .windowBackgroundColor)))
+                        .offset(x: 3, y: 3)
+                }
+            }
+        }
+        .buttonStyle(.hover(10, .overlay))
+        .help(l.t("Режимы: включено \(count) из \(keys.count)", "Modes: \(count) of \(keys.count) on")
+              + (host.map { $0.running ? l.t(" · host-run работает", " · host-run running") : l.t(" · host-run не запущен", " · host-run isn't running") } ?? ""))
+        .accessibilityLabel(l.t("Режимы, включено \(count) из \(keys.count)", "Modes, \(count) of \(keys.count) on"))
+        .popover(isPresented: $open, arrowEdge: .trailing) { popover }
+        .task {
+            // демо rail для скриншота: окошко открыто. Сразу при появлении кнопки popover не показывается
+            guard Demo.active && Demo.scene == "rail" else { return }
+            try? await Task.sleep(for: .seconds(3))
+            open = true
+        }
+    }
+
+    private var popover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(l.modes).font(.system(size: 13, weight: .semibold)).foregroundStyle(Ink.text2)
+                Spacer()
+                SettingsLink { Text(l.t("Настройки", "Settings")).font(.system(size: 12)) }
+                    .buttonStyle(.link)
+                    .simultaneousGesture(TapGesture().onEnded {
+                        UserDefaults.standard.set("modes", forKey: "settingsSection")
+                        open = false
+                    })
+            }
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                ForEach(keys, id: \.self) { key in
+                    let isOn = on(key)
+                    Button { backend.setMode(key, on: !isOn) } label: {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(isOn ? Color.accentColor : .clear)
+                                .overlay(Circle().strokeBorder(isOn ? .clear : Ink.muted, lineWidth: 1))
+                                .frame(width: 7, height: 7)
+                            Text(key).font(.system(size: 13, weight: isOn ? .semibold : .regular))
+                            Spacer(minLength: 0)
+                        }
+                        .foregroundStyle(isOn ? Ink.modeOn : Ink.muted)
+                        .padding(.horizontal, 10)
+                        .frame(height: 36)
+                        .background(RoundedRectangle(cornerRadius: 9).fill(isOn ? Ink.modeOnBg : .clear))
+                        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(isOn ? Ink.modeOnBorder : Ink.modeOffBorder))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(l.modeTitle(key) + ". " + SidebarFooter.hint(key, l))
+                    .accessibilityLabel(key + ", " + SidebarFooter.hint(key, l))
+                    .accessibilityAddTraits(isOn ? .isSelected : [])
+                }
+            }
+            Text(l.t("Клик переключает режим, подсказка при наведении объясняет его.",
+                     "Click a mode to switch it, hover to see what it does."))
+                .font(.system(size: 12)).foregroundStyle(Ink.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            if let h = backend.state.hostRun {
+                Divider()
+                HStack(spacing: 8) {
+                    GlowDot(color: h.running ? Ink.tealDot : Ink.amberDot)
+                    Text(h.running ? l.t("host-run работает · ", "host-run running · ") + l.commands(h.commands)
+                                   : l.t("host-run не запущен", "host-run isn't running"))
+                        .font(.system(size: 13))
+                    Spacer()
+                    SettingsLink { Text(l.t("Список", "List")).font(.system(size: 12)) }
+                        .buttonStyle(.link)
+                        .simultaneousGesture(TapGesture().onEnded {
+                            UserDefaults.standard.set("proxy", forKey: "settingsSection")
+                            open = false
+                        })
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 320)
     }
 }
 
