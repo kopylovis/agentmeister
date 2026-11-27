@@ -452,3 +452,17 @@ class TabHook(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Limits(unittest.TestCase):
+    def test_limits_come_from_config_within_bounds(self):
+        conf = os.path.join(tempfile.mkdtemp(prefix="cm-buildlog-limits-"), "config")
+        with mock.patch.object(mnrhlib, "CONFIG", conf):
+            self.assertEqual((b.max_lines(), b.max_bytes(), b.keep_days()), (b.MAX_LINES, b.MAX_BYTES, b.KEEP_DAYS))
+            with open(conf, "w") as f:
+                f.write("buildlog_lines=400\nbuildlog_kb=9999\nbuildlog_days=x\n")
+            self.assertEqual(b.max_lines(), 400)
+            self.assertEqual(b.max_bytes(), b.MAX_BYTES)
+            self.assertEqual(b.keep_days(), b.KEEP_DAYS)
+            self.assertFalse(b.is_long("x\n" * 300))
+            self.assertTrue(b.is_long("x\n" * 401))

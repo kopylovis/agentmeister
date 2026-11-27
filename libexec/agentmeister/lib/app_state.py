@@ -697,8 +697,10 @@ def settings():
         except Exception:
             lid_ready = False
         import translate
-        return {"buildlogDays": claude_buildlog.KEEP_DAYS, "buildlogLines": claude_buildlog.MAX_LINES,
+        return {"buildlogDays": claude_buildlog.keep_days(), "buildlogLines": claude_buildlog.max_lines(),
+                "buildlogKB": claude_buildlog.max_bytes() // 1024,
                 "buildlogDir": claude_buildlog.LOGS, "lidReady": lid_ready,
+                "lidGraceMin": claude_lid.grace() // 60, "lidBattery": claude_lid.low_battery(),
                 "translateKey": translate.key_source(), "translateModel": translate.model(),
                 "translateProvider": translate.provider(), "translateFallback": translate.fallback(),
                 "translateLog": translate.recent(4), "translateLogPath": translate.LOG,

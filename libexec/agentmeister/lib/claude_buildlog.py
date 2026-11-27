@@ -19,7 +19,7 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, CLAUDE_HOME, lang, read_config, tilde, tr, write_config  # noqa: E402
+from mnrhlib import CACHE, CLAUDE_HOME, config_int, lang, read_config, tilde, tr, write_config  # noqa: E402
 from claude_guard import positional, split_segments, strip_env, words  # noqa: E402
 
 LOGS = os.path.join(CACHE, "logs")
@@ -61,6 +61,22 @@ def enabled():
     return read_config().get("buildlog", "on") != "off"
 
 
+# Пороги из config (agentmeister buildlog lines|kb|days), по умолчанию MAX_LINES, MAX_BYTES и KEEP_DAYS
+LIMITS = {"lines": ("buildlog_lines", 50, 5000), "kb": ("buildlog_kb", 4, 1024), "days": ("buildlog_days", 1, 365)}
+
+
+def max_lines():
+    return config_int("buildlog_lines", MAX_LINES, *LIMITS["lines"][1:])
+
+
+def max_bytes():
+    return config_int("buildlog_kb", MAX_BYTES // 1024, *LIMITS["kb"][1:]) * 1024
+
+
+def keep_days():
+    return config_int("buildlog_days", KEEP_DAYS, *LIMITS["days"][1:])
+
+
 def find_build(cmd):
     """(чем собирают, имя программы, ее аргументы) для первой сборки в команде; None, если сборки нет."""
     for seg in split_segments(cmd or ""):
@@ -95,7 +111,7 @@ def build_kind(cmd):
 
 
 def is_long(text):
-    return text.count("\n") + 1 > MAX_LINES or len(text.encode("utf-8", "replace")) > MAX_BYTES
+    return text.count("\n") + 1 > max_lines() or len(text.encode("utf-8", "replace")) > max_bytes()
 
 
 def read_big(path, size):
@@ -243,7 +259,7 @@ def log_path(sid):
 
 
 def prune(now=None):
-    """Логи старше KEEP_DAYS дней и пустые папки сессий убрать."""
+    """Логи старше keep_days() дней и пустые папки сессий убрать."""
     now = now or time.time()
     try:
         sessions = os.listdir(LOGS)
@@ -254,7 +270,7 @@ def prune(now=None):
         try:
             for f in os.listdir(d):
                 p = os.path.join(d, f)
-                if now - os.path.getmtime(p) > KEEP_DAYS * 86400:
+                if now - os.path.getmtime(p) > keep_days() * 86400:
                     os.remove(p)
             if not os.listdir(d):
                 os.rmdir(d)
@@ -616,22 +632,24 @@ def usage():
         print("agentmeister buildlog                 whether it's on and where the logs are")
         print("agentmeister buildlog on | off        turn on or off")
         print("agentmeister buildlog test <file>     what Claude sees instead of such output")
+        print("agentmeister buildlog lines|kb|days <N>|default  digest thresholds and how long logs are kept")
         print()
-        print(f"The PostToolUse hook compacts long output (over {MAX_LINES} lines or {MAX_BYTES // 1024} KB) of Gradle, "
+        print(f"The PostToolUse hook compacts long output (over {max_lines()} lines or {max_bytes() // 1024} KB) of Gradle, "
               "xcodebuild,")
         print("swift build/test, npm/pnpm/yarn test and build, pytest and make: Claude sees errors, warnings and the summary,")
-        print(f"and the full log is in {tilde(LOGS)}/<session>/ ({KEEP_DAYS} days). To compact a failed build too,")
+        print(f"and the full log is in {tilde(LOGS)}/<session>/ ({keep_days()} days). To compact a failed build too,")
         print("the PreToolUse hook appends || echo with a marker: Claude learns the build failed, but not the exit code.")
         print(f"In iTerm2 a build longer than {TAB_DELAY:g} s is labeled in the tab next to Claude's status: gradlew :app:assembleDebug.")
         return
     print("agentmeister buildlog                 включено ли и где логи")
     print("agentmeister buildlog on | off        включить или выключить")
     print("agentmeister buildlog test <файл>     что увидит Claude вместо такого вывода")
+    print("agentmeister buildlog lines|kb|days <N>|default  пороги выжимки и сколько хранить логи")
     print()
-    print(f"Хук PostToolUse сжимает длинный вывод (больше {MAX_LINES} строк или {MAX_BYTES // 1024} КБ) Gradle, "
+    print(f"Хук PostToolUse сжимает длинный вывод (больше {max_lines()} строк или {max_bytes() // 1024} КБ) Gradle, "
           "xcodebuild,")
     print("swift build/test, npm/pnpm/yarn test и build, pytest и make: Claude видит ошибки, предупреждения и итог,")
-    print(f"а полный лог лежит в {tilde(LOGS)}/<сессия>/ ({KEEP_DAYS} дней). Чтобы сжать и вывод упавшей сборки,")
+    print(f"а полный лог лежит в {tilde(LOGS)}/<сессия>/ ({keep_days()} дней). Чтобы сжать и вывод упавшей сборки,")
     print("хук PreToolUse дописывает к ней || echo с меткой: Claude узнает, что сборка упала, но не код возврата.")
     print(f"В iTerm2 сборка дольше {TAB_DELAY:g} с подписана во вкладке рядом со статусом Claude: gradlew :app:assembleDebug.")
 
@@ -649,6 +667,19 @@ def main():
         print(tr(f"agentmeister buildlog: {'включён' if enabled() else 'выключен'}. Логи: {tilde(LOGS)}",
                  f"agentmeister buildlog: {'on' if enabled() else 'off'}. Logs: {tilde(LOGS)}"))
         return 0
+    if rest[0] in LIMITS and len(rest) == 2:
+        name, low, high = LIMITS[rest[0]]
+        if rest[1] == "default":
+            write_config(**{name: None})
+        elif not rest[1].isdigit() or not low <= int(rest[1]) <= high:
+            print(tr(f"{rest[0]}: число от {low} до {high} или default", f"{rest[0]}: a number from {low} to {high} or default"),
+                  file=sys.stderr)
+            return 2
+        else:
+            write_config(**{name: rest[1]})
+        print(tr(f"Выжимка, когда вывод больше {max_lines()} строк или {max_bytes() // 1024} КБ, логи {keep_days()} дней",
+                 f"Digest when output is over {max_lines()} lines or {max_bytes() // 1024} KB, logs kept {keep_days()} days"))
+        return 0
     if rest[0] in ("on", "off") and len(rest) == 1:
         write_config(buildlog=rest[0])
         print(tr(f"agentmeister buildlog {'включён' if rest[0] == 'on' else 'выключен'}",
@@ -662,8 +693,8 @@ def main():
             print(tr(f"Не прочитал {rest[1]}: {e.strerror}", f"Couldn't read {rest[1]}: {e.strerror}"), file=sys.stderr)
             return 1
         if not is_long(text):
-            print(tr(f"Вывод короткий (до {MAX_LINES} строк и {MAX_BYTES // 1024} КБ), Claude увидит его как есть",
-                     f"The output is short (up to {MAX_LINES} lines and {MAX_BYTES // 1024} KB), Claude sees it as is"))
+            print(tr(f"Вывод короткий (до {max_lines()} строк и {max_bytes() // 1024} КБ), Claude увидит его как есть",
+                     f"The output is short (up to {max_lines()} lines and {max_bytes() // 1024} KB), Claude sees it as is"))
             return 0
         print(shrink(text, os.path.join(LOGS, "<сессия>", "<время>.log")) or
               tr("Выжимка вышла не короче половины вывода, Claude увидит его как есть",

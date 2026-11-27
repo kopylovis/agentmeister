@@ -17,7 +17,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import HOME, read_config, run, tilde, write_config
+from mnrhlib import HOME, config_int, read_config, run, tilde, tr, write_config
 
 STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local", "state"), "mnrh")
 PIDFILE = os.path.join(STATE, "lid.pid")
@@ -29,6 +29,18 @@ OFF = [PMSET, "-a", "disablesleep", "0"]
 GRACE = 120  # перезапуск сессии с claude update бывает дольше минуты
 POLL = 15
 LOW_BATTERY = 15
+
+
+def grace():
+    """Секунды после последней сессии, через которые сторож отпускает крышку: lid_grace_min в config, 1-60 мин."""
+    return config_int("lid_grace_min", GRACE // 60, 1, 60) * 60
+
+
+def low_battery():
+    """Заряд, при котором сторож отпускает крышку на батарее: lid_battery в config, 5-50%."""
+    return config_int("lid_battery", LOW_BATTERY, 5, 50)
+
+
 SESSION = re.compile(r"^(?:\S*/)?caffeinate(?:\s+-\S+)*\s+(?:\S*/)?(?:claude|codex)(?:\s|$)")
 # "Не спать" во вкладке приложения: caffeinate -is -w <pid оболочки вкладки>, родитель сам Agentmeister
 APP_SESSION = re.compile(r"^(\S*/)?caffeinate(\s+-\S+)*\s+-w\s+\d+\s*$")
@@ -128,16 +140,17 @@ def watch():
     try:
         while True:
             ac, pct = battery()
-            if not ac and pct is not None and pct <= LOW_BATTERY:
+            floor = low_battery()
+            if not ac and pct is not None and pct <= floor:
                 if not low:
                     low = True
                     notify(f"Батарея {pct}%: Mac снова уснёт, если закрыть крышку")
                     log(f"батарея {pct}%, отпускаю")
-            elif low and (ac or (pct or 0) > LOW_BATTERY + 5):
+            elif low and (ac or (pct or 0) > floor + 5):
                 low = False
             alive = bool(sessions())
             idle_since = None if alive else (idle_since or time.time())
-            if idle_since and time.time() - idle_since >= GRACE:
+            if idle_since and time.time() - idle_since >= grace():
                 break
             want = alive and not low
             if want != held or (want and not disabled()):
@@ -235,10 +248,25 @@ def main(args):
     if cmd in ("-h", "--help"):
         print("agentmeister lid           держит ли сейчас крышка Mac от сна")
         print("agentmeister lid setup     правило sudoers для pmset: caffeinate-сессии агентов не уснут и с закрытой")
-        print(f"                            крышкой на батарее (до {LOW_BATTERY}% заряда)")
+        print(f"                            крышкой на батарее (до {low_battery()}% заряда)")
         print("agentmeister lid on | off  включить или выключить (on без правила сначала поставит его)")
         print("agentmeister lid release   отпустить сейчас, до следующей caffeinate-сессии")
         print("agentmeister lid remove    выключить и убрать правило")
+        print(f"agentmeister lid grace <мин>|default    через сколько отпустить после последней сессии (сейчас {grace() // 60})")
+        print(f"agentmeister lid battery <%>|default    при каком заряде отпустить на батарее (сейчас {low_battery()})")
+        return 0
+    if cmd in ("grace", "battery") and len(args) == 2:
+        key, low, high = {"grace": ("lid_grace_min", 1, 60), "battery": ("lid_battery", 5, 50)}[cmd]
+        if args[1] == "default":
+            write_config(**{key: None})
+        elif not args[1].isdigit() or not low <= int(args[1]) <= high:
+            print(tr(f"{cmd}: число от {low} до {high} или default", f"{cmd}: a number from {low} to {high} or default"),
+                  file=sys.stderr)
+            return 2
+        else:
+            write_config(**{key: args[1]})
+        print(tr(f"Отпускаю через {grace() // 60} мин после последней сессии или при {low_battery()}% батареи",
+                 f"Letting go {grace() // 60} min after the last session or at {low_battery()}% battery"))
         return 0
     if cmd == "watch":
         watch()

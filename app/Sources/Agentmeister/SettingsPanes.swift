@@ -123,7 +123,7 @@ struct ModesPane: View {
             return key + " · " + providerName(info?.translateProvider)
                 + (info?.translateMedianMs.map { l.t(", медиана ", ", median ") + duration($0) } ?? "")
         case "buildlog":
-            return l.t("больше \(info?.buildlogLines ?? 200) строк или 20 КБ", "over \(info?.buildlogLines ?? 200) lines or 20 KB")
+            return l.t("больше \(info?.buildlogLines ?? 200) строк или \(info?.buildlogKB ?? 20) КБ", "over \(info?.buildlogLines ?? 200) lines or \(info?.buildlogKB ?? 20) KB")
         case "lid":
             if !(info?.lidReady ?? false) { return l.t("нужна настройка", "needs setup") }
             return isOn("lid") ? l.t("готов", "ready") : l.t("выключен, готов к включению", "off, ready to turn on")
@@ -188,8 +188,9 @@ struct ModesPane: View {
             return l.t("Claude Code и Codex получают ошибки и итог сборки вместе с путем к полному логу. В Codex команда сборки возвращает свой код завершения.",
                        "Claude Code and Codex receive build errors and a summary with the path to the full log. In Codex the build keeps its exit code.")
         default:
-            return l.t("Работает вместе с кнопкой \"Не спать\" на вкладке сессии. Кнопка не дает Mac уснуть, пока крышка открыта, а lid держит его и с закрытой крышкой. Отпускает через 2 минуты после последней такой сессии или при 15% батареи.",
-                       "Works together with the Stay awake button on a session tab. The button keeps the Mac from sleeping while the lid is open, and lid keeps it awake with the lid closed too. Lets go 2 minutes after the last such session or at 15% battery.")
+            let grace = info?.lidGraceMin ?? 2, battery = info?.lidBattery ?? 15
+            return l.t("Работает вместе с кнопкой \"Не спать\" на вкладке сессии. Кнопка не дает Mac уснуть, пока крышка открыта, а lid держит его и с закрытой крышкой. Отпускает через \(grace) мин после последней такой сессии или при \(battery)% батареи.",
+                       "Works together with the Stay awake button on a session tab. The button keeps the Mac from sleeping while the lid is open, and lid keeps it awake with the lid closed too. Lets go \(grace) min after the last such session or at \(battery)% battery.")
         }
     }
 
@@ -486,16 +487,31 @@ struct ModesPane: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            GridRow {
-                fieldLabel(l.t("Выжимка", "Digest"))
-                Text(l.t("когда вывод больше \(info?.buildlogLines ?? 200) строк или 20 КБ",
-                         "when the output is over \(info?.buildlogLines ?? 200) lines or 20 KB"))
-            }
             if let info {
+                GridRow {
+                    fieldLabel(l.t("Выжимка", "Digest"))
+                    HStack(spacing: 8) {
+                        Text(l.t("вывод длиннее", "output over")).fixedSize()
+                        NumberField(value: info.buildlogLines) { run(["buildlog", "lines", String($0)]) }
+                        Text(l.t("строк", "lines")).fixedSize()
+                    }
+                }
+                GridRow {
+                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                    HStack(spacing: 8) {
+                        Text(l.t("или больше", "or over")).fixedSize()
+                        NumberField(value: info.buildlogKB ?? 20) { run(["buildlog", "kb", String($0)]) }
+                        Text(l.t("КБ", "KB")).fixedSize()
+                    }
+                }
                 GridRow {
                     fieldLabel(l.t("Полные логи", "Full logs"))
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(l.t("хранятся \(info.buildlogDays) дней", "kept for \(info.buildlogDays) days"))
+                        HStack(spacing: 8) {
+                            Text(l.t("хранятся", "kept for")).fixedSize()
+                            NumberField(value: info.buildlogDays) { run(["buildlog", "days", String($0)]) }
+                            Text(l.t("дней", "days")).fixedSize()
+                        }
                         Button(tilde(info.buildlogDir) + "/") { NSWorkspace.shared.open(URL(fileURLWithPath: info.buildlogDir)) }
                             .buttonStyle(.textLink)
                             .font(.system(size: 12, design: .monospaced))
@@ -526,6 +542,21 @@ struct ModesPane: View {
                 Text(l.t("вкладки с \"Не спать\" и сессии agentmeister -k", "tabs with Stay awake and agentmeister -k sessions"))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            GridRow {
+                fieldLabel(l.t("Отпускает", "Lets go"))
+                HStack(spacing: 8) {
+                    NumberField(value: info?.lidGraceMin ?? 2) { run(["lid", "grace", String($0)]) }
+                    Text(l.t("мин после последней сессии", "min after the last session")).fixedSize()
+                }
+            }
+            GridRow {
+                Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                HStack(spacing: 8) {
+                    Text(l.t("или на батарее при", "or on battery at")).fixedSize()
+                    NumberField(value: info?.lidBattery ?? 15) { run(["lid", "battery", String($0)]) }
+                    Text("%").fixedSize()
+                }
             }
         }
         .font(.system(size: 13))
