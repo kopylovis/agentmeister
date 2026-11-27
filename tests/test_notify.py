@@ -75,6 +75,37 @@ class BannerText(unittest.TestCase):
             ("Нужен ответ", "Claude задаёт вопрос"), ("Ждёт тебя", "Claude ждёт ответа")])
 
 
+class TosslingPush(unittest.TestCase):
+    def test_completion_uses_agent_name_and_project_icon(self):
+        pin_lang(self, "en")
+        sid = "a812d4fa-e535-463a-8369-f1433fa25652"
+        payload = {"session_id": sid, "hook_event_name": "Stop", "cwd": "/work/agentmeister",
+                   "last_assistant_message": "Finished the build"}
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(notify, "STATE", tmp), \
+                mock.patch.object(notify, "enabled", return_value=True), \
+                mock.patch.object(notify, "after", return_value=20), \
+                mock.patch.object(notify.time, "time", return_value=1741), \
+                mock.patch.object(notify, "app_tab", return_value=sid), \
+                mock.patch.object(notify, "watching", return_value=True), \
+                mock.patch.object(notify.telegram, "wanted", return_value=False), \
+                mock.patch.object(notify.ntfy_alert, "phone_mode", return_value="always"), \
+                mock.patch.object(notify.ntfy_alert, "endpoint", return_value=("https://example.com", "test")), \
+                mock.patch.object(notify.ntfy_alert, "publisher_token", side_effect=["project-token", ""]), \
+                mock.patch("urllib.request.urlopen") as send:
+            for codex, agent in ((False, "Claude Code"), (True, "Codex")):
+                with self.subTest(agent=agent), mock.patch.object(sys, "stdin", io.StringIO(json.dumps(payload))):
+                    notify.save_state(sid, {"prompt_at": 1000})
+                    send.reset_mock()
+                    self.assertEqual(notify.hook(codex=codex), 0)
+                    send.assert_called_once()
+                    expected_token = "test" if codex else "project-token"
+                    self.assertEqual(send.call_args.args[0].get_header("Authorization"), f"Bearer {expected_token}")
+                    self.assertEqual(json.loads(send.call_args.args[0].data), {
+                        "topic": "agentmeister", "title": f"{agent}: Done in 12m 21s", "message": "Finished the build",
+                        "priority": 3, "icon": notify.ntfy_alert.AGENTMEISTER_ICON,
+                    })
+
+
 class HelpText(unittest.TestCase):
     """agentmeister notify -h по-английски, если язык не ru, и прежний русский для ru."""
 

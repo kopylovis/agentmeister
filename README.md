@@ -947,9 +947,14 @@ it touches keys comes with guard's warning, but the button allows it just like t
 on only if your Telegram account has a password and two-step verification.
 
 Or to Tossling on your phone through your own ntfy: `agentmeister notify phone away` when you're away from the
-Mac, `phone always` every time, `phone off` to turn it off, `phone test` for a test. They go to the `claude`
-channel, and questions and permission requests use high priority. On the phone, add the `claude` channel in
-Tossling's notification settings.
+Mac, `phone always` every time, `phone off` to turn it off, `phone test` for a test. Subscribe to `agentmeister` in
+Tossling's notification settings. The title starts with Claude Code or Codex. Questions and permission requests
+use high priority. If the server requires a project publisher token, save it in the Mac keychain. Use your
+Tossling server URL without a trailing slash. The command prompts for the token.
+
+```sh
+security add-generic-password -U -s agentmeister.tossling -a https://tossling.example.com -w
+```
 
 With Remote Control, Claude Code pushes to the Claude app on your phone itself. If the session is connected
 (`/remote-control`, `--remote-control` or "Enable Remote Control for all sessions") and **Push when actions

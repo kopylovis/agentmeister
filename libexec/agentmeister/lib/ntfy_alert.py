@@ -8,7 +8,9 @@ from mnrhlib import HOME, read_config, tossling_path
 
 LEGACY_CONFIGS = (os.path.join(HOME, ".config", "tossling", "config.json"), os.path.join(HOME, ".config", "tossy", "config.json"), os.path.join(HOME, ".config", "mnrh", "clip.json"))
 DEFAULT_TOPIC = "mac"
-CLAUDE_TOPIC = "claude"
+AGENTMEISTER_TOPIC = "agentmeister"
+AGENTMEISTER_ICON = "https://raw.githubusercontent.com/kopylovis/agentmeister/main/docs/icon.png"
+PUBLISHER_SERVICE = "agentmeister.tossling"
 
 
 class AlertError(Exception):
@@ -42,6 +44,15 @@ def configured():
     return endpoint() is not None
 
 
+def publisher_token(server):
+    try:
+        result = subprocess.run(["/usr/bin/security", "find-generic-password", "-s", PUBLISHER_SERVICE,
+                                 "-a", server, "-w"], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
 def phone_mode():
     value = read_config().get("notify_phone", "off")
     return value if value in ("away", "always") else "off"
@@ -53,6 +64,9 @@ def publish(topic, message, title="", priority=3, tags=None, click=None, markdow
         raise AlertError("Tossling не настроен: tossling setup")
     server, token = target
     payload = {"topic": topic, "message": message or title or "—", "priority": int(priority)}
+    if topic == AGENTMEISTER_TOPIC:
+        token = publisher_token(server) or token
+        payload["icon"] = AGENTMEISTER_ICON
     if title:
         payload["title"] = title
     if tags:

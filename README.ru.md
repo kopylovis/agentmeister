@@ -976,8 +976,14 @@ Mac. Нажатия принимаются только из чата, где п
 только если у аккаунта Telegram есть пароль и двухэтапная проверка.
 
 Или в Tossling на телефоне, через свой ntfy: `agentmeister notify phone away` — когда тебя нет за Mac,
-`phone always` — всегда, `phone off` — выключить, `phone test` — пробное. Уходят в канал `claude`,
-вопросы и просьбы о разрешении — с высоким приоритетом. На телефоне: Tossling → Уведомления → + → `claude`.
+`phone always` — всегда, `phone off` — выключить, `phone test` — пробное. В настройках уведомлений Tossling подпишись
+на канал `agentmeister`. Заголовок начинается с Claude Code или Codex. Вопросы и просьбы о разрешении приходят
+с высоким приоритетом. Если сервер требует токен отправителя проекта, сохрани его в Связке ключей на Mac.
+Укажи адрес своего сервера без завершающего слеша. Команда спросит токен.
+
+```sh
+security add-generic-password -U -s agentmeister.tossling -a https://tossling.example.com -w
+```
 
 С Remote Control Claude Code сам присылает push в приложение Claude на телефоне. Если сессия
 подключена (`/remote-control`, `--remote-control` или «Enable Remote Control for all sessions») и в
