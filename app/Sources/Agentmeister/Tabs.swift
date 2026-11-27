@@ -261,8 +261,16 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
         }
         // терминал через proxy: в строгой песочнице прямой ssh закрыт, git ходит по ssh через CONNECT mihomo.
         // MNRH_PROXY с портом ставит proxy run, git раскрывает переменную, когда запускает команду через sh
+        // Свой GIT_SSH_COMMAND пользователя (ssh -i ключ, -F конфиг) остается, к нему добавляется только ProxyCommand.
+        // Обертку не на ssh так не дополнить, тогда работает только наш вариант.
         if spec.terminal && spec.proxied {
-            env["GIT_SSH_COMMAND"] = "ssh -o ProxyCommand='/usr/bin/nc -X connect -x 127.0.0.1:$MNRH_PROXY %h %p'"
+            let viaProxy = "ssh -o ProxyCommand='/usr/bin/nc -X connect -x 127.0.0.1:$MNRH_PROXY %h %p'"
+            let own = env["GIT_SSH_COMMAND"]?.trimmingCharacters(in: .whitespaces) ?? ""
+            if own == "ssh" || own.hasPrefix("ssh ") {
+                env["GIT_SSH_COMMAND"] = viaProxy + own.dropFirst(3)
+            } else {
+                env["GIT_SSH_COMMAND"] = viaProxy
+            }
         }
         // страницы, которые агент открывает сам (вход, OAuth для MCP), идут во встроенный браузер через тот же proxy
         env.removeValue(forKey: "BROWSER")
