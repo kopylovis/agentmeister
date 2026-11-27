@@ -42,16 +42,16 @@ allowed-tools: Bash(agentmeister brief:*)
 что логично делать дальше — 2–5 пунктов. Ничего не запускай и не меняй.
 """,
     "release-notes": """---
-description: Заметки к релизу «Что нового» на русском и английском для fastlane; аргументы — проект и/или --since <тег>
+description: Заметки к релизу «Что нового» для fastlane на языках проекта; аргументы — проект и/или --since <тег>
 allowed-tools: mcp__agentmeister__release_notes_context, mcp__agentmeister__release_notes_write, mcp__agentmeister__session_search, mcp__agentmeister__session_read
 ---
 Подготовь заметки к релизу. Аргументы пользователя: «$ARGUMENTS» (может быть имя проекта и --since <тег или коммит>).
 
 1. Вызови release_notes_context (project и since — из аргументов, если они есть).
 2. Если по коммитам неясно, что изменилось для пользователя, загляни в сессии через session_search/session_read.
-3. Напиши «Что нового» для ru-RU и en-US: для пользователей, по делу, без технических подробностей, не длиннее
+3. Напиши «Что нового» для каждого языка из release_notes_context: для пользователей, по делу, без технических подробностей, не длиннее
    500 символов (тогда текст подойдёт и для Google Play, и для App Store, RuStore, Firebase).
-4. Покажи оба текста и спроси, сохранить ли. После согласия вызови release_notes_write и покажи команду для fastlane.
+4. Покажи тексты и спроси, сохранить ли. После согласия вызови release_notes_write и покажи команду для fastlane.
 """,
     "parallel": """---
 description: Сделать задачу параллельно: отдельная ветка и worktree, второй Claude в новом окне; list — что идёт
@@ -188,16 +188,16 @@ From the notes above, tell the user briefly where things stand (what was done an
 what makes sense to do next, in 2 to 5 points. Don't run or change anything.
 """,
     "release-notes": """---
-description: "What's new" release notes in Russian and English for fastlane. Arguments are a project and/or --since <tag>
+description: "What's new" release notes for fastlane in the project's languages. Arguments are a project and/or --since <tag>
 allowed-tools: mcp__agentmeister__release_notes_context, mcp__agentmeister__release_notes_write, mcp__agentmeister__session_search, mcp__agentmeister__session_read
 ---
 Prepare release notes. User arguments: "$ARGUMENTS" (may include a project name and --since <tag or commit>).
 
 1. Call release_notes_context (project and since from the arguments, if given).
 2. If the commits don't make clear what changed for users, look into sessions with session_search/session_read.
-3. Write "What's new" for ru-RU and en-US. Write for users, to the point, without technical details, at most
+3. Write "What's new" for each language that release_notes_context lists. Write for users, to the point, without technical details, at most
    500 characters (then the text fits Google Play, the App Store, RuStore and Firebase).
-4. Show both texts and ask whether to save them. Once the user agrees, call release_notes_write and show the fastlane command.
+4. Show the texts and ask whether to save them. Once the user agrees, call release_notes_write and show the fastlane command.
 """,
     "parallel": """---
 description: Do a task in parallel on its own branch and worktree, with a second Claude in a new window. list shows what's running

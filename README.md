@@ -628,7 +628,7 @@ cached for 6 hours. Claude gets the same through the `deps_outdated` tool.
 | `/slim` | slim this session down and reopen it; `/slim list` for others |
 | `/where` | where we left off: git, the last session in this project, backlog, what's next |
 | `/todo` | backlog: `/todo` lists, `/todo <text>` adds, `/todo done 2` marks done |
-| `/release-notes` | "What's new" in Russian and English for fastlane |
+| `/release-notes` | "What's new" for fastlane in the project's languages |
 | `/parallel <task>` | the same task in its own branch in a second window; `--fork` takes this conversation along; `/parallel list` |
 | `/shot <app> [question]` | screenshot of a window that Claude looks at and answers about |
 | `/ask <project> <question>` | an answer from another project by a separate Claude |
@@ -702,7 +702,8 @@ later…") and close them itself (`todo_add`, `todo_done`, `todo_list` run witho
 `/release-notes` gathers material (`release_notes_context`): the version from `libs.versions.toml`
 (`appversion`/`versionName`) or `versionName`/`MARKETING_VERSION`, the commits since the last release (counted
 from the last tag, the last fastlane run in `fastlane/report.xml` or the previous notes, whichever is newer) and
-the Claude sessions from that period. Claude writes "What's new" in ru-RU and en-US in up to 500 characters
+the Claude sessions from that period. Claude writes "What's new" for each language in `fastlane/metadata` (or `release_locales=en-US,de-DE` in
+`~/.config/mnrh/config`, en-US by default) in up to 500 characters
 (enough for Google Play; the App Store and TestFlight allow 4000, RuStore 5000, Firebase 16000), shows it to
 you, and once you agree saves it to `fastlane/release_notes/<version>.<lang>.txt`. If there is
 `fastlane/metadata`, it also writes `changelogs/<versionCode>.txt` and `release_notes.txt`. The Fastfile takes
