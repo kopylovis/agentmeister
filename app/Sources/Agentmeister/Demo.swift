@@ -6,7 +6,7 @@ import Foundation
 /// сессии, proxy с выдуманными данными), app-state-settings.json и т. п. по первым двум аргументам команды.
 /// Вкладки описаны в tabs.json, вместо агента в каждой печатается текст из своего файла. Настоящие ~/.claude и
 /// ~/.config/mnrh не читаются, tabs.json, front.json и focus.json настоящего приложения не пишутся, обновления,
-/// горячая клавиша и мастер первого запуска выключены. Снимки делает docs/screenshots/shoot.sh.
+/// горячая клавиша и мастер первого запуска выключены. Снимки делает docs/screenshots/shoot.py.
 enum Demo {
     #if DEBUG
     static let dir: String? = argument("--demo").map { ($0 as NSString).expandingTildeInPath }
@@ -103,7 +103,18 @@ enum Demo {
         ]
     }
 
+    /// Файл с текстом вкладки. В светлом окне берется вариант с цветами светлой темы Claude Code (claude-light.txt
+    /// рядом с claude.txt), если он есть.
     static func screenPath(_ name: String) -> String? {
-        dir.map { ($0 as NSString).appendingPathComponent(name) }
+        guard let dir else { return nil }
+        let path = (dir as NSString).appendingPathComponent(name)
+        let light = (path as NSString).deletingPathExtension + "-light." + (name as NSString).pathExtension
+        // тема из настройки: окно в момент открытия вкладок может еще не успеть ее принять
+        let isLight = switch Appearance(rawValue: UserDefaults.standard.string(forKey: Appearance.key) ?? "") ?? .system {
+        case .light: true
+        case .dark: false
+        case .system: NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua
+        }
+        return isLight && FileManager.default.fileExists(atPath: light) ? light : path
     }
 }

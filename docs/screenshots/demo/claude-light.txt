@@ -1,0 +1,43 @@
+]0;Webhook retries[38;5;166m✻[0m [1mClaude Code[0m [38;5;243mv2.3.1 · Opus 5.5 · ~/Developer/ledger-api[0m
+
+[48;2;236;236;236m[38;5;243m❯[0m[48;2;236;236;236m [38;5;235mAdd retry with backoff to the payment webhook handler and cover it with tests                         [0m
+
+⏺ I'll check how webhook delivery works now, then wrap the provider call.
+
+[38;5;28m⏺[0m [1mRead[0m(src/webhooks/payments.ts)
+  [38;5;243m⎿  Read 142 lines[0m
+
+[38;5;28m⏺[0m [1mGrep[0m("deliverWebhook", path: "src")
+  [38;5;243m⎿  Found 3 files[0m
+
+[38;5;28m⏺[0m [1mUpdate[0m(src/webhooks/payments.ts)
+  [38;5;243m⎿  Updated src/webhooks/payments.ts with 21 additions and 6 removals[0m
+   [48;2;255;218;222m  48 -   const res = await provider.send(event)                                                      [0m
+   [48;2;214;242;218m  48 +   const res = await withRetry(() => provider.send(event), {                                   [0m
+   [48;2;214;242;218m  49 +     tries: 5, baseMs: 500, maxMs: 8000,                                                       [0m
+   [48;2;214;242;218m  50 +     retryOn: (e) => e.status >= 500 || e.code === 'ETIMEDOUT',                                [0m
+   [48;2;214;242;218m  51 +   })                                                                                          [0m
+
+[38;5;28m⏺[0m [1mWrite[0m(test/webhooks/retry.test.ts)
+  [38;5;243m⎿  Wrote 64 lines to test/webhooks/retry.test.ts[0m
+
+[38;5;28m⏺[0m [1mBash[0m(npm test -- webhooks)
+  [38;5;243m⎿  [38;5;28mPASS[0m[38;5;243m payments.test.ts (12)  [38;5;28mPASS[0m[38;5;243m retry.test.ts (5)[0m
+
+⏺ Delivery now retries 5xx answers and timeouts after 0.5, 1, 2 and 4 seconds,
+  five tries in total. A 4xx answer fails at once, so a bad signature doesn't
+  hammer the provider. All 17 webhook tests pass.
+
+[48;2;236;236;236m[38;5;243m❯[0m[48;2;236;236;236m [38;5;235mAlso log each retry with the attempt number                                                           [0m
+
+[38;5;28m⏺[0m [1mUpdate[0m(src/webhooks/retry.ts)
+  [38;5;243m⎿  Updated src/webhooks/retry.ts with 4 additions[0m
+
+⏺ Each retry now logs the event id, the attempt number and the delay before the next try.
+
+[38;5;250m────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[38;5;243m❯[0m [38;5;243mTry "open a PR for this"[0m
+[38;5;250m────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [36mOpus 5.5[0m[2m · [0m[32mproxy main KZ vless 203.0.113.24[0m[2m · [0mcontext [48;5;240m█▌   [0m 31% [2m62k/200k[0m[2m · [0m5h 18%[2m · [0mweek 42%
+  [32mwebhook-retries ±3[0m[2m · [0mmemory 17.8/32 GB
+[?25l

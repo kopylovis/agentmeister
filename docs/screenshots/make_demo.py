@@ -15,9 +15,30 @@ NOW = time.time()
 
 E = "\x1b["
 R, B, DIM = E + "0m", E + "1m", E + "2m"
-OR, GR, RD, CY, GY, WH = (E + "38;5;" + c + "m" for c in ("173", "114", "174", "117", "245", "252"))
-DOT = OR + "⏺" + R
-W = 104  # столько колонок у терминала во вкладке демо: длиннее терминал перенес бы строку, короче рамка не дойдет до края
+W = 104  # столько колонок у терминала во вкладке демо: длиннее терминал перенес бы строку, короче линия не дойдет до края
+
+
+def bg(rgb):
+    return E + "48;2;%d;%d;%dm" % rgb
+
+
+# Цвета Claude Code в темной и светлой теме терминала. Вкладка в светлом окне печатает вариант *-light.txt
+PALETTES = {
+    "dark": {"OR": "173", "GR": "114", "RD": "174", "CY": "117", "GY": "245", "WH": "252", "OK": "114",
+             "user": (55, 55, 55), "del": (72, 9, 2), "add": (15, 50, 4), "rule": "240"},
+    "light": {"OR": "166", "GR": "28", "RD": "124", "CY": "25", "GY": "243", "WH": "235", "OK": "28",
+              "user": (236, 236, 236), "del": (255, 218, 222), "add": (214, 242, 218), "rule": "250"},
+}
+
+
+def use(theme):
+    """Цвета для текста вкладок в теме theme: глобальные OR, GR и т. п. берут функции ниже."""
+    global OR, GR, RD, CY, GY, WH, OK, USER, DEL, ADD, RULE, DOT, TOOL
+    p = PALETTES[theme]
+    OR, GR, RD, CY, GY, WH, OK, RULE = (E + "38;5;" + p[k] + "m" for k in ("OR", "GR", "RD", "CY", "GY", "WH", "OK", "rule"))
+    USER, DEL, ADD = bg(p["user"]), bg(p["del"]), bg(p["add"])
+    # у ответа точка цвета текста, у вызова инструмента зеленая, как у Claude Code после удачного вызова
+    DOT, TOOL = "⏺", OK + "⏺" + R
 
 
 def stamp(t, fmt="%Y-%m-%d %H:%M:%S"):
@@ -30,12 +51,28 @@ def title(text):
 
 
 def tool(name, arg, out):
-    return f"{DOT} {B}{name}{R}({arg})\n  {GY}⎿  {out}{R}\n\n"
+    return f"{TOOL} {B}{name}{R}({arg})\n  {GY}⎿  {out}{R}\n\n"
+
+
+def ask(text):
+    """Запрос пользователя в переписке: "❯ текст" на подложке во всю ширину. По этой строке приложение
+    находит запросы и показывает закрепленную полосу над терминалом."""
+    return f"{USER}{GY}❯{R}{USER} {WH}{text}{' ' * (W - 2 - len(text))}{R}\n\n"
+
+
+def diff(rows):
+    """Строки правки: номер, знак и код на красной или зеленой подложке во всю ширину."""
+    out = ""
+    for n, sign, code in rows:
+        line = f"{n:>4} {sign} {code}"
+        out += f"   {DEL if sign == '-' else ADD}{line}{' ' * (W - 3 - len(line))}{R}\n"
+    return out + "\n"
 
 
 def box(hint):
-    return (f"{GY}╭{'─' * (W - 2)}╮{R}\n{GY}│{R} {GY}>{R} {DIM}{hint}{R}{' ' * (W - 6 - len(hint))}{GY}│{R}\n"
-            f"{GY}╰{'─' * (W - 2)}╯{R}\n")
+    """Поле ввода Claude Code: линии сверху и снизу, между ними "❯" и подсказка."""
+    line = f"{RULE}{'─' * W}{R}\n"
+    return line + f"{GY}❯{R} {GY}{hint}{R}\n" + line
 
 
 def load_promptsill():
@@ -95,7 +132,8 @@ def sill(project, branch, model, ctx, five_hour, week, proxy, detail="vless 203.
         for k in ("HTTPS_PROXY", "PROMPTSILL_PROXY_FILE"):
             os.environ.pop(k, None)
         os.environ.update({k: v for k, v in keep.items() if v is not None})
-    return "".join(line + "\n" for line in lines if line)
+    # Claude Code сдвигает строку состояния на две колонки от края
+    return "".join("  " + line + "\n" for line in lines if line)
 
 
 def status(*parts, proxy):
@@ -103,54 +141,58 @@ def status(*parts, proxy):
     return "  " + f" {GY}·{R} ".join([f"{CY}{parts[0]}{R}"] + [f"{GY}{p}{R}" for p in parts[1:]]) + f" {GY}·{R} {GR}{proxy}{R}\n"
 
 
-SCREENS = {
-    "claude.txt":
-        title("Webhook retries") + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/ledger-api{R}\n\n"
-        f"{GY}>{R} {WH}Add retry with backoff to the payment webhook handler and cover it with tests{R}\n\n"
-        f"{DOT} I'll check how webhook delivery works now, then wrap the provider call.\n\n"
-        + tool("Read", "src/webhooks/payments.ts", "Read 142 lines")
-        + tool("Grep", '"deliverWebhook", path: "src"', "Found 3 files")
-        + f"{DOT} {B}Update{R}(src/webhooks/payments.ts)\n"
-          f"  {GY}⎿  Updated src/webhooks/payments.ts with 21 additions and 6 removals{R}\n"
-          f"     {GY}48{R} {RD}-  const res = await provider.send(event){R}\n"
-          f"     {GY}48{R} {GR}+  const res = await withRetry(() => provider.send(event), {{{R}\n"
-          f"     {GY}49{R} {GR}+    tries: 5, baseMs: 500, maxMs: 8000,{R}\n"
-          f"     {GY}50{R} {GR}+    retryOn: (e) => e.status >= 500 || e.code === 'ETIMEDOUT',{R}\n"
-          f"     {GY}51{R} {GR}+  }}){R}\n\n"
-        + tool("Write", "test/webhooks/retry.test.ts", "Wrote 64 lines to test/webhooks/retry.test.ts")
-        + tool("Bash", "npm test -- webhooks", f"{GR}PASS{R}{GY} payments.test.ts (12)  {GR}PASS{R}{GY} retry.test.ts (5)")
-        + f"{DOT} Delivery now retries 5xx answers and timeouts after 0.5, 1, 2 and 4 seconds,\n"
-          f"  five tries in total. A 4xx answer fails at once, so a bad signature doesn't\n"
-          f"  hammer the provider. All 17 webhook tests pass.\n\n"
-        + box('Try "open a PR for this"')
-        + sill("ledger-api", "webhook-retries", "Opus 5.5", 31, 18, 42, "main KZ", changed=3),
-    "claude2.txt":
-        title("Billing dark mode") + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/atlas-web{R}\n\n"
-        f"{GY}>{R} {WH}The billing page ignores dark mode, fix it without touching brand colors{R}\n\n"
-        + tool("Read", "app/billing/page.tsx", "Read 211 lines")
-        + tool("Update", "app/billing/invoice-table.tsx", "Updated with 9 additions and 9 removals")
-        + tool("Bash", "pnpm test billing", f"{GR}✓{R}{GY} 23 passed")
-        + f"{DOT} The invoice table hard-coded #fff and #111. It now uses the surface and text\n"
-          f"  tokens and follows the system theme. Brand colors are untouched.\n\n"
-        + box("")
-        + sill("atlas-web", "billing-dark", "Opus 5.5", 12, 18, 42, "backup KZ", detail="hysteria2 198.51.100.7", ahead=1),
-    "codex.txt":
-        title("Launch list snapshots") + f"{B}>_ OpenAI Codex{R} {GY}(v0.98.0) · gpt-5.5 · ~/Developer/orbit-ios{R}\n\n"
-        f"{CY}›{R} Add snapshot tests for the launch list in light and dark mode\n\n"
-        f"{GY}•{R} Explored\n  {GY}└ Read LaunchListView.swift, LaunchRow.swift{R}\n\n"
-        f"{GY}•{R} Edited Tests/LaunchListSnapshotTests.swift {GR}(+58 -0){R}\n\n"
-        f"{GY}•{R} Ran xcodebuild test -scheme Orbit -only-testing:OrbitTests/LaunchListSnapshotTests\n"
-        f"  {GY}└{R} {GR}Test Suite 'LaunchListSnapshotTests' passed (4 tests, 3.2 s){R}\n\n"
-        f"{GY}•{R} Four snapshots cover the list in light and dark mode, with and without a delay.\n\n"
-        + status("orbit-ios", "gpt-5.5", "41% context left", proxy="proxy work SE"),
-    "terminal.txt":
-        f"{GR}demo@mac{R} {CY}~/Developer/infra{R} {GY}main{R}\n$ git push\n"
-        "Enumerating objects: 9, done.\nWriting objects: 100% (5/5), 812 bytes | 812.00 KiB/s, done.\n"
-        "To github.com:example/infra.git\n   4f1c2a9..b81d07e  main -> main\n\n"
-        f"{GR}demo@mac{R} {CY}~/Developer/infra{R} {GY}main{R}\n$ ssh db-1.internal\n"
-        f"{RD}ssh: connect to host db-1.internal port 22: Operation not permitted{R}\n\n"
-        f"{GR}demo@mac{R} {CY}~/Developer/infra{R} {GY}main{R}\n$ ",
-}
+def screens():
+    return {
+        "claude.txt":
+            title("Webhook retries") + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/ledger-api{R}\n\n"
+            + ask("Add retry with backoff to the payment webhook handler and cover it with tests")
+            + f"{DOT} I'll check how webhook delivery works now, then wrap the provider call.\n\n"
+            + tool("Read", "src/webhooks/payments.ts", "Read 142 lines")
+            + tool("Grep", '"deliverWebhook", path: "src"', "Found 3 files")
+            + f"{TOOL} {B}Update{R}(src/webhooks/payments.ts)\n"
+              f"  {GY}⎿  Updated src/webhooks/payments.ts with 21 additions and 6 removals{R}\n"
+            + diff([(48, "-", "  const res = await provider.send(event)"),
+                    (48, "+", "  const res = await withRetry(() => provider.send(event), {"),
+                    (49, "+", "    tries: 5, baseMs: 500, maxMs: 8000,"),
+                    (50, "+", "    retryOn: (e) => e.status >= 500 || e.code === 'ETIMEDOUT',"),
+                    (51, "+", "  })")])
+            + tool("Write", "test/webhooks/retry.test.ts", "Wrote 64 lines to test/webhooks/retry.test.ts")
+            + tool("Bash", "npm test -- webhooks", f"{GR}PASS{R}{GY} payments.test.ts (12)  {GR}PASS{R}{GY} retry.test.ts (5)")
+            + f"{DOT} Delivery now retries 5xx answers and timeouts after 0.5, 1, 2 and 4 seconds,\n"
+              f"  five tries in total. A 4xx answer fails at once, so a bad signature doesn't\n"
+              f"  hammer the provider. All 17 webhook tests pass.\n\n"
+            + ask("Also log each retry with the attempt number")
+            + tool("Update", "src/webhooks/retry.ts", "Updated src/webhooks/retry.ts with 4 additions")
+            + f"{DOT} Each retry now logs the event id, the attempt number and the delay before the next try.\n\n"
+            + box('Try "open a PR for this"')
+            + sill("ledger-api", "webhook-retries", "Opus 5.5", 31, 18, 42, "main KZ", changed=3),
+        "claude2.txt":
+            title("Billing dark mode") + f"{OR}✻{R} {B}Claude Code{R} {GY}v2.3.1 · Opus 5.5 · ~/Developer/atlas-web{R}\n\n"
+            + ask("The billing page ignores dark mode, fix it without touching brand colors")
+            + tool("Read", "app/billing/page.tsx", "Read 211 lines")
+            + tool("Update", "app/billing/invoice-table.tsx", "Updated with 9 additions and 9 removals")
+            + tool("Bash", "pnpm test billing", f"{GR}✓{R}{GY} 23 passed")
+            + f"{DOT} The invoice table hard-coded #fff and #111. It now uses the surface and text\n"
+              f"  tokens and follows the system theme. Brand colors are untouched.\n\n"
+            + box("")
+            + sill("atlas-web", "billing-dark", "Opus 5.5", 12, 18, 42, "backup KZ", detail="hysteria2 198.51.100.7", ahead=1),
+        "codex.txt":
+            title("Launch list snapshots") + f"{B}>_ OpenAI Codex{R} {GY}(v0.98.0) · gpt-5.5 · ~/Developer/orbit-ios{R}\n\n"
+            f"{CY}›{R} Add snapshot tests for the launch list in light and dark mode\n\n"
+            f"{GY}•{R} Explored\n  {GY}└ Read LaunchListView.swift, LaunchRow.swift{R}\n\n"
+            f"{GY}•{R} Edited Tests/LaunchListSnapshotTests.swift {GR}(+58 -0){R}\n\n"
+            f"{GY}•{R} Ran xcodebuild test -scheme Orbit -only-testing:OrbitTests/LaunchListSnapshotTests\n"
+            f"  {GY}└{R} {GR}Test Suite 'LaunchListSnapshotTests' passed (4 tests, 3.2 s){R}\n\n"
+            f"{GY}•{R} Four snapshots cover the list in light and dark mode, with and without a delay.\n\n"
+            + status("orbit-ios", "gpt-5.5", "41% context left", proxy="proxy work SE"),
+        "terminal.txt":
+            f"{GR}demo@mac{R} {CY}~/Developer/infra{R} {GY}main{R}\n$ git push\n"
+            "Enumerating objects: 9, done.\nWriting objects: 100% (5/5), 812 bytes | 812.00 KiB/s, done.\n"
+            "To github.com:example/infra.git\n   4f1c2a9..b81d07e  main -> main\n\n"
+            f"{GR}demo@mac{R} {CY}~/Developer/infra{R} {GY}main{R}\n$ ssh db-1.internal\n"
+            f"{RD}ssh: connect to host db-1.internal port 22: Operation not permitted{R}\n\n"
+            f"{GR}demo@mac{R} {CY}~/Developer/infra{R} {GY}main{R}\n$ ",
+    }
 
 
 def session(i, project, title, branch, ago, size, agent="claude", running=False):
@@ -250,10 +292,14 @@ def main():
                        ("app-state-project.json", project), ("app-state-headsup.json", headsup)):
         with open(os.path.join(OUT, name), "w") as f:
             json.dump(data, f, indent=1, ensure_ascii=False)
-    for name, text in SCREENS.items():
-        with open(os.path.join(OUT, name), "w") as f:
-            # у агента курсор стоит в поле ввода, а не под строкой состояния: прячем курсор терминала
-            f.write(text if name == "terminal.txt" else text + E + "?25l")
+    for theme in PALETTES:
+        use(theme)
+        for name, text in screens().items():
+            if theme == "light":
+                name = name.replace(".txt", "-light.txt")
+            with open(os.path.join(OUT, name), "w") as f:
+                # у агента курсор стоит в поле ввода, а не под строкой состояния: прячем курсор терминала
+                f.write(text if name.startswith("terminal") else text + E + "?25l")
 
 
 if __name__ == "__main__":
