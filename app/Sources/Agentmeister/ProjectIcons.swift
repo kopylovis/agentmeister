@@ -9,23 +9,29 @@ final class ProjectIcons: ObservableObject {
     @Published private var icons: [String: NSImage] = [:]
     private var looked: Set<String> = []
 
+    private var generation = 0
+
+    func invalidate() {
+        generation += 1
+        looked.removeAll()
+        icons.removeAll()
+    }
+
     func icon(for path: String) -> NSImage? {
-        // демо для скриншотов: иконки выдуманных проектов лежат в папке демо
-        if let dir = Demo.dir {
-            if icons[path] == nil, let image = NSImage(contentsOfFile: "\(dir)/icons/\((path as NSString).lastPathComponent).png") {
-                DispatchQueue.main.async { self.icons[path] = image }
-                return image
-            }
-            return icons[path]
-        }
-        // домашнюю папку не обходим: там все проекты и библиотеки, иконки у нее нет
-        if path == NSHomeDirectory() { return nil }
-        if !looked.contains(path) {
-            looked.insert(path)
-            Task.detached(priority: .utility) {
+        guard path != NSHomeDirectory(), looked.insert(path).inserted else { return icons[path] }
+        let generation = self.generation
+        Task.detached(priority: .utility) {
+            let image: NSImage
+            if let dir = Demo.dir {
+                let name = (path as NSString).lastPathComponent
+                guard let loaded = NSImage(contentsOfFile: "\(dir)/icons/\(name).png") else { return }
+                image = loaded
+            } else {
                 guard let file = Self.find(in: path), let loaded = NSImage(contentsOfFile: file) else { return }
-                let image = Self.trimmed(loaded)
-                await MainActor.run { self.icons[path] = image }
+                image = Self.trimmed(loaded)
+            }
+            await MainActor.run {
+                if self.generation == generation { self.icons[path] = image }
             }
         }
         return icons[path]

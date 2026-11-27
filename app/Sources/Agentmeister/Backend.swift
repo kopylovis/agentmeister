@@ -384,6 +384,7 @@ final class Backend: ObservableObject {
     @Published private(set) var ready = false
     private var liveTimer: Timer?
     private var fullTimer: Timer?
+    private var projectsRefreshQueued = false
     private var loading = false
     private var pendingRefresh: Task<Void, Never>?
     private var activation: NSObjectProtocol?
@@ -470,6 +471,15 @@ final class Backend: ObservableObject {
         }
     }
 
+    func refreshProjects() {
+        ProjectIcons.shared.invalidate()
+        if loading {
+            projectsRefreshQueued = true
+        } else {
+            refresh()
+        }
+    }
+
     func refresh() {
         guard !loading else { return }
         loading = true
@@ -511,6 +521,10 @@ final class Backend: ObservableObject {
                     self.lastError = error.localizedDescription
                 }
                 if !self.ready { self.ready = true }
+                if self.projectsRefreshQueued {
+                    self.projectsRefreshQueued = false
+                    self.refresh()
+                }
             }
         }
     }
