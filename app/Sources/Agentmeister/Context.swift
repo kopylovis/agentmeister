@@ -69,7 +69,7 @@ enum SessionContext {
     nonisolated(unsafe) private static var codexPaths: [String: String] = [:]
 
     /// rollout треда: ~/.codex/sessions/ГГГГ/ММ/ДД/rollout-<время>-<id>.jsonl, свежие дни первыми.
-    private static func codexFile(_ threadId: String) -> String? {
+    static func codexFile(_ threadId: String) -> String? {
         lock.lock(); defer { lock.unlock() }
         let fm = FileManager.default
         if let known = codexPaths[threadId], fm.fileExists(atPath: known) { return known }
