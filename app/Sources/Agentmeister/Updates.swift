@@ -24,11 +24,14 @@ final class Updates: NSObject, ObservableObject, SPUUpdaterDelegate, SPUStandard
             && Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil
     }
 
-    var available: Bool { controller != nil }
+    /// Sparkle запущен. Published: меню приложения строится раньше, чем start() в applicationDidFinishLaunching,
+    /// и без уведомления пункт "Проверить обновления" так и не появлялся.
+    @Published private(set) var available = false
 
     func start() {
         guard Self.distributed, controller == nil else { return }
         controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: self)
+        available = true
     }
 
     func check() {
