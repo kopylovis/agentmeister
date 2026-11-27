@@ -933,6 +933,36 @@ They're shown by a small app, `~/Library/Application Support/agentmeister/agentm
 first click, whether it may control Terminal or iTerm2. `agentmeister notify test` sends a test notification,
 `notify off` and `on` turn them off and on, and `notify sound off` mutes the Prompt chime.
 
+#### Phone channels
+
+The same notifications can also go to your phone through one or more channels. Each channel is set up on its own
+in Settings, Notifications, To your phone (Add channel) or with `agentmeister notify <channel>`, and each has its own
+mode: off, when you're away from the Mac, or always. "Away" is shared by all channels: the screen is locked or the
+mouse and keyboard sat idle for `agentmeister notify away <sec>` (2 minutes by default). Where the service has
+priorities, questions and permission requests go with a higher one than "done".
+
+| Channel | Phones | Server | Text by default | Source |
+| --- | --- | --- | --- | --- |
+| Telegram | any | Telegram's | full | [Bot API](https://core.telegram.org/bots/api) |
+| Tossling | Android, iPhone | your own | full | [tossling-server](https://github.com/Tossling/tossling-server) |
+| ntfy | Android, iPhone | ntfy.sh or your own | title on ntfy.sh | [ntfy](https://github.com/binwiederhier/ntfy) |
+| Bark | iPhone | api.day.app or your own | title, full when encrypted | [Bark](https://github.com/Finb/Bark) |
+| Gotify | Android | your own | full | [gotify/server](https://github.com/gotify/server) |
+| Webhook | any | your own URL | full | |
+| Pushover | Android, iPhone | Pushover's | title | [API](https://pushover.net/api) |
+| Apprise | any | per apprise config | title | [apprise](https://github.com/caronc/apprise) |
+
+"Title" means only the agent, what happened and the project are sent, without the session name, the question or
+the command: on a server that isn't yours the text can hold a command the agent asks to allow.
+`<channel> body full | title` switches it. Tokens and keys live in the macOS Keychain under `agentmeister.notify`,
+never in the config. Both the settings window and the CLI pass them through stdin, and they reach `security` through
+stdin too, so they don't show up in `ps`. A failed send is logged to `~/.cache/mnrh/notify/errors.log` and shown on
+the channel's card until the next successful send or `<channel> test`.
+
+There's no channel that pushes through Firebase or APNs directly. A device token there belongs to one app, and
+sending needs that app's server key (a Firebase service account or an Apple .p8 key), which only the app's author
+has. Bark and ntfy hold such keys on their servers, and Tossling's server sends through its own Firebase project.
+
 The same notifications can go to Telegram when you're away from the Mac: the screen is locked or nobody has
 touched the mouse and keyboard for 2 minutes. `agentmeister notify telegram` connects a bot: create it with
 @BotFather, enter the token (or copy it and run the command outside a terminal, and agentmeister takes the token
