@@ -83,6 +83,9 @@ struct SettingsData: Decodable {
         /// Откуда ключ OpenRouter для translate: file, env или nil, если его нет.
         let translateKey: String?
         let translateModel: String?
+        /// openrouter или google; translateFallback это второй провайдер с ключом, nil если ключа нет.
+        let translateProvider: String?
+        let translateFallback: String?
         let translateLog: [String]?
         let translateLogPath: String?
     }

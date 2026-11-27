@@ -655,6 +655,7 @@ def settings():
         return {"buildlogDays": claude_buildlog.KEEP_DAYS, "buildlogLines": claude_buildlog.MAX_LINES,
                 "buildlogDir": claude_buildlog.LOGS, "lidReady": lid_ready,
                 "translateKey": translate.key_source(), "translateModel": translate.model(),
+                "translateProvider": translate.provider(), "translateFallback": translate.fallback(),
                 "translateLog": translate.recent(4), "translateLogPath": translate.LOG}
 
     def host_run():

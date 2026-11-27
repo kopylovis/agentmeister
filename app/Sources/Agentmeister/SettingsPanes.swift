@@ -159,25 +159,34 @@ struct ModesPane: View {
                 Spacer()
                 HeaderSwitch(label: "translate", on: on ?? false) { run(["translate", $0 ? "on" : "off"]) }
             }
-            Note(text: l.t("Сообщения на русском и других нелатинских языках переводятся через OpenRouter, агент получает английский текст рядом с оригиналом и отвечает на твоем языке. Слэш-команды, длинные вставки и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
-                           "Messages in Russian and other non-Latin languages are translated through OpenRouter, and the agent gets the English text next to the original and replies in your language. Slash commands, long pastes and anything that looks like keys, tokens or proxy links are not sent."))
+            Note(text: l.t("Сообщения на русском и других нелатинских языках переводятся через OpenRouter или Google AI Studio, агент получает английский текст рядом с оригиналом и отвечает на твоем языке. Слэш-команды, длинные вставки и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
+                           "Messages in Russian and other non-Latin languages are translated through OpenRouter or Google AI Studio, and the agent gets the English text next to the original and replies in your language. Slash commands, long pastes and anything that looks like keys, tokens or proxy links are not sent."))
+            let google = info?.translateProvider == "google"
+            let name = google ? "Google AI Studio" : "OpenRouter"
+            SegmentedCapsule(selection: Binding(get: { info?.translateProvider ?? "openrouter" },
+                                                set: { run(["translate", "provider", $0]) }),
+                             options: [("openrouter", "OpenRouter", nil), ("google", "Google AI Studio", nil)])
+            if google {
+                Note(text: l.t("Бесплатно в пределах лимитов, но Google может брать запросы для улучшения моделей. Из России отвечает только через proxy. Временами думает 7-15 секунд, тогда при сохраненном ключе OpenRouter переводит он.",
+                               "Free within limits, but Google may use requests to improve its models. From Russia it answers only through the proxy. It sometimes takes 7-15 seconds, and then OpenRouter translates if its key is saved."))
+            }
             let source = info?.translateKey
-            Text(source == "file" ? l.t("Ключ OpenRouter сохранен", "OpenRouter key saved")
-                 : source == "env" ? l.t("Ключ из OPENROUTER_API_KEY", "Key from OPENROUTER_API_KEY")
-                 : l.t("Ключа OpenRouter нет, без него перевод не работает", "No OpenRouter key, nothing is translated without it"))
+            Text(source == "file" ? l.t("Ключ \(name) сохранен", "\(name) key saved")
+                 : source == "env" ? l.t("Ключ \(name) из переменной окружения", "\(name) key from the environment")
+                 : l.t("Ключа \(name) нет, без него перевод не работает", "No \(name) key, nothing is translated without it"))
                 .font(.system(size: 12))
                 .foregroundStyle(source == nil ? Ink.amber : Ink.teal)
             HStack(spacing: 8) {
-                SecureField("sk-or-v1-…", text: $orKey)
+                SecureField(google ? "AQ.… / AIza…" : "sk-or-v1-…", text: $orKey)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12, design: .monospaced))
                     .onSubmit(saveKey)
-                    .accessibilityLabel(l.t("Ключ OpenRouter", "OpenRouter key"))
+                    .accessibilityLabel(l.t("Ключ \(name)", "\(name) key"))
                 Button(l.t("Сохранить", "Save"), action: saveKey)
                     .buttonStyle(PillStyle(small: true))
                     .disabled(orKey.trimmingCharacters(in: .whitespaces).isEmpty)
                 if source == "file" {
-                    Button(l.t("Удалить", "Remove")) { run(["translate", "key", "rm"]) }
+                    Button(l.t("Удалить", "Remove")) { run(["translate", "key", "rm", info?.translateProvider ?? "openrouter"]) }
                         .buttonStyle(PillStyle(small: true))
                 }
             }
@@ -186,7 +195,8 @@ struct ModesPane: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let model = info?.translateModel {
-                Text(l.t("Модель ", "Model ") + model).font(.system(size: 12)).foregroundStyle(Ink.muted)
+                let spare = info?.translateFallback == nil ? "" : l.t(", запасной OpenRouter", ", OpenRouter as a fallback")
+                Text(l.t("Модель ", "Model ") + model + (google ? spare : "")).font(.system(size: 12)).foregroundStyle(Ink.muted)
             }
             let lines = info?.translateLog ?? []
             if !lines.isEmpty {
