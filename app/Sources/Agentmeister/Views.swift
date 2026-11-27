@@ -101,6 +101,8 @@ struct MainView: View {
                 openWindow(id: "about")
             case "rail":
                 ui.sidebarCollapsed = true
+            case "modes-toggle":
+                ui.sidebarCollapsed = false
             case "project":
                 ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
             case "settings", "settings-modes", "headsup":
@@ -554,6 +556,8 @@ struct Sidebar: View {
 struct SidebarFooter: View {
     @EnvironmentObject var backend: Backend
     @ObservedObject private var updates = Updates.shared
+    /// Список режимов проявляется после того, как встал на место.
+    @State private var listShown = false
     @AppStorage("layout.modesOpen") private var modesOpen = true
 
     var l: L { L(backend.state.lang) }
@@ -595,7 +599,8 @@ struct SidebarFooter: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             CollapsibleHeader(title: l.modes, open: $modesOpen,
-                              summary: Self.order.filter { backend.state.modes[$0] == true }.joined(separator: " · "))
+                              summary: Self.order.filter { backend.state.modes[$0] == true }.joined(separator: " · "),
+                              animated: false)
             if modesOpen {
             VStack(spacing: 4) {
 
@@ -629,7 +634,10 @@ struct SidebarFooter: View {
                     .accessibilityAddTraits(on ? .isSelected : [])
                 }
             }
-            .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+            // проявляется сам, раскладка вокруг меняется сразу (см. transaction ниже)
+            .opacity(listShown ? 1 : 0)
+            .onAppear { withAnimation(.easeOut(duration: 0.18)) { listShown = true } }
+            .onDisappear { listShown = false }
             }
             VStack(spacing: 0) {
                 if let h = backend.state.hostRun {
@@ -671,7 +679,17 @@ struct SidebarFooter: View {
             .padding(.horizontal, -6)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.snappy(duration: 0.28), value: modesOpen)
+        // блок живет в нижней полосе боковой панели: ее высота меняется сразу, без анимации. Если анимировать
+        // раскладку внутри, строки host-run и обновлений сначала налезали на режимы, а в конце прыгали
+        .transaction(value: modesOpen) { $0.animation = nil }
+        .task {
+            // демо modes-toggle: режимы сами сворачиваются и разворачиваются, чтобы записать анимацию
+            guard Demo.active && Demo.scene == "modes-toggle" else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.5))
+                modesOpen.toggle()
+            }
+        }
         .padding(12)
         // жидкое стекло: проекты, уехавшие под режимы, просвечивают размытыми
         .glassEffect(.regular, in: .windowCard)
@@ -687,10 +705,16 @@ struct CollapsibleHeader: View {
     var summary = ""
     /// Сводка и в раскрытой группе: у проектов она говорит то, чего не видно в списке, сколько сессий открыто.
     var alwaysShowSummary = false
+    /// false для групп в нижней полосе панели: ее высота меняется без анимации, и анимация внутри дергалась.
+    var animated = true
 
     var body: some View {
         Button {
-            withAnimation(.snappy(duration: 0.2)) { open.toggle() }
+            if animated {
+                withAnimation(.snappy(duration: 0.2)) { open.toggle() }
+            } else {
+                open.toggle()
+            }
         } label: {
             HStack(spacing: 6) {
                 SectionCaption(text: title)
