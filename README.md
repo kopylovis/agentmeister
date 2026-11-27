@@ -996,6 +996,16 @@ project are sent by default (`ntfy body full` sends everything). Your own server
 on iPhone your server needs `upstream-base-url: "https://ntfy.sh"`. Also `ntfy away | always | off | test`,
 `ntfy token off` and `ntfy forget`, which removes the settings and the token.
 
+Or to [Bark](https://github.com/Finb/Bark) on an iPhone: push through APNs without building your own app. Apple's key
+stays on the Bark server, the public api.day.app or your own [bark-server](https://github.com/Finb/bark-server).
+`agentmeister notify bark setup` asks for the device key or the whole URL from the Bark main screen
+(`https://api.day.app/<key>/...`), keeps the key in the Keychain (`agentmeister.notify`, account `bark`) and turns
+the channel on for when you're away. Through api.day.app only the title and the project go by default.
+`bark encrypt on` encrypts the title and the text with AES-256-CBC with a random IV in every push and prints the key
+to enter in the app (Push Encryption, AES256, CBC, pkcs7); then the full text goes and the server sees only the
+device key. Questions and permission requests arrive as Time Sensitive. Also `bark away | always | off | test`,
+`bark body full | title`, `bark server <url> | auto` and `bark forget`.
+
 With Remote Control, Claude Code pushes to the Claude app on your phone itself. If the session is connected
 (`/remote-control`, `--remote-control` or "Enable Remote Control for all sessions") and **Push when actions
 required** is on in `/config` (`inputNeededNotifEnabled`), agentmeister doesn't send permission requests and

@@ -13,6 +13,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import CACHE, HOME, UUID_RE, read_config, settings_name, settings_path, tilde, tr, write_config, write_json
 from swiftagent import SwiftAgent
+import bark_channel
 import channels
 import keychain
 import ntfy_alert
@@ -129,6 +130,8 @@ def usage():
              "  … tossling always | off | test | body full|title | server <url>|auto | token [off]  (phone is the same)"))
     print(tr("agentmeister notify ntfy        ещё и в ntfy (ntfy.sh или свой сервер): подключить, -h подробнее",
              "agentmeister notify ntfy        also send to ntfy (ntfy.sh or your own server): connect, -h for more"))
+    print(tr("agentmeister notify bark        ещё и в Bark на iPhone, можно с шифрованием: подключить, -h подробнее",
+             "agentmeister notify bark        also send to Bark on the iPhone, encryption optional: connect, -h for more"))
     print(tr("  … telegram test | off | always | away <сек>", "  … telegram test | off | always | away <sec>"))
     print(tr("  … telegram approve on | off  разрешать и отклонять запросы Claude кнопками в Telegram, когда ты не за Mac",
              "  … telegram approve on | off  allow or deny Claude's requests with Telegram buttons when you are away from the Mac"))
@@ -629,6 +632,7 @@ def status():
               "Claude (Push when actions required), в каналы на телефон они не дублируются")
     print(tossling_describe())
     print(ntfy_channel.describe())
+    print(bark_channel.describe())
 
 
 def tossling_describe():
@@ -780,6 +784,8 @@ def main():
         return phone(rest[1:])
     if rest[0] == "ntfy":
         return ntfy_channel.main(rest[1:])
+    if rest[0] == "bark":
+        return bark_channel.main(rest[1:])
     usage()
     return 2
 

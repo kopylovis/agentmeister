@@ -1026,6 +1026,16 @@ agentmeister notify tossling away
 `upstream-base-url: "https://ntfy.sh"`. Еще есть `ntfy away | always | off | test`, `ntfy token off` и `ntfy forget`,
 он удаляет настройки и токен.
 
+Или в [Bark](https://github.com/Finb/Bark) на iPhone: push через APNs без своего приложения. Ключ Apple лежит на
+сервере Bark, публичном api.day.app или своем [bark-server](https://github.com/Finb/bark-server).
+`agentmeister notify bark setup` спрашивает ключ устройства или весь адрес с главного экрана Bark
+(`https://api.day.app/<ключ>/...`), кладет ключ в Связку ключей (`agentmeister.notify`, аккаунт `bark`) и включает
+отправку, когда тебя нет за Mac. Через api.day.app по умолчанию уходят только заголовок и проект. `bark encrypt on`
+шифрует заголовок и текст AES-256-CBC со случайным IV в каждом push и показывает ключ, который надо ввести в
+приложении (Push Encryption, AES256, CBC, pkcs7). Тогда уходит полный текст, а сервер видит только ключ устройства.
+Вопросы и запросы разрешений приходят как Time Sensitive. Еще есть `bark away | always | off | test`,
+`bark body full | title`, `bark server <url> | auto` и `bark forget`.
+
 С Remote Control Claude Code сам присылает push в приложение Claude на телефоне. Если сессия
 подключена (`/remote-control`, `--remote-control` или «Enable Remote Control for all sessions») и в
 `/config` включено **Push when actions required** (`inputNeededNotifEnabled`), agentmeister не шлёт

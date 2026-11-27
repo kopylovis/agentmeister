@@ -1,9 +1,11 @@
+import base64
 import contextlib
 import fcntl
 import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -16,6 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import notify  # noqa: E402
 import headsup  # noqa: E402,F401
 import claude_proc  # noqa: E402
+import mnrhlib  # noqa: E402
 import claude_settings  # noqa: E402
 import swiftagent  # noqa: E402
 
@@ -202,12 +205,22 @@ class PhoneTargets(unittest.TestCase):
         self.assertEqual((msg.agent, msg.project, msg.urgent), ("Claude Code", "agentmeister", True))
 
 
+def empty_config(case):
+    """Пустой временный config до и после теста: настройки каналов из одного теста не доходят до хуков в других."""
+    path = mnrhlib.CONFIG
+
+    def clear():
+        with open(path, "w"):
+            pass
+    clear()
+    case.addCleanup(clear)
+
+
 class NtfyChannel(unittest.TestCase):
     """Канал ntfy: случайный канал, авторизация, только заголовок на ntfy.sh, CLI."""
 
     def setUp(self):
-        with open(notify.ntfy_channel.read_config.__globals__["CONFIG"], "w"):
-            pass
+        empty_config(self)
         self.keys = {}
         for name, fn in (("find", lambda account, service="agentmeister.notify": self.keys.get((service, account), "")),
                          ("save", lambda account, value, label, service="agentmeister.notify": self.keys.update({(service, account): value}) or True),
@@ -287,13 +300,103 @@ class NtfyChannel(unittest.TestCase):
                          ("Claude Code: Permission needed", "secret-project", 4))
 
 
+class BarkChannel(unittest.TestCase):
+    """Bark: ключ из адреса приложения, только заголовок на api.day.app, шифрование AES-256-CBC как в приложении."""
+
+    def setUp(self):
+        empty_config(self)
+        self.keys = {}
+        for name, fn in (("find", lambda account, service="agentmeister.notify": self.keys.get((service, account), "")),
+                         ("save", lambda account, value, label, service="agentmeister.notify": self.keys.update({(service, account): value}) or True),
+                         ("delete", lambda account, service="agentmeister.notify": self.keys.pop((service, account), None))):
+            patcher = mock.patch.object(notify.keychain, name, fn)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def cli(self, *args, stdin=""):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.object(sys, "stdin", io.StringIO(stdin)):
+            code = notify.bark_channel.main(list(args))
+        return code, out.getvalue()
+
+    def sent(self, urgent=False):
+        with mock.patch("urllib.request.urlopen") as urlopen:
+            notify.bark_channel.send("Claude Code: Answer needed", "Which branch?", urgent)
+        req = urlopen.call_args.args[0]
+        return req.full_url, json.loads(req.data)
+
+    def decrypt(self, data):
+        key = self.keys[("agentmeister.notify", "bark-key")]
+        r = subprocess.run(["/usr/bin/openssl", "enc", "-d", "-aes-256-cbc", "-K", key.encode().hex(),
+                            "-iv", data["iv"].encode().hex()], input=base64.b64decode(data["ciphertext"]),
+                           capture_output=True, check=True)
+        return json.loads(r.stdout)
+
+    def test_parse_key(self):
+        self.assertEqual(notify.bark_channel.parse_key("https://api.day.app/AbC123xyz/Hello"), ("https://api.day.app", "AbC123xyz"))
+        self.assertEqual(notify.bark_channel.parse_key(" AbC123xyz "), (None, "AbC123xyz"))
+        self.assertEqual(notify.bark_channel.parse_key("https://bark.example.com:8080/k1/"), ("https://bark.example.com:8080", "k1"))
+
+    def test_setup_from_app_url_on_stdin(self):
+        pin_lang(self, "en")
+        code, out = self.cli("setup", stdin="https://api.day.app/AbC123xyz/\n")
+        self.assertEqual(code, 0)
+        self.assertEqual(self.keys, {("agentmeister.notify", "bark"): "AbC123xyz"})
+        self.assertEqual((notify.bark_channel.mode(), notify.bark_channel.body_mode()), ("away", "title"))
+        self.assertIn("bark encrypt on", out)
+        url, data = self.sent(urgent=True)
+        self.assertEqual(url, "https://api.day.app/push")
+        self.assertEqual(data, {"device_key": "AbC123xyz", "level": "timeSensitive", "title": "Claude Code: Answer needed",
+                                "body": "Which branch?", "group": "Agentmeister", "icon": notify.ntfy_alert.AGENTMEISTER_ICON})
+
+    def test_bad_key(self):
+        self.assertEqual(self.cli("setup", "not a key!")[0], 2)
+        self.assertFalse(notify.bark_channel.configured())
+
+    def test_encryption_hides_everything_but_the_key(self):
+        pin_lang(self, "en")
+        self.cli("setup", "AbC123xyz")
+        code, out = self.cli("encrypt", "on")
+        self.assertEqual(code, 0)
+        key = self.keys[("agentmeister.notify", "bark-key")]
+        self.assertRegex(key, r"^[A-Za-z0-9]{32}$")
+        self.assertIn("Key " + key, out)
+        self.assertEqual(notify.bark_channel.body_mode(), "full")
+        _, first = self.sent()
+        _, second = self.sent()
+        self.assertEqual(set(first), {"device_key", "level", "ciphertext", "iv"})
+        self.assertNotEqual(first["iv"], second["iv"])
+        self.assertEqual(self.decrypt(first), {"title": "Claude Code: Answer needed", "body": "Which branch?",
+                                               "group": "Agentmeister", "icon": notify.ntfy_alert.AGENTMEISTER_ICON})
+        self.cli("encrypt", "off")
+        self.assertNotIn(("agentmeister.notify", "bark-key"), self.keys)
+        self.assertIn("title", self.sent()[1])
+
+    def test_unknown_device_key(self):
+        err = notify.bark_channel.urllib.error.HTTPError(
+            "https://api.day.app/push", 400, "x", {},
+            io.BytesIO(b'{"code":400,"message":"failed to get device token: failed to get [x] device token"}'))
+        self.cli("setup", "AbC123xyz")
+        with mock.patch("urllib.request.urlopen", side_effect=err), \
+                self.assertRaisesRegex(notify.bark_channel.BarkError, "ключ устройства"):
+            notify.bark_channel.send("t", "b")
+
+    def test_forget_and_own_server(self):
+        self.cli("setup", "https://bark.example.com/k1")
+        self.assertEqual((notify.bark_channel.server(), notify.bark_channel.body_mode()), ("https://bark.example.com", "full"))
+        self.cli("server", "auto")
+        self.assertEqual(notify.bark_channel.server(), "https://api.day.app")
+        self.cli("encrypt", "on")
+        self.cli("forget")
+        self.assertEqual((self.keys, notify.bark_channel.mode()), ({}, "off"))
+
+
 class TosslingPreset(unittest.TestCase):
     """Tossling как пресет ntfy: настройки tossling CLI или адрес вручную с токеном из Связки ключей."""
 
     def setUp(self):
-        self.conf = notify.ntfy_alert.read_config.__globals__["CONFIG"]
-        with open(self.conf, "w"):
-            pass
+        self.conf = mnrhlib.CONFIG
+        empty_config(self)
         self.keys = {}
         patcher = mock.patch.object(notify.keychain, "find",
                                     lambda account, service="agentmeister.notify": self.keys.get((service, account), ""))
