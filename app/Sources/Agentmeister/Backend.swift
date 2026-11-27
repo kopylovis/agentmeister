@@ -303,6 +303,14 @@ struct AppState: Decodable {
     var projectsDir = ""
     /// Все папки с проектами, первая главная. Nil в старом ответе app-state.
     var projectsDirs: [String]?
+    /// Умолчания сессий, которые открывает сам agentmeister (agentmeister defaults). Nil в старом ответе app-state.
+    struct SessionDefaults: Decodable, Hashable {
+        var mode: String
+        var remoteControl: Bool
+        var restartUpdate: Bool
+        var askModel: String
+    }
+    var sessionDefaults: SessionDefaults?
     var projects: [Project] = []
     var sessions: [Session] = []
     /// Треды Codex. app-state отдает их отдельно, Backend сливает их в sessions.

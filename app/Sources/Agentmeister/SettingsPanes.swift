@@ -916,6 +916,9 @@ struct AgentsPane: View {
                                  compact: true)
             }
         }
+        if let d = backend.state.sessionDefaults {
+            SessionDefaultsSection(d: d, l: l, set: { key, value in Task { _ = await backend.perform(["defaults", key, value]) } })
+        }
         if let data {
             // карточки одной высоты: каждая тянется до самой высокой
             HStack(alignment: .top, spacing: 16) {
@@ -926,6 +929,48 @@ struct AgentsPane: View {
             HeadsUpSection(l: l)
         } else {
             ProgressView()
+        }
+    }
+}
+
+/// Умолчания для сессий, которые agentmeister открывает сам: open_claude, /parallel, меню в терминале.
+/// Вкладки приложения берут режим и Remote Control из листа новой сессии, это отдельно.
+struct SessionDefaultsSection: View {
+    let d: AppState.SessionDefaults
+    let l: L
+    let set: (String, String) -> Void
+
+    var body: some View {
+        GlassSection {
+            Text(l.t("Сессии, которые открывает agentmeister", "Sessions agentmeister opens"))
+                .font(.system(size: 15, weight: .semibold))
+            Text(l.t("open_claude, /parallel и меню agentmeister в терминале. Новые вкладки этого окна берут настройки из листа новой сессии.",
+                     "open_claude, /parallel and the agentmeister menu in a terminal. New tabs in this window take their settings from the new session sheet."))
+                .font(.system(size: 12)).foregroundStyle(Ink.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            SettingsRow(l.t("Режим", "Mode"),
+                        l.t("caffeinate не дает Mac уснуть, пока идет сессия.", "caffeinate keeps the Mac awake while the session runs.")) {
+                SegmentedCapsule(selection: Binding(get: { d.mode }, set: { set("mode", $0) }),
+                                 options: [("caffeinate", "caffeinate", nil), ("normal", l.t("Обычный", "Normal"), nil)], compact: true)
+            }
+            Divider()
+            SettingsRow(l.t("Remote Control", "Remote Control"),
+                        l.t("Сессию можно вести с телефона и на claude.ai.", "The session can be driven from a phone and on claude.ai.")) {
+                Toggle("", isOn: Binding(get: { d.remoteControl }, set: { set("remote-control", $0 ? "on" : "off") }))
+                    .toggleStyle(.switch).labelsHidden()
+            }
+            Divider()
+            SettingsRow(l.t("/restart обновляет Claude Code", "/restart updates Claude Code"),
+                        l.t("Перед перезапуском выполняется claude update.", "claude update runs before the restart.")) {
+                Toggle("", isOn: Binding(get: { d.restartUpdate }, set: { set("restart-update", $0 ? "on" : "off") }))
+                    .toggleStyle(.switch).labelsHidden()
+            }
+            Divider()
+            SettingsRow(l.t("Модель для /ask", "Model for /ask"),
+                        l.t("Отдельный Claude, который отвечает про другой проект.", "The separate Claude that answers about another project.")) {
+                SegmentedCapsule(selection: Binding(get: { d.askModel }, set: { set("ask-model", $0) }),
+                                 options: [("sonnet", "Sonnet", nil), ("opus", "Opus", nil), ("haiku", "Haiku", nil)], compact: true)
+            }
         }
     }
 }
