@@ -12,7 +12,7 @@
 В Claude Code также есть перезапуск и сжатие сессии, уведомления и вопросы перед опасными командами.
 
 <p align="center">
-  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ru/main-dark.png"><img src="docs/screenshots/ru/main-light.png" width="900" alt="Agentmeister с вкладками Claude Code, Codex и терминала, каждая через свою подписку proxy"></picture>
+  <img src="docs/screenshots/ru/main-dark.png#gh-dark-mode-only" width="900" alt="Agentmeister с вкладками Claude Code, Codex и терминала, каждая через свою подписку proxy"><img src="docs/screenshots/ru/main-light.png#gh-light-mode-only" width="900" alt="Agentmeister с вкладками Claude Code, Codex и терминала, каждая через свою подписку proxy">
 </p>
 
 Меню говорит на языке macOS, русском или английском. Часть сообщений, например `agentmeister -h` и
@@ -105,15 +105,15 @@ agentmeister или promptsill стоят из Homebrew, после обновл
 
 <table>
   <tr>
-    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ru/new-session-dark.png"><img src="docs/screenshots/ru/new-session-light.png" alt="Лист новой сессии с агентом, маршрутом и подпиской"></picture></td>
-    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ru/project-dark.png"><img src="docs/screenshots/ru/project-light.png" alt="Экран проекта с сессиями, инструментами, бэклогом и параллельной задачей"></picture></td>
+    <td width="50%"><img src="docs/screenshots/ru/new-session-dark.png#gh-dark-mode-only" alt="Лист новой сессии с агентом, маршрутом и подпиской"><img src="docs/screenshots/ru/new-session-light.png#gh-light-mode-only" alt="Лист новой сессии с агентом, маршрутом и подпиской"></td>
+    <td width="50%"><img src="docs/screenshots/ru/project-dark.png#gh-dark-mode-only" alt="Экран проекта с сессиями, инструментами, бэклогом и параллельной задачей"><img src="docs/screenshots/ru/project-light.png#gh-light-mode-only" alt="Экран проекта с сессиями, инструментами, бэклогом и параллельной задачей"></td>
   </tr>
   <tr>
     <td>Новая сессия: агент, маршрут, подписка proxy и как начать.</td>
     <td>Экран проекта: сессии, инструменты, бэклог, параллельные задачи и последние коммиты.</td>
   </tr>
   <tr>
-    <td colspan="2"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ru/settings-dark.png"><img src="docs/screenshots/ru/settings-light.png" alt="Настройки proxy с тремя подписками"></picture></td>
+    <td colspan="2"><img src="docs/screenshots/ru/settings-dark.png#gh-dark-mode-only" alt="Настройки proxy с тремя подписками"><img src="docs/screenshots/ru/settings-light.png#gh-light-mode-only" alt="Настройки proxy с тремя подписками"></td>
   </tr>
   <tr>
     <td colspan="2">Настройки proxy: выход, маршрут и подписка по умолчанию, список подписок. main и backup в KZ
