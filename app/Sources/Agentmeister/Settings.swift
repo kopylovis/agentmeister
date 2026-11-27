@@ -2,12 +2,19 @@ import SwiftUI
 
 struct SettingsData: Decodable {
     struct Notify: Decodable {
+        /// Последняя ошибка отправки в канал, удачная отправка ее стирает.
+        struct SendError: Decodable {
+            let at: Double
+            let text: String
+        }
+
         struct Telegram: Decodable {
             let connected: Bool
             let bot: String?
             let when: String
             let away: Int
             let approve: Bool
+            var error: SendError? = nil
         }
 
         struct Phone: Decodable {
@@ -15,11 +22,63 @@ struct SettingsData: Decodable {
             let configured: Bool
         }
 
+        /// Пресет ntfy: канал agentmeister на сервере Tossling. source cli, если настройки взяты у tossling на Mac.
+        struct Tossling: Decodable {
+            let mode: String
+            let configured: Bool
+            let server: String?
+            let source: String?
+            let topic: String
+            let body: String
+            let docs: String?
+            var error: SendError? = nil
+        }
+
+        struct Ntfy: Decodable {
+            let mode: String
+            let configured: Bool
+            let server: String
+            let topic: String?
+            let body: String
+            let token: Bool
+            let `public`: Bool
+            let subscribe: String?
+            var error: SendError? = nil
+        }
+
+        struct Bark: Decodable {
+            let mode: String
+            let configured: Bool
+            let server: String
+            let body: String
+            let encrypted: Bool
+            let `public`: Bool
+            var error: SendError? = nil
+        }
+
+        struct Gotify: Decodable {
+            struct Priority: Decodable {
+                let urgent: Int
+                let normal: Int
+            }
+            let mode: String
+            let configured: Bool
+            let server: String?
+            let body: String
+            let priority: Priority
+            var error: SendError? = nil
+        }
+
         let on: Bool
         let after: Int
         let sound: Bool
+        var away: Int? = nil
         let telegram: Telegram
         let phone: Phone
+        var tossling: Tossling? = nil
+        var ntfy: Ntfy? = nil
+        var bark: Bark? = nil
+        var gotify: Gotify? = nil
     }
 
     struct Guard: Decodable {
@@ -181,6 +240,7 @@ struct SettingsView: View {
             .padding(8)
             .accessibilityLabel(l.t("Разделы настроек", "Settings sections"))
 
+            ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     switch current {
@@ -199,6 +259,12 @@ struct SettingsView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 28)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            // демо settings-notify-phone снимает каналы на телефон: прокрутить к ним, когда данные загрузились
+            .onAppear {
+                guard Demo.scene == "settings-notify-phone" else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { scroller.scrollTo("phone-channels", anchor: .top) }
+            }
             }
             // macOS 26 рисует над скрытым заголовком свою полосу, когда курсор над ней, и прокрученная карточка
             // мелькала под ней пятном. Вместо нее ровное размытие, как в главном окне

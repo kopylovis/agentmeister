@@ -632,7 +632,7 @@ struct GuardTest: Decodable {
 
 // MARK: - Уведомления
 
-/// Уведомления по макету Notify.dc.html: Mac, Telegram, телефон.
+/// Уведомления по макету Notify.dc.html: Mac и каналы на телефон (NotifyChannels.swift).
 struct NotifyPane: View {
     @EnvironmentObject var backend: Backend
     let data: SettingsData?
@@ -681,74 +681,9 @@ struct NotifyPane: View {
                     Spacer()
                 }
             }
-            GlassSection {
-                HStack(spacing: 10) {
-                    Text("Telegram").font(.system(size: 17, weight: .semibold))
-                    if n.telegram.connected {
-                        StatusChip(text: l.t("бот подключен", "bot connected") + (n.telegram.bot.map { ", @" + $0 } ?? ""), ok: true)
-                    }
-                    Spacer()
-                    if n.telegram.connected {
-                        CommandButton(title: l.t("Прислать тест", "Send test"), args: ["notify", "telegram", "test"], reload: reload)
-                        CommandButton(title: l.t("Отключить", "Disconnect"), args: ["notify", "telegram", "off"], reload: reload)
-                    } else {
-                        UtilityButton(title: l.t("Подключить бота", "Connect a bot"), args: ["notify", "telegram"], prominent: true)
-                    }
-                }
-                if n.telegram.connected {
-                    row(l.t("Когда присылать", "When to send")) {
-                        SegmentedCapsule(selection: Binding(get: { n.telegram.when }, set: { run(["notify", "telegram", $0]) }),
-                                         options: [("away", l.t("Когда я не за Mac", "When I'm away"), nil), ("always", l.t("Всегда", "Always"), nil)],
-                                         compact: true)
-                    }
-                    row(l.t("Не за Mac после", "Away after"),
-                        l.t("Экран заблокирован или мышь и клавиатура не трогались столько минут",
-                            "The screen is locked or the mouse and keyboard sat idle this many minutes")) {
-                        HStack(spacing: 6) {
-                            NumberField(value: max(1, n.telegram.away / 60)) { run(["notify", "telegram", "away", String($0 * 60)]) }
-                            Text(l.t("мин", "min")).foregroundStyle(Ink.muted)
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        row(l.t("Отвечать на запросы разрешений из Telegram", "Answer permission requests from Telegram"),
-                            l.t("Кнопки \"Разрешить\" и \"Отклонить\" в чате, пока ты не за Mac. Вопросы и планы остаются на Mac.",
-                                "\"Allow\" and \"Deny\" buttons in the chat while you are away. Questions and plans stay on the Mac.")) {
-                            HeaderSwitch(label: "approve", on: n.telegram.approve) { run(["notify", "telegram", "approve", $0 ? "on" : "off"]) }
-                        }
-                        Text(l.t("Разрешить команду на Mac сможет любой, кто откроет твой Telegram или получит токен бота. Включай, только если у аккаунта Telegram есть пароль и двухэтапная проверка.",
-                                 "Anyone who can open your Telegram or holds the bot token can allow a command on your Mac. Turn this on only if your Telegram account has a password and two-step verification."))
-                            .font(.system(size: 12))
-                            .foregroundStyle(Ink.amber)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: 12).fill(Ink.amberDot.opacity(0.14)))
-                    }
-                    .padding(14)
-                    .background(RoundedRectangle(cornerRadius: 14).fill(Ink.card))
-                }
-            }
-            GlassSection {
-                SettingsRow("Tossling",
-                            l.t("Канал agentmeister на твоем сервере Tossling, вопросы и запросы с высоким приоритетом. Сервер и токен берутся у tossling на этом Mac.",
-                                "The agentmeister channel on your Tossling server, questions and requests at high priority. The server and token come from tossling on this Mac."),
-                            titleFont: .system(size: 17, weight: .semibold)) {
-                    SegmentedCapsule(selection: Binding(get: { n.phone.mode }, set: { run(["notify", "phone", $0]) }),
-                                     options: [("off", l.t("Выкл", "Off"), nil), ("away", l.t("Когда я не за Mac", "When I'm away"), nil), ("always", l.t("Всегда", "Always"), nil)],
-                                     compact: true)
-                        .disabled(!n.phone.configured)
-                }
-                if !n.phone.configured {
-                    HStack(spacing: 8) {
-                        Text(l.t("Tossling на этом Mac не найден или не подключен к серверу", "Tossling isn't installed on this Mac or isn't connected to a server"))
-                            .foregroundStyle(Ink.amber)
-                        Link(l.t("Как поставить", "How to install"), destination: URL(string: "https://tossling.github.io/docs/install/")!)
-                    }
-                    .font(.system(size: 12))
-                }
-            }
-            Note(text: l.t("Если сессия подключена к Remote Control и в /config включено Push when actions required, ее запросы и вопросы не дублируются в Telegram и на телефон. Уведомление на Mac остается.",
-                           "If a session is connected to Remote Control with Push when actions required on in /config, its requests and questions are not duplicated to Telegram or the phone. The Mac notification stays."))
+            PhoneChannels(n: n, reload: reload)
+            Note(text: l.t("Если сессия подключена к Remote Control и в /config включено Push when actions required, ее запросы и вопросы не дублируются в каналы на телефон. Уведомление на Mac остается.",
+                           "If a session is connected to Remote Control with Push when actions required on in /config, its requests and questions are not duplicated to phone channels. The Mac notification stays."))
         } else {
             ProgressView()
         }

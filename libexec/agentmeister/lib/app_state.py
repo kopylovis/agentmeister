@@ -630,28 +630,37 @@ def settings():
         except ValueError:
             after = 20
         away = presence.away_after()
+        import channels
+        errors = channels.last_errors()
+
+        def error(name):
+            e = errors.get(name)
+            return {"at": e.get("at", 0), "text": e.get("text", "")} if isinstance(e, dict) else None
         tossling = ntfy_alert.endpoint()  # одна проверка: она запускает tossling config
         tossling_mode = ntfy_alert.phone_mode() if tossling else "off"
         return {"on": cfg.get("notify", "on") != "off", "after": after, "sound": cfg.get("notify_sound", "on") != "off",
                 "away": away,
                 "telegram": {"connected": bool(cfg.get("telegram_chat")), "bot": cfg.get("telegram_bot") or None,
                              "when": "always" if cfg.get("telegram_when") == "always" else "away", "away": away,
-                             "approve": cfg.get("telegram_approve", "off") == "on"},
+                             "approve": cfg.get("telegram_approve", "off") == "on", "error": error("telegram")},
                 "phone": {"mode": tossling_mode, "configured": bool(tossling)},
                 "tossling": {"mode": tossling_mode, "configured": bool(tossling), "server": tossling[0] if tossling else None,
                              "source": ("manual" if ntfy_alert.manual_server() else "cli") if tossling else None,
                              "topic": ntfy_alert.AGENTMEISTER_TOPIC, "body": ntfy_alert.body_mode(),
-                             "docs": ntfy_alert.INSTALL_DOCS},
+                             "docs": ntfy_alert.INSTALL_DOCS, "error": error("tossling")},
                 "ntfy": {"mode": ntfy_channel.mode(), "configured": ntfy_channel.configured(),
                          "server": ntfy_channel.server(), "topic": ntfy_channel.topic() or None,
                          "body": ntfy_channel.body_mode(), "token": bool(ntfy_channel.token()),
-                         "public": ntfy_channel.public(), "subscribe": ntfy_channel.subscribe_url() or None},
+                         "public": ntfy_channel.public(), "subscribe": ntfy_channel.subscribe_url() or None,
+                         "error": error("ntfy")},
                 "bark": {"mode": bark_channel.mode(), "configured": bark_channel.configured(),
                          "server": bark_channel.server(), "body": bark_channel.body_mode(),
-                         "encrypted": bool(bark_channel.crypto_key()), "public": bark_channel.public()},
+                         "encrypted": bool(bark_channel.crypto_key()), "public": bark_channel.public(),
+                         "error": error("bark")},
                 "gotify": {"mode": gotify_channel.mode(), "configured": gotify_channel.configured(),
                            "server": gotify_channel.server() or None, "body": gotify_channel.body_mode(),
-                           "priority": {"urgent": gotify_channel.priority(True), "normal": gotify_channel.priority(False)}}}
+                           "priority": {"urgent": gotify_channel.priority(True), "normal": gotify_channel.priority(False)},
+                           "error": error("gotify")}}
 
     def guard():
         import claude_guard
