@@ -825,6 +825,17 @@ enum TerminalPrefs {
 
     static let fonts = ["SF Mono", "Menlo", "Monaco", "JetBrains Mono"]
 
+    /// Все моноширинные семейства на этом Mac: SF Mono первым, дальше по алфавиту. Считается один раз.
+    static let installedFonts: [String] = {
+        let manager = NSFontManager.shared
+        let mono = manager.availableFontFamilies.filter { family in
+            guard !family.hasPrefix("."), family != "SF Mono",
+                  let font = manager.font(withFamily: family, traits: [], weight: 5, size: 12) else { return false }
+            return font.isFixedPitch
+        }
+        return ["SF Mono"] + mono.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }()
+
     static var fontName: String { UserDefaults.standard.string(forKey: fontKey) ?? "SF Mono" }
     static var size: Double { UserDefaults.standard.object(forKey: sizeKey) as? Double ?? 13 }
     static var cursor: String { UserDefaults.standard.string(forKey: cursorKey) ?? "blinkBar" }
@@ -840,7 +851,8 @@ enum TerminalPrefs {
     static var codexHistory: Bool { UserDefaults.standard.object(forKey: codexHistoryKey) as? Bool ?? true }
 
     static func font(name: String = fontName, size: Double = size) -> NSFont {
-        if name != "SF Mono", let font = NSFont(name: name, size: size) { return font }
+        if name != "SF Mono", let font = NSFont(name: name, size: size)
+            ?? NSFontManager.shared.font(withFamily: name, traits: [], weight: 5, size: size) { return font }
         return .monospacedSystemFont(ofSize: size, weight: .regular)
     }
 
@@ -895,7 +907,8 @@ struct TerminalPane: View {
             GlassSection(spacing: 0) {
                 row(l.t("Шрифт", "Font")) {
                     Picker("", selection: $font) {
-                        ForEach(TerminalPrefs.fonts.filter { $0 == "SF Mono" || NSFont(name: $0, size: 12) != nil }, id: \.self) { Text($0).tag($0) }
+                        ForEach(TerminalPrefs.installedFonts.contains(font) ? TerminalPrefs.installedFonts : TerminalPrefs.installedFonts + [font],
+                                id: \.self) { Text($0).tag($0) }
                     }.labelsHidden()
                 }
                 Divider()
