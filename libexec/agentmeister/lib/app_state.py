@@ -687,7 +687,8 @@ def settings():
         return {"on": claude_guard.enabled() if hasattr(claude_guard, "enabled") else cfg.get("guard", "on") != "off",
                 "rules": [{"id": rid, "text": text, "textEn": claude_guard.RULES_EN.get(rid, text), "on": rid not in skipped}
                           for rid, text in claude_guard.RULES.items()],
-                "log": guard_log(), "logPath": claude_guard.LOG, "lastHit": guard_last_hit()}
+                "log": guard_log(), "logPath": claude_guard.LOG, "lastHit": guard_last_hit(),
+                "secrets": claude_guard.user_secrets()}
 
     def humanize_typography():
         import humanize

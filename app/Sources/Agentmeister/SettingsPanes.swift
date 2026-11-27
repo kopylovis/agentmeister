@@ -27,6 +27,7 @@ struct ModesPane: View {
     let reload: () async -> Void
     @AppStorage("modes.selected") private var selected = "guard"
     @State private var test = "git push --force origin main"
+    @State private var newSecret = ""
     @State private var result: GuardTest?
     @State private var orKey = ""
     @State private var keyNote: (String, Bool)?
@@ -278,6 +279,28 @@ struct ModesPane: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
                 }
             }
+            if let own = g.secrets {
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionTitle(l.t("Свои секреты", "Your secrets"))
+                    Text(l.t("Вдобавок к встроенным. Маска без / сверяется с именем файла, с / с путем, / в конце берет всю папку.",
+                             "On top of the built-in ones. A mask without / matches the file name, with / the path, a trailing / takes the whole folder."))
+                        .font(.system(size: 12)).foregroundStyle(Ink.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !own.isEmpty {
+                        FlowChips(items: own) { run(["guard", "secret", "remove", $0]) }
+                    }
+                    HStack {
+                        TextField("*.tfvars, ~/.kube/config, ~/.config/gcloud/", text: $newSecret)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, design: .monospaced))
+                            .onSubmit(addSecret)
+                            .accessibilityLabel(l.t("Маска секрета", "Secret mask"))
+                        Button(l.t("Добавить", "Add"), action: addSecret)
+                            .buttonStyle(PillStyle(small: true))
+                            .disabled(newSecret.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+            }
             VStack(alignment: .leading, spacing: 6) {
                 sectionTitle(l.t("Проверить команду", "Test a command"))
                 HStack {
@@ -313,6 +336,13 @@ struct ModesPane: View {
                 }
             }
         }
+    }
+
+    private func addSecret() {
+        let mask = newSecret.trimmingCharacters(in: .whitespaces)
+        guard !mask.isEmpty, !mask.contains(",") else { return }
+        newSecret = ""
+        run(["guard", "secret", "add", mask])
     }
 
     private func check() {
@@ -1798,5 +1828,34 @@ struct DoctorPane: View {
             checkedAt = Date()
         }
         loading = false
+    }
+}
+
+
+/// Маски строкой чипов с крестиком: нажатие убирает маску.
+struct FlowChips: View {
+    let items: [String]
+    let remove: (String) -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { chips }
+            VStack(alignment: .leading, spacing: 6) { chips }
+        }
+    }
+
+    @ViewBuilder private var chips: some View {
+        ForEach(items, id: \.self) { item in
+            Button { remove(item) } label: {
+                HStack(spacing: 6) {
+                    Text(item).font(.system(size: 12, design: .monospaced))
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .semibold)).foregroundStyle(Ink.muted)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(Capsule().fill(Ink.chip))
+            }
+            .buttonStyle(.plain)
+            .help(item)
+        }
     }
 }

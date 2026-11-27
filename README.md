@@ -893,7 +893,9 @@ In `auto` mode and with `--dangerously-skip-permissions` Claude Code can't do th
 or "allow"), so guard holds the call and Claude asks you in the chat why it needs it. Answer "yes" (or "ok",
 "да", "давай") and the same call goes through. The answer is tied to that call and to your message after the
 question, so the model can't answer for you. `agentmeister guard skip destructive` turns a rule off,
-`guard test '<command>'` shows the decision, and `guard log` shows recent hits.
+`guard test '<command>'` shows the decision, and `guard log` shows recent hits. The built-in secrets lean
+toward mobile work (keystores, .p8, fastlane); `agentmeister guard secret add '*.tfvars'` or
+`guard secret add ~/.kube/config` adds your own, and a trailing `/` covers a whole folder.
 
 ### Long build output: `agentmeister buildlog`
 

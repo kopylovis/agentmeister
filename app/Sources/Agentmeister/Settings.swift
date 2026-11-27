@@ -125,6 +125,8 @@ struct SettingsData: Decodable {
         let logPath: String?
         /// Время последнего срабатывания (ask, hold, allow) в секундах эпохи.
         let lastHit: Double?
+        /// Свои маски секретов (guard_secrets). Nil в старом ответе app-state.
+        let secrets: [String]?
     }
 
     struct HostRun: Decodable {
