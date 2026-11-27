@@ -475,6 +475,11 @@ def forget_caches(sid):
                 os.remove(p)
             except OSError:
                 pass
+    try:
+        import headsup
+        headsup.forget(sid)
+    except Exception:
+        pass
 
 
 def forget_history(sid, on_written=None):

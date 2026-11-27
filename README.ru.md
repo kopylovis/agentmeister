@@ -39,6 +39,7 @@ agentmeister sessions       сохраненные сессии: продолж�
 agentmeister ps             запущенные сессии и кто ждет ответа; перейти во вкладку
 agentmeister restore        вернуть сессии после перезагрузки или сбоя
 agentmeister usage          токены и активное время по проектам и моделям
+agentmeister headsup        заметки Heads up от Claude Code, и случайно закрытые
 
 # Изнутри Claude Code, они же /restart, /forget, /fresh, /slim
 agentmeister restart        закрыть, обновить Claude Code, открыть эту же сессию

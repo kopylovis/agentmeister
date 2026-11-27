@@ -581,9 +581,119 @@ struct AgentsPane: View {
                 AgentCard(agent: .codex, info: data.codex, l: l, reload: reload)
             }
             .fixedSize(horizontal: false, vertical: true)
+            HeadsUpSection(l: l)
         } else {
             ProgressView()
         }
+    }
+}
+
+/// Ответ app-state headsup: заметки Heads up и You should know из Claude Code, новые первыми.
+struct HeadsUpData: Decodable {
+    struct Entry: Decodable, Hashable {
+        let ts: Double?
+        let headline: String
+        let project: String?
+        let cwd: String?
+        let session: String?
+        let tag: String?
+        let times: Int?
+    }
+
+    let entries: [Entry]
+    let path: String
+    let plugin: Bool
+    let max: Int
+}
+
+extension Backend {
+    func headsup() async -> HeadsUpData? { await Self.json(["app-state", "headsup"]) }
+}
+
+/// Заметки Heads up, которые показывал Claude Code, и закрытые случайно тоже. Плагин хранит только заголовки,
+/// время, проект и сессию дописывает хук agentmeister (headsup.py), текста пояснения нет нигде.
+struct HeadsUpSection: View {
+    @EnvironmentObject var backend: Backend
+    let l: L
+    @State private var data: HeadsUpData?
+    @State private var all = false
+    private static let shown = 6
+
+    var body: some View {
+        GlassSection(spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Heads up").font(.system(size: 17, weight: .semibold))
+                Spacer()
+                if let data, !data.entries.isEmpty {
+                    Text(l.count(data.entries.count, "заметка", "заметки", "заметок", "note", "notes"))
+                        .font(.system(size: 12)).foregroundStyle(Ink.muted)
+                }
+            }
+            Note(text: l.t("Заметки Heads up и You should know, которые показывал Claude Code, в том числе закрытые. Claude Code хранит только заголовки, без пояснения из карточки. Время и проект agentmeister записывает сам.",
+                           "Heads up and You should know notes Claude Code has shown, closed ones included. Claude Code keeps only the headlines, not the explanation from the card. agentmeister records the time and project itself."))
+            if let data {
+                if data.entries.isEmpty {
+                    Text(data.plugin ? l.t("Заметок пока нет", "No notes yet")
+                                     : l.t("Claude Code еще не показывал заметок", "Claude Code has not shown any notes yet"))
+                        .font(.system(size: 12)).foregroundStyle(Ink.muted)
+                } else {
+                    ForEach(Array(data.entries.prefix(all ? data.entries.count : Self.shown).enumerated()), id: \.offset) { _, e in
+                        row(e)
+                    }
+                    HStack(spacing: 16) {
+                        if data.entries.count > Self.shown {
+                            Button(all ? l.t("Свернуть", "Show fewer") : l.t("Показать все", "Show all")) { all.toggle() }
+                                .buttonStyle(.textLink)
+                        }
+                        Spacer()
+                        Button(tilde(data.path)) {
+                            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: data.path)])
+                        }
+                        .buttonStyle(.textLink(Ink.muted))
+                        .help(l.t("Показать в Finder", "Show in Finder"))
+                    }
+                    .font(.system(size: 12))
+                }
+            } else {
+                ProgressView().controlSize(.small)
+            }
+        }
+        .task { data = await backend.headsup() }
+    }
+
+    private func row(_ e: HeadsUpData.Entry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(e.headline)
+                .font(.system(size: 13))
+                .foregroundStyle(Ink.text)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(meta(e))
+                .font(.system(size: 11))
+                .foregroundStyle(Ink.faint)
+                .textSelection(.enabled)
+                .help(e.cwd.map(tilde) ?? "")
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
+    }
+
+    private func meta(_ e: HeadsUpData.Entry) -> String {
+        var parts = [e.ts.map(when) ?? l.t("раньше, время неизвестно", "earlier, time unknown")]
+        if let project = e.project { parts.append(project) }
+        if let tag = e.tag, tag != "Heads up" { parts.append(tag) }
+        if let n = e.times, n > 1 { parts.append(l.t("показана ", "shown ") + l.count(n, "раз", "раза", "раз", "time", "times")) }
+        return parts.joined(separator: " · ")
+    }
+
+    private func when(_ ts: Double) -> String {
+        let date = Date(timeIntervalSince1970: ts)
+        let f = DateFormatter()
+        f.locale = Locale(identifier: l.en ? "en_US" : "ru_RU")
+        let thisYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
+        f.dateFormat = l.en ? (thisYear ? "MMM d, HH:mm" : "MMM d yyyy, HH:mm") : (thisYear ? "d MMM, HH:mm" : "d MMM yyyy, HH:mm")
+        return f.string(from: date)
     }
 }
 

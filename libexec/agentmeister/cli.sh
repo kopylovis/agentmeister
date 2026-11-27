@@ -50,6 +50,7 @@ help() {
   agentmeister ps                  запущенные сессии: кто ждет ответа, перейти во вкладку
   agentmeister restore             вернуть сессии, открытые до перезагрузки или сбоя
   agentmeister usage               токены и активное время по проектам (--days N, --project P)
+  agentmeister headsup             заметки Heads up от Claude Code, и закрытые тоже (headsup -h)
 
 Изнутри Claude Code (они же /restart, /forget, /fresh, /slim)
   agentmeister restart             закрыть и открыть эту же сессию, с обновлением Claude Code
@@ -105,6 +106,7 @@ case "${1:-}" in
   host-run) shift; exec /usr/bin/python3 "$LIB/host_run.py" "$@" ;;
   sessions) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_sessions.py" "$@" ;;
   usage) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_usage.py" "$@" ;;
+  headsup) shift; exec /usr/bin/python3 "$LIB/headsup.py" "$@" ;;
   codex-context) shift; exec /usr/bin/python3 "$LIB/codex_context.py" "$@" ;;
   brief) exec /usr/bin/python3 "$(dirname "$MENU")/claude_brief.py" "$@" ;;
   ps) shift; exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" ps "$@" ;;
