@@ -642,7 +642,7 @@ def settings():
         return {"on": claude_guard.enabled() if hasattr(claude_guard, "enabled") else cfg.get("guard", "on") != "off",
                 "rules": [{"id": rid, "text": text, "textEn": claude_guard.RULES_EN.get(rid, text), "on": rid not in skipped}
                           for rid, text in claude_guard.RULES.items()],
-                "log": guard_log(), "logPath": claude_guard.LOG}
+                "log": guard_log(), "logPath": claude_guard.LOG, "lastHit": guard_last_hit()}
 
     def modes_info():
         import claude_buildlog
@@ -656,7 +656,8 @@ def settings():
                 "buildlogDir": claude_buildlog.LOGS, "lidReady": lid_ready,
                 "translateKey": translate.key_source(), "translateModel": translate.model(),
                 "translateProvider": translate.provider(), "translateFallback": translate.fallback(),
-                "translateLog": translate.recent(4), "translateLogPath": translate.LOG}
+                "translateLog": translate.recent(4), "translateLogPath": translate.LOG,
+                "translateMedianMs": translate_median()}
 
     def host_run():
         import host_run as hr
@@ -702,6 +703,37 @@ def doctor():
             found = [("bad", mnrhlib.tr(f"{name}: проверка упала ({e!r})", f"{name}: the check crashed ({e!r})"))]
         rows += [{"check": name, "level": level, "text": text} for level, text in found]
     return {"rows": rows}
+
+
+def guard_last_hit():
+    """Время последнего срабатывания guard (ask, hold или allow) в секундах эпохи, None если их не было."""
+    import claude_guard
+    try:
+        with open(claude_guard.LOG) as f:
+            lines = f.readlines()[-200:]
+    except OSError:
+        return None
+    for line in reversed(lines):
+        m = re.match(r"(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (ask|hold|allow) ", line)
+        if m:
+            return int(time.mktime(time.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")))
+    return None
+
+
+def translate_median(n=50):
+    """Медиана времени перевода в мс по последним n строкам журнала translate. Считаются только строки, где
+    перевод пришел, ошибки и пропуски нет. None, если таких строк нет."""
+    import translate
+    times = []
+    for line in translate.recent(n):
+        m = re.match(r"\S+ \S+ \S+ \d+ зн (\d+) мс (.*)", line)
+        if m and not m.group(2).startswith("ошибка"):
+            times.append(int(m.group(1)))
+    if not times:
+        return None
+    times.sort()
+    mid = len(times) // 2
+    return times[mid] if len(times) % 2 else (times[mid - 1] + times[mid]) // 2
 
 
 def guard_log(n=4):

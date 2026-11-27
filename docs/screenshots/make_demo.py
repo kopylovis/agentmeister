@@ -20,6 +20,11 @@ DOT = OR + "⏺" + R
 W = 104  # столько колонок у терминала во вкладке демо: длиннее терминал перенес бы строку, короче рамка не дойдет до края
 
 
+def stamp(t, fmt="%Y-%m-%d %H:%M:%S"):
+    """Время строки журнала в демо, местное, как пишут сами журналы."""
+    return time.strftime(fmt, time.localtime(t))
+
+
 def title(text):
     return f"\x1b]0;{text}\x07"
 
@@ -183,7 +188,9 @@ def main():
         "notify": {"on": True, "after": 30, "sound": True,
                    "telegram": {"connected": True, "bot": "demo_agents_bot", "when": "away", "away": 5, "approve": True},
                    "phone": {"mode": "off", "configured": False}},
-        "guard": {"on": True, "log": [], "logPath": H + "/.local/state/mnrh/guard.log", "rules": [
+        "guard": {"on": True, "log": [stamp(NOW - 26 * 3600, "%d.%m %H:%M") + "  ask   force-push     git push --force origin main",
+                                      stamp(NOW - 3 * 3600, "%d.%m %H:%M") + "  hold  rm-root        rm -rf ../build-cache"],
+                  "lastHit": int(NOW - 3 * 3600), "logPath": H + "/Library/Logs/mnrh-guard.log", "rules": [
             {"id": "rm-root", "text": "rm -rf вне проекта", "textEn": "rm -rf outside the project", "on": True},
             {"id": "force-push", "text": "git push --force в main", "textEn": "git push --force to main", "on": True},
             {"id": "curl-sh", "text": "curl | sh", "textEn": "curl | sh", "on": True}]},
@@ -193,8 +200,11 @@ def main():
         "modesInfo": {"buildlogDays": 7, "buildlogLines": 40, "buildlogDir": H + "/.cache/mnrh/buildlog", "lidReady": False,
                       "translateKey": "file", "translateModel": "gemini-3.1-flash-lite",
                       "translateProvider": "google", "translateFallback": "openrouter",
-                      "translateLog": ["2026-11-27 10:41:07 3f9c2a1e 182 зн 640 мс переведен",
-                                       "2026-11-27 10:44:51 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)"],
+                      "translateLog": [stamp(NOW - 50 * 60) + " 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter",
+                                       stamp(NOW - 31 * 60) + " 3f9c2a1e 182 зн 640 мс переведен",
+                                       stamp(NOW - 12 * 60) + " 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)",
+                                       stamp(NOW - 4 * 60) + " 3f9c2a1e 131 зн 1380 мс переведен"],
+                      "translateMedianMs": 1380,
                       "translateLogPath": H + "/Library/Logs/mnrh-translate.log"},
         "proxy": dict(proxy, country="KZ"), "modes": modes,
         "claude": {"installed": True, "path": "/opt/homebrew/bin/claude", "version": "2.3.1", "installedVia": "brew",

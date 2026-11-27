@@ -18,19 +18,23 @@ struct HeaderSwitch: View {
 
 // MARK: - Режимы
 
-/// Режимы по макету SettingsPanes pane=modes: слева guard с правилами, проверкой команды и журналом,
-/// справа humanize, buildlog и lid.
+/// Режимы по макету MasterDetail.dc.html: слева список режимов с точкой состояния и строкой из настоящих данных,
+/// справа выбранный режим с описанием, переключателем и его настройками. Выбор помнится в modes.selected.
 struct ModesPane: View {
     @EnvironmentObject var backend: Backend
     @EnvironmentObject var workspace: Workspace
     let data: SettingsData?
     let reload: () async -> Void
+    @AppStorage("modes.selected") private var selected = "guard"
     @State private var test = "git push --force origin main"
     @State private var result: GuardTest?
     @State private var orKey = ""
     @State private var keyNote: (String, Bool)?
 
+    static let order = ["guard", "humanize", "translate", "buildlog", "lid"]
+
     var l: L { L(backend.state.lang) }
+    private var info: SettingsData.ModesInfo? { data?.modesInfo }
 
     private func run(_ args: [String]) {
         Task {
@@ -39,191 +43,269 @@ struct ModesPane: View {
         }
     }
 
+    private func isOn(_ name: String) -> Bool {
+        name == "guard" ? data?.modes?["guard"] ?? data?.guard?.on ?? false : data?.modes?[name] ?? false
+    }
+
     var body: some View {
         PaneTitle(l.modes)
-        if let modes = data?.modes {
+        if data?.modes != nil {
+            let current = Self.order.contains(selected) ? selected : "guard"
             HStack(alignment: .top, spacing: 16) {
-                if let g = data?.guard {
-                    GlassSection(spacing: 12) {
-                        HStack {
-                            Text("guard").font(.system(size: 17, weight: .semibold))
-                            Spacer()
-                            HeaderSwitch(label: "guard", on: modes["guard"] ?? g.on) { run(["guard", $0 ? "on" : "off"]) }
-                        }
-                        Note(text: l.t("Спрашивает перед рискованным вызовом, а не запрещает его. В режиме auto держит вызов, и агент спрашивает тебя в чате. Остальное решают обычные разрешения агента.",
-                                       "Asks before a risky call instead of refusing. In auto mode it holds the call and the agent asks you in the chat. Everything else is left to the agent's normal permissions."))
-                        ForEach(g.rules) { rule in
-                            HStack(alignment: .top, spacing: 12) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(rule.id).font(.system(size: 12, weight: .bold, design: .monospaced))
-                                    Text(l.en ? (rule.textEn ?? rule.text) : rule.text)
-                                        .font(.system(size: 12)).foregroundStyle(Ink.muted)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                Spacer()
-                                HeaderSwitch(label: rule.id, on: rule.on) { run(["guard", $0 ? "unskip" : "skip", rule.id]) }
-                                    .disabled(!(modes["guard"] ?? g.on))
-                            }
-                            .padding(12)
-                            .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
-                        }
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(l.t("Проверить команду", "Test a command")).font(.system(size: 12)).foregroundStyle(Ink.muted)
-                            HStack {
-                                TextField("", text: $test)
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .onSubmit(check)
-                                Button(l.t("Проверить", "Test"), action: check)
-                                    .buttonStyle(PillStyle(small: true))
-                            }
-                            if let result {
-                                Text(describe(result))
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(result.rule == nil ? Ink.teal : Ink.amber)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(l.t("Последние срабатывания", "Recent hits")).font(.system(size: 12)).foregroundStyle(Ink.muted)
-                            Text((g.log ?? []).isEmpty ? l.t("пока не было", "none yet") : (g.log ?? []).joined(separator: "\n"))
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(Ink.text2)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(10)
-                                .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
-                            if let path = g.logPath {
-                                Button(tilde(path)) { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
-                                    .buttonStyle(.textLink)
-                                    .font(.system(size: 12))
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                VStack(spacing: 16) {
-                    modeCard("humanize", on: modes["humanize"],
-                             l.t("Правила письма без примет нейросети для Claude Code и Codex. Касаются ответов, коммитов, PR и документации, но не самого кода.",
-                                 "Writing rules without AI tells for Claude Code and Codex. They cover replies, commits, PRs and docs, not the code itself."),
-                             meta: nil)
-                    let info = data?.modesInfo
-                    translateCard(on: modes["translate"], info: info)
-                    modeCard("buildlog", on: modes["buildlog"],
-                             l.t("Когда сборка Gradle, xcodebuild, swift, npm, pytest или make выводит больше \(info?.buildlogLines ?? 200) строк или 20 КБ, агент получает выжимку с ошибками и итогами.",
-                                 "When a Gradle, xcodebuild, swift, npm, pytest or make build prints more than \(info?.buildlogLines ?? 200) lines or 20 KB, the agent gets a digest with errors and totals."),
-                             meta: info.map { (l.t("Полные логи хранятся \($0.buildlogDays) дней в ", "Full logs kept for \($0.buildlogDays) days in ") + tilde($0.buildlogDir) + "/", Ink.muted) })
-                    GlassSection(spacing: 10) {
-                        Text("lid").font(.system(size: 17, weight: .semibold))
-                        Note(text: l.t("Mac не засыпает с закрытой крышкой, пока идет сессия \"не спать\". Отпускает через 2 минуты после последней или при 15% батареи. Mac в закрытой сумке греется.",
-                                       "The Mac stays awake with the lid closed while a stay-awake session runs. Lets go 2 minutes after the last one or at 15% battery. A Mac in a closed bag gets hot."))
-                        let ready = info?.lidReady ?? false
-                        Text(ready ? l.t("Готов, pmset работает без пароля", "Ready, pmset runs without a password")
-                                   : l.t("Не настроен, pmset нужен пароль администратора", "Not set up, pmset needs an administrator password"))
-                            .font(.system(size: 12))
-                            .foregroundStyle(ready ? Ink.teal : Ink.amber)
-                    }
-                    if !(data?.modesInfo?.lidReady ?? false) {
-                        HStack {
-                            UtilityButton(title: l.t("Настроить", "Set up"), args: ["lid", "setup"], prominent: true)
-                            Spacer()
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity)
+                // в окне 1040 pt справа остается около 480 pt: этого хватает полю ключа с двумя кнопками
+                modeList(current).frame(width: 264)
+                detail(current).frame(maxWidth: .infinity, alignment: .topLeading)
             }
         } else {
             ProgressView()
         }
     }
 
-    private func modeCard(_ name: String, on: Bool?, _ text: String, meta: (String, Color)?) -> some View {
-        GlassSection(spacing: 10) {
-            HStack {
-                Text(name).font(.system(size: 17, weight: .semibold))
-                Spacer()
-                HeaderSwitch(label: name, on: on ?? false) { run([name, $0 ? "on" : "off"]) }
+    // MARK: Список
+
+    private func modeList(_ current: String) -> some View {
+        VStack(spacing: 2) {
+            ForEach(Self.order, id: \.self) { name in
+                let on = isOn(name)
+                let picked = name == current
+                Button {
+                    selected = name
+                } label: {
+                    HStack(spacing: 12) {
+                        Circle()
+                            .fill(on ? (picked ? Color.white : Ink.tealDot) : Color.clear)
+                            .overlay(Circle().strokeBorder(on ? Color.clear : (picked ? Color.white.opacity(0.85) : Ink.dotOff), lineWidth: 1.5))
+                            .frame(width: 8, height: 8)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(picked ? Color.white : Ink.text)
+                            Text(status(name))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(picked ? Color.white.opacity(0.85) : Ink.muted)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(picked ? Color.accentColor : Color.clear))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.hover(10))
+                .help(status(name))
+                .accessibilityLabel(name + ", " + (on ? l.t("включен", "on") : l.t("выключен", "off")) + ", " + status(name))
+                .accessibilityAddTraits(picked ? .isSelected : [])
             }
-            Note(text: text)
-            if let meta {
-                Text(meta.0).font(.system(size: 12)).foregroundStyle(meta.1)
+        }
+        .padding(6)
+        .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(l.modes)
+    }
+
+    /// Строка под именем режима. Только то, что есть в данных настроек: правила, журналы, пороги, готовность.
+    private func status(_ name: String) -> String {
+        switch name {
+        case "guard":
+            guard let g = data?.guard else { return "" }
+            let on = g.rules.filter(\.on).count
+            let rules = l.t("\(on) из \(g.rules.count) правил", "\(on) of \(g.rules.count) rules")
+            guard let hit = g.lastHit else { return rules }
+            let when = Date().timeIntervalSince1970 - hit < 60 ? l.t("только что", "just now") : l.agoLong(hit)
+            return rules + l.t(", сработал ", ", last hit ") + when
+        case "humanize":
+            return l.t("текст агента, но не код", "replies, commits, PRs and docs")
+        case "translate":
+            let name = providerName(info?.translateProvider)
+            if info?.translateKey == nil { return name + l.t(", нет ключа", ", no key") }
+            return name + (info?.translateMedianMs.map { l.t(", медиана ", ", median ") + duration($0) } ?? "")
+        case "buildlog":
+            return l.t("больше \(info?.buildlogLines ?? 200) строк или 20 КБ", "over \(info?.buildlogLines ?? 200) lines or 20 KB")
+        case "lid":
+            if !(info?.lidReady ?? false) { return l.t("нужна настройка", "needs setup") }
+            return isOn("lid") ? l.t("готов", "ready") : l.t("выключен, готов к включению", "off, ready to turn on")
+        default:
+            return ""
+        }
+    }
+
+    private func providerName(_ id: String?) -> String { id == "google" ? "Google AI Studio" : "OpenRouter" }
+
+    private func duration(_ ms: Int) -> String {
+        guard ms >= 1000 else { return l.t("\(ms) мс", "\(ms) ms") }
+        let s = String(format: "%.1f", Double(ms) / 1000)
+        return l.t(s.replacingOccurrences(of: ".", with: ",") + " с", s + " s")
+    }
+
+    // MARK: Панель режима
+
+    private func detail(_ name: String) -> some View {
+        GlassSection(spacing: 18) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(name).font(.system(size: 20, weight: .semibold))
+                    Text(description(name))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Ink.text2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                // без правила sudoers lid on спросил бы пароль, а здесь нет терминала: сначала "Настроить"
+                let locked = name == "lid" && !(info?.lidReady ?? false)
+                HeaderSwitch(label: name, on: isOn(name)) { run([name, $0 ? "on" : "off"]) }
+                    .disabled(locked)
+                    .help(locked ? l.t("Сначала настрой lid", "Set lid up first") : "")
+            }
+            switch name {
+            case "guard": guardPanel
+            case "humanize": humanizePanel
+            case "translate": translatePanel
+            case "buildlog": buildlogPanel
+            default: lidPanel
             }
         }
     }
 
-    /// translate: переключатель, ключ OpenRouter и последние записи журнала (в журнале нет текста промптов).
-    private func translateCard(on: Bool?, info: SettingsData.ModesInfo?) -> some View {
-        GlassSection(spacing: 10) {
-            HStack {
-                Text("translate").font(.system(size: 17, weight: .semibold))
-                Spacer()
-                HeaderSwitch(label: "translate", on: on ?? false) { run(["translate", $0 ? "on" : "off"]) }
-            }
-            Note(text: l.t("Сообщения на русском и других нелатинских языках переводятся через OpenRouter или Google AI Studio, агент получает английский текст рядом с оригиналом и отвечает на твоем языке. Слэш-команды, длинные вставки и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
-                           "Messages in Russian and other non-Latin languages are translated through OpenRouter or Google AI Studio, and the agent gets the English text next to the original and replies in your language. Slash commands, long pastes and anything that looks like keys, tokens or proxy links are not sent."))
-            let google = info?.translateProvider == "google"
-            let name = google ? "Google AI Studio" : "OpenRouter"
-            SegmentedCapsule(selection: Binding(get: { info?.translateProvider ?? "openrouter" },
-                                                set: { run(["translate", "provider", $0]) }),
-                             options: [("openrouter", "OpenRouter", nil), ("google", "Google AI Studio", nil)])
-            if google {
-                Note(text: l.t("Бесплатно в пределах лимитов, но Google может брать запросы для улучшения моделей. Из России отвечает только через proxy. Временами думает 7-15 секунд, тогда при сохраненном ключе OpenRouter переводит он.",
-                               "Free within limits, but Google may use requests to improve its models. From Russia it answers only through the proxy. It sometimes takes 7-15 seconds, and then OpenRouter translates if its key is saved."))
-            }
-            let source = info?.translateKey
-            Text(source == "file" ? l.t("Ключ \(name) сохранен", "\(name) key saved")
-                 : source == "env" ? l.t("Ключ \(name) из переменной окружения", "\(name) key from the environment")
-                 : l.t("Ключа \(name) нет, без него перевод не работает", "No \(name) key, nothing is translated without it"))
-                .font(.system(size: 12))
-                .foregroundStyle(source == nil ? Ink.amber : Ink.teal)
-            HStack(spacing: 8) {
-                SecureField(google ? "AQ.… / AIza…" : "sk-or-v1-…", text: $orKey)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .onSubmit(saveKey)
-                    .accessibilityLabel(l.t("Ключ \(name)", "\(name) key"))
-                Button(l.t("Сохранить", "Save"), action: saveKey)
-                    .buttonStyle(PillStyle(small: true))
-                    .disabled(orKey.trimmingCharacters(in: .whitespaces).isEmpty)
-                if source == "file" {
-                    Button(l.t("Удалить", "Remove")) { run(["translate", "key", "rm", info?.translateProvider ?? "openrouter"]) }
-                        .buttonStyle(PillStyle(small: true))
-                }
-            }
-            if let keyNote {
-                Text(keyNote.0).font(.system(size: 12)).foregroundStyle(keyNote.1 ? Ink.teal : Ink.amber)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let model = info?.translateModel {
-                let spare = info?.translateFallback == nil ? "" : l.t(", запасной OpenRouter", ", OpenRouter as a fallback")
-                Text(l.t("Модель ", "Model ") + model + (google ? spare : "")).font(.system(size: 12)).foregroundStyle(Ink.muted)
-            }
-            let lines = info?.translateLog ?? []
-            if !lines.isEmpty {
-                Text(lines.joined(separator: "\n"))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Ink.text2)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
-            }
-            if let path = info?.translateLogPath, !lines.isEmpty {
-                Button(tilde(path)) { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+    private func description(_ name: String) -> String {
+        switch name {
+        case "guard":
+            return l.t("Спрашивает перед рискованным вызовом, а не запрещает его. В режиме auto держит вызов, и агент спрашивает тебя в чате. Остальное решают обычные разрешения агента.",
+                       "Asks before a risky call instead of refusing. In auto mode it holds the call and the agent asks you in the chat. Everything else is left to the agent's normal permissions.")
+        case "humanize":
+            return l.t("Правила письма без примет нейросети для Claude Code и Codex. Касаются ответов, коммитов, PR и документации, но не самого кода.",
+                       "Writing rules without AI tells for Claude Code and Codex. They cover replies, commits, PRs and docs, not the code itself.")
+        case "translate":
+            return l.t("Сообщения на русском и других нелатинских языках переводятся через OpenRouter или Google AI Studio, агент получает английский текст рядом с оригиналом и отвечает на твоем языке. Слэш-команды, длинные вставки и все, что похоже на ключи, токены и ссылки proxy, не отправляются.",
+                       "Messages in Russian and other non-Latin languages are translated through OpenRouter or Google AI Studio, and the agent gets the English text next to the original and replies in your language. Slash commands, long pastes and anything that looks like keys, tokens or proxy links are not sent.")
+        case "buildlog":
+            return l.t("Длинный вывод сборок и тестов Claude Code видит выжимкой: упавшие задачи и тесты, ошибки и предупреждения со строками вокруг, итоговые строки и путь к полному логу.",
+                       "Claude Code sees long build and test output as a digest: failed tasks and tests, errors and warnings with the lines around them, the totals and the path to the full log.")
+        default:
+            return l.t("Работает вместе с кнопкой \"Не спать\" на вкладке сессии. Кнопка не дает Mac уснуть, пока крышка открыта, а lid держит его и с закрытой крышкой. Отпускает через 2 минуты после последней такой сессии или при 15% батареи.",
+                       "Works together with the Stay awake button on a session tab. The button keeps the Mac from sleeping while the lid is open, and lid keeps it awake with the lid closed too. Lets go 2 minutes after the last such session or at 15% battery.")
+        }
+    }
+
+    private func fieldLabel(_ text: String) -> some View {
+        Text(text).font(.system(size: 13)).foregroundStyle(Ink.muted).gridColumnAlignment(.leading)
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text).font(.system(size: 12)).foregroundStyle(Ink.muted)
+    }
+
+    /// Подпись журнала и ссылка на файл справа, как "Last messages ... Open log" в макете.
+    private func logHeader(_ title: String, path: String?) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            sectionTitle(title)
+            Spacer(minLength: 8)
+            if let path {
+                Button(l.t("Открыть журнал", "Open log")) { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
                     .buttonStyle(.textLink)
                     .font(.system(size: 12))
+                    .help(tilde(path))
             }
         }
     }
 
-    private func saveKey() {
-        let key = orKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else { return }
-        Task {
-            let r = await Task.detached(priority: .userInitiated) { Backend.runWithInput(["translate", "key"], input: key) }.value
-            if r.ok { orKey = "" }
-            keyNote = (r.ok ? l.t("Ключ сохранен", "Key saved") : r.text, r.ok)
-            await reload()
+    private func rawLog(_ lines: [String]) -> some View {
+        Text(lines.joined(separator: "\n"))
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(Ink.text2)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Ink.card))
+    }
+
+    /// Таблица журнала: заголовки колонок, строки через тонкую линию. Последняя колонка забирает остаток ширины.
+    private func logTable(_ heads: [String], _ rows: [[(String, Color)]]) -> some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 6) {
+            GridRow {
+                ForEach(Array(heads.enumerated()), id: \.offset) { _, head in
+                    Text(head).foregroundStyle(Ink.faint)
+                }
+            }
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                Divider().overlay(Ink.hairline)
+                GridRow {
+                    ForEach(Array(row.enumerated()), id: \.offset) { i, cell in
+                        // последняя колонка обычным шрифтом и в две строки: итог перевода и вызов guard бывают длинными
+                        let last = i == row.count - 1
+                        Text(cell.0)
+                            .font(last ? .system(size: 12) : nil)
+                            .foregroundStyle(cell.1)
+                            .lineLimit(last ? 2 : 1)
+                            .truncationMode(last ? .tail : .middle)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .help(cell.0)
+                            .frame(maxWidth: last ? .infinity : nil, alignment: .leading)
+                    }
+                }
+            }
+        }
+        .font(.system(size: 12, design: .monospaced))
+        .textSelection(.enabled)
+    }
+
+    // MARK: guard
+
+    @ViewBuilder private var guardPanel: some View {
+        if let g = data?.guard {
+            VStack(alignment: .leading, spacing: 8) {
+                sectionTitle(l.t("Правила", "Rules"))
+                ForEach(g.rules) { rule in
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(rule.id).font(.system(size: 12, weight: .bold, design: .monospaced))
+                            Text(l.en ? (rule.textEn ?? rule.text) : rule.text)
+                                .font(.system(size: 12)).foregroundStyle(Ink.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        HeaderSwitch(label: rule.id, on: rule.on) { run(["guard", $0 ? "unskip" : "skip", rule.id]) }
+                            .disabled(!isOn("guard"))
+                    }
+                    .padding(12)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Ink.card))
+                }
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                sectionTitle(l.t("Проверить команду", "Test a command"))
+                HStack {
+                    TextField("", text: $test)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .monospaced))
+                        .onSubmit(check)
+                        .accessibilityLabel(l.t("Команда для проверки", "Command to test"))
+                    Button(l.t("Проверить", "Test"), action: check)
+                        .buttonStyle(PillStyle(small: true))
+                }
+                if let result {
+                    Text(describe(result))
+                        .font(.system(size: 12))
+                        .foregroundStyle(result.rule == nil ? Ink.teal : Ink.amber)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                logHeader(l.t("Последние срабатывания", "Recent hits"), path: g.logPath)
+                let lines = g.log ?? []
+                let rows = lines.compactMap(GuardLine.init)
+                if lines.isEmpty {
+                    Text(l.t("пока не было", "none yet")).font(.system(size: 12)).foregroundStyle(Ink.faint)
+                } else if rows.count == lines.count {
+                    logTable([l.t("время", "time"), l.t("что", "action"), l.t("правило", "rule"), l.t("вызов", "call")],
+                             rows.reversed().map { r in
+                                 [(r.time, Ink.text2), (r.action, r.action == "allow" ? Ink.teal : r.action == "error" ? Ink.red : Ink.amber),
+                                  (r.rule, Ink.text), (r.what, Ink.muted)]
+                             })
+                } else {
+                    rawLog(lines)
+                }
+            }
         }
     }
 
@@ -240,6 +322,281 @@ struct ModesPane: View {
                                  : l.t("Спросит, правило \(rule)", "Will ask, rule \(rule)")
         return head + (r.why.map { ", " + $0 } ?? "")
     }
+
+    // MARK: humanize
+
+    private var humanizePanel: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
+            GridRow {
+                fieldLabel(l.t("Агенты", "Agents"))
+                Text("Claude Code, Codex")
+                    // одна растягиваемая ячейка отдает колонке значений всю ширину, иначе Grid делит ее поровну
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            GridRow {
+                fieldLabel(l.t("Касается", "Covers"))
+                Text(l.t("ответов, коммитов, PR и документации", "replies, commits, PRs and docs"))
+            }
+            GridRow {
+                fieldLabel(l.t("Не касается", "Leaves alone"))
+                Text(l.t("самого кода", "the code itself"))
+            }
+            GridRow {
+                fieldLabel(l.t("В сессии", "In a session"))
+                Text(l.t("/humanize переключает, есть on, off и status", "/humanize toggles it, also on, off and status"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .font(.system(size: 13))
+    }
+
+    // MARK: translate
+
+    /// Ключ здесь только вводится: панель показывает, сохранен ли он, но не сам ключ и не его часть.
+    @ViewBuilder private var translatePanel: some View {
+        let provider = info?.translateProvider ?? "openrouter"
+        let google = provider == "google"
+        let name = providerName(provider)
+        let source = info?.translateKey
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
+            GridRow {
+                fieldLabel(l.t("Провайдер", "Provider"))
+                SegmentedCapsule(selection: Binding(get: { provider }, set: { run(["translate", "provider", $0]) }),
+                                 options: [("openrouter", "OpenRouter", nil), ("google", "Google AI Studio", nil)])
+                    .frame(maxWidth: 340)
+            }
+            GridRow {
+                fieldLabel(l.t("Ключ", "Key"))
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(source == "file" ? l.t("сохранен", "saved")
+                         : source == "env" ? l.t("из переменной окружения", "from the environment")
+                         : l.t("нет, без него перевод не работает", "none, nothing is translated without it"))
+                        .foregroundStyle(source == nil ? Ink.amber : Ink.teal)
+                    HStack(spacing: 8) {
+                        SecureField(google ? "AQ.… / AIza…" : "sk-or-v1-…", text: $orKey)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12, design: .monospaced))
+                            .onSubmit(saveKey)
+                            .accessibilityLabel(l.t("Ключ \(name)", "\(name) key"))
+                        Button(l.t("Сохранить", "Save"), action: saveKey)
+                            .buttonStyle(PillStyle(small: true))
+                            .disabled(orKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                        if source == "file" {
+                            Button(l.t("Удалить", "Remove")) { run(["translate", "key", "rm", provider]) }
+                                .buttonStyle(PillStyle(small: true))
+                        }
+                    }
+                    if let keyNote {
+                        Text(keyNote.0).font(.system(size: 12)).foregroundStyle(keyNote.1 ? Ink.teal : Ink.amber)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            if let model = info?.translateModel {
+                GridRow {
+                    fieldLabel(l.t("Модель", "Model"))
+                    Text(model).font(.system(size: 12, design: .monospaced)).textSelection(.enabled)
+                }
+            }
+            GridRow {
+                fieldLabel(l.t("Запасной", "Fallback"))
+                let other = providerName(google ? "openrouter" : "google")
+                Text(info?.translateFallback.map { l.t("\(providerName($0)), когда \(name) ошибается или опаздывает",
+                                                       "\(providerName($0)), when \(name) fails or is late") }
+                     ?? l.t("нет, появится с ключом \(other)", "none, a saved \(other) key adds one"))
+                    .foregroundStyle(info?.translateFallback == nil ? Ink.muted : Ink.text)
+                    .fixedSize(horizontal: false, vertical: true)
+                    // без растяжения Grid меряет текст в две строки и оставляет над ним пустое место
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .font(.system(size: 13))
+        if google {
+            Text(l.t("Бесплатно в пределах лимитов, но Google может брать запросы для улучшения моделей. Из России отвечает только через proxy. Временами думает 7-15 секунд, тогда при сохраненном ключе OpenRouter переводит он.",
+                     "Free within limits, but Google may use requests to improve its models. From Russia it answers only through the proxy. It sometimes takes 7-15 seconds, and then OpenRouter translates if its key is saved."))
+                .font(.system(size: 12))
+                .foregroundStyle(Ink.warn)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12).fill(Ink.warnChip))
+        }
+        let lines = info?.translateLog ?? []
+        if !lines.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                logHeader(l.t("Последние сообщения, текст не хранится", "Last messages, no text is stored"), path: info?.translateLogPath)
+                let rows = lines.compactMap(TranslateLine.init)
+                if rows.count == lines.count {
+                    logTable([l.t("время", "time"), l.t("знаков", "chars"), l.t("мс", "ms"), l.t("итог", "result")],
+                             rows.reversed().map { r in
+                                 [(r.shortTime, Ink.text2), (String(r.chars), Ink.text2), (r.ms.map(String.init) ?? "-", Ink.text2),
+                                  (r.result(l), r.ok ? Ink.teal : r.failed ? Ink.red : r.skipped ? Ink.amber : Ink.text)]
+                             })
+                } else {
+                    rawLog(lines)
+                }
+            }
+        }
+    }
+
+    private func saveKey() {
+        let key = orKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        Task {
+            let r = await Task.detached(priority: .userInitiated) { Backend.runWithInput(["translate", "key"], input: key) }.value
+            if r.ok { orKey = "" }
+            keyNote = (r.ok ? l.t("Ключ сохранен", "Key saved") : r.text, r.ok)
+            await reload()
+        }
+    }
+
+    // MARK: buildlog
+
+    @ViewBuilder private var buildlogPanel: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
+            GridRow {
+                fieldLabel(l.t("Команды", "Commands"))
+                Text("Gradle, xcodebuild, swift build/test, npm, pnpm, yarn, pytest, make")
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            GridRow {
+                fieldLabel(l.t("Выжимка", "Digest"))
+                Text(l.t("когда вывод больше \(info?.buildlogLines ?? 200) строк или 20 КБ",
+                         "when the output is over \(info?.buildlogLines ?? 200) lines or 20 KB"))
+            }
+            if let info {
+                GridRow {
+                    fieldLabel(l.t("Полные логи", "Full logs"))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(l.t("хранятся \(info.buildlogDays) дней", "kept for \(info.buildlogDays) days"))
+                        Button(tilde(info.buildlogDir) + "/") { NSWorkspace.shared.open(URL(fileURLWithPath: info.buildlogDir)) }
+                            .buttonStyle(.textLink)
+                            .font(.system(size: 12, design: .monospaced))
+                    }
+                }
+            }
+        }
+        .font(.system(size: 13))
+        Note(text: l.t("Упавшая сборка тоже приходит выжимкой, и Claude Code пишет, что команда упала. Код возврата при этом теряется.",
+                       "A failed build also comes as a digest, and Claude Code is told the command failed. The exit code itself is lost."))
+    }
+
+    // MARK: lid
+
+    @ViewBuilder private var lidPanel: some View {
+        let ready = info?.lidReady ?? false
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 12) {
+            GridRow {
+                fieldLabel(l.t("Состояние", "Status"))
+                Text(ready ? l.t("готов, pmset работает без пароля", "ready, pmset runs without a password")
+                           : l.t("не настроен, pmset нужен пароль администратора", "not set up, pmset needs an administrator password"))
+                    .foregroundStyle(ready ? Ink.teal : Ink.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            GridRow {
+                fieldLabel(l.t("Держит", "Holds"))
+                Text(l.t("вкладки с \"Не спать\" и сессии agentmeister -k", "tabs with Stay awake and agentmeister -k sessions"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .font(.system(size: 13))
+        if !ready {
+            HStack(spacing: 12) {
+                UtilityButton(title: l.t("Настроить", "Set up"), args: ["lid", "setup"], prominent: true)
+                Note(text: l.t("Ставит правило sudoers для pmset, sudo один раз спросит пароль во вкладке.",
+                               "Adds a sudoers rule for pmset, sudo asks for the password once in a tab."))
+            }
+        }
+        Note(text: l.t("Mac в закрытой сумке греется.", "A Mac in a closed bag gets hot."))
+    }
+}
+
+/// Строка журнала guard в виде guard_log: "24.11 19:47  hold  secrets-read   /x/.env".
+struct GuardLine {
+    let time, action, rule, what: String
+
+    init?(_ line: String) {
+        guard let m = logMatch(#"^(\d\d\.\d\d \d\d:\d\d)\s+(\S+)\s+(\S+)(?:\s+(.*))?$"#, line) else { return nil }
+        time = m[0] ?? ""
+        action = m[1] ?? ""
+        rule = m[2] ?? ""
+        what = m[3] ?? ""
+    }
+}
+
+/// Строка журнала translate: "2026-11-27 10:41:07 3f9c2a1e 182 зн 640 мс переведен". Итог пишется по-русски,
+/// для английского интерфейса известные итоги переводятся, остальное показывается как есть.
+struct TranslateLine {
+    let date, time: String
+    let chars: Int
+    let ms: Int?
+    let raw: String
+
+    init?(_ line: String) {
+        guard let m = logMatch(#"^(\d{4}-\d\d-\d\d) (\d\d:\d\d:\d\d) \S+ (\d+) зн(?: (\d+) мс)? (.+)$"#, line),
+              let chars = Int(m[2] ?? "") else { return nil }
+        date = m[0] ?? ""
+        time = m[1] ?? ""
+        self.chars = chars
+        ms = m[3].flatMap { Int($0) }
+        raw = m[4] ?? ""
+    }
+
+    /// Только время для сегодняшних строк, иначе день и месяц.
+    var shortTime: String {
+        // журнал пишет местное время
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        let today = f.string(from: Date())
+        guard date != today, date.count == 10 else { return time }
+        let p = date.split(separator: "-")
+        return "\(p[2]).\(p[1]) \(time.prefix(5))"
+    }
+
+    var ok: Bool { raw == "переведен" }
+    var skipped: Bool { raw.hasPrefix("пропущен") }
+    var failed: Bool { raw.hasPrefix("ошибка") || raw.hasPrefix("сбой") }
+
+    static let secrets = ["приватный ключ": "private key", "ссылка proxy": "proxy link", "пароль в ссылке": "password in a link",
+                          "токен в ссылке": "token in a link", "ключ API": "API key", "токен GitHub": "GitHub token",
+                          "токен Slack": "Slack token", "ключ AWS": "AWS key", "ключ Google": "Google key",
+                          "токен Telegram": "Telegram token", "секрет в присваивании": "secret in an assignment",
+                          "заголовок авторизации": "authorization header", "длинный токен": "long token"]
+
+    func result(_ l: L) -> String {
+        guard l.en else { return raw }
+        func after(_ prefix: String) -> String? { raw.hasPrefix(prefix) ? String(raw.dropFirst(prefix.count)) : nil }
+        if ok { return "translated" }
+        if raw == "перевод совпал с оригиналом" { return "same as the original" }
+        if let e = after("ошибка, ") { return "error, " + e }
+        if let e = after("сбой ") { return "crash " + e }
+        if let r = raw.range(of: " не ответил вовремя, перевел ") {
+            return "\(raw[..<r.lowerBound]) late, \(raw[r.upperBound...]) translated"
+        }
+        if let why = after("пропущен, ") {
+            let reasons = ["пусто": "empty", "слэш-команда": "slash command", "без нелатинских букв": "no non-Latin letters"]
+            if let en = reasons[why] { return "skipped, " + en }
+            if let n = logMatch(#"^длиннее (\d+) знаков$"#, why)?[0] { return "skipped, longer than \(n) characters" }
+            if let s = logMatch(#"^похоже на секрет \((.+)\)$"#, why)?[0] {
+                return "skipped, looks like a secret (\(Self.secrets[s] ?? s))"
+            }
+            return "skipped, " + why
+        }
+        return raw
+    }
+}
+
+/// Группы совпадения с начала строки, nil у группы, которая не участвовала.
+private func logMatch(_ pattern: String, _ text: String) -> [String?]? {
+    guard let rx = try? NSRegularExpression(pattern: pattern),
+          let m = rx.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) else { return nil }
+    return (1..<m.numberOfRanges).map { i in Range(m.range(at: i), in: text).map { String(text[$0]) } }
 }
 
 /// Ответ app-state guard-test.
