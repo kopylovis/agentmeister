@@ -1046,6 +1046,26 @@ Android](https://github.com/gotify/android) (для iPhone у Gotify прило�
 поменять можно командой `gotify priority <вопросы> <готово>`. Еще есть `gotify away | always | off | test`,
 `gotify body full | title` и `gotify forget`.
 
+Или на вебхук, POST с JSON на любой адрес, для Home Assistant, n8n или своего скрипта.
+`agentmeister notify webhook setup` берет адрес из ввода или stdin и хранит его целиком в Связке ключей
+(`agentmeister.notify`, аккаунт `webhook`): в адресе часто сидит токен. `webhook auth` так же добавляет заголовок
+`Authorization` (например `Bearer <токен>`). В теле есть `agent`, `title` (агент и что случилось), `message`,
+`project`, `session`, `urgent`, а еще `text` и `content` с заголовком и текстом одной строкой. С `webhook body title`
+название сессии и текст не уходят. Еще есть `webhook away | always | off | test` и `webhook forget`.
+
+Или в [Pushover](https://pushover.net/api), платный сервис, свой сервер не нужен. `agentmeister notify pushover setup`
+спрашивает User Key и API Token приложения или берет их из stdin двумя строками и кладет оба в Связку ключей
+(`agentmeister.notify`, аккаунты `pushover-user` и `pushover`). Вопросы и запросы разрешений уходят с приоритетом 1,
+он пробивает тихие часы. По умолчанию уходят только заголовок и проект (`pushover body full` шлет все). Еще есть
+`pushover away | always | off | test` и `pushover forget`.
+
+Или через [Apprise](https://github.com/caronc/apprise) в любой из его сервисов. Адреса сервисов agentmeister не
+хранит. Он запускает `apprise` без адресов, и apprise берет их из своего [config](https://github.com/caronc/apprise/wiki/config)
+(`~/.config/apprise/apprise.yml` и другие пути, которые он читает), а текст получает через stdin.
+`agentmeister notify apprise away` включает канал, когда `apprise` установлен (`brew install apprise`) и config есть.
+`apprise tag <тег>` оставляет только сервисы с этим тегом. По умолчанию уходят только заголовок и проект
+(`apprise body full` шлет все). `apprise forget` выключает канал, config apprise не трогает.
+
 С Remote Control Claude Code сам присылает push в приложение Claude на телефоне. Если сессия
 подключена (`/remote-control`, `--remote-control` или «Enable Remote Control for all sessions») и в
 `/config` включено **Push when actions required** (`inputNeededNotifEnabled`), agentmeister не шлёт

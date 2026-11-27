@@ -1016,6 +1016,28 @@ only, 4-7 with sound, 8-10 with sound and vibration. Questions and permission re
 `gotify priority <questions> <done>` changes that. Also `gotify away | always | off | test`, `gotify body full | title`
 and `gotify forget`.
 
+Or to a webhook: a POST with JSON to any URL, for Home Assistant, n8n or your own script.
+`agentmeister notify webhook setup` reads the URL from the prompt or stdin and keeps it whole in the Keychain
+(`agentmeister.notify`, account `webhook`), since a URL often carries a token. `webhook auth` adds an `Authorization`
+header the same way (for example `Bearer <token>`). The body has `agent`, `title` (the agent and what happened),
+`message`, `project`, `session`, `urgent`, plus `text` and `content` with the title and the message in one string.
+With `webhook body title` the session name and the text stay out. Also `webhook away | always | off | test` and
+`webhook forget`.
+
+Or to [Pushover](https://pushover.net/api), a paid service that needs no server of your own.
+`agentmeister notify pushover setup` asks for the User Key and the application API Token, or reads them from stdin as
+two lines, and keeps both in the Keychain (`agentmeister.notify`, accounts `pushover-user` and `pushover`). Questions
+and permission requests use priority 1, which gets through quiet hours. Only the title and the project go by default
+(`pushover body full` sends everything). Also `pushover away | always | off | test` and `pushover forget`.
+
+Or through [Apprise](https://github.com/caronc/apprise) to any of its services. agentmeister doesn't keep the
+service URLs: it runs `apprise` without URLs, so apprise takes them from its own
+[config](https://github.com/caronc/apprise/wiki/config) (`~/.config/apprise/apprise.yml` and the other paths it
+reads), and the text goes to apprise through stdin. `agentmeister notify apprise away` turns it on once `apprise` is
+installed (`brew install apprise`) and the config exists. `apprise tag <tag>` limits it to services with that tag.
+Only the title and the project go by default (`apprise body full` sends everything). `apprise forget` turns it off
+and leaves the apprise config alone.
+
 With Remote Control, Claude Code pushes to the Claude app on your phone itself. If the session is connected
 (`/remote-control`, `--remote-control` or "Enable Remote Control for all sessions") and **Push when actions
 required** is on in `/config` (`inputNeededNotifEnabled`), agentmeister doesn't send permission requests and

@@ -69,6 +69,33 @@ struct SettingsData: Decodable {
             var error: SendError? = nil
         }
 
+        struct Webhook: Decodable {
+            let mode: String
+            let configured: Bool
+            let host: String?
+            let body: String
+            let auth: Bool
+            var error: SendError? = nil
+        }
+
+        struct Pushover: Decodable {
+            let mode: String
+            let configured: Bool
+            let body: String
+            var error: SendError? = nil
+        }
+
+        /// Apprise шлет по своему config, configured значит: команда apprise есть и config найден.
+        struct Apprise: Decodable {
+            let mode: String
+            let configured: Bool
+            let installed: Bool
+            let config: String?
+            let body: String
+            let tag: String?
+            var error: SendError? = nil
+        }
+
         let on: Bool
         let after: Int
         let sound: Bool
@@ -79,6 +106,9 @@ struct SettingsData: Decodable {
         var ntfy: Ntfy? = nil
         var bark: Bark? = nil
         var gotify: Gotify? = nil
+        var webhook: Webhook? = nil
+        var pushover: Pushover? = nil
+        var apprise: Apprise? = nil
     }
 
     struct Guard: Decodable {

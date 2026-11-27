@@ -258,7 +258,11 @@ def build(out):
                             "error": {"at": int(NOW - 40 * 60), "text": "HTTP 400, the server doesn't know this device key. "
                                                                          "Copy the key again in the Bark app"}},
                    "gotify": {"mode": "away", "configured": True, "server": "https://gotify.example.com", "body": "full",
-                              "priority": {"urgent": 8, "normal": 4}}},
+                              "priority": {"urgent": 8, "normal": 4}},
+                   "webhook": {"mode": "always", "configured": True, "host": "ha.example.com", "body": "full", "auth": True},
+                   "pushover": {"mode": "off", "configured": False, "body": "title"},
+                   "apprise": {"mode": "off", "configured": False, "installed": False, "config": None, "body": "title",
+                               "tag": None}},
         "guard": {"on": True, "log": [stamp(NOW - 26 * 3600, "%d.%m %H:%M") + "  ask   force-push     git push --force origin main",
                                       stamp(NOW - 3 * 3600, "%d.%m %H:%M") + "  hold  rm-root        rm -rf ../build-cache"],
                   "lastHit": int(NOW - 3 * 3600), "logPath": H + "/Library/Logs/mnrh-guard.log", "rules": [

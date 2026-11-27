@@ -13,6 +13,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import CACHE, HOME, UUID_RE, read_config, settings_name, settings_path, tilde, tr, write_config, write_json
 from swiftagent import SwiftAgent
+import apprise_channel
 import bark_channel
 import channels
 import gotify_channel
@@ -20,7 +21,9 @@ import keychain
 import ntfy_alert
 import ntfy_channel
 import presence
+import pushover_channel
 import telegram
+import webhook_channel
 
 AGENT = SwiftAgent("notify", "agentmeister Notify", "com.agentmeister.notify")
 # Так приложение называлось, пока было частью mnrh. После сборки нового его удаляем.
@@ -135,6 +138,12 @@ def usage():
              "agentmeister notify bark        also send to Bark on the iPhone, encryption optional: connect, -h for more"))
     print(tr("agentmeister notify gotify      ещё и в Gotify на Android, свой сервер: подключить, -h подробнее",
              "agentmeister notify gotify      also send to Gotify on Android, your own server: connect, -h for more"))
+    print(tr("agentmeister notify webhook     ещё и POST с JSON на свой адрес: подключить, -h подробнее",
+             "agentmeister notify webhook     also POST JSON to your own URL: connect, -h for more"))
+    print(tr("agentmeister notify pushover    ещё и в Pushover: подключить, -h подробнее",
+             "agentmeister notify pushover    also send to Pushover: connect, -h for more"))
+    print(tr("agentmeister notify apprise     ещё и через apprise и его config: -h подробнее",
+             "agentmeister notify apprise     also send through apprise and its config: -h for more"))
     print(tr("  … telegram test | off | always | away <сек>", "  … telegram test | off | always | away <sec>"))
     print(tr("  … telegram approve on | off  разрешать и отклонять запросы Claude кнопками в Telegram, когда ты не за Mac",
              "  … telegram approve on | off  allow or deny Claude's requests with Telegram buttons when you are away from the Mac"))
@@ -639,6 +648,9 @@ def status():
     print(ntfy_channel.describe())
     print(bark_channel.describe())
     print(gotify_channel.describe())
+    print(webhook_channel.describe())
+    print(pushover_channel.describe())
+    print(apprise_channel.describe())
 
 
 def tossling_describe():
@@ -785,11 +797,12 @@ def main():
     if rest[0] == "test":
         return test()
     handlers = {"telegram": telegram.main, "tossling": phone, "phone": phone, "ntfy": ntfy_channel.main,
-                "bark": bark_channel.main, "gotify": gotify_channel.main}
+                "bark": bark_channel.main, "gotify": gotify_channel.main, "webhook": webhook_channel.main,
+                "pushover": pushover_channel.main, "apprise": apprise_channel.main}
     if rest[0] in handlers:
         code = handlers[rest[0]](rest[1:])
         # удачная проверка или новые ключи снимают старую ошибку канала в окне настроек
-        if code == 0 and rest[1:2] and rest[1] in ("test", "setup", "token", "forget", "server", "off"):
+        if code == 0 and rest[1:2] and rest[1] in ("test", "setup", "token", "auth", "forget", "server", "off"):
             channels.record("tossling" if rest[0] == "phone" else rest[0])
         return code
     usage()

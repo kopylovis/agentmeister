@@ -620,11 +620,14 @@ def settings():
             out["errors"][name] = f"{type(e).__name__}: {e}"
 
     def notify():
+        import apprise_channel
         import bark_channel
         import gotify_channel
         import ntfy_alert
         import ntfy_channel
         import presence
+        import pushover_channel
+        import webhook_channel
         try:
             after = int(cfg.get("notify_after", 20))
         except ValueError:
@@ -660,7 +663,18 @@ def settings():
                 "gotify": {"mode": gotify_channel.mode(), "configured": gotify_channel.configured(),
                            "server": gotify_channel.server() or None, "body": gotify_channel.body_mode(),
                            "priority": {"urgent": gotify_channel.priority(True), "normal": gotify_channel.priority(False)},
-                           "error": error("gotify")}}
+                           "error": error("gotify")},
+                "webhook": {"mode": webhook_channel.mode(), "configured": webhook_channel.configured(),
+                            "host": webhook_channel.host() or None, "body": webhook_channel.body_mode(),
+                            "auth": bool(webhook_channel.keychain.find(webhook_channel.AUTH_ACCOUNT)) if webhook_channel.configured() else False,
+                            "error": error("webhook")},
+                "pushover": {"mode": pushover_channel.mode(), "configured": pushover_channel.configured(),
+                             "body": pushover_channel.body_mode(), "error": error("pushover")},
+                "apprise": {"mode": apprise_channel.mode(), "configured": apprise_channel.configured(),
+                            "installed": bool(apprise_channel.binary()),
+                            "config": (apprise_channel.config_file() or "").replace(mnrhlib.HOME, "~") or None,
+                            "body": apprise_channel.body_mode(), "tag": apprise_channel.tag() or None,
+                            "error": error("apprise")}}
 
     def guard():
         import claude_guard
