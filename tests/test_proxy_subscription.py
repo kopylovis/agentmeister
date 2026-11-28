@@ -98,6 +98,8 @@ class Upstream(unittest.TestCase):
                              (["upstream:socks5://127.0.0.1:1080"], "de", ""))
             self.assertEqual(p.sub_options(["work", "--upstream", "http://h:3128"]), (["work", "upstream:http://h:3128"], "", ""))
             self.assertIsNone(p.sub_options(["--upstream", "socks5://nohost"]))
+            with patch("sys.stdin", io.StringIO("")):
+                self.assertIsNone(p.sub_options(["--upstream", "-"]))  # без терминала адрес не спросить
         self.assertEqual(p.ask_url("upstream:socks5://127.0.0.1:1080", "usage"), "upstream:socks5://127.0.0.1:1080")
 
     def test_refresh_builds_the_file_without_network(self):

@@ -1420,6 +1420,7 @@ struct AddSubscriptionSheet: View {
     @State private var name = ""
     @State private var country = ""
     @State private var only = ""
+    @State private var ownProxy = false
 
     var l: L { L(backend.state.lang) }
 
@@ -1453,6 +1454,12 @@ struct AddSubscriptionSheet: View {
                     }
                 }
                 GridRow {
+                    Text(l.t("Источник", "Source")).foregroundStyle(Ink.muted)
+                    SegmentedCapsule(selection: Binding(get: { ownProxy ? "own" : "sub" }, set: { ownProxy = $0 == "own" }),
+                                     options: [("sub", l.t("Подписка", "Subscription"), nil), ("own", l.t("Свой прокси", "Your own proxy"), nil)],
+                                     compact: true)
+                }
+                GridRow {
                     Text(l.t("Страна", "Country")).foregroundStyle(Ink.muted)
                     TextField(mainCountry ?? "DE", text: $country).textFieldStyle(.roundedBorder).frame(width: 80)
                 }
@@ -1467,14 +1474,18 @@ struct AddSubscriptionSheet: View {
                     "Plain -x uses this subscription in order only if its country is \(c), like the main one. With another country it's used only when chosen on its own.")
             } ?? l.t("Если страна задана, а выход через подписку окажется в другой стране, подписка не добавится.",
                      "If a country is set and the subscription exits elsewhere, it won't be added."))
-            Note(text: l.t("Ссылку на подписку спросит вкладка, которая откроется, на экране ее видно не будет. Хранится она в ~/.config/agentmeister/proxy/subs/, читать ее можешь только ты.",
-                           "The tab that opens asks for the subscription link and doesn't show it. It's kept in ~/.config/agentmeister/proxy/subs/, readable only by you."))
+            Note(text: ownProxy
+                 ? l.t("Адрес прокси с портом (socks5://, http:// или https://, логин и пароль можно в адресе) спросит вкладка, которая откроется, на экране его видно не будет.",
+                       "The tab that opens asks for the proxy address with its port (socks5://, http:// or https://, a login and password can go in it) and doesn't show it.")
+                 : l.t("Ссылку на подписку спросит вкладка, которая откроется, на экране ее видно не будет. Хранится она в ~/.config/agentmeister/proxy/subs/, читать ее можешь только ты.",
+                       "The tab that opens asks for the subscription link and doesn't show it. It's kept in ~/.config/agentmeister/proxy/subs/, readable only by you."))
             HStack {
                 Spacer()
                 Button(l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(l.t("Дальше", "Continue")) {
                     let code = country.trimmingCharacters(in: .whitespaces).uppercased()
-                    run(["proxy", "add", name] + (code.isEmpty ? [] : ["--country", code]) + (only.isEmpty ? [] : ["--only", only]))
+                    run(["proxy", "add", name] + (ownProxy ? ["--upstream", "-"] : []) + (code.isEmpty ? [] : ["--country", code])
+                        + (only.isEmpty || ownProxy ? [] : ["--only", only]))
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

@@ -24,6 +24,8 @@ struct OnboardingView: View {
     @State private var console: TerminalTab?
     @State private var subscription = ""
     @State private var country = ""
+    /// Источник серверов в шаге proxy: ссылка на подписку или свой прокси (proxy setup --upstream)
+    @State private var ownProxy = false
     @State private var screenAllowed = CGPreflightScreenCaptureAccess()
     @State private var loginItem = SMAppService.mainApp.status == .enabled
     /// Агент, в которого сейчас входят через диалог входа.
@@ -316,13 +318,25 @@ struct OnboardingView: View {
                                       small: true, symbol: "checkmark.shield")
                         UtilityButton(title: l.t("Сменить подписку", "Change subscription"), args: ["proxy", "setup"],
                                       small: true, symbol: "arrow.triangle.2.circlepath")
+                        UtilityButton(title: l.t("Свой прокси", "Your own proxy"), args: ["proxy", "setup", "--upstream", "-"],
+                                      small: true, symbol: "point.3.connected.trianglepath.dotted")
                     }
                 } else {
+                    SegmentedCapsule(selection: Binding(get: { ownProxy ? "own" : "sub" }, set: { ownProxy = $0 == "own" }),
+                                     options: [("sub", l.t("Подписка", "Subscription"), nil), ("own", l.t("Свой прокси", "Your own proxy"), nil)],
+                                     compact: true)
                     card {
+                        if ownProxy {
+                            Text(l.t("Корпоративный HTTP-прокси, клиент Clash на этом Mac или туннель ssh -D. Адрес с портом (socks5://, http:// или https://) спросит терминал ниже, на экране его видно не будет.",
+                                     "A corporate HTTP proxy, a Clash client on this Mac or an ssh -D tunnel. The terminal below asks for the address with its port (socks5://, http:// or https://) and doesn't show it."))
+                                .font(.system(size: 12)).foregroundStyle(Ink.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
                         Text(l.t("Ссылка на подписку для Clash, mihomo или v2ray", "Clash, mihomo or v2ray subscription link")).font(.system(size: 12)).foregroundStyle(Ink.muted)
                         TextField("https://example.com/sub/…", text: $subscription)
                             .textFieldStyle(.roundedBorder)
                             .font(.system(size: 12, design: .monospaced))
+                        }
                         HStack(spacing: 10) {
                             Text(l.t("Страна выхода", "Exit country")).font(.system(size: 12)).foregroundStyle(Ink.muted)
                             Picker("", selection: $country) {
@@ -334,10 +348,11 @@ struct OnboardingView: View {
                         }
                     }
                     Button(l.t("Проверить", "Check")) {
-                        run(["proxy", "setup", subscription.trimmingCharacters(in: .whitespaces)] + (country.isEmpty ? [] : ["--country", country]))
+                        let source = ownProxy ? ["--upstream", "-"] : [subscription.trimmingCharacters(in: .whitespaces)]
+                        run(["proxy", "setup"] + source + (country.isEmpty ? [] : ["--country", country]))
                     }
                     .buttonStyle(PillStyle(prominent: true))
-                    .disabled(!subscription.hasPrefix("http"))
+                    .disabled(!ownProxy && !subscription.hasPrefix("http"))
                 }
                 Toggle(l.t("Новые сессии по умолчанию через proxy", "New sessions use the proxy by default"), isOn: Binding(
                     get: { p.defaultRoute != "direct" },
