@@ -171,6 +171,7 @@ SETUP_USAGE = f"""agentmeister setup [--country DE] [--only <имя>]
     и настроить прокси, если он еще не настроен. --country и --only уходят в agentmeister proxy setup
 agentmeister setup --steps hooks,commands    только эти шаги: commands, hooks, zsh, mcp, notify-app,
     proxy, promptsill. Остальные не трогаются
+agentmeister setup --yes    не спрашивать: promptsill ставится и без терминала (так ставит приложение)
 agentmeister setup --remove    убрать настройку Claude Code
 {CODEX_SETUP}    настроить хуки и MCP для Codex"""
 SETUP_USAGE_EN = f"""agentmeister setup [--country DE] [--only <name>]
@@ -178,6 +179,7 @@ SETUP_USAGE_EN = f"""agentmeister setup [--country DE] [--only <name>]
     and set up the proxy if it isn't set up yet. --country and --only go to agentmeister proxy setup
 agentmeister setup --steps hooks,commands    only these steps: commands, hooks, zsh, mcp, notify-app,
     proxy, promptsill. The others stay as they are
+agentmeister setup --yes    don't ask: promptsill is installed without a terminal too (the app installs this way)
 agentmeister setup --remove    remove the Claude Code setup
 {CODEX_SETUP}    set up hooks and MCP for Codex"""
 
@@ -187,12 +189,15 @@ def setup_usage():
 
 
 def setup_args(args):
-    """{'remove': bool, 'country': str, 'only': str, 'steps': set или None} или None с ошибкой в stderr."""
+    """{'remove': bool, 'yes': bool, 'country': str, 'only': str, 'steps': set или None} или None с ошибкой
+    в stderr."""
     import setup_steps
-    opts, it = {"remove": False, "country": "", "only": "", "steps": None}, iter(args)
+    opts, it = {"remove": False, "yes": False, "country": "", "only": "", "steps": None}, iter(args)
     for a in it:
         if a == "--remove":
             opts["remove"] = True
+        elif a in ("--yes", "-y"):
+            opts["yes"] = True
         elif a == "--steps":
             value = next(it, "")
             steps = {s.strip() for s in value.split(",") if s.strip()}
@@ -333,7 +338,7 @@ def setup(args):
         print(f"✓ /{name} → {tilde(path)}")
 
     # до хуков: если promptsill поставится сейчас, notice_hook сразу пропишет его в statusLine
-    promptsill = setup_steps.promptsill_step() if "promptsill" in want else None
+    promptsill = setup_steps.promptsill_step(opts["yes"]) if "promptsill" in want else None
     if "hooks" in want:
         notice_hook(True, legacy_names)
     if "zsh" in want:
@@ -350,7 +355,7 @@ def setup(args):
     else:
         print("✗ " + tr("не собрал приложение уведомлений: нужен swiftc (xcode-select --install)",
                         "couldn't build the notification app: swiftc is needed (xcode-select --install)"))
-    proxy = setup_steps.proxy_step(opts["country"], opts["only"]) if "proxy" in want else None
+    proxy = setup_steps.proxy_step(opts["country"], opts["only"], opts["yes"]) if "proxy" in want else None
     results = {"proxy": proxy, "promptsill": promptsill,
                "notify-app": None if notify_ready is None else "done" if notify_ready else "failed"}
     done.update(setup_steps.AUTO & want)

@@ -2188,10 +2188,9 @@ struct FlowChips: View {
 /// Что ставит agentmeister setup для Claude Code, по шагам. Выбранные уходят в setup --steps, остальные не трогаются.
 struct SetupStepsSheet: View {
     @EnvironmentObject var backend: Backend
-    @EnvironmentObject var workspace: Workspace
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.utilityRunner) private var runner
+    @Environment(\.commandHost) private var host
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("settingsSection") private var section = SettingsSection.general.rawValue
     @State private var chosen: Set<String> = ["commands", "hooks", "zsh", "mcp", "notify-app", "promptsill"]
 
     var l: L { L(backend.state.lang) }
@@ -2214,9 +2213,7 @@ struct SetupStepsSheet: View {
               "A small app for \"Claude is waiting\" notifications and a sound in ~/Library/Sounds. Needs swiftc.")),
          ("promptsill", l.t("Строка promptsill", "promptsill status line"),
           l.t("Контекст, лимиты и proxy под полем ввода. Ставится через Homebrew, если его нет.",
-              "Context, limits and proxy under the prompt. Installed through Homebrew if missing.")),
-         ("proxy", "Proxy",
-          l.t("Спросит ссылку на подписку, если proxy еще не настроен.", "Asks for a subscription link if the proxy isn't set up yet."))]
+              "Context, limits and proxy under the prompt. Installed through Homebrew if missing."))]
     }
 
     var body: some View {
@@ -2235,12 +2232,22 @@ struct SetupStepsSheet: View {
             }
             Note(text: l.t("Невыбранные шаги не трогаются, уже поставленное остается. Убрать все: agentmeister setup --remove.",
                            "Unchecked steps are left as they are, anything already installed stays. To remove everything: agentmeister setup --remove."))
+            if backend.state.proxy?.configured != true {
+                HStack(spacing: 6) {
+                    Note(text: l.t("Proxy для сессий настраивается отдельно.", "The session proxy is set up separately."))
+                    Button(l.t("Открыть раздел Proxy", "Open the Proxy section")) {
+                        dismiss()
+                        section = SettingsSection.proxy.rawValue
+                    }
+                    .buttonStyle(.link).font(.system(size: 12))
+                }
+            }
             HStack {
                 Spacer()
                 Button(l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(l.t("Поставить", "Install")) {
                     let ids = steps.map(\.0).filter { chosen.contains($0) }
-                    run(["setup", "--steps", ids.joined(separator: ",")])
+                    install(ids)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -2251,15 +2258,18 @@ struct SetupStepsSheet: View {
         .frame(width: 520)
     }
 
-    private func run(_ args: [String]) {
-        if let runner {
-            runner(args)
-            return
+    /// setup --yes в листе команды: без терминала и без вопросов, выбранное уже решено здесь. Лист открывается,
+    /// когда этот лист уже закрылся: два листа одного окна сразу не показать.
+    private func install(_ ids: [String]) {
+        let args = ["setup", "--yes", "--steps", ids.joined(separator: ",")]
+        let title = l.t("Поставить для Claude Code", "Install for Claude Code")
+        let host = self.host
+        let backend = self.backend
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            CommandRuns.shared.start(args, title: title, icon: "puzzlepiece.extension", host: host, sheet: true) {
+                backend.refresh()
+            }
         }
-        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
-        spec.utility = args
-        workspace.open(spec)
-        openWindow(id: "main")
     }
 }
 

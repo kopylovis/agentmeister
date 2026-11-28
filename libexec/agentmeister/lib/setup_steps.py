@@ -171,7 +171,7 @@ def ask(question, options, default=0, back=None):
         return options[default][0]
 
 
-def proxy_step(country="", only=""):
+def proxy_step(country="", only="", yes=False):
     """Шаг setup про прокси. Возвращает "done", "skipped" или None (не настроен и не спрашивали)."""
     import proxy
     if proxy.configured():
@@ -186,8 +186,12 @@ def proxy_step(country="", only=""):
                                   f"Change it: agentmeister proxy setup --country {country.upper()}"))
         return "done"
     if not sys.stdin.isatty():
-        print(f"{WARN} " + tr("прокси не настроен, не терминал. Настроить: agentmeister proxy setup --country DE",
-                              "the proxy isn't set up and this isn't a terminal. Set it up: agentmeister proxy setup --country DE"))
+        # yes: запустило приложение, у него ссылку на подписку спрашивает раздел Proxy
+        print(f"{WARN} " + (tr("прокси не настроен. Ссылку на подписку спросит Agentmeister, раздел Proxy в настройках",
+                               "the proxy isn't set up. Agentmeister asks for the subscription link in Settings > Proxy")
+                            if yes else
+                            tr("прокси не настроен, не терминал. Настроить: agentmeister proxy setup --country DE",
+                               "the proxy isn't set up and this isn't a terminal. Set it up: agentmeister proxy setup --country DE")))
         return None
     print(tr("Сессии с флагом -x подключаются через сервер из твоей подписки.",
              "Sessions with -x connect through a server from your subscription."))
@@ -203,19 +207,20 @@ def proxy_step(country="", only=""):
     return "done" if code == 0 else "failed"
 
 
-def promptsill_step():
-    """Шаг setup про promptsill. Возвращает "done", "skipped" или None (не поставлен и не спрашивали)."""
+def promptsill_step(yes=False):
+    """Шаг setup про promptsill. Возвращает "done", "skipped" или None (не поставлен и не спрашивали).
+    yes (setup --yes, так ставит приложение): шаг уже выбран, ставить без вопроса и без терминала."""
     if promptsill_path():
         print(f"{OK} " + tr("строка состояния promptsill уже стоит", "the promptsill status line is already installed"))
         return "done"
-    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+    if not yes and not (sys.stdin.isatty() and sys.stdout.isatty()):
         print(f"{WARN} " + tr(f"строки состояния promptsill нет, не терминал. Поставить: {PROMPTSILL_HINT}",
                               f"no promptsill status line and this isn't a terminal. Install: {PROMPTSILL_HINT}"))
         return None
     print(tr("promptsill: строка состояния Claude Code с темпом лимитов, контекстом, dev-серверами, портами и памятью.",
              "promptsill: a Claude Code status line with limit pace, context, dev servers, ports and memory."))
-    if ask(tr("Поставить promptsill?", "Install promptsill?"),
-           [("yes", tr("Да", "Yes"), "yд"), ("no", tr("Пропустить", "Skip"), "nн")]) != "yes":
+    if not yes and ask(tr("Поставить promptsill?", "Install promptsill?"),
+                       [("yes", tr("Да", "Yes"), "yд"), ("no", tr("Пропустить", "Skip"), "nн")]) != "yes":
         print(f"{WARN} " + tr(f"promptsill пропущен. Поставить потом: {PROMPTSILL_HINT}, затем agentmeister setup",
                               f"promptsill skipped. Install later: {PROMPTSILL_HINT}, then agentmeister setup"))
         return "skipped"

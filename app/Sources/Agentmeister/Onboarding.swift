@@ -479,7 +479,8 @@ struct OnboardingView: View {
             } else if ok {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Ink.tealDot)
             } else {
-                UtilityButton(title: l.t("Поставить", "Install"), args: ["setup"], small: true, symbol: "arrow.down.circle", mode: .terminal)
+                UtilityButton(title: l.t("Поставить", "Install"), args: ["setup", "--yes"], small: true, symbol: "arrow.down.circle",
+                              sheetTitle: l.t("Поставить для Claude Code", "Install for Claude Code"), onFinish: { await reload() })
             }
         }
         .padding(14)

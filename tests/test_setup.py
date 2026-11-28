@@ -242,6 +242,24 @@ class Setup(unittest.TestCase):
             assert {"notify-app", "proxy"} <= set(setup_steps.pending()[0])
         """, promptsill=True)
 
+    def test_yes_installs_promptsill_without_a_terminal(self):
+        out, _ = sandbox({}, """
+            import os, setup_steps
+            fake = os.environ["MNRH_PROMPTSILL"]
+            brew = os.path.join(os.environ["HOME"], "brew")
+            with open(brew, "w") as f:
+                f.write("#!/bin/sh\\necho \\"$@\\" > " + brew + ".args\\nmkdir -p " + os.path.dirname(fake) + " && touch " + fake
+                        + " && chmod +x " + fake + "\\n")
+            os.chmod(brew, 0o755)
+            setup_steps.shutil.which = lambda name: brew if name == "brew" else None
+            assert setup_steps.promptsill_step() is None
+            assert not os.path.exists(brew + ".args")
+            assert setup_steps.promptsill_step(yes=True) == "done"
+            print(open(brew + ".args").read().strip())
+        """)
+        self.assertIn("не терминал", out)
+        self.assertIn("install kopylovis/tap/promptsill", out)
+
     def test_user_commands_with_our_names_are_kept(self):
         mine = "---\ndescription: my own todo list\n---\ncat TODO.md\n"
         out, after = sandbox({".claude/commands/todo.md": mine, ".claude/commands/where.md": "old !`mnrh brief`\n"}, """
