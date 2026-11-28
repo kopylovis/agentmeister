@@ -165,7 +165,10 @@ def send(title, subtitle, body):
                 disable_web_page_preview="true")
 
 
-def read_token():
+def read_token(stdin=False):
+    """stdin: токен строкой из stdin (так передает приложение, в аргументах его видно в ps)."""
+    if stdin:
+        return sys.stdin.readline().strip()
     if sys.stdin.isatty():
         return secret(tr("Токен бота (при вводе не виден): ", "Bot token (hidden): ")).strip()
     clip = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()
@@ -219,7 +222,11 @@ def wait_for_start(tok, code, seconds=180):
     return None
 
 
-def setup():
+SHARED_BOT = 3  # код выхода: бот занят плагином Telegram, подключить можно только с --force
+
+
+def setup(stdin=False, force=False):
+    """stdin и force для приложения: токен из stdin; force подключает бота, которого уже взял плагин Telegram."""
     print(tr("Подключаю уведомления в Telegram.", "Connecting Telegram notifications."))
     print(tr("  1. В Telegram открой @BotFather, отправь /newbot, придумай имя и адрес бота.",
              "  1. In Telegram open @BotFather, send /newbot, pick a name and a username for the bot."))
@@ -227,7 +234,7 @@ def setup():
              "  2. BotFather sends a token like 123456789:AA…, copy it."))
     print(tr("Токен хранится в Связке ключей macOS, в файлы и в вывод не попадает.",
              "The token is kept in the macOS keychain and never goes to files or output."))
-    tok = read_token()
+    tok = read_token(stdin)
     if not TOKEN_RE.match(tok or ""):
         print(tr("Нет токена. Скопируй его из сообщения BotFather и запусти команду ещё раз.",
                  "No token. Copy it from the BotFather message and run the command again."))
@@ -246,9 +253,13 @@ def setup():
                  "  other's way, and the Allow and Deny buttons won't work with this bot."))
         print(tr("  Лучше заведи для agentmeister отдельного бота в @BotFather.",
                  "  Better create a separate bot for agentmeister in @BotFather."))
-        if not sys.stdin.isatty() or input(tr("Все равно подключить этого бота? [y/N] ",
-                                              "Connect this bot anyway? [y/N] ")).strip().lower() not in (
-                "y", "yes", "д", "да"):
+        if force:
+            pass
+        elif stdin or not sys.stdin.isatty():
+            print(tr("Не подключил. Подключить все равно: --force", "Not connected. To connect anyway: --force"))
+            return SHARED_BOT
+        elif input(tr("Все равно подключить этого бота? [y/N] ",
+                      "Connect this bot anyway? [y/N] ")).strip().lower() not in ("y", "yes", "д", "да"):
             print(tr("Не подключил.", "Not connected."))
             return 1
     save_token(tok)
@@ -312,7 +323,7 @@ def main(args):
             return 0
         return setup()
     if cmd == "setup":
-        return setup()
+        return setup(stdin="--stdin" in args[1:], force="--force" in args[1:])
     if cmd == "off":
         forget_token()
         write_config(telegram_chat="", telegram_bot="")

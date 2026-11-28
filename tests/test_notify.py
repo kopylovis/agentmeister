@@ -1096,3 +1096,40 @@ class SoundChoice(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(home, "Library", "Sounds", "Agentmeister-Glass.aiff")))
         self.assertEqual(notify.sound_choices()[0], "Prompt")
         self.assertIn("Glass", notify.sound_choices())
+
+
+class TelegramSetupFromTheApp(unittest.TestCase):
+    """notify telegram setup --stdin: токен из stdin, бот плагина без --force дает код 3, с --force подключается."""
+
+    TOKEN = "123456789:" + "A" * 35
+
+    def run_setup(self, force, chat):
+        t = notify.telegram
+        calls = []
+
+        def call(method, tok=None, **kw):
+            calls.append(method)
+            return {"username": "demo_bot"} if method == "getMe" else None
+
+        with contextlib.redirect_stdout(io.StringIO()) as out, \
+                mock.patch("sys.stdin", io.StringIO(self.TOKEN + "\n")), \
+                mock.patch.object(t, "call", side_effect=call), \
+                mock.patch.object(t, "shares_plugin_bot", return_value=True), \
+                mock.patch.object(t, "plugin_env", return_value="/x/.env"), \
+                mock.patch.object(t, "save_token") as save, \
+                mock.patch.object(t, "write_config"), \
+                mock.patch.object(t, "wait_for_start", return_value=chat), \
+                mock.patch.object(t, "subprocess"):  # open ссылки, а tr() пусть читает язык как обычно
+            code = t.main(["setup", "--stdin"] + (["--force"] if force else []))
+        return code, save, out.getvalue()
+
+    def test_shared_bot_needs_force(self):
+        code, save, _ = self.run_setup(False, None)
+        self.assertEqual(code, notify.telegram.SHARED_BOT)
+        save.assert_not_called()
+
+    def test_force_connects_with_the_stdin_token(self):
+        code, save, out = self.run_setup(True, {"id": 42, "type": "private", "first_name": "Me"})
+        self.assertEqual(code, 0)
+        save.assert_called_once_with(self.TOKEN)
+        self.assertIn("https://t.me/demo_bot?start=", out)

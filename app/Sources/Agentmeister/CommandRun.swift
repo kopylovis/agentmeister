@@ -158,7 +158,7 @@ final class CommandRun: ObservableObject, Identifiable {
     private func demo() {
         let (text, status) = Demo.commandOutput(args)
         append(text)
-        if Demo.scene == "command-running" { return }
+        if Demo.scene == "command-running" || Demo.scene == "telegram-wait" { return }
         finish(status)
     }
 }

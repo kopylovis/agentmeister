@@ -47,6 +47,14 @@ enum Demo {
             return (head + (ru ? "✓ напрямую не открылось, через proxy 185.163.203.91 (GE)\n"
                                : "✓ direct didn't open, via proxy 185.163.203.91 (GE)\n"), 0)
         }
+        if args.starts(with: ["notify", "telegram", "setup"]) {
+            if scene == "telegram-shared" && !args.contains("--force") {
+                return (ru ? "! Этот же бот настроен в плагине Telegram для Claude Code\nНе подключил. Подключить все равно: --force\n"
+                           : "! The same bot is set up in the Telegram plugin for Claude Code\nNot connected. To connect anyway: --force\n", 3)
+            }
+            return ((ru ? "Подключаю уведомления в Telegram.\n✓ бот @mnrh_alerts_bot\n  3. Открываю https://t.me/mnrh_alerts_bot?start=7f3a9c21\n"
+                        : "Connecting Telegram notifications.\n✓ bot @mnrh_alerts_bot\n  3. Opening https://t.me/mnrh_alerts_bot?start=7f3a9c21\n"), 0)
+        }
         if args.last == "install" {
             return ("brew install codex\n==> Fetching downloads for: codex\n==> Downloading https://ghcr.io/v2/homebrew/core/codex/manifests/0.63.0\ncurl: (28) Failed to connect to ghcr.io port 443 after 15002 ms\nError: codex: Failed to download resource \"codex_bottle_manifest\"\n"
                     + (ru ? "✗ brew install codex не сработал\n" : "✗ brew install codex failed\n"), 1)

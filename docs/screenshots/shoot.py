@@ -22,7 +22,8 @@ SCENES = {"main": ("main", 7), "new-session": ("sheet", 8), "project": ("main", 
           "inspector-scroll": ("main", 7), "settings-doctor": ("settings", 9), "settings-doctor-fixing": ("settings", 10), "settings-doctor-failed": ("settings", 10), "settings-doctor-fixed": ("settings", 10),
           "command-running": ("settings", 10), "command-done": ("settings", 10), "command-failed": ("settings", 10),
           "proxy-change": ("settings", 10), "proxy-add": ("settings", 10),
-          "sessions-clean": ("settings", 10)}
+          "sessions-clean": ("settings", 10),
+          "telegram-token": ("settings", 10), "telegram-wait": ("settings", 10), "telegram-shared": ("settings", 10)}
 # сцены, которые показывает README
 README_SCENES = ["main", "new-session", "project", "settings"]
 THEMES = ["dark", "light"]
