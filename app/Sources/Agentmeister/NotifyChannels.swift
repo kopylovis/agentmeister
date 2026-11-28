@@ -148,7 +148,7 @@ struct PhoneChannels: View {
         .id("phone-channels")
         .onAppear {
             guard Demo.active, open.isEmpty else { return }
-            if Demo.scene == "settings-notify-add" { adding = true }
+            if Demo.scene == "settings-notify-add" || Demo.scene.hasPrefix("telegram-") { adding = true }
             open = Demo.scene == "settings-notify-phone" ? [.webhook] : Demo.scene == "settings-notify" ? [.ntfy] : [.telegram]
         }
         .sheet(isPresented: $adding) {
@@ -691,10 +691,18 @@ struct AddChannelSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            if let picked { form(picked) } else { picker }
+            if picked == .telegram {
+                TelegramConnectForm(l: l, back: { picked = nil }, cancel: { dismiss() }, done: { done(); dismiss() })
+            } else if let picked {
+                form(picked)
+            } else {
+                picker
+            }
         }
         .padding(22)
         .frame(width: 640)
+        // демо telegram-token, -wait, -shared: лист сразу на подключении Telegram
+        .onAppear { if Demo.active && Demo.scene.hasPrefix("telegram-") { picked = .telegram } }
     }
 
     private var picker: some View {
@@ -752,9 +760,8 @@ struct AddChannelSheet: View {
         Text(l.t("Подключить \(c.name)", "Connect \(c.name)")).font(.system(size: 17, weight: .semibold))
         switch c {
         case .telegram:
-            Text(l.t("Мастер откроется во вкладке терминала. Создай бота у @BotFather, скопируй токен и нажми Start в чате с ботом. Токен ляжет в Связку ключей.",
-                     "The setup opens in a terminal tab. Create a bot with @BotFather, copy the token and press Start in the chat with the bot. The token goes to the keychain."))
-                .font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
+            // свой лист: TelegramConnectForm
+            EmptyView()
         case .tossling:
             Text(l.t("Если на этом Mac поставить Tossling и подключить его к серверу, настройки подтянутся сами. Без него укажи сервер и токен публикации проекта для канала agentmeister.",
                      "Install Tossling on this Mac and connect it to your server, and the settings come by themselves. Without it give the server and a project publisher token for the agentmeister channel."))
@@ -802,15 +809,10 @@ struct AddChannelSheet: View {
             Button(l.t("Назад", "Back")) { picked = nil; error = nil }.buttonStyle(PillStyle())
             Spacer()
             Button(l.t("Отмена", "Cancel")) { dismiss() }.buttonStyle(PillStyle()).keyboardShortcut(.cancelAction)
-            if c == .telegram {
-                UtilityButton(title: l.t("Открыть мастер", "Open setup"), args: ["notify", "telegram"], prominent: true, mode: .terminal)
-                    .simultaneousGesture(TapGesture().onEnded { dismiss() })
-            } else {
-                Button(l.t("Подключить", "Connect")) { connect(c) }
-                    .buttonStyle(PillStyle(prominent: true))
-                    .disabled(busy || !ready(c))
-                    .keyboardShortcut(.defaultAction)
-            }
+            Button(l.t("Подключить", "Connect")) { connect(c) }
+                .buttonStyle(PillStyle(prominent: true))
+                .disabled(busy || !ready(c))
+                .keyboardShortcut(.defaultAction)
         }
     }
 

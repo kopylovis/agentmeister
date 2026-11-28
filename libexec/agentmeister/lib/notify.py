@@ -146,6 +146,8 @@ def usage():
     print(tr("agentmeister notify apprise     ещё и через apprise и его config: -h подробнее",
              "agentmeister notify apprise     also send through apprise and its config: -h for more"))
     print(tr("  … telegram test | off | always | away <сек>", "  … telegram test | off | always | away <sec>"))
+    print(tr("  … telegram setup --stdin [--force]  токен из stdin (так подключает приложение); --force и с ботом плагина",
+             "  … telegram setup --stdin [--force]  the token from stdin (the app connects this way); --force even with the plugin's bot"))
     print(tr("  … telegram approve on | off  разрешать и отклонять запросы Claude кнопками в Telegram, когда ты не за Mac",
              "  … telegram approve on | off  allow or deny Claude's requests with Telegram buttons when you are away from the Mac"))
     print()
