@@ -282,7 +282,7 @@ class Api(unittest.TestCase):
     def test_setup_links_with_code_and_saves_only_matching_chat(self):
         tok = "123456:" + "a" * 35
         opened, saved = [], {}
-        with mock.patch.object(telegram, "read_token", lambda: tok), \
+        with mock.patch.object(telegram, "read_token", lambda stdin=False: tok), \
                 mock.patch.object(telegram, "call", lambda *a, **k: {"username": "bot"}), \
                 mock.patch.object(telegram, "plugin_token", lambda: ""), \
                 mock.patch.object(telegram, "save_token"), \
@@ -299,13 +299,13 @@ class Api(unittest.TestCase):
     def test_setup_warns_about_plugin_bot(self):
         tok = "123456:" + "a" * 35
         out = io.StringIO()
-        with mock.patch.object(telegram, "read_token", lambda: tok), \
+        with mock.patch.object(telegram, "read_token", lambda stdin=False: tok), \
                 mock.patch.object(telegram, "call", lambda *a, **k: {"username": "bot"}), \
                 mock.patch.object(telegram, "plugin_token", lambda: tok), \
                 mock.patch.object(telegram, "save_token") as save, \
                 mock.patch.object(telegram.sys, "stdin", io.StringIO("")), \
                 mock.patch("sys.stdout", out):
-            self.assertEqual(telegram.setup(), 1)
+            self.assertEqual(telegram.setup(), telegram.SHARED_BOT)
         save.assert_not_called()
         self.assertIn("плагине Telegram", out.getvalue())
 
