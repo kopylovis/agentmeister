@@ -119,7 +119,8 @@ def usage():
              f"{after()} с, по умолчанию {DEFAULT_AFTER})",
              f"agentmeister notify after <sec>  notify about a finished reply only if the turn took longer (now "
              f"{after()}s, default {DEFAULT_AFTER})"))
-    print(tr("agentmeister notify sound on|off звук", "agentmeister notify sound on|off sound"))
+    print(tr("agentmeister notify sound on|off|<звук> звук: Prompt или системный (notify sound без значения покажет список)",
+             "agentmeister notify sound on|off|<name> sound: Prompt or a system sound (notify sound alone lists them)"))
     print(tr(f"agentmeister notify away <сек>   через сколько секунд без мыши и клавиатуры ты не за Mac, общее для "
              f"всех каналов на телефон (сейчас {presence.away_after()} с)",
              f"agentmeister notify away <sec>   seconds without mouse and keyboard after which you are away from the "
@@ -169,8 +170,49 @@ def after():
         return DEFAULT_AFTER
 
 
+SYSTEM_SOUNDS = os.path.join("/System", "Library", "Sounds")
+
+
+def sound_choices():
+    """Звуки на выбор: Prompt (свой) и системные из /System/Library/Sounds."""
+    try:
+        system = sorted(n[:-5] for n in os.listdir(SYSTEM_SOUNDS) if n.endswith(".aiff"))
+    except OSError:
+        system = []
+    return ["Prompt"] + system
+
+
+def sound_name():
+    """notify_sound в config: off, Prompt (on, по умолчанию) или имя системного звука."""
+    value = read_config().get("notify_sound", "on")
+    if value == "off":
+        return None
+    if value in ("on", "Prompt") or value not in sound_choices():
+        return "Prompt"
+    return value
+
+
 def sound():
-    return read_config().get("notify_sound", "on") != "off"
+    return sound_name() is not None
+
+
+def sound_file():
+    """Имя файла в ~/Library/Sounds для уведомления или None без звука. Системный звук копируется туда же,
+    где лежит Prompt: оттуда его берут и приложение уведомлений, и osascript."""
+    name = sound_name()
+    if name is None:
+        return None
+    if name == "Prompt":
+        return "Agentmeister-Prompt.wav"
+    target = os.path.join(HOME, "Library", "Sounds", f"Agentmeister-{name}.aiff")
+    if not os.path.isfile(target):
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copyfile(os.path.join(SYSTEM_SOUNDS, f"{name}.aiff"), target)
+        except OSError as exc:
+            log_error(f"sound {name}: {exc}")
+            return "Agentmeister-Prompt.wav"
+    return os.path.basename(target)
 
 
 def install_sound():
@@ -245,8 +287,9 @@ end run'''
 def fallback_post(title, subtitle, body):
     """Уведомление без нашего приложения, пока оно собирается: нажатие не переключит на вкладку."""
     snd = ""
-    if sound() and os.path.exists(os.path.join(HOME, "Library", "Sounds", "Agentmeister-Prompt.wav")):
-        snd = "Agentmeister-Prompt"
+    file = sound_file()
+    if file and os.path.exists(os.path.join(HOME, "Library", "Sounds", file)):
+        snd = os.path.splitext(file)[0]
     try:
         r = subprocess.run(["osascript", "-e", FALLBACK, title, subtitle, body, snd],
                            capture_output=True, text=True, timeout=5)
@@ -268,8 +311,8 @@ def post(title, subtitle, body, sid, click=None, wait=False):
     args = ["post", "--title", title, "--subtitle", subtitle, "--body", body, "--id", sid]
     if click:
         args += ["--click", click]
-    if not sound():
-        args += ["--sound", "off"]
+    file = sound_file()
+    args += ["--sound", file or "off"]
     with tempfile.TemporaryDirectory(prefix="agentmeister-notify-") as directory:
         result = os.path.join(directory, "result")
         started = launch(args + ["--result", result])
@@ -792,9 +835,12 @@ def main():
         print(tr(f"Уведомления {'включены' if rest[0] == 'on' else 'выключены'}",
                  f"Notifications {'on' if rest[0] == 'on' else 'off'}"))
         return 0
-    if rest[0] == "sound" and len(rest) == 2 and rest[1] in ("on", "off"):
-        write_config(notify_sound=rest[1])
-        print(tr(f"Звук {'включён' if rest[1] == 'on' else 'выключен'}", f"Sound {'on' if rest[1] == 'on' else 'off'}"))
+    if rest[0] == "sound" and len(rest) == 2 and (rest[1] in ("on", "off") or rest[1] in sound_choices()):
+        write_config(notify_sound=None if rest[1] in ("on", "Prompt") else rest[1])
+        print(tr(f"Звук {sound_name() or 'выключен'}", f"Sound {sound_name() or 'off'}"))
+        return 0
+    if rest[0] == "sound" and len(rest) == 1:
+        print(tr("Звуки: ", "Sounds: ") + ", ".join(sound_choices()) + ", off")
         return 0
     if rest[0] == "after" and len(rest) == 2 and rest[1].isdigit():
         write_config(notify_after=rest[1])

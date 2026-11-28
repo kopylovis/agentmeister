@@ -748,8 +748,21 @@ struct NotifyPane: View {
                         Text(l.t("с", "s")).foregroundStyle(Ink.muted)
                     }
                 }
-                row(l.t("Звук Prompt", "Prompt sound"), l.t("Без него уведомления приходят беззвучно", "Without it notifications arrive silently")) {
-                    HeaderSwitch(label: "sound", on: n.sound) { run(["notify", "sound", $0 ? "on" : "off"]) }
+                if let choices = n.soundChoices, let current = n.soundName {
+                    row(l.t("Звук", "Sound"), l.t("Prompt свой, остальные системные. Без звука уведомления приходят беззвучно.",
+                                                 "Prompt is ours, the rest are system sounds. With no sound notifications arrive silently.")) {
+                        Picker(l.t("Звук", "Sound"), selection: Binding(get: { current }, set: { run(["notify", "sound", $0]) })) {
+                            ForEach(choices, id: \.self) { Text($0).tag($0) }
+                            Divider()
+                            Text(l.t("Без звука", "No sound")).tag("off")
+                        }
+                        .labelsHidden()
+                        .frame(width: 150)
+                    }
+                } else {
+                    row(l.t("Звук Prompt", "Prompt sound"), l.t("Без него уведомления приходят беззвучно", "Without it notifications arrive silently")) {
+                        HeaderSwitch(label: "sound", on: n.sound) { run(["notify", "sound", $0 ? "on" : "off"]) }
+                    }
                 }
                 row(l.t("Значок в Dock", "Dock icon"),
                     l.t("Подпрыгивает, когда вкладка ждет ответа, а окно не в фокусе. Число на значке показывает, сколько вкладок ждут.",

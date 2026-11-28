@@ -47,8 +47,10 @@ final class Delegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterD
             content.title = option("--title", self.args) ?? "Claude Code"
             content.subtitle = option("--subtitle", self.args) ?? ""
             content.body = option("--body", self.args) ?? ""
-            if option("--sound", self.args) != "off" {
-                content.sound = UNNotificationSound(named: UNNotificationSoundName("Agentmeister-Prompt.wav"))
+            // --sound: имя файла в ~/Library/Sounds или off; без него свой звук Prompt
+            let sound = option("--sound", self.args) ?? "Agentmeister-Prompt.wav"
+            if sound != "off" {
+                content.sound = UNNotificationSound(named: UNNotificationSoundName(sound))
             }
             let id = option("--id", self.args) ?? UUID().uuidString
             content.threadIdentifier = id

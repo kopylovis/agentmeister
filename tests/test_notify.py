@@ -1081,3 +1081,18 @@ class CodexNotify(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SoundChoice(unittest.TestCase):
+    def test_names_files_and_fallbacks(self):
+        import tempfile
+        home = tempfile.mkdtemp()
+        with mock.patch.object(notify, "HOME", home):
+            for value, name, file in (("on", "Prompt", "Agentmeister-Prompt.wav"), ("off", None, None),
+                                      ("Glass", "Glass", "Agentmeister-Glass.aiff"), ("Nope", "Prompt", "Agentmeister-Prompt.wav")):
+                with mock.patch.object(notify, "read_config", return_value={"notify_sound": value}):
+                    self.assertEqual(notify.sound_name(), name, value)
+                    self.assertEqual(notify.sound_file(), file, value)
+            self.assertTrue(os.path.isfile(os.path.join(home, "Library", "Sounds", "Agentmeister-Glass.aiff")))
+        self.assertEqual(notify.sound_choices()[0], "Prompt")
+        self.assertIn("Glass", notify.sound_choices())

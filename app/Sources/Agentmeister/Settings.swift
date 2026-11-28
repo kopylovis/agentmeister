@@ -99,6 +99,9 @@ struct SettingsData: Decodable {
         let on: Bool
         let after: Int
         let sound: Bool
+        /// Prompt, имя системного звука или off; список на выбор. Nil в старом ответе app-state.
+        let soundName: String?
+        let soundChoices: [String]?
         var away: Int? = nil
         let telegram: Telegram
         let phone: Phone

@@ -407,6 +407,16 @@ def host_run_summary():
     return {"running": running, "commands": count, "log": hr.LOG}
 
 
+def notify_sound_name():
+    import notify
+    return notify.sound_name() or "off"
+
+
+def notify_sound_choices():
+    import notify
+    return notify.sound_choices()
+
+
 def session_defaults_state():
     import session_defaults
     return session_defaults.state()
@@ -647,6 +657,7 @@ def settings():
         tossling = ntfy_alert.endpoint()  # одна проверка: она запускает tossling config
         tossling_mode = ntfy_alert.phone_mode() if tossling else "off"
         return {"on": cfg.get("notify", "on") != "off", "after": after, "sound": cfg.get("notify_sound", "on") != "off",
+                "soundName": notify_sound_name(), "soundChoices": notify_sound_choices(),
                 "away": away,
                 "telegram": {"connected": bool(cfg.get("telegram_chat")), "bot": cfg.get("telegram_bot") or None,
                              "when": "always" if cfg.get("telegram_when") == "always" else "away", "away": away,
