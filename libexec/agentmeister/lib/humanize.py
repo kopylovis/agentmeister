@@ -5,7 +5,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, CLAUDE_HOME, HOME, UUID_RE, badge, read_config, tilde, tr, write_config
+from mnrhlib import CACHE, CLAUDE_HOME, HOME, UUID_RE, badge, lang, read_config, tilde, tr, write_config
 import claude_settings
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))
@@ -257,11 +257,13 @@ def install_hooks():
         data = claude_settings.load()
         added = claude_settings.add_missing_hooks(data, HOOK_ROWS)
     except ValueError as e:
-        print(f"✗ {tilde(SETTINGS)} не читается как JSON ({e}), хуки не подключил")
+        print(tr(f"✗ {tilde(SETTINGS)} не читается как JSON ({e}), хуки не подключил",
+                 f"✗ {tilde(SETTINGS)} is not valid JSON ({e}), hooks not added"))
         return False
     if added:
         claude_settings.save_atomic(data)
-        print(f"✓ подключил хуки {', '.join(added)} в {tilde(SETTINGS)}")
+        print(tr(f"✓ подключил хуки {', '.join(added)} в {tilde(SETTINGS)}",
+                 f"✓ added hooks {', '.join(added)} to {tilde(SETTINGS)}"))
     if not os.path.exists(SLASH_FILE):
         from slash import EXTRA_SLASH
         os.makedirs(os.path.dirname(SLASH_FILE), exist_ok=True)
@@ -507,19 +509,36 @@ def set_state(value, inside):
     sid = current_sid() if inside else None
     if value == "on":
         install_hooks()
-        print("agentmeister humanization включена.")
+        print(tr("agentmeister humanization включена.", "agentmeister humanization is on."))
         if inside and rules_text():
-            print("Правила ниже действуют в этой сессии с этого ответа:\n")
+            print(tr("Правила ниже действуют в этой сессии с этого ответа:\n",
+                     "The rules below apply in this session from this reply on:\n"))
             print(rules_text())
             mark(sid, "primed", "1")
         else:
-            print("В сессиях Claude Code и Codex с подключенными хуками правила придут со следующим сообщением.")
+            print(tr("В сессиях Claude Code и Codex с подключенными хуками правила придут со следующим сообщением.",
+                     "Claude Code and Codex sessions with the hooks get the rules with the next message."))
     else:
-        print("agentmeister humanization выключена. Правила письма больше не обязательны.")
+        print(tr("agentmeister humanization выключена. Правила письма больше не обязательны.",
+                 "agentmeister humanization is off. The writing rules no longer apply."))
         mark(sid, "primed", False)
 
 
 def usage():
+    if lang() == "en":
+        print("agentmeister humanize                  status")
+        print("agentmeister humanize on | off         turn the mode on or off for Claude Code and Codex")
+        print("agentmeister humanize switch [on|off]  the same for /humanize in Claude Code")
+        print("agentmeister humanize rules            show the writing rules")
+        print("agentmeister humanize typography on|off  strict typography: straight quotes, no dotted e, no colons")
+        print("agentmeister humanize check <file>     find obvious AI tells in a text (- reads stdin)")
+        print("agentmeister humanize log              show reply check results")
+        print()
+        print("The rules come from the Wikipedia essay \"Signs of AI writing\" (WP:AISIGNS). The SessionStart hook passes")
+        print("them at session start and after context compaction, UserPromptSubmit reminds of them with each message,")
+        print("Stop checks the reply and tells the agent what it found in the next message.")
+        print("For Codex, add the hooks with agentmeister --harness codex setup and approve them in /hooks.")
+        return
     print("agentmeister humanize                  состояние")
     print("agentmeister humanize on | off         переключить режим для Claude Code и Codex")
     print("agentmeister humanize switch [on|off]  то же для /humanize в Claude Code")
@@ -537,16 +556,21 @@ def usage():
 def status():
     from codex_harness import HOOK_EVENTS, configured_humanize_hooks
 
-    print(f"agentmeister humanization {'включена' if enabled() else 'выключена'}. Правила в {tilde(RULES)}")
+    print(tr(f"agentmeister humanization {'включена' if enabled() else 'выключена'}. Правила в {tilde(RULES)}",
+             f"agentmeister humanization is {'on' if enabled() else 'off'}. Rules in {tilde(RULES)}"))
     missing = missing_hooks()
     if missing:
-        print(f"Для Claude Code не хватает хуков {', '.join(missing)}. Подключи через agentmeister humanize on.")
+        print(tr(f"Для Claude Code не хватает хуков {', '.join(missing)}. Подключи через agentmeister humanize on.",
+                 f"Claude Code is missing hooks {', '.join(missing)}. Add them with agentmeister humanize on."))
     count = configured_humanize_hooks()
     if count == len(HOOK_EVENTS):
-        print(f"В Codex настроено {count}/{len(HOOK_EVENTS)} хуков. Статус доверия виден в /hooks.")
+        print(tr(f"В Codex настроено {count}/{len(HOOK_EVENTS)} хуков. Статус доверия виден в /hooks.",
+                 f"Codex has {count}/{len(HOOK_EVENTS)} hooks set up. Trust status is in /hooks."))
     else:
-        print("Проверь установку хуков Codex через agentmeister --harness codex setup.")
-    print(f"Переключение через agentmeister humanize on|off. Лог проверок в {tilde(LOG)}")
+        print(tr("Проверь установку хуков Codex через agentmeister --harness codex setup.",
+                 "Check the Codex hooks with agentmeister --harness codex setup."))
+    print(tr(f"Переключение через agentmeister humanize on|off. Лог проверок в {tilde(LOG)}",
+             f"Switch with agentmeister humanize on|off. Check log in {tilde(LOG)}"))
 
 
 def main():
@@ -574,7 +598,8 @@ def main():
             status()
             return 0
         if want not in ("on", "off"):
-            print(f"Не понял «{want}»: on, off или пусто, чтобы переключить.", file=sys.stderr)
+            print(tr(f"Не понял «{want}»: on, off или пусто, чтобы переключить.",
+                     f"Unknown \"{want}\": use on, off or nothing to toggle."), file=sys.stderr)
             return 2
         set_state(want, inside=bool(os.environ.get("CLAUDECODE")))
         return 0
@@ -585,7 +610,7 @@ def main():
                 return 2
             write_config(humanize_typography=None if rest[1] == "off" else "on")
         print(tr("Строгая типографика (прямые кавычки, без е с точками, без двоеточий): ",
-                 "Strict typography (straight quotes, no ё, no colons): ") + ("on" if typography() else "off"))
+                 "Strict typography (straight quotes, no dotted e, no colons): ") + ("on" if typography() else "off"))
         return 0
     if cmd == "rules":
         print(rules_text(), end="")
@@ -594,19 +619,20 @@ def main():
         try:
             text = sys.stdin.read() if rest[1] == "-" else open(rest[1], encoding="utf-8").read()
         except OSError as e:
-            print(f"Не прочитал {rest[1]}: {e.strerror}", file=sys.stderr)
+            print(tr(f"Не прочитал {rest[1]}: {e.strerror}", f"Couldn't read {rest[1]}: {e.strerror}"), file=sys.stderr)
             return 2
         found = check(text)
         for line, name, frag in found:
             print(f"{line:>4}  {name}: {frag}")
-        print("Явных признаков не нашёл." if not found else f"Найдено: {len(found)}.")
+        print(tr("Явных признаков не нашёл.", "No obvious tells found.") if not found
+              else tr(f"Найдено: {len(found)}.", f"Found: {len(found)}."))
         return 1 if found else 0
     if cmd == "log":
         try:
             with open(LOG) as f:
                 print("".join(f.readlines()[-30:]), end="")
         except OSError:
-            print("Лог пуст.")
+            print(tr("Лог пуст.", "The log is empty."))
         return 0
     usage()
     return 2

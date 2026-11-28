@@ -696,7 +696,7 @@ def main():
             print(tr(f"Вывод короткий (до {max_lines()} строк и {max_bytes() // 1024} КБ), Claude увидит его как есть",
                      f"The output is short (up to {max_lines()} lines and {max_bytes() // 1024} KB), Claude sees it as is"))
             return 0
-        print(shrink(text, os.path.join(LOGS, "<сессия>", "<время>.log")) or
+        print(shrink(text, os.path.join(LOGS, tr("<сессия>", "<session>"), tr("<время>.log", "<time>.log"))) or
               tr("Выжимка вышла не короче половины вывода, Claude увидит его как есть",
                  "The digest isn't shorter than half the output, Claude sees it as is"))
         return 0
