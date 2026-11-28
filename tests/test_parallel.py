@@ -1,10 +1,14 @@
+import contextlib
+import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -61,7 +65,7 @@ def sh(cwd, *args):
     return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, check=True).stdout.strip()
 
 
-class ParallelPr(unittest.TestCase):
+class ParallelFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = os.path.realpath(tempfile.mkdtemp())
         self.env = dict(os.environ)
@@ -139,6 +143,8 @@ class ParallelPr(unittest.TestCase):
         text, bad = p.pr("fix", self.root, merge=merge, log=log.append)
         return "\n".join(log + [text]), bad
 
+
+class ParallelPr(ParallelFixture):
     def test_no_merge_pushes_and_opens_pr(self):
         path = self.task()
         text, bad = self.run_pr(merge=False)
@@ -323,6 +329,75 @@ class ParallelPr(unittest.TestCase):
         text, bad = p.finish("empty", "drop", self.root)
         self.assertFalse(bad, text)
         self.assertFalse(os.path.exists(path))
+
+
+class ParallelEnglish(ParallelFixture):
+    """lang=en: что видит человек, без кириллицы."""
+
+    def setUp(self):
+        super().setUp()
+        lang = patch("mnrhlib.lang", return_value="en")
+        lang.start()
+        self.addCleanup(lang.stop)
+
+    def assertEnglish(self, text):
+        self.assertIsNone(re.search("[А-Яа-яЁё]", text), text)
+
+    def test_help(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), patch.object(sys, "argv", ["claude_parallel.py", "-h"]):
+            p.main()
+        self.assertEnglish(out.getvalue())
+        self.assertIn("parallel drop <branch> [--force]", out.getvalue())
+
+    def test_list(self):
+        text, bad = p.handle("parallel_list", {"project": self.root})
+        self.assertEqual((text, bad), ("No parallel tasks in demo.", False))
+        self.task()
+        text, bad = p.handle("parallel_list", {"project": self.root})
+        self.assertFalse(bad, text)
+        self.assertIn("parallel/fix: 1 commits on top of main, 0 uncommitted", text)
+        self.assertEnglish(text)
+
+    def test_drop_refusal(self):
+        path = self.task()
+        with open(os.path.join(path, "wip.txt"), "w") as f:
+            f.write("wip\n")
+        text, bad = p.finish("fix", "drop", self.root)
+        self.assertTrue(bad)
+        self.assertIn("parallel/fix has work in it: 1 uncommitted files", text)
+        self.assertIn("repeat with --force", text)
+        self.assertEnglish(text)
+
+    def test_unknown_task(self):
+        text, bad = p.finish("nope", "drop", self.root)
+        self.assertTrue(bad)
+        self.assertTrue(text.startswith('No parallel task "nope". '), text)
+        self.assertEnglish(text)
+
+    def test_refuses_dirty_worktree(self):
+        path = self.task()
+        with open(os.path.join(path, "fix.txt"), "a") as f:
+            f.write("more\n")
+        text, bad = self.run_pr()
+        self.assertTrue(bad)
+        self.assertEnglish(text)
+
+    def test_failed_ci(self):
+        self.task()
+        self.put("checks.json", json.dumps([{"name": "build", "bucket": "fail", "link": "https://ci/1"}]))
+        self.put("watch_rc", "1")
+        text, bad = self.run_pr()
+        self.assertTrue(bad)
+        self.assertIn("CI on PR #7 failed, not merged.", text)
+        self.assertEnglish(text)
+
+    def test_passing_ci(self):
+        self.task()
+        self.put("checks.json", json.dumps([{"name": "build", "bucket": "pass", "link": ""}]))
+        text, bad = self.run_pr()
+        self.assertFalse(bad, text)
+        self.assertEnglish(text)
 
 
 class Start(unittest.TestCase):
