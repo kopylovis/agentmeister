@@ -1040,7 +1040,8 @@ def main(argv):
     elif argv and argv[0] == "search":
         out = search(" ".join(argv[1:]))
     elif argv and argv[0] == "read" and len(argv) > 1:
-        out = read(argv[1])
+        # --all: вся переписка для "Читать переписку целиком" в библиотеке, длинные сообщения режутся позже
+        out = read(argv[1], tail=10**9, chars=20000) if "--all" in argv[2:] else read(argv[1])
     elif argv and argv[0] == "settings":
         out = settings()
     elif argv and argv[0] == "doctor":
