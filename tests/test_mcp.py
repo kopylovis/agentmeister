@@ -203,6 +203,7 @@ class EnglishDescriptions(unittest.TestCase):
                 f.write(f"lang={lang}\n")
             env = dict(os.environ, XDG_CONFIG_HOME=conf, PYTHONDONTWRITEBYTECODE="1")
             env.pop("MNRH_MCP_HARNESS", None)
+            env.pop("AGENTMEISTER_LANG", None)
             if harness:
                 env["MNRH_MCP_HARNESS"] = harness
             r = subprocess.run([os.path.join(ROOT, "bin", "agentmeister"), "mcp"], input=request(1, "tools/list"),

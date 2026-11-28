@@ -151,8 +151,11 @@ def system_english():
 
 
 def lang():
-    """Язык интерфейса: lang=ru или lang=en в ~/.config/agentmeister/config, иначе русский, если он первый в macOS,
-    и английский во всех остальных случаях."""
+    """Язык интерфейса: AGENTMEISTER_LANG=ru|en (для тестов и make test), иначе lang=ru или lang=en в config,
+    иначе русский, если он первый в macOS, и английский во всех остальных случаях."""
+    forced = os.environ.get("AGENTMEISTER_LANG", "").lower()
+    if forced in ("ru", "en"):
+        return forced
     value = read_config().get("lang", "").lower()
     if value in ("ru", "en"):
         return value

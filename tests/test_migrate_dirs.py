@@ -9,7 +9,7 @@ LIB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
 
 
 def run(home, code, **env):
-    full = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "MNRH_"))}
+    full = {k: v for k, v in os.environ.items() if not k.startswith(("XDG_", "MNRH_", "AGENTMEISTER_"))}
     full.update(HOME=home, PYTHONDONTWRITEBYTECODE="1", **env)
     r = subprocess.run([sys.executable, "-c", f"import sys; sys.path.insert(0, {LIB!r})\n" + textwrap.dedent(code)],
                        env=full, capture_output=True, text=True)
