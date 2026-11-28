@@ -1683,6 +1683,14 @@ def sub_options(args):
         else:
             rest.append(a)
     if "upstream" in opts:
+        if opts["upstream"] in ("", "-"):
+            # без адреса спрашиваем скрытым вводом: логин и пароль в аргументах видно в ps и в заголовке вкладки
+            if not sys.stdin.isatty():
+                print(f"{BAD} " + tr("--upstream без адреса работает только в терминале", "--upstream without an address works only in a terminal"))
+                return None
+            print(tr("Адрес прокси: socks5://, http:// или https:// с портом, логин и пароль можно в адресе. На экране его видно не будет.",
+                     "Proxy address: socks5://, http:// or https:// with a port, a login and password can go in it. It won't show on screen."))
+            opts["upstream"] = secret(tr("Прокси: ", "Proxy: ")).strip()
         url = upstream_url(opts["upstream"])
         if not url:
             print(f"{BAD} " + tr("--upstream ждёт адрес прокси с портом: socks5://127.0.0.1:1080 или http://proxy.corp:3128",

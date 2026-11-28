@@ -103,6 +103,10 @@ struct MainView: View {
             case "new-session":
                 ui.newSessionProject = workspace.current?.spec.projectPath
                 ui.showNewSession = true
+            case "onboarding-proxy":
+                // мастер первого запуска на шаге proxy (четвертый, с нуля 3)
+                ui.onboardingStep = 3
+                ui.showOnboarding = true
             case "about":
                 openWindow(id: "about")
             case "rail":
