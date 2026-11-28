@@ -499,35 +499,72 @@ struct UtilityButton: View {
     }
 }
 
-/// Кнопка, которая выполняет команду agentmeister и перечитывает настройки.
+/// Кнопка, которая выполняет команду agentmeister в фоне, без вкладки терминала, и перечитывает настройки.
+/// Пока команда идет, на кнопке индикатор. Если она не прошла, под кнопкой конец ее вывода.
 struct CommandButton: View {
     @EnvironmentObject var backend: Backend
     let title: String
     let args: [String]
     let reload: () async -> Void
     var small = false
+    var prominent = false
     var symbol: String? = nil
+    /// Подпись на время работы команды, например "Настраиваю". Без нее остается title.
+    var busyTitle: String? = nil
     @State private var busy = false
+    @State private var problem: String?
 
     var body: some View {
-        Button {
-            busy = true
-            Task {
-                _ = await backend.perform(args)
-                await reload()
-                busy = false
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                run()
+            } label: {
+                if busy {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text(busyTitle ?? title)
+                    }
+                } else if let symbol {
+                    Label(title, systemImage: symbol)
+                } else {
+                    Text(title)
+                }
             }
-        } label: {
-            if busy {
-                ProgressView().controlSize(.small)
-            } else if let symbol {
-                Label(title, systemImage: symbol)
-            } else {
-                Text(title)
+            .lineLimit(1)
+            .help("agentmeister " + args.joined(separator: " "))
+            .buttonStyle(PillStyle(prominent: prominent && !busy, small: small))
+            .disabled(busy)
+            if let problem {
+                Text(problem)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.red)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .buttonStyle(PillStyle(small: small))
-        .disabled(busy)
+    }
+
+    private func run() {
+        busy = true
+        problem = nil
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { [args] in Backend.runForText(args) }.value
+            backend.refresh()
+            await reload()
+            busy = false
+            if !result.ok {
+                problem = Self.reason(result.text)
+                    ?? L(backend.state.lang).t("Команда не прошла и ничего не вывела", "The command failed and printed nothing")
+            }
+        }
+    }
+
+    /// Причина из вывода: последние строки без значков ✗ ! ✓ в начале.
+    static func reason(_ text: String, lines: Int = 3) -> String? {
+        let tail = text.split(separator: "\n").suffix(lines).map {
+            String($0).replacingOccurrences(of: "^[✗!✓] ", with: "", options: .regularExpression)
+        }
+        return tail.isEmpty ? nil : tail.joined(separator: "\n")
     }
 }
 

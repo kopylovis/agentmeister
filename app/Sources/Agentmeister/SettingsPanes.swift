@@ -611,10 +611,11 @@ struct ModesPane: View {
         }
         .font(.system(size: 13))
         if !ready {
-            HStack(spacing: 12) {
-                UtilityButton(title: l.t("Настроить", "Set up"), args: ["lid", "setup"], prominent: true)
-                Note(text: l.t("Ставит правило sudoers для pmset, sudo один раз спросит пароль во вкладке.",
-                               "Adds a sudoers rule for pmset, sudo asks for the password once in a tab."))
+            HStack(alignment: .top, spacing: 12) {
+                CommandButton(title: l.t("Настроить", "Set up"), args: ["lid", "setup", "--gui"], reload: reload,
+                              prominent: true, busyTitle: l.t("Настраиваю", "Setting up"))
+                Note(text: l.t("Ставит правило sudoers для pmset. Пароль администратора macOS спросит один раз в своем окне.",
+                               "Adds a sudoers rule for pmset. macOS asks for the administrator password once in its own window."))
             }
         }
         Note(text: l.t("Mac в закрытой сумке греется.", "A Mac in a closed bag gets hot."))
