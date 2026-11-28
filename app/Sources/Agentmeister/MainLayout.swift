@@ -207,6 +207,10 @@ struct ZoomableWindow: NSViewRepresentable {
             window.styleMask.formUnion([.resizable, .miniaturizable])
             window.collectionBehavior.insert(.fullScreenPrimary)
             window.standardWindowButton(.zoomButton)?.isEnabled = true
+            // заголовок прозрачный и без черты: иначе под курсором над разделом проступает полоса заголовка
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
+            window.toolbar?.showsBaselineSeparator = false
         }
     }
     func makeNSView(context: Context) -> NSView { Probe() }
