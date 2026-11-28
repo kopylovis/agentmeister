@@ -994,7 +994,9 @@ final class Workspace: ObservableObject {
         var specs: [(spec: LaunchSpec, selected: Bool, id: UUID?)] = []
         for item in saved {
             guard known.contains(item.projectPath) || FileManager.default.fileExists(atPath: item.projectPath) else { continue }
-            if let sid = item.sessionId, busy.contains(sid) { continue }
+            // живую сессию, которую можно продолжить, finishRestore подождет: это может быть Claude прошлого
+            // запуска, который еще завершается после выхода или обновления приложения
+            if let sid = item.sessionId, busy.contains(sid), !resumable.contains(sid) { continue }
             let agent = LaunchSpec.Agent(rawValue: item.agent) ?? .claude
             var spec = LaunchSpec(projectName: item.projectName, projectPath: item.projectPath, agent: agent, direct: item.direct,
                                   subscription: item.subscription)
@@ -1022,14 +1024,48 @@ final class Workspace: ObservableObject {
     func finishRestore(_ specs: [(spec: LaunchSpec, selected: Bool, id: UUID?)]) {
         pendingRestore = nil
         defer { restored = true; save() }
+        let live = Set(Backend.readLive().compactMap(\.sessionId))
         var select: UUID?
+        var waiting: [(spec: LaunchSpec, selected: Bool, id: UUID?)] = []
         for item in specs {
-            // id второй раз не берем: две вкладки с одним id перепутали бы уведомления
-            let tab = TerminalTab(spec: item.spec, id: item.id.flatMap { id in tabs.contains { $0.id == id } ? nil : id })
+            if let sid = item.spec.resumeId, live.contains(sid) {
+                waiting.append(item)
+                continue
+            }
+            let tab = restoredTab(item)
             tabs.append(tab)
             if item.selected { select = tab.id }
         }
         selected = select ?? tabs.first?.id
+        if !waiting.isEmpty { reopenWhenFree(waiting, selectedNow: selected) }
+    }
+
+    /// id второй раз не берем: две вкладки с одним id перепутали бы уведомления.
+    private func restoredTab(_ item: (spec: LaunchSpec, selected: Bool, id: UUID?)) -> TerminalTab {
+        TerminalTab(spec: item.spec, id: item.id.flatMap { id in tabs.contains { $0.id == id } ? nil : id })
+    }
+
+    /// Сессии, чей Claude еще жив. После выхода или обновления приложения Claude прошлого запуска завершается
+    /// несколько секунд, а новое приложение уже стартовало. Ждем до 15 секунд и открываем вкладку, как только
+    /// процесс вышел. Если он жив и дальше, сессия правда открыта в другом окне, и ее не трогаем.
+    private func reopenWhenFree(_ waiting: [(spec: LaunchSpec, selected: Bool, id: UUID?)], selectedNow: UUID?) {
+        Task { @MainActor [weak self] in
+            var left = waiting
+            for _ in 0..<30 where !left.isEmpty {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard let self else { return }
+                let live = Set(Backend.readLive().compactMap(\.sessionId))
+                for item in left where !live.contains(item.spec.resumeId ?? "") {
+                    // во вкладке ее мог открыть сам пользователь, пока ждали
+                    guard !self.tabs.contains(where: { $0.sessionId == item.spec.resumeId && $0.running }) else { continue }
+                    let tab = self.restoredTab(item)
+                    self.tabs.append(tab)
+                    // выбор переводим, только если пользователь не переключился сам
+                    if item.selected, self.selected == selectedNow { self.selected = tab.id }
+                }
+                left.removeAll { !live.contains($0.spec.resumeId ?? "") }
+            }
+        }
     }
 
     /// Сессии Claude Code, открытые не во вкладках этого окна: в iTerm2, Terminal или втором Agentmeister.
