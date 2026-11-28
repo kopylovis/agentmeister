@@ -24,7 +24,7 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CONFIG, HOME, badge, read_config, tilde, tr, write_config  # noqa: E402
+from mnrhlib import CONFIG, HOME, badge, lang, read_config, tilde, tr, write_config  # noqa: E402
 import claude_settings  # noqa: E402
 from claude_open import app_tab  # noqa: E402
 
@@ -172,6 +172,30 @@ def skip_reason(prompt):
     if secret:
         return f"похоже на секрет ({secret})"
     return None
+
+
+SECRETS_EN = {"приватный ключ": "private key", "ссылка proxy": "proxy link", "пароль в ссылке": "password in a link",
+              "токен в ссылке": "token in a link", "ключ API": "API key", "токен GitHub": "GitHub token",
+              "токен Slack": "Slack token", "ключ AWS": "AWS key", "ключ Google": "Google key", "JWT": "JWT",
+              "токен Telegram": "Telegram token", "секрет в присваивании": "secret in an assignment",
+              "заголовок авторизации": "authorization header", "длинный токен": "long token"}
+REASONS_EN = {"пусто": "empty", "слэш-команда": "slash command", "без нелатинских букв": "no non-Latin letters",
+              "перевод потерял метку картинки": "the translation lost an image tag", "пустой перевод": "empty translation"}
+
+
+def shown_reason(reason):
+    """Причина пропуска для человека на языке интерфейса. В журнал идет русская: ее разбирает приложение."""
+    if lang() != "en" or not reason:
+        return reason
+    if reason in REASONS_EN:
+        return REASONS_EN[reason]
+    m = re.fullmatch(r"длиннее (\d+) знаков", reason)
+    if m:
+        return f"longer than {m.group(1)} characters"
+    m = re.fullmatch(r"похоже на секрет \((.+)\)", reason)
+    if m:
+        return f"looks like a secret ({SECRETS_EN.get(m.group(1), m.group(1))})"
+    return reason
 
 
 def translate(text, key=None, timeout=TIMEOUT, name=None):
@@ -338,7 +362,7 @@ def editor_main(args):
         log("input", "переведен", len(text), ms)
     else:
         error = result.get("skip") or result.get("error") or "пустой перевод"
-        _edit_status(tab, state="done", ok=False, error=error, ms=ms)
+        _edit_status(tab, state="done", ok=False, error=error if result.get("error") else shown_reason(error), ms=ms)
         log("input", ("пропущен, " if result.get("skip") else "ошибка, ") + error, len(text), None if result.get("skip") else ms)
     return 0
 
@@ -514,7 +538,7 @@ def cmd_check(args):
     sample = " ".join(args) or "Исправь баг в src/main.py, тесты падают на `make test`"
     reason = skip_reason(sample)
     if reason:
-        print(tr(f"Этот текст хук не отправит, {reason}.", f"The hook wouldn't send this text: {reason}."))
+        print(tr(f"Этот текст хук не отправит, {reason}.", f"The hook wouldn't send this text: {shown_reason(reason)}."))
         return 1
     start = time.monotonic()
     try:
@@ -538,7 +562,7 @@ def cmd_text():
         return 1
     if not english:
         log("composer", "пропущен, " + reason, len(text))
-        print(reason)
+        print(shown_reason(reason))
         return 1
     log("composer", "переведен", len(text), int((time.monotonic() - start) * 1000))
     print(english)

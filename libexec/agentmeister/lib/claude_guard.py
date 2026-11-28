@@ -957,7 +957,8 @@ def main():
             own = own + [pattern] if rest[1] == "add" and pattern not in own else [p for p in own if p != pattern]
             write_config(guard_secrets=",".join(own) or None)
         elif len(rest) != 1:
-            print("agentmeister guard secret [add|remove <маска>]", file=sys.stderr)
+            print(tr("agentmeister guard secret [add|remove <маска>]", "agentmeister guard secret [add|remove <pattern>]"),
+                  file=sys.stderr)
             return 2
         print(tr("Свои секреты: ", "Your secrets: ") + (", ".join(own) if own else tr("нет", "none")))
         return 0
