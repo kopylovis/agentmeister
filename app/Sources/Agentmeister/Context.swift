@@ -3,8 +3,8 @@ import Foundation
 /// Сколько токенов в контексте сессии Claude Code, по ее переписке в ~/.claude/projects. Та же логика, что у
 /// claude_slim.context_tokens: последний ответ модели (вход вместе с кэшем) или граница /compact.
 enum SessionContext {
-    /// Порог, после которого /slim советует /compact. Совпадает с COMPACT_HINT в claude_restart.py.
-    static let compactHint = 200_000
+    /// Порог, после которого /slim советует /compact: compact_hint_k из agentmeister defaults, его присылает app-state.
+    nonisolated(unsafe) static var compactHint = 200_000
 
     /// Файл переписки по id сессии. Папка проекта зависит от cwd сессии, поэтому ищем по всем и запоминаем.
     nonisolated(unsafe) private static var paths: [String: String] = [:]

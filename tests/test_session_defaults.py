@@ -23,14 +23,14 @@ class SessionDefaults(unittest.TestCase):
 
     def test_defaults_without_config(self):
         self.assertEqual(d.state(), {"mode": "normal", "remoteControl": False, "restartUpdate": True,
-                                     "askModel": "sonnet"})
+                                     "askModel": "sonnet", "compactHintK": 200})
 
     def test_set_and_reset(self):
         self.assertEqual(d.main(["mode", "caffeinate"]), 0)
         self.assertEqual(d.main(["remote-control", "on"]), 0)
         self.assertEqual(d.main(["ask-model", "opus"]), 0)
         self.assertEqual(d.state(), {"mode": "caffeinate", "remoteControl": True, "restartUpdate": True,
-                                     "askModel": "opus"})
+                                     "askModel": "opus", "compactHintK": 200})
         with open(self.conf) as f:
             self.assertIn("open_mode=caffeinate", f.read())
         d.main(["mode", "normal"])
@@ -62,3 +62,16 @@ class SessionDefaults(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CompactHint(unittest.TestCase):
+    def test_number_in_bounds(self):
+        conf = os.path.join(tempfile.mkdtemp(prefix="cm-compact-"), "config")
+        with patch.object(mnrhlib, "CONFIG", conf), patch("sys.stdout"), patch("sys.stderr"):
+            self.assertEqual(d.compact_hint(), 200_000)
+            self.assertEqual(d.main(["compact-hint", "300"]), 0)
+            self.assertEqual(d.compact_hint(), 300_000)
+            self.assertEqual(d.main(["compact-hint", "5"]), 2)
+            self.assertEqual(d.main(["compact-hint", "200"]), 0)
+            with open(conf) as f:
+                self.assertNotIn("compact_hint_k", f.read())

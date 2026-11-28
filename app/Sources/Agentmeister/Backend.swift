@@ -331,6 +331,8 @@ struct AppState: Decodable {
         var remoteControl: Bool
         var restartUpdate: Bool
         var askModel: String
+        /// Порог подсказки о /compact в тысячах токенов. Nil в старом ответе app-state.
+        var compactHintK: Int?
     }
     var sessionDefaults: SessionDefaults?
     var projects: [Project] = []
@@ -548,6 +550,7 @@ final class Backend: ObservableObject {
                             state.projects.insert(AppState.Project(name: L(state.lang).t("Домашняя папка", "Home"), path: home), at: 0)
                         }
                         self.state = state
+                        if let k = state.sessionDefaults?.compactHintK { SessionContext.compactHint = k * 1000 }
                         let watching = Workspace.main?.tabs.contains { $0.running && $0.spec.proxied } ?? false
                         self.proxyMisses = watching && state.proxy?.running == false ? self.proxyMisses + 1 : 0
                         if self.proxyDown != (self.proxyMisses >= 2) { self.proxyDown = self.proxyMisses >= 2 }

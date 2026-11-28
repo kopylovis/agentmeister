@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// Сколько минут субагент остается в списке после последней записи. Настройки > Основные > Дополнительно.
+enum SubAgentPrefs {
+    static let keepKey = "subagents.keepMinutes"
+    static var keepMinutes: Int { max(1, UserDefaults.standard.object(forKey: keepKey) as? Int ?? 15) }
+}
+
 /// Фоновый агент внутри сессии Claude Code (инструмент Agent): своего терминала у него нет, переписка лежит
 /// в <сессия>/subagents/agent-<id>.jsonl, а описание и метка окончания в agent-<id>.meta.json.
 struct SubAgent: Identifiable, Equatable {
@@ -39,7 +45,7 @@ enum SubAgents {
         for name in (try? fm.contentsOfDirectory(atPath: dir)) ?? [] where name.hasSuffix(".jsonl") && name.hasPrefix("agent-") {
             let file = (dir as NSString).appendingPathComponent(name)
             guard let modified = (try? fm.attributesOfItem(atPath: file))?[.modificationDate] as? Date,
-                  now.timeIntervalSince(modified) < 15 * 60 else { continue }
+                  now.timeIntervalSince(modified) < Double(SubAgentPrefs.keepMinutes) * 60 else { continue }
             let id = String(name.dropFirst(6).dropLast(6))
             guard !isHidden(id) else { continue }
             let meta = (fm.contents(atPath: (dir as NSString).appendingPathComponent("agent-\(id).meta.json"))

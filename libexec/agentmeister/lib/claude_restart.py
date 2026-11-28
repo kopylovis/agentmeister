@@ -624,7 +624,8 @@ def slim_current(dry=False, delay=1.5):
 
 
 def compact_hint(tokens, later=False):
-    if not tokens or tokens < COMPACT_HINT:
+    import session_defaults
+    if not tokens or tokens < session_defaults.compact_hint():
         return ""
     if later:
         return tr(f" В контексте {tokens // 1000} тыс. токенов, а /slim их не убирает. Чтобы сжать сам разговор, "

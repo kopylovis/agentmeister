@@ -51,7 +51,7 @@
    "encrypted": true,
    "public": true,
    "error": {
-    "at": 1795847522,
+    "at": 1795847684,
     "text": "HTTP 400, the server doesn't know this device key. Copy the key again in the Bark app"
    }
   },
@@ -89,10 +89,10 @@
  "guard": {
   "on": true,
   "log": [
-   "27.11 08:12  ask   force-push     git push --force origin main",
-   "28.11 07:12  hold  rm-root        rm -rf ../build-cache"
+   "27.11 08:14  ask   force-push     git push --force origin main",
+   "28.11 07:14  hold  rm-root        rm -rf ../build-cache"
   ],
-  "lastHit": 1795839122,
+  "lastHit": 1795839284,
   "logPath": "/Users/demo/Library/Logs/mnrh-guard.log",
   "secrets": [
    "*.tfvars",
@@ -157,10 +157,10 @@
   "translateProvider": "google",
   "translateFallback": "openrouter",
   "translateLog": [
-   "2026-11-28 09:22:02 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter",
-   "2026-11-28 09:41:02 3f9c2a1e 182 зн 640 мс переведен",
-   "2026-11-28 10:00:02 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)",
-   "2026-11-28 10:08:02 3f9c2a1e 131 зн 1380 мс переведен"
+   "2026-11-28 09:24:44 3f9c2a1e 240 зн 5910 мс Google AI Studio не ответил вовремя, перевел OpenRouter",
+   "2026-11-28 09:43:44 3f9c2a1e 182 зн 640 мс переведен",
+   "2026-11-28 10:02:44 3f9c2a1e 96 зн пропущен, похоже на секрет (ключ API)",
+   "2026-11-28 10:10:44 3f9c2a1e 131 зн 1380 мс переведен"
   ],
   "translateMedianMs": 1380,
   "translateLogPath": "/Users/demo/Library/Logs/mnrh-translate.log"
