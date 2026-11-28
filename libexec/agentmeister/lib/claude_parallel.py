@@ -8,7 +8,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CLAUDE_HOME, find_project, projects_dir, tilde
+from mnrhlib import CLAUDE_HOME, find_project, projects_dir, tilde, tr
 
 TRANSLIT = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
                     ["a", "b", "v", "g", "d", "e", "e", "zh", "z", "i", "y", "k", "l", "m", "n", "o", "p", "r", "s",
@@ -20,7 +20,7 @@ COPY = ["local.properties", ".env", ".env.*", "fastlane/.env", "fastlane/.env.*"
 def git(root, *args, check=False):
     r = subprocess.run(["git", "-C", root, *args], capture_output=True, text=True, timeout=120)
     if check and r.returncode:
-        raise RuntimeError((r.stderr or r.stdout).strip() or f"git {' '.join(args)} упал")
+        raise RuntimeError((r.stderr or r.stdout).strip() or tr(f"git {' '.join(args)} упал", f"git {' '.join(args)} failed"))
     return r.stdout.strip()
 
 
@@ -84,10 +84,11 @@ def prepare(task, project=None, branch=None, cwd=None, sid=None):
     if err:
         return None, err
     if not git(root, "rev-parse", "--git-dir"):
-        return None, f"{tilde(root)} — не git-репозиторий, worktree не сделать"
+        return None, tr(f"{tilde(root)} — не git-репозиторий, worktree не сделать",
+                        f"{tilde(root)} is not a git repository, can't make a worktree")
     task = " ".join((task or "").split())
     if not task:
-        return None, "Нужна задача: что сделать параллельно"
+        return None, tr("Нужна задача: что сделать параллельно", "A task is required: what to do in parallel")
     base = git(root, "branch", "--show-current") or git(root, "rev-parse", "--short", "HEAD")
     name = branch or f"parallel/{slug(task)}"
     if git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}"):
@@ -97,21 +98,29 @@ def prepare(task, project=None, branch=None, cwd=None, sid=None):
     try:
         git(root, "worktree", "add", "-b", name, path, "HEAD", check=True)
     except RuntimeError as e:
-        return None, f"Не создал worktree: {e}"
+        return None, tr(f"Не создал worktree: {e}", f"Couldn't create the worktree: {e}")
     git(root, "config", f"branch.{name}.mnrhBase", base)
     git(root, "config", f"branch.{name}.mnrhTask", task)
     copied, native = copy_local(root, path)
     dirty = git(root, "status", "--porcelain")
-    rules = (f"Работай только в этой папке. Если нужны зависимости (node_modules и т. п.), поставь их здесь. "
-             f"Когда закончишь, закоммить результат в ветку {name} (не сливай и не пушь) и коротко отчитайся, "
-             f"что сделано и как проверить.")
+    rules = tr(f"Работай только в этой папке. Если нужны зависимости (node_modules и т. п.), поставь их здесь. "
+               f"Когда закончишь, закоммить результат в ветку {name} (не сливай и не пушь) и коротко отчитайся, "
+               f"что сделано и как проверить.",
+               f"Work only in this folder. If you need dependencies (node_modules and so on), install them here. "
+               f"When you're done, commit the result to the branch {name} (don't merge or push) and briefly report "
+               f"what was done and how to check it.")
     if sid:
-        prompt = (f"Это форк разговора выше для параллельной задачи. Теперь ты в отдельном git worktree {path}, "
-                  f"ветка {name}, ответвлена от {base} проекта {root}. Всё, что было выше, — контекст; файлы в "
-                  f"{root} больше не трогай. Задача: {task}\n\n{rules}")
+        prompt = tr(f"Это форк разговора выше для параллельной задачи. Теперь ты в отдельном git worktree {path}, "
+                    f"ветка {name}, ответвлена от {base} проекта {root}. Всё, что было выше, — контекст; файлы в "
+                    f"{root} больше не трогай. Задача: {task}\n\n{rules}",
+                    f"This is a fork of the conversation above for a parallel task. You are now in a separate git "
+                    f"worktree {path}, branch {name}, branched from {base} of the project {root}. Everything above is "
+                    f"context; don't touch the files in {root} anymore. Task: {task}\n\n{rules}")
     else:
-        prompt = (f"Это параллельная задача в отдельном git worktree {path}, ветка {name}, ответвлена от {base} "
-                  f"проекта {root}. Задача: {task}\n\n{rules}")
+        prompt = tr(f"Это параллельная задача в отдельном git worktree {path}, ветка {name}, ответвлена от {base} "
+                    f"проекта {root}. Задача: {task}\n\n{rules}",
+                    f"This is a parallel task in a separate git worktree {path}, branch {name}, branched from {base} "
+                    f"of the project {root}. Task: {task}\n\n{rules}")
     # --resume по id ищет сессию и в git worktree проекта, а форк начинается в папке запуска
     flags = ["--resume", sid, "--fork-session"] if sid else []
     return {"root": root, "path": path, "branch": name, "base": base, "task": task, "prompt": prompt, "flags": flags,
@@ -128,8 +137,10 @@ def start(task, project=None, branch=None, mode=None, cwd=None, cm=None, permiss
         import claude_proc
         sid = claude_proc.current_sid()
         if not sid:
-            return ("Форк возможен только изнутри сессии Claude Code (/parallel или MCP): "
-                    "не нашёл, какая сессия сейчас идёт."), True
+            return tr("Форк возможен только изнутри сессии Claude Code (/parallel или MCP): "
+                      "не нашёл, какая сессия сейчас идёт.",
+                      "A fork works only from inside a Claude Code session (/parallel or MCP): "
+                      "couldn't find which session is running."), True
     job, err = prepare(task, project, branch, cwd, sid)
     if err:
         return err, True
@@ -142,19 +153,24 @@ def start(task, project=None, branch=None, mode=None, cwd=None, cm=None, permiss
                                          "trust": claude_open.trusted(root), "remote_control": rc, "subtask": True,
                                          "name": f"{os.path.basename(root.rstrip('/'))} · {name}"},
                                         cm or "agentmeister")
-    lines = [f"Ветка {name} от {base}, worktree {tilde(path)}."]
+    lines = [tr(f"Ветка {name} от {base}, worktree {tilde(path)}.", f"Branch {name} from {base}, worktree {tilde(path)}.")]
     if sid:
-        lines.append(f"Второй Claude продолжает эту переписку: форк сессии {sid[:8]}, эта остаётся как была.")
+        lines.append(tr(f"Второй Claude продолжает эту переписку: форк сессии {sid[:8]}, эта остаётся как была.",
+                        f"The second Claude continues this conversation: a fork of session {sid[:8]}, this one stays as it was."))
     if copied and native:
-        lines.append("Скопировал по .worktreeinclude: " + ", ".join(copied) + ".")
+        lines.append(tr("Скопировал по .worktreeinclude: ", "Copied by .worktreeinclude: ") + ", ".join(copied) + ".")
     elif copied:
-        lines.append("Скопировал неотслеживаемые настройки: " + ", ".join(copied) + " (своего .worktreeinclude "
-                     "у проекта нет, поэтому по списку agentmeister).")
+        lines.append(tr("Скопировал неотслеживаемые настройки: ", "Copied untracked settings: ") + ", ".join(copied)
+                     + tr(" (своего .worktreeinclude у проекта нет, поэтому по списку agentmeister).",
+                          " (the project has no .worktreeinclude of its own, so by the agentmeister list)."))
     if dirty:
-        lines.append("В основной папке есть незакоммиченные изменения — в worktree их нет, он от последнего коммита.")
+        lines.append(tr("В основной папке есть незакоммиченные изменения — в worktree их нет, он от последнего коммита.",
+                        "The main folder has uncommitted changes. The worktree doesn't have them, it starts from the last commit."))
     lines.append(text)
-    lines.append(f"Потом: agentmeister parallel pr {name} — через PR, merge {name} — влить локально, "
-                 f"drop {name} — выбросить.")
+    lines.append(tr(f"Потом: agentmeister parallel pr {name} — через PR, merge {name} — влить локально, "
+                    f"drop {name} — выбросить.",
+                    f"Then: agentmeister parallel pr {name} to go through a PR, merge {name} to merge locally, "
+                    f"drop {name} to throw it away."))
     return "\n".join(lines), bad
 
 
@@ -202,13 +218,15 @@ def listing(project=None, cwd=None):
         return err, True
     es = entries(root)
     if not es:
-        return f"Параллельных задач в {os.path.basename(root)} нет.", False
-    lines = [f"Параллельные задачи {os.path.basename(root)}:"]
+        return tr(f"Параллельных задач в {os.path.basename(root)} нет.",
+                  f"No parallel tasks in {os.path.basename(root)}."), False
+    lines = [tr(f"Параллельные задачи {os.path.basename(root)}:", f"Parallel tasks in {os.path.basename(root)}:")]
     for e in es:
-        state = "Claude работает" if e["running"] else "Claude закрыт"
-        lines.append(f"  {e['branch']}: коммитов {e['ahead']} поверх {e['base']}, незакоммичено {e['dirty']}, {state}")
+        state = tr("Claude работает", "Claude is running") if e["running"] else tr("Claude закрыт", "Claude is closed")
+        lines.append(tr(f"  {e['branch']}: коммитов {e['ahead']} поверх {e['base']}, незакоммичено {e['dirty']}, {state}",
+                        f"  {e['branch']}: {e['ahead']} commits on top of {e['base']}, {e['dirty']} uncommitted, {state}"))
         if e["task"]:
-            lines.append(f"    задача: {e['task'][:160]}")
+            lines.append(tr(f"    задача: {e['task'][:160]}", f"    task: {e['task'][:160]}"))
     return "\n".join(lines), False
 
 
@@ -219,7 +237,8 @@ def pick(branch, project=None, cwd=None):
         return None, None, err
     match = [e for e in entries(root) if e["branch"] == branch or e["branch"].endswith("/" + branch)]
     if len(match) != 1:
-        return root, None, f"Нет параллельной задачи «{branch}». " + listing(project, cwd)[0]
+        return root, None, tr(f"Нет параллельной задачи «{branch}». ",
+                              f"No parallel task \"{branch}\". ") + listing(project, cwd)[0]
     return root, match[0], None
 
 
@@ -236,29 +255,42 @@ def finish(branch, action, project=None, cwd=None, force=False):
     if err:
         return err, True
     if e["running"]:
-        return f"В {tilde(e['path'])} ещё работает Claude — сначала закрой его.", True
+        return tr(f"В {tilde(e['path'])} ещё работает Claude — сначала закрой его.",
+                  f"Claude is still running in {tilde(e['path'])}. Close it first."), True
     if action == "drop" and not force and (e["dirty"] or e["ahead"] != "0"):
-        ahead = "не посчитать" if e["ahead"] == "?" else e["ahead"]
-        return (f"В {e['branch']} есть работа: незакоммичено файлов {e['dirty']}, коммитов не влито в {e['base']}: "
-                f"{ahead}. Выбрасывать не стал. Если не нужна, повтори с --force "
-                f"(agentmeister parallel drop {e['branch']} --force; в parallel_finish force: true)."), True
+        ahead = tr("не посчитать", "unknown") if e["ahead"] == "?" else e["ahead"]
+        return tr(f"В {e['branch']} есть работа: незакоммичено файлов {e['dirty']}, коммитов не влито в {e['base']}: "
+                  f"{ahead}. Выбрасывать не стал. Если не нужна, повтори с --force "
+                  f"(agentmeister parallel drop {e['branch']} --force; в parallel_finish force: true).",
+                  f"{e['branch']} has work in it: {e['dirty']} uncommitted files, commits not merged into {e['base']}: "
+                  f"{ahead}. I didn't drop it. If you don't need it, repeat with --force "
+                  f"(agentmeister parallel drop {e['branch']} --force; in parallel_finish force: true)."), True
     if action == "merge":
         if e["dirty"]:
-            return f"В worktree незакоммичено файлов: {e['dirty']}. Сначала закоммить их там.", True
+            return tr(f"В worktree незакоммичено файлов: {e['dirty']}. Сначала закоммить их там.",
+                      f"Uncommitted files in the worktree: {e['dirty']}. Commit them there first."), True
         if git(root, "status", "--porcelain", "--untracked-files=no"):
-            return "В основной папке есть незакоммиченные изменения — сначала закоммить или отложи их.", True
+            return tr("В основной папке есть незакоммиченные изменения — сначала закоммить или отложи их.",
+                      "The main folder has uncommitted changes. Commit or stash them first."), True
         current = git(root, "branch", "--show-current")
         if current != e["base"]:
-            return f"Основная папка сейчас на ветке {current}, а задача ответвлена от {e['base']}. Переключись на неё.", True
+            return tr(f"Основная папка сейчас на ветке {current}, а задача ответвлена от {e['base']}. Переключись на неё.",
+                      f"The main folder is on the branch {current}, but the task branched from {e['base']}. "
+                      f"Switch to it."), True
         r = subprocess.run(["git", "-C", root, "merge", "--no-ff", "--no-edit", e["branch"]],
                            capture_output=True, text=True)
         if r.returncode:
             subprocess.run(["git", "-C", root, "merge", "--abort"], capture_output=True)
-            return f"Слить без конфликтов не вышло, слияние отменено:\n{(r.stdout + r.stderr).strip()[-1500:]}", True
+            tail = (r.stdout + r.stderr).strip()[-1500:]
+            return tr(f"Слить без конфликтов не вышло, слияние отменено:\n{tail}",
+                      f"Couldn't merge without conflicts, the merge was aborted:\n{tail}"), True
     forget_task(root, e, "-d" if action == "merge" else "-D")
     if action == "merge":
-        return f"Влил {e['branch']} в {e['base']} ({e['ahead']} коммитов), worktree и ветку убрал. Пушить — сам.", False
-    return f"Выбросил {e['branch']}: worktree и ветка удалены.", False
+        return tr(f"Влил {e['branch']} в {e['base']} ({e['ahead']} коммитов), worktree и ветку убрал. Пушить — сам.",
+                  f"Merged {e['branch']} into {e['base']} ({e['ahead']} commits), removed the worktree and the branch. "
+                  f"Push it yourself."), False
+    return tr(f"Выбросил {e['branch']}: worktree и ветка удалены.",
+              f"Dropped {e['branch']}: the worktree and the branch are deleted."), False
 
 
 # Сколько ждать, пока у свежего PR появятся проверки: GitHub Actions заводит их через несколько секунд
@@ -273,7 +305,8 @@ def gh(cwd, *args, timeout=120):
     try:
         return subprocess.run(["gh", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired as ex:
-        return subprocess.CompletedProcess(ex.cmd, 124, "", f"gh не ответил за {timeout} с")
+        return subprocess.CompletedProcess(ex.cmd, 124, "", tr(f"gh не ответил за {timeout} с",
+                                                                 f"gh didn't answer in {timeout} s"))
 
 
 def out_of(r, limit=1500):
@@ -320,15 +353,20 @@ def pr_checks(repo, num, path, log):
         if isinstance(found, list) and found:
             break
         if "no checks reported" not in out_of(r) and not isinstance(found, list):
-            return True, False, f"gh pr checks не ответил: {out_of(r) or r.returncode}"
+            return True, False, tr(f"gh pr checks не ответил: {out_of(r) or r.returncode}",
+                                   f"gh pr checks didn't answer: {out_of(r) or r.returncode}")
         if time.time() >= deadline:
             if expected:
-                return False, False, (f"за {wait} с у PR не появилось ни одной проверки, хотя {', '.join(expected)} "
-                                      "запускается на pull_request. Посмотри Actions; если проверок и не должно "
-                                      f"быть (фильтр paths или branches), слей сам: gh pr merge {num} -R {repo}")
+                flows = ', '.join(expected)
+                return False, False, tr(f"за {wait} с у PR не появилось ни одной проверки, хотя {flows} "
+                                        "запускается на pull_request. Посмотри Actions; если проверок и не должно "
+                                        f"быть (фильтр paths или branches), слей сам: gh pr merge {num} -R {repo}",
+                                        f"no checks appeared on the PR in {wait} s, though {flows} "
+                                        "runs on pull_request. Look at Actions; if there should be no checks "
+                                        f"(a paths or branches filter), merge it yourself: gh pr merge {num} -R {repo}")
             return False, True, ""
         time.sleep(5)
-    log(f"Жду CI ({len(found)} проверок)…")
+    log(tr(f"Жду CI ({len(found)} проверок)…", f"Waiting for CI ({len(found)} checks)…"))
     r = gh(path, "pr", "checks", str(num), "-R", repo, "--watch", "--fail-fast", "-i", "15", timeout=CI_TIMEOUT)
     if r.returncode == 0:
         return True, True, ""
@@ -338,7 +376,7 @@ def pr_checks(repo, num, path, log):
     except (ValueError, AttributeError):
         bad = []
     if not bad:
-        return True, False, out_of(r) or "gh pr checks --watch завершился с ошибкой"
+        return True, False, out_of(r) or tr("gh pr checks --watch завершился с ошибкой", "gh pr checks --watch failed")
     return True, False, "\n".join(f"  {c.get('name')}: {c.get('bucket')} {c.get('link') or ''}".rstrip() for c in bad)
 
 
@@ -350,26 +388,31 @@ def pr(branch, project=None, cwd=None, merge=True, log=None):
         return err, True
     name, base, path = e["branch"], e["base"], e["path"]
     if e["running"]:
-        return f"В {tilde(path)} ещё работает Claude — сначала закрой его.", True
+        return tr(f"В {tilde(path)} ещё работает Claude — сначала закрой его.",
+                  f"Claude is still running in {tilde(path)}. Close it first."), True
     if e["dirty"]:
-        return f"В worktree незакоммичено файлов: {e['dirty']}. Сначала закоммить их там.", True
+        return tr(f"В worktree незакоммичено файлов: {e['dirty']}. Сначала закоммить их там.",
+                  f"Uncommitted files in the worktree: {e['dirty']}. Commit them there first."), True
     if e["ahead"] == "0":
-        return f"В {name} нет коммитов поверх {base}, отправлять нечего.", True
+        return tr(f"В {name} нет коммитов поверх {base}, отправлять нечего.",
+                  f"{name} has no commits on top of {base}, nothing to send."), True
     if not shutil.which("gh"):
-        return "Нужен GitHub CLI: brew install gh, потом gh auth login.", True
+        return tr("Нужен GitHub CLI: brew install gh, потом gh auth login.",
+                  "You need the GitHub CLI: brew install gh, then gh auth login."), True
     remote = git(root, "config", f"branch.{base}.remote") or "origin"
     repo = github_repo(git(root, "config", f"remote.{remote}.url"))
     if not repo:
-        return f"Remote {remote} проекта не на GitHub, PR не открыть.", True
+        return tr(f"Remote {remote} проекта не на GitHub, PR не открыть.",
+                  f"The project's remote {remote} is not on GitHub, can't open a PR."), True
 
     r = subprocess.run(["git", "-C", root, "push", "--no-follow-tags", "-u", remote, f"refs/heads/{name}:refs/heads/{name}"],
                        capture_output=True, text=True, timeout=300)
     if r.returncode:
-        return f"Не запушил {name} в {remote}:\n{out_of(r)}", True
+        return tr(f"Не запушил {name} в {remote}:\n{out_of(r)}", f"Couldn't push {name} to {remote}:\n{out_of(r)}"), True
     # что именно ушло в PR: push обновляет remote-tracking ветку ровно до отправленного коммита
     pushed = git(root, "rev-parse", "--verify", "--quiet", f"refs/remotes/{remote}/{name}") or \
         git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}")
-    log(f"Запушил {name} в {remote}.")
+    log(tr(f"Запушил {name} в {remote}.", f"Pushed {name} to {remote}."))
 
     r = gh(path, "pr", "list", "-R", repo, "--head", name, "--state", "open", "--json", "number,url")
     try:
@@ -378,18 +421,19 @@ def pr(branch, project=None, cwd=None, merge=True, log=None):
         opened = []
     if opened:
         num, url = opened[0]["number"], opened[0]["url"]
-        log(f"PR уже открыт: {url}")
+        log(tr(f"PR уже открыт: {url}", f"PR is already open: {url}"))
     else:
         r = gh(path, "pr", "create", "-R", repo, "--fill", "--base", base, "--head", name)
         url = (r.stdout or "").strip().splitlines()[-1:] or [""]
         url = url[0]
         m = re.search(r"/pull/(\d+)", url)
         if r.returncode or not m:
-            return f"Не открыл PR:\n{out_of(r)}", True
+            return tr(f"Не открыл PR:\n{out_of(r)}", f"Couldn't open the PR:\n{out_of(r)}"), True
         num = int(m.group(1))
-        log(f"Открыл PR: {url}")
+        log(tr(f"Открыл PR: {url}", f"Opened the PR: {url}"))
     if not merge:
-        return f"Ветка {name} в PR #{num}, сливать не стал. Worktree на месте: {tilde(path)}.", False
+        return tr(f"Ветка {name} в PR #{num}, сливать не стал. Worktree на месте: {tilde(path)}.",
+                  f"Branch {name} is in PR #{num}, not merged. The worktree is still there: {tilde(path)}."), False
 
     subprocess.run(["git", "-C", root, "fetch", "--no-tags", "-q", remote, base], capture_output=True, timeout=300)
     ref = f"{remote}/{base}" if git(root, "rev-parse", "--verify", "--quiet", f"refs/remotes/{remote}/{base}") else base
@@ -397,40 +441,51 @@ def pr(branch, project=None, cwd=None, merge=True, log=None):
 
     has, ok, bad = pr_checks(repo, num, path, log)
     if not ok:
-        return (f"CI по PR #{num} не прошёл, сливать не стал. Worktree оставил: {tilde(path)}.\n{bad}\n"
-                f"Почини там, закоммить и снова: agentmeister parallel pr {name}"), True
-    log("CI прошёл." if has else "Проверок у PR нет, сливаю сразу.")
+        return tr(f"CI по PR #{num} не прошёл, сливать не стал. Worktree оставил: {tilde(path)}.\n{bad}\n"
+                  f"Почини там, закоммить и снова: agentmeister parallel pr {name}",
+                  f"CI on PR #{num} failed, not merged. Kept the worktree: {tilde(path)}.\n{bad}\n"
+                  f"Fix it there, commit and run again: agentmeister parallel pr {name}"), True
+    log(tr("CI прошёл.", "CI passed.") if has else tr("Проверок у PR нет, сливаю сразу.", "The PR has no checks, merging now."))
 
     r = gh(path, "pr", "merge", str(num), "-R", repo, how, "--delete-branch", "--match-head-commit", pushed,
            timeout=300)
     if r.returncode:
-        return f"PR #{num} не слился ({how}), worktree оставил:\n{out_of(r)}", True
+        return tr(f"PR #{num} не слился ({how}), worktree оставил:\n{out_of(r)}",
+                  f"PR #{num} didn't merge ({how}), kept the worktree:\n{out_of(r)}"), True
     git(root, "branch", "-d", "-r", f"{remote}/{name}")
     # CI мог идти часами: за это время в worktree могли снова открыть Claude, что-то поменять или закоммитить
     keep = []
     if running_in(path):
-        keep.append("там снова работает Claude")
+        keep.append(tr("там снова работает Claude", "Claude is running there again"))
     dirty = len(git(path, "status", "--porcelain").splitlines())
     if dirty:
-        keep.append(f"незакоммичено файлов: {dirty}")
+        keep.append(tr(f"незакоммичено файлов: {dirty}", f"uncommitted files: {dirty}"))
     if git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{name}") != pushed:
-        keep.append(f"в ветке {name} есть коммиты, которых нет в PR")
+        keep.append(tr(f"в ветке {name} есть коммиты, которых нет в PR", f"the branch {name} has commits that aren't in the PR"))
     if keep:
-        lines = [f"Слил PR #{num} в {base} ({how[2:]}), ветку на GitHub удалил. Worktree {tilde(path)} и ветку {name} "
-                 f"оставил: {'; '.join(keep)}. Когда разберёшься: agentmeister parallel drop {name} --force."]
+        why = '; '.join(keep)
+        lines = [tr(f"Слил PR #{num} в {base} ({how[2:]}), ветку на GitHub удалил. Worktree {tilde(path)} и ветку {name} "
+                    f"оставил: {why}. Когда разберёшься: agentmeister parallel drop {name} --force.",
+                    f"Merged PR #{num} into {base} ({how[2:]}), deleted the branch on GitHub. Kept the worktree "
+                    f"{tilde(path)} and the branch {name}: {why}. When you've sorted it out: "
+                    f"agentmeister parallel drop {name} --force.")]
     else:
         forget_task(root, e)
-        lines = [f"Слил PR #{num} в {base} ({how[2:]}), ветку на GitHub удалил, worktree и локальную ветку убрал."]
+        lines = [tr(f"Слил PR #{num} в {base} ({how[2:]}), ветку на GitHub удалил, worktree и локальную ветку убрал.",
+                    f"Merged PR #{num} into {base} ({how[2:]}), deleted the branch on GitHub, removed the worktree "
+                    f"and the local branch.")]
     subprocess.run(["git", "-C", root, "fetch", "--no-tags", "-q", remote, base], capture_output=True, timeout=300)
     if git(root, "branch", "--show-current") != base:
-        lines.append(f"Основная папка не на {base}, её не трогал.")
+        lines.append(tr(f"Основная папка не на {base}, её не трогал.", f"The main folder is not on {base}, left it alone."))
     elif git(root, "status", "--porcelain", "--untracked-files=no"):
-        lines.append(f"В основной папке есть незакоммиченные изменения, {base} не подтягивал: git pull --ff-only сам.")
+        lines.append(tr(f"В основной папке есть незакоммиченные изменения, {base} не подтягивал: git pull --ff-only сам.",
+                        f"The main folder has uncommitted changes, didn't update {base}: run git pull --ff-only yourself."))
     else:
         r = subprocess.run(["git", "-C", root, "merge", "--ff-only", "-q", f"{remote}/{base}"],
                            capture_output=True, text=True)
-        lines.append(f"Подтянул {base} в основной папке." if not r.returncode else
-                     f"{base} в основной папке не подтягивается перемоткой: {out_of(r, 300)}")
+        lines.append(tr(f"Подтянул {base} в основной папке.", f"Updated {base} in the main folder.") if not r.returncode else
+                     tr(f"{base} в основной папке не подтягивается перемоткой: {out_of(r, 300)}",
+                        f"{base} in the main folder can't fast-forward: {out_of(r, 300)}"))
     return "\n".join(lines), False
 
 
@@ -496,19 +551,30 @@ def handle(name, a, cwd=None, cm=None):
 def main():
     args = sys.argv[2:] if sys.argv[1:2] == ["parallel"] else sys.argv[1:]
     if not args or args[0] in ("-h", "--help"):
-        print('agentmeister parallel "<задача>" [-p проект] [-b ветка] [-n] [--permission-mode auto] [--no-rc] [--fork]')
-        print("                         новая ветка и worktree от текущего коммита, в новой вкладке — Claude с задачей;")
-        print("                         --fork изнутри Claude: второй Claude продолжает эту переписку (форк сессии)")
-        print('agentmeister parallel "<задача>" -p проект --prepare [--fork-sid <id>]')
-        print("                         только ветка и worktree, ответ JSON: так вкладку открывает приложение Agentmeister")
-        print("agentmeister parallel list           параллельные задачи этого проекта")
-        print("agentmeister parallel merge <ветка>  влить в исходную ветку (без пуша) и убрать worktree")
-        print("agentmeister parallel drop <ветка> [--force]")
-        print("                         выбросить ветку и worktree; с незакоммиченным или невлитым — только с --force")
-        print("agentmeister parallel pr <ветка> [--no-merge]")
-        print("                         запушить, открыть PR в исходную ветку, дождаться CI, слить, убрать worktree")
+        print(tr('agentmeister parallel "<задача>" [-p проект] [-b ветка] [-n] [--permission-mode auto] [--no-rc] [--fork]',
+                 'agentmeister parallel "<task>" [-p project] [-b branch] [-n] [--permission-mode auto] [--no-rc] [--fork]'))
+        print(tr("                         новая ветка и worktree от текущего коммита, в новой вкладке — Claude с задачей;",
+                 "                         new branch and worktree from the current commit, Claude with the task in a new tab;"))
+        print(tr("                         --fork изнутри Claude: второй Claude продолжает эту переписку (форк сессии)",
+                 "                         --fork from inside Claude: the second Claude continues this conversation (session fork)"))
+        print(tr('agentmeister parallel "<задача>" -p проект --prepare [--fork-sid <id>]',
+                 'agentmeister parallel "<task>" -p project --prepare [--fork-sid <id>]'))
+        print(tr("                         только ветка и worktree, ответ JSON: так вкладку открывает приложение Agentmeister",
+                 "                         only the branch and worktree, JSON answer: this is how the Agentmeister app opens a tab"))
+        print(tr("agentmeister parallel list           параллельные задачи этого проекта",
+                 "agentmeister parallel list            parallel tasks of this project"))
+        print(tr("agentmeister parallel merge <ветка>  влить в исходную ветку (без пуша) и убрать worktree",
+                 "agentmeister parallel merge <branch>  merge into the source branch (no push) and remove the worktree"))
+        print(tr("agentmeister parallel drop <ветка> [--force]", "agentmeister parallel drop <branch> [--force]"))
+        print(tr("                         выбросить ветку и worktree; с незакоммиченным или невлитым — только с --force",
+                 "                         throw away the branch and worktree; with uncommitted or unmerged work only with --force"))
+        print(tr("agentmeister parallel pr <ветка> [--no-merge]", "agentmeister parallel pr <branch> [--no-merge]"))
+        print(tr("                         запушить, открыть PR в исходную ветку, дождаться CI, слить, убрать worktree",
+                 "                         push, open a PR into the source branch, wait for CI, merge, remove the worktree"))
         print()
-        print(f"Worktree лежат в {tilde(os.path.join(projects_dir(), '.worktrees'))}/<проект>/. В Claude Code: /parallel.")
+        wt = tilde(os.path.join(projects_dir(), '.worktrees'))
+        print(tr(f"Worktree лежат в {wt}/<проект>/. В Claude Code: /parallel.",
+                 f"Worktrees live in {wt}/<project>/. In Claude Code: /parallel."))
         return 0 if args else 2
     opts = {}
     rest = []

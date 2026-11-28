@@ -5,7 +5,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import find_project, read_config, run, tilde
+from mnrhlib import find_project, read_config, run, tilde, tr
 import claude_search
 
 LIMITS = {"play": 500, "appstore": 4000, "testflight": 4000, "rustore": 5000, "firebase": 16000}
@@ -35,17 +35,19 @@ def app_version(root):
 
 def since_point(root, since=None):
     if since:
-        return since, f"задано: {since}"
+        return since, tr(f"задано: {since}", f"given {since}")
     tag = run(["git", "-C", root, "describe", "--tags", "--abbrev=0"]).strip()
     tag_ts = int(run(["git", "-C", root, "log", "-1", "--format=%ct", tag]).strip() or 0) if tag else 0
     report = os.path.join(root, "fastlane", "report.xml")
     rep_ts = int(os.path.getmtime(report)) if os.path.exists(report) else 0
     notes = sorted(glob.glob(os.path.join(glob.escape(root), NOTES_DIR, "*.txt")), key=os.path.getmtime)
     notes_ts = int(os.path.getmtime(notes[-1])) if notes else 0
-    best = max((tag_ts, f"тег {tag}", tag), (rep_ts, "последний запуск fastlane", None),
-               (notes_ts, "прошлые заметки к релизу", None))
+    best = max((tag_ts, tr(f"тег {tag}", f"tag {tag}"), tag),
+               (rep_ts, tr("последний запуск fastlane", "last fastlane run"), None),
+               (notes_ts, tr("прошлые заметки к релизу", "previous release notes"), None))
     if not best[0]:
-        return None, "ни тега, ни запусков fastlane: берутся последние 30 коммитов"
+        return None, tr("ни тега, ни запусков fastlane: берутся последние 30 коммитов",
+                        "no tag and no fastlane runs: taking the last 30 commits")
     when = time.strftime("%Y-%m-%d %H:%M", time.localtime(best[0]))
     return best[2] or f"@{best[0]}", f"{best[1]} ({when})"
 
@@ -66,7 +68,7 @@ def commits(root, since):
             continue
         head, _, body = chunk.partition("\n")
         body = " ".join(l.strip() for l in body.splitlines() if l.strip() and not l.lower().startswith(("co-authored", "signed-off")))
-        items.append(head + (f" — {body[:300]}" if body else ""))
+        items.append(head + ((tr(" — ", ": ") + body[:300]) if body else ""))
     return items
 
 
@@ -83,7 +85,9 @@ def sessions_since(root, ts):
             continue
         summaries = [m for m in data["msgs"] if m[0] == "summary" and (m[1] or "") >= time.strftime(
             "%Y-%m-%dT%H:%M:%S", time.gmtime(ts))]
-        out.append(f"«{claude_search.title(sid, data)}» ({sid[:8]}), сводок после /compact за период: {len(summaries)}")
+        name = claude_search.title(sid, data)
+        out.append(tr(f"«{name}» ({sid[:8]}), сводок после /compact за период: {len(summaries)}",
+                      f"\"{name}\" ({sid[:8]}), /compact summaries in this period: {len(summaries)}"))
     return out
 
 
@@ -113,23 +117,34 @@ def context(project=None, since=None, cwd=None):
     log = commits(root, point)
     ts = int(point[1:]) if point and point.startswith("@") else \
         int(run(["git", "-C", root, "log", "-1", "--format=%ct", point]).strip() or 0) if point else 0
-    lines = [f"Проект {os.path.basename(root)} ({tilde(root)}), версия {version or '?'}"
-             + (f" (из {vsrc})" if vsrc else ""),
-             f"С какого момента: {why}. Коммитов: {len(log)}."]
-    lines += ["", "Коммиты (новые сверху):"] + [f"  {c}" for c in log[:120]]
+    name = os.path.basename(root)
+    langs = ', '.join(locales(root))
+    lines = [tr(f"Проект {name} ({tilde(root)}), версия {version or '?'}",
+                f"Project {name} ({tilde(root)}), version {version or '?'}")
+             + (tr(f" (из {vsrc})", f" (from {vsrc})") if vsrc else ""),
+             tr(f"С какого момента: {why}. Коммитов: {len(log)}.", f"Since: {why}. Commits: {len(log)}.")]
+    lines += ["", tr("Коммиты (новые сверху):", "Commits (newest first):")] + [f"  {c}" for c in log[:120]]
     if len(log) > 120:
-        lines.append(f"  … и ещё {len(log) - 120}")
+        lines.append(tr(f"  … и ещё {len(log) - 120}", f"  … and {len(log) - 120} more"))
     sess = sessions_since(root, ts) if ts else []
     if sess:
-        lines += ["", "Сессии Claude за этот период (подробности — session_search/session_read):"] + \
+        lines += ["", tr("Сессии Claude за этот период (подробности — session_search/session_read):",
+                         "Claude sessions in this period (details: session_search/session_read):")] + \
             [f"  {s}" for s in sess]
-    lines += ["", f"Языки: {', '.join(locales(root))}. Ограничения «Что нового»: Google Play 500 символов, "
-                  "App Store и TestFlight 4000, RuStore 5000, Firebase App Distribution 16000.",
-              "Fastfile этого проекта берёт текст из notes: или RELEASE_NOTES; release_notes_write кладёт файлы в "
-              f"{NOTES_DIR}/ и, если есть fastlane/metadata, — в changelogs/release_notes.txt.",
-              "Пиши для пользователей, а не для разработчиков: что стало лучше и что исправлено, без названий "
-              "классов, библиотек и номеров коммитов. Внутренние изменения (рефакторинг, CI, зависимости) "
-              "не упоминай или одной общей фразой."]
+    lines += ["", tr(f"Языки: {langs}. Ограничения «Что нового»: Google Play 500 символов, "
+                     "App Store и TestFlight 4000, RuStore 5000, Firebase App Distribution 16000.",
+                     f"Languages: {langs}. \"What's new\" limits: Google Play 500 characters, "
+                     "App Store and TestFlight 4000, RuStore 5000, Firebase App Distribution 16000."),
+              tr("Fastfile этого проекта берёт текст из notes: или RELEASE_NOTES; release_notes_write кладёт файлы в "
+                 f"{NOTES_DIR}/ и, если есть fastlane/metadata, — в changelogs/release_notes.txt.",
+                 "This project's Fastfile takes the text from notes: or RELEASE_NOTES; release_notes_write puts the files in "
+                 f"{NOTES_DIR}/ and, if there is fastlane/metadata, in changelogs/release_notes.txt."),
+              tr("Пиши для пользователей, а не для разработчиков: что стало лучше и что исправлено, без названий "
+                 "классов, библиотек и номеров коммитов. Внутренние изменения (рефакторинг, CI, зависимости) "
+                 "не упоминай или одной общей фразой.",
+                 "Write for users, not developers: what got better and what was fixed, without class names, "
+                 "library names or commit hashes. Leave out internal changes (refactoring, CI, dependencies) "
+                 "or cover them in one general sentence.")]
     return "\n".join(lines), False
 
 
@@ -141,18 +156,23 @@ def write(project=None, version=None, notes=None, version_code=None, cwd=None):
     if err:
         return err, True
     if not isinstance(notes, dict) or not notes:
-        return "Нужен notes: {\"ru-RU\": \"…\", \"en-US\": \"…\"}", True
+        return tr("Нужен notes: {\"ru-RU\": \"…\", \"en-US\": \"…\"}",
+                  "notes is required: {\"ru-RU\": \"…\", \"en-US\": \"…\"}"), True
     # из этих значений собираются пути; без проверки "../../x" записал бы файл вне fastlane/
     bad = [loc for loc, text in notes.items() if not LOCALE.match(str(loc)) or not isinstance(text, str)]
     if bad:
-        return f"В notes ключи вида ru-RU или en-US, значения строками; не подходят: {', '.join(map(str, bad))}", True
+        listed = ', '.join(map(str, bad))
+        return tr(f"В notes ключи вида ru-RU или en-US, значения строками; не подходят: {listed}",
+                  f"notes keys look like ru-RU or en-US, values are strings; these don't fit: {listed}"), True
     version = version or app_version(root)[0] or time.strftime("%Y%m%d")
     if not VERSION.match(str(version)):
-        return f"Версия {version!r} не похожа на номер версии: нужны цифры, буквы, точки, +, - или _", True
+        return tr(f"Версия {version!r} не похожа на номер версии: нужны цифры, буквы, точки, +, - или _",
+                  f"Version {version!r} doesn't look like a version number: use digits, letters, dots, +, - or _"), True
     if version_code is not None and not re.match(r"^\d{1,10}$", str(version_code)):
-        return f"version_code {version_code!r} не число", True
+        return tr(f"version_code {version_code!r} не число", f"version_code {version_code!r} is not a number"), True
     version = str(version)
-    too_long = [f"{loc}: {len(t)} символов" for loc, t in notes.items() if len(t) > LIMITS["play"]]
+    too_long = [tr(f"{loc}: {len(t)} символов", f"{loc}: {len(t)} characters")
+                for loc, t in notes.items() if len(t) > LIMITS["play"]]
     out_dir = os.path.join(root, NOTES_DIR)
     os.makedirs(out_dir, exist_ok=True)
     written = []
@@ -177,10 +197,12 @@ def write(project=None, version=None, notes=None, version_code=None, cwd=None):
             written.append(os.path.relpath(p, root))
     first = next(iter(notes))
     rel = os.path.join(NOTES_DIR, f"{version}.{first}.txt")
-    lines = ["Записал:"] + [f"  {w}" for w in written]
+    lines = [tr("Записал:", "Wrote:")] + [f"  {w}" for w in written]
     if too_long:
-        lines.append("! Длиннее 500 символов, в Google Play не влезет: " + ", ".join(too_long))
-    lines.append(f'Передать в fastlane: RELEASE_NOTES="$(cat {rel})" bundle exec fastlane <лейн>')
+        lines.append(tr("! Длиннее 500 символов, в Google Play не влезет: ",
+                        "! Longer than 500 characters, won't fit in Google Play: ") + ", ".join(too_long))
+    lines.append(tr(f'Передать в fastlane: RELEASE_NOTES="$(cat {rel})" bundle exec fastlane <лейн>',
+                    f'Pass to fastlane: RELEASE_NOTES="$(cat {rel})" bundle exec fastlane <lane>'))
     return "\n".join(lines), False
 
 
@@ -219,10 +241,13 @@ def handle(name, a, cwd=None):
 def main():
     args = sys.argv[2:] if sys.argv[1:2] == ["release-notes"] else sys.argv[1:]
     if args[:1] in (["-h"], ["--help"]):
-        print("agentmeister release-notes [проект] [--since <тег|коммит>]")
-        print("    материал для «Что нового»: версия, коммиты с прошлого релиза, сессии Claude, языки и лимиты")
+        print(tr("agentmeister release-notes [проект] [--since <тег|коммит>]",
+                 "agentmeister release-notes [project] [--since <tag|commit>]"))
+        print(tr("    материал для «Что нового»: версия, коммиты с прошлого релиза, сессии Claude, языки и лимиты",
+                 "    material for \"What's new\": version, commits since the last release, Claude sessions, languages and limits"))
         print()
-        print("Сами заметки пишет Claude: /release-notes в Claude Code. Сохраняются в fastlane/release_notes/.")
+        print(tr("Сами заметки пишет Claude: /release-notes в Claude Code. Сохраняются в fastlane/release_notes/.",
+                 "Claude writes the notes: /release-notes in Claude Code. They are saved to fastlane/release_notes/."))
         return 0
     since = None
     if "--since" in args:

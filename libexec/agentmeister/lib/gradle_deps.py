@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
-from mnrhlib import CACHE as MNRH_CACHE, project_entries, project_folders, projects_dirs, tilde
+from mnrhlib import CACHE as MNRH_CACHE, project_entries, project_folders, projects_dirs, tilde, tr
 
 CACHE = os.path.join(MNRH_CACHE, "maven")
 TTL = 6 * 3600
@@ -195,11 +195,21 @@ def change_kind(cur, new):
     return "патч" if a[:3] != b[:3] else "сборка"
 
 
+KIND_EN = {"мажорная": "major", "минорная": "minor", "патч": "patch", "сборка": "build", "предварительная": "prerelease"}
+
+
+def kind_name(kind):
+    """change_kind хранит русские ключи; на экран — на языке интерфейса."""
+    return tr(kind, KIND_EN.get(kind, kind))
+
+
 def check_one(key, current, targets):
     alias, group, artifact, plugin = targets[0]
     found, repo = versions_of(group, artifact, plugin)
     if not found:
-        return {"key": key, "current": current, "error": f"{group}:{artifact} нет в Google Maven, Maven Central и Plugin Portal (свой репозиторий?)",
+        return {"key": key, "current": current,
+                "error": tr(f"{group}:{artifact} нет в Google Maven, Maven Central и Plugin Portal (свой репозиторий?)",
+                            f"{group}:{artifact} is not in Google Maven, Maven Central or Plugin Portal (own repository?)"),
                 "aliases": [t[0] for t in targets]}
     cur_key = version_key(current)
     found = [v for v in found if flavor(v) == flavor(current)] or found
@@ -244,26 +254,30 @@ def notes(report):
     out = []
     ksp = next((r for r in report["results"] if "devtools.ksp" in r.get("module", "")), None)
     if kotlin and kotlin.get("stable") and ksp:
-        out.append("Kotlin и KSP обновляй вместе: у KSP должна быть сборка под новую версию Kotlin.")
+        out.append(tr("Kotlin и KSP обновляй вместе: у KSP должна быть сборка под новую версию Kotlin.",
+                      "Update Kotlin and KSP together: KSP needs a build for the new Kotlin version."))
     agp = next((r for r in report["results"] if r.get("module", "").startswith("com.android.")
                 and r.get("plugin") and r.get("stable")), None)
     if agp and agp.get("kind") in ("мажорная", "минорная"):
-        out.append(f"AGP {agp['stable']} может требовать более новый Gradle — проверь таблицу совместимости AGP и Gradle.")
+        out.append(tr(f"AGP {agp['stable']} может требовать более новый Gradle — проверь таблицу совместимости AGP и Gradle.",
+                      f"AGP {agp['stable']} may need a newer Gradle. Check the AGP and Gradle compatibility table."))
     cmp = next((r for r in report["results"] if r.get("module", "").startswith("org.jetbrains.compose")
                 and r.get("stable")), None)
     if cmp and kotlin:
-        out.append("Compose Multiplatform привязан к версии Kotlin: смотри таблицу совместимости JetBrains.")
+        out.append(tr("Compose Multiplatform привязан к версии Kotlin: смотри таблицу совместимости JetBrains.",
+                      "Compose Multiplatform is tied to the Kotlin version: see the JetBrains compatibility table."))
     return out
 
 
 def format_report(report, include_pre=False):
     project = report["project"]
     rows = [r for r in report["results"] if r.get("stable") or (include_pre and r.get("pre")) or r.get("error")]
-    lines = [f"{os.path.basename(project)} ({tilde(project)}/gradle/libs.versions.toml): проверено "
-             f"{len(report['results'])}, есть новее: {sum(1 for r in report['results'] if r.get('stable'))}"]
+    checked, newer = len(report['results']), sum(1 for r in report['results'] if r.get('stable'))
+    lines = [f"{os.path.basename(project)} ({tilde(project)}/gradle/libs.versions.toml): "
+             + tr(f"проверено {checked}, есть новее: {newer}", f"checked {checked}, newer available: {newer}")]
     now, new = report["gradle"]
     if now and new and version_key(new) > version_key(now):
-        lines.append(f"  Gradle wrapper {now} → {new} ({change_kind(now, new)})")
+        lines.append(f"  Gradle wrapper {now} → {new} ({kind_name(change_kind(now, new))})")
     order = {"мажорная": 0, "минорная": 1, "патч": 2, "сборка": 3}
     rows.sort(key=lambda r: (0 if r.get("error") else 1, order.get(r.get("kind"), 4), r["key"]))
     for r in rows:
@@ -271,12 +285,14 @@ def format_report(report, include_pre=False):
             lines.append(f"  ? {r['key']} {r['current']}: {r['error']}")
             continue
         target = r.get("stable") or r.get("pre")
-        kind = r.get("kind") or "предварительная"
-        extra = f", предварительная {r['pre']}" if include_pre and r.get("pre") and r.get("stable") else ""
-        used = ", ".join(r["aliases"][:3]) + (f" и ещё {len(r['aliases']) - 3}" if len(r["aliases"]) > 3 else "")
-        lines.append(f"  {r['key']}: {r['current']} → {target} ({kind}{extra}) — {used}")
+        kind = kind_name(r.get("kind") or "предварительная")
+        extra = tr(f", предварительная {r['pre']}", f", prerelease {r['pre']}") \
+            if include_pre and r.get("pre") and r.get("stable") else ""
+        more = len(r["aliases"]) - 3
+        used = ", ".join(r["aliases"][:3]) + (tr(f" и ещё {more}", f" and {more} more") if more > 0 else "")
+        lines.append(f"  {r['key']}: {r['current']} → {target} ({kind}{extra}){tr(' — ', ': ')}{used}")
     if len(rows) == 0:
-        lines.append("  всё свежее")
+        lines.append(tr("  всё свежее", "  everything is up to date"))
     for n in notes(report):
         lines.append("  ! " + n)
     return "\n".join(lines)
@@ -299,7 +315,8 @@ def report_text(query=None, cwd=None, include_pre=False):
     if query:
         targets = find_projects(query)
         if not targets:
-            return f"Проекта «{query}» нет в {', '.join(tilde(d) for d in projects_dirs())}.", True
+            dirs = ', '.join(tilde(d) for d in projects_dirs())
+            return tr(f"Проекта «{query}» нет в {dirs}.", f"No project \"{query}\" in {dirs}."), True
     elif cwd and os.path.isfile(os.path.join(cwd, "gradle", "libs.versions.toml")):
         targets = [cwd]
     else:
@@ -307,7 +324,8 @@ def report_text(query=None, cwd=None, include_pre=False):
     reports = [check_project(p, include_pre) for p in targets]
     reports = [r for r in reports if r]
     if not reports:
-        return "Нет gradle/libs.versions.toml ни в одном из проектов.", False
+        return tr("Нет gradle/libs.versions.toml ни в одном из проектов.",
+                  "None of the projects has gradle/libs.versions.toml."), False
     return "\n\n".join(format_report(r, include_pre) for r in reports), False
 
 

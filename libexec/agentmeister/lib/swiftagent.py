@@ -18,7 +18,7 @@ import tempfile
 import time
 
 from mac_files import RENAME_EXCL, RENAME_SWAP, rename_with_flags
-from mnrhlib import CACHE, HOME, WARN, settings_path
+from mnrhlib import CACHE, HOME, WARN, settings_path, tr
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 STALE_BUILD = 3600  # временная папка .build-* старше часа осталась от убитой сборки
@@ -95,18 +95,21 @@ class SwiftAgent:
         return (r.stdout.strip() or r.stderr.strip() or "error").splitlines()[-1]
 
     def approve_login_item(self):
-        print(f"{WARN} macOS ждёт разрешения для фонового объекта: "
-              f"{settings_path('settings', 'general', 'login')} → «{self.display}».")
+        where = settings_path('settings', 'general', 'login')
+        print(tr(f"{WARN} macOS ждёт разрешения для фонового объекта: "
+                 f"{where} → «{self.display}».",
+                 f"{WARN} macOS is waiting for you to allow the background item: "
+                 f"{where} → \"{self.display}\"."))
         subprocess.run(["open", "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"])
         if not sys.stdin.isatty():
             return False
-        print("Жду до двух минут...", end="", flush=True)
+        print(tr("Жду до двух минут...", "Waiting up to two minutes..."), end="", flush=True)
         for _ in range(120):
             time.sleep(1)
             if self.service("--service-status") == "enabled":
-                print(" есть.")
+                print(tr(" есть.", " done."))
                 return True
-        print("\nНе дождался. Как разрешишь — снова то же on.")
+        print(tr("\nНе дождался. Как разрешишь — снова то же on.", "\nTimed out. Once you allow it, run the same on again."))
         return False
 
     def drop_legacy(self):
@@ -232,8 +235,9 @@ class SwiftAgent:
             return False
         self.clean_stale_builds()
         if not shutil.which("swiftc"):
-            sys.exit("Нужен компилятор Swift из Xcode Command Line Tools: xcode-select --install")
-        print(f"Собираю {self.display}...")
+            sys.exit(tr("Нужен компилятор Swift из Xcode Command Line Tools: xcode-select --install",
+                        "You need the Swift compiler from Xcode Command Line Tools: xcode-select --install"))
+        print(tr(f"Собираю {self.display}...", f"Building {self.display}..."))
         parent = os.path.dirname(self.app)
         with tempfile.TemporaryDirectory(prefix=".build-", dir=parent) as tmp:
             app = os.path.join(tmp, os.path.basename(self.app))
@@ -245,10 +249,10 @@ class SwiftAgent:
             r = subprocess.run(["swiftc", "-O", "-swift-version", "5", *self.sources(), "-o", binary],
                                capture_output=True, text=True)
             if r.returncode != 0:
-                sys.exit("Сборка не удалась:\n" + r.stderr[-2000:])
+                sys.exit(tr("Сборка не удалась:\n", "Build failed:\n") + r.stderr[-2000:])
             has_icon = self.make_icns(tmp, resources)
             if self.icon() and not has_icon:
-                sys.exit("Не удалось собрать иконку приложения")
+                sys.exit(tr("Не удалось собрать иконку приложения", "Couldn't build the app icon"))
             label = self.build_label()
             if self.service_args is not None:
                 agents = os.path.join(contents, "Library", "LaunchAgents")
@@ -271,7 +275,7 @@ class SwiftAgent:
             r = subprocess.run(["codesign", "--force", "--sign", self.signing_identity(), "--identifier", bundle_id, app],
                                capture_output=True, text=True)
             if r.returncode != 0:
-                sys.exit("Не удалось подписать помощника:\n" + r.stderr)
+                sys.exit(tr("Не удалось подписать помощника:\n", "Couldn't sign the helper:\n") + r.stderr)
             try:
                 rename_with_flags(app, self.app, RENAME_EXCL)
             except FileExistsError:
@@ -322,7 +326,7 @@ class SwiftAgent:
                 if status == "requiresApproval":
                     return status
                 if status != "enabled":
-                    sys.exit(f"macOS не зарегистрировал помощника: {status}")
+                    sys.exit(tr(f"macOS не зарегистрировал помощника: {status}", f"macOS didn't register the helper: {status}"))
                 if was:
                     self.launchctl("kickstart", "-k", f"{self.domain}/{self.label}")
                 if self.wait_state():
@@ -334,7 +338,8 @@ class SwiftAgent:
         self.stop()
         r = self.launchctl("bootstrap", self.domain, self.plist)
         if r.returncode != 0:
-            sys.exit(f"launchctl не запустил помощника: {r.stderr.strip()}")
+            sys.exit(tr(f"launchctl не запустил помощника: {r.stderr.strip()}",
+                        f"launchctl didn't start the helper: {r.stderr.strip()}"))
         return self.wait_state()
 
     def wait_state(self):

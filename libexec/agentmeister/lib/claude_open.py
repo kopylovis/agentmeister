@@ -113,20 +113,26 @@ def project_dirs():
 def git_line(d):
     branch = run(["git", "-C", d, "branch", "--show-current"], timeout=5).strip()
     last = run(["git", "-C", d, "log", "-1", "--format=%cr"], timeout=5).strip()
-    return f"{branch or '-'}, {last}" if last else (branch or "не git")
+    return f"{branch or '-'}, {last}" if last else (branch or tr("не git", "not git"))
 
 
 def choices(root, dirs, note=""):
     lines = [note] if note else []
-    lines.append(f"Проекты в {root} (ветка, последний коммит):")
-    lines.append("  ~  домашний каталог")
+    lines.append(tr(f"Проекты в {root} (ветка, последний коммит):", f"Projects in {root} (branch, last commit):"))
+    lines.append(tr("  ~  домашний каталог", "  ~  home folder"))
     lines += [f"  {project_label(d, dirs)}  ({git_line(d)})" for d in dirs]
     lines.append("")
     import session_defaults
-    lines.append(f"Режим: caffeinate — Mac не уснёт, пока идёт сессия; normal — обычная. По умолчанию {session_defaults.open_mode()}.")
-    lines.append("Можно добавить первый запрос (prompt) или продолжить прошлую сессию (continue).")
-    lines.append("Покажи список пользователю и спроси, какой проект и режим открыть, "
-                 "затем вызови open_claude с project и mode.")
+    default = session_defaults.open_mode()
+    lines.append(tr(f"Режим: caffeinate — Mac не уснёт, пока идёт сессия; normal — обычная. По умолчанию {default}.",
+                    f"Mode: caffeinate keeps the Mac awake while the session runs; normal is a regular session. "
+                    f"Default: {default}."))
+    lines.append(tr("Можно добавить первый запрос (prompt) или продолжить прошлую сессию (continue).",
+                    "You can add a first prompt (prompt) or continue the last session (continue)."))
+    lines.append(tr("Покажи список пользователю и спроси, какой проект и режим открыть, "
+                    "затем вызови open_claude с project и mode.",
+                    "Show the list to the user and ask which project and mode to open, "
+                    "then call open_claude with project and mode."))
     return "\n".join(lines)
 
 
@@ -171,10 +177,10 @@ def trust(path, attempts=5):
         with open(target) as f:
             data = json.load(f)
         if not isinstance(data, dict):
-            raise ValueError("в файле не объект JSON")
+            raise ValueError(tr("в файле не объект JSON", "the file is not a JSON object"))
         projects = data.setdefault("projects", {})
         if not isinstance(projects, dict):
-            raise ValueError("projects в файле не объект JSON")
+            raise ValueError(tr("projects в файле не объект JSON", "projects in the file is not a JSON object"))
         entry = projects.get(key) if isinstance(projects.get(key), dict) else {}
         entry["hasTrustDialogAccepted"] = True
         projects[key] = entry
@@ -191,7 +197,8 @@ def trust(path, attempts=5):
             if os.path.exists(tmp):
                 os.remove(tmp)
         time.sleep(0.05)
-    raise OSError(f"{tilde(CLAUDE_JSON)} всё время меняется, попробуй ещё раз")
+    raise OSError(tr(f"{tilde(CLAUDE_JSON)} всё время меняется, попробуй ещё раз",
+                     f"{tilde(CLAUDE_JSON)} keeps changing, try again"))
 
 
 def shell_word(arg):
@@ -280,7 +287,7 @@ def launch(term, line, placement):
         return None, f"AppleScript: {exc.__class__.__name__}"
     tty = r.stdout.strip()
     if r.returncode or not tty.startswith("/dev/"):
-        return None, (r.stderr or r.stdout).strip() or "osascript без ответа"
+        return None, (r.stderr or r.stdout).strip() or tr("osascript без ответа", "no answer from osascript")
     return tty, ""
 
 
@@ -381,19 +388,22 @@ def open_claude(args, cm):
         # по имени ищем и среди ссылок-псевдонимов, ссылка и ее папка считаются одним проектом
         found = list({os.path.realpath(d): d for d in match(project, project_entries())}.values())
     if len(found) != 1:
-        note = (f"«{project}» подходит к нескольким: {', '.join(tilde(d) for d in found)}, укажи path." if found
-                else f"Проекта «{project}» нет в {root}.")
+        listed = ', '.join(tilde(d) for d in found)
+        note = (tr(f"«{project}» подходит к нескольким: {listed}, укажи path.",
+                   f"\"{project}\" matches several: {listed}, give path.") if found
+                else tr(f"Проекта «{project}» нет в {root}.", f"No project \"{project}\" in {root}."))
         return choices(root, dirs, note), True
     target = found[0]
     import session_defaults
     mode = args.get("mode") or session_defaults.open_mode()
     if mode not in MODES:
-        return f"Режим бывает caffeinate или normal, а не «{mode}».", True
+        return tr(f"Режим бывает caffeinate или normal, а не «{mode}».",
+                  f"Mode is caffeinate or normal, not \"{mode}\"."), True
 
     term = terminal()
     placement = args.get("placement", "tab" if term == "iTerm.app" else "window")
     if placement not in ("tab", "window"):
-        return "placement должен быть tab или window", True
+        return tr("placement должен быть tab или window", "placement must be tab or window"), True
     note = ""
     if placement == "tab" and not iterm_installed():
         # вкладку умеет только iTerm2; без него открываем окно Terminal, а не ошибку AppleScript
@@ -406,14 +416,19 @@ def open_claude(args, cm):
 
     if not trusted(target):
         if args.get("trust") is not True:
-            return (f"Claude Code ещё не доверяет папке {tilde(target)}. При запуске он спросит «Do you trust "
-                    "the files in this folder?», ответить через Remote Control нельзя, и сессия так и будет ждать. "
-                    "Спроси пользователя, доверяет ли он этой папке, и если да, вызови open_claude ещё раз "
-                    "с теми же параметрами и trust: true."), True
+            return tr(f"Claude Code ещё не доверяет папке {tilde(target)}. При запуске он спросит «Do you trust "
+                      "the files in this folder?», ответить через Remote Control нельзя, и сессия так и будет ждать. "
+                      "Спроси пользователя, доверяет ли он этой папке, и если да, вызови open_claude ещё раз "
+                      "с теми же параметрами и trust: true.",
+                      f"Claude Code doesn't trust the folder {tilde(target)} yet. On start it will ask \"Do you trust "
+                      "the files in this folder?\", which can't be answered through Remote Control, so the session "
+                      "would wait forever. Ask the user whether they trust this folder, and if so, call open_claude "
+                      "again with the same parameters and trust: true."), True
         try:
             trust(target)
         except (OSError, ValueError) as e:
-            return f"Не отметил {tilde(target)} доверенной в {tilde(CLAUDE_JSON)}: {e}", True
+            return tr(f"Не отметил {tilde(target)} доверенной в {tilde(CLAUDE_JSON)}: {e}",
+                      f"Couldn't mark {tilde(target)} as trusted in {tilde(CLAUDE_JSON)}: {e}"), True
 
     name = "~" if target == HOME else os.path.basename(target)
     # из сессии через proxy новое окно тоже идёт через proxy, иначе напрямую, без вопроса в меню
@@ -461,13 +476,18 @@ def open_claude(args, cm):
             if answer:
                 text, failed = answer
                 if failed:
-                    text += f" В iTerm2 нажми ⌘T и выполни в новой вкладке:\n{line}"
+                    text += tr(f" В iTerm2 нажми ⌘T и выполни в новой вкладке:\n{line}",
+                               f" In iTerm2 press ⌘T and run in the new tab:\n{line}")
                 return text, failed
-        hint = (f" Нужно разрешение: {settings_path('settings', 'privacy', 'automation')} → разрешить управлять "
-                f"{app}.") if "-1743" in err or "not allowed" in err.lower() else ""
+        where = settings_path('settings', 'privacy', 'automation')
+        hint = tr(f" Нужно разрешение: {where} → разрешить управлять {app}.",
+                  f" Permission needed: {where} → allow control of {app}.") \
+            if "-1743" in err or "not allowed" in err.lower() else ""
         if tab:
-            hint += f" В iTerm2 нажми ⌘T и выполни в новой вкладке:\n{line}"
-        return f"Не удалось подтвердить запуск в {app} ({err}).{hint}", True
+            hint += tr(f" В iTerm2 нажми ⌘T и выполни в новой вкладке:\n{line}",
+                       f" In iTerm2 press ⌘T and run in the new tab:\n{line}")
+        return tr(f"Не удалось подтвердить запуск в {app} ({err}).{hint}",
+                  f"Couldn't confirm the launch in {app} ({err}).{hint}"), True
 
     where = tr(f"{tilde(target)}, режим {mode}", f"{tilde(target)}, mode {mode}") + \
         (tr(", через proxy", ", through the proxy") if net == "-x" else "")
