@@ -247,6 +247,9 @@ struct SessionDetail: View {
     @State private var previewFor: String?
     @State private var confirmDelete = false
     @State private var renaming = false
+    /// Показана вся переписка, а не последние сообщения.
+    @State private var full = false
+    @State private var loadingFull = false
 
     var l: L { L(backend.state.lang) }
 
@@ -264,7 +267,7 @@ struct SessionDetail: View {
                             onMoveToClaude: { moveToClaude(id) },
                             onResume: { resume(awake: $0) }, onDelete: { confirmDelete = true },
                             onRename: { renaming = true }, onMove: move, onSlim: slim,
-                            onReadAll: { readAll(id) })
+                            full: full, loadingFull: loadingFull, onReadAll: { readAll() })
             } else if previewFor == id {
                 ContentUnavailableView(l.t("Переписку не прочитать", "Couldn't read the conversation"),
                                        systemImage: "exclamationmark.bubble",
@@ -292,8 +295,9 @@ struct SessionDetail: View {
         if previewFor != id {
             preview = nil
             previewFor = nil
+            full = false
         }
-        let result = await backend.read(id)
+        let result = await backend.read(id, all: full)
         // выбрали другую сессию, пока это превью читалось: оно уже не нужно
         guard !Task.isCancelled, self.id == id else { return }
         previewFor = id
@@ -365,12 +369,15 @@ struct SessionDetail: View {
         }
     }
 
-    /// Вся переписка служебной вкладкой: agentmeister sessions show.
-    private func readAll(_ id: String) {
-        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
-        spec.utility = ["sessions", "show", id]
-        workspace.open(spec)
-        onOpened()
+    /// Вся переписка прямо в превью (app-state read --all) или снова последние сообщения.
+    private func readAll() {
+        guard !loadingFull else { return }
+        full.toggle()
+        loadingFull = true
+        Task {
+            await loadPreview()
+            loadingFull = false
+        }
     }
 }
 
@@ -449,6 +456,8 @@ struct PreviewView: View {
     let onRename: () -> Void
     let onMove: () -> Void
     let onSlim: () -> Void
+    var full = false
+    var loadingFull = false
     let onReadAll: () -> Void
 
     var l: L { L(backend.state.lang) }
@@ -521,6 +530,8 @@ struct PreviewView: View {
             }
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Ink.card))
             .onAppear { if let last = preview.messages?.last { proxy.scrollTo(last.at, anchor: .bottom) } }
+            // вся переписка подгрузилась или снова свернулась: остаемся на последнем сообщении
+            .onChange(of: preview.messages?.count) { if let last = preview.messages?.last { proxy.scrollTo(last.at, anchor: .bottom) } }
         }
     }
 
@@ -557,8 +568,13 @@ struct PreviewView: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Ink.muted)
                 .lineLimit(3)
-            Button(l.t("Читать переписку целиком", "Read the whole conversation"), action: onReadAll)
-                .buttonStyle(.textLink)
+            HStack(spacing: 8) {
+                Button(full ? l.t("Только последние сообщения", "Only the latest messages")
+                            : l.t("Читать переписку целиком", "Read the whole conversation"), action: onReadAll)
+                    .buttonStyle(.textLink)
+                    .disabled(loadingFull)
+                if loadingFull { ProgressView().controlSize(.mini) }
+            }
         }
         .padding(16)
     }

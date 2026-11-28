@@ -600,8 +600,8 @@ final class Backend: ObservableObject {
     }
 
     /// Последние сообщения сессии для превью: agentmeister app-state read.
-    func read(_ id: String) async -> SessionPreview? {
-        await Self.json(["app-state", "read", id])
+    func read(_ id: String, all: Bool = false) async -> SessionPreview? {
+        await Self.json(["app-state", "read", id] + (all ? ["--all"] : []))
     }
 
     /// Команда agentmeister без JSON, например sessions rm <id> -y. После нее состояние перечитывается.
