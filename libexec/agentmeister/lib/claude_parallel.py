@@ -449,7 +449,7 @@ START_TOOL = {
                             "description": "режим разрешений второго Claude; по умолчанию обычный (спрашивает, "
                                            "вопрос приходит уведомлением). auto или acceptEdits — только если "
                                            "пользователь так сказал"},
-        "remote_control": {"type": "boolean", "description": "Remote Control, по умолчанию да"},
+        "remote_control": {"type": "boolean", "description": "Remote Control; по умолчанию как в agentmeister defaults"},
         "fork": {"type": "boolean",
                  "description": "открыть второй Claude с этой же перепиской (форк сессии), чтобы он знал весь "
                                 "контекст; эта сессия не меняется. По умолчанию нет: новая сессия только с задачей. "

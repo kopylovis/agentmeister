@@ -24,19 +24,20 @@ EN = {
     "open_claude": ("Open a new Claude Code in an iTerm2 tab or a Terminal window through agentmeister. First call it "
                     "without project to get the list of projects and modes, show it to the user and ask what to pick "
                     "(if they already named a project, go ahead). Then call it with project (folder name or its "
-                    "beginning, \"~\" for the home folder) and mode. Remote Control turns on right away and the session "
+                    "beginning, \"~\" for the home folder) and mode. With Remote Control on, the session "
                     "link (claude.ai/code) comes back in the result, give it to the user. The result says where it "
                     "opened and whether Claude started.",
                     {"project": "project folder name or its beginning; \"~\" is the home folder",
                      "placement": "tab opens a tab in the current iTerm2 window. By default iTerm2 gets a tab and "
                                   "Terminal a window. window asks for a window explicitly.",
-                     "mode": "caffeinate keeps the Mac awake while the session runs (default); normal is a plain session",
+                     "mode": "caffeinate keeps the Mac awake while the session runs; normal is a plain session. "
+                             "The default comes from agentmeister defaults",
                      "prompt": "first prompt for the new Claude (optional)",
                      "continue": "continue the last session in this project (claude --continue)",
                      "trust": "mark the folder as trusted if Claude Code doesn't trust it yet. Set it only after the "
                               "user explicitly agreed to trust this folder",
                      "remote_control": "turn on Remote Control (/rc) so the session can be driven from a phone or a "
-                                       "browser; default yes"}),
+                                       "browser. The default comes from agentmeister defaults"}),
     "session_search": ("Search all past Claude Code sessions on this Mac (all projects): user prompts, your replies, "
                        "commands you ran, their errors (output with a non-zero exit code and the like; plain output "
                        "isn't searched) and /compact summaries. To find how the same error was fixed before, search its "
@@ -111,7 +112,7 @@ EN = {
                        "permission_mode": "permission mode of the second Claude; default is the normal one (it asks, "
                                           "the question arrives as a notification). auto or acceptEdits only if the "
                                           "user said so",
-                       "remote_control": "Remote Control, default yes",
+                       "remote_control": "Remote Control; the default comes from agentmeister defaults",
                        "fork": "open the second Claude with this same conversation (a session fork) so it knows the "
                                "whole context; this session doesn't change. Default no, a new session with only the "
                                "task. Set it if the user asks to take the context along"}),

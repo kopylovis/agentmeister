@@ -295,8 +295,8 @@ Claude Code и Codex. В терминале `agentmeister --harness claude statu
 каталог, `1` и `0` подряд — десятый), буквы фильтруют список по имени, Esc
 сбрасывает фильтр или выходит.
 
-Сессии, которые открывают `open_claude`, `/parallel` и меню, стартуют с caffeinate и Remote Control, пока
-это не поменять: `agentmeister defaults mode normal`, `agentmeister defaults remote-control off`.
+Сессии, которые открывают `open_claude`, `/parallel` и меню, стартуют без caffeinate и без Remote Control, пока
+это не поменять: `agentmeister defaults mode caffeinate`, `agentmeister defaults remote-control on`.
 `agentmeister defaults restart-update off` отключает `claude update` при `/restart` (`agentmeister restart
 --update` все равно обновит), `agentmeister defaults ask-model opus` выбирает модель для `/ask`.
 
@@ -757,7 +757,7 @@ git worktree от текущего коммита в `~/Developer/.worktrees/<п
 Worktree agentmeister по-прежнему делает сам, а не через `claude --worktree`: этот флаг
 кладёт worktree в `<репозиторий>/.claude/worktrees/` на ветку `worktree-<имя>` от ветки по
 умолчанию на remote, а `/parallel` ответвляется от текущего коммита, запоминает исходную
-ветку для `merge` и `pr` и открывает своё окно с caffeinate и Remote Control. `--tmux`
+ветку для `merge` и `pr` и открывает своё окно с умолчаниями из `agentmeister defaults`. `--tmux`
 требует `--worktree`, поэтому он тоже не используется.
 
 ```

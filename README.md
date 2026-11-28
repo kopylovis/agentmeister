@@ -292,8 +292,8 @@ follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in
 one explicitly. `agentmeister lang en` or `ru` writes that line, and `lang auto` removes it. `MNRH_NO_MENU=1`
 skips the menu and goes straight to the project list.
 
-Sessions that `open_claude`, `/parallel` and the menu open start with caffeinate and Remote Control unless you
-change it: `agentmeister defaults mode normal`, `agentmeister defaults remote-control off`. `agentmeister defaults
+Sessions that `open_claude`, `/parallel` and the menu open start without caffeinate and without Remote Control
+unless you change it: `agentmeister defaults mode caffeinate`, `agentmeister defaults remote-control on`. `agentmeister defaults
 restart-update off` makes `/restart` skip `claude update` (`agentmeister restart --update` still updates), and
 `agentmeister defaults ask-model opus` picks the model for `/ask`.
 
@@ -742,7 +742,7 @@ the task.
 agentmeister keeps creating the worktree itself instead of using `claude --worktree`: that flag puts worktrees
 in `<repo>/.claude/worktrees/` on a `worktree-<name>` branch from the default branch of the remote, while
 `/parallel` branches from the current commit, records the base branch for `merge` and `pr`, and opens its own
-window with caffeinate and Remote Control. `--tmux` needs `--worktree`, so it isn't used either.
+window with the session defaults (`agentmeister defaults`). `--tmux` needs `--worktree`, so it isn't used either.
 
 ```
 agentmeister parallel list            branches, commits, whether Claude is working there

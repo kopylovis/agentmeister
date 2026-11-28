@@ -80,7 +80,7 @@ TOOL = {
         "Открыть новый Claude Code во вкладке iTerm2 или в окне Terminal "
         "через agentmeister. Вызови сначала без project: получишь список проектов и режимов — покажи его "
         "пользователю и спроси, что выбрать (если он уже назвал проект, можно сразу). Потом вызови с project "
-        "(имя папки или начало имени, «~» — домашний каталог) и mode. Remote Control включается сразу, "
+        "(имя папки или начало имени, «~» — домашний каталог) и mode. Если включен Remote Control, "
         "ссылка на сессию (claude.ai/code) приходит в ответе — дай её пользователю. "
         "Результат — где открылось и запустился ли Claude."),
     "inputSchema": {
@@ -91,15 +91,15 @@ TOOL = {
                           "description": "tab открывает вкладку в текущем окне iTerm2. По умолчанию в iTerm2 "
                                          "открывается вкладка, в Terminal окно. window явно запрашивает окно."},
             "mode": {"type": "string", "enum": ["caffeinate", "normal"],
-                     "description": "caffeinate — Mac не уснёт, пока идёт сессия (по умолчанию); normal — обычная"},
+                     "description": "caffeinate — Mac не уснёт, пока идёт сессия; normal — обычная. По умолчанию как в agentmeister defaults"},
             "prompt": {"type": "string", "description": "первый запрос для нового Claude (необязательно)"},
             "continue": {"type": "boolean", "description": "продолжить последнюю сессию в этом проекте (claude --continue)"},
             "trust": {"type": "boolean",
                       "description": "отметить папку доверенной, если Claude Code ещё не доверяет ей. Ставь только "
                                      "после явного согласия пользователя на вопрос о доверии этой папке"},
-            "remote_control": {"type": "boolean", "default": True,
-                               "description": "включить Remote Control (/rc): сессию можно вести с телефона и в браузере; "
-                                              "по умолчанию да"},
+            "remote_control": {"type": "boolean",
+                               "description": "включить Remote Control (/rc): сессию можно вести с телефона и в браузере. "
+                                              "По умолчанию как в agentmeister defaults"},
         },
     },
 }
@@ -122,7 +122,8 @@ def choices(root, dirs, note=""):
     lines.append("  ~  домашний каталог")
     lines += [f"  {project_label(d, dirs)}  ({git_line(d)})" for d in dirs]
     lines.append("")
-    lines.append("Режим: caffeinate — Mac не уснёт, пока идёт сессия (по умолчанию); normal — обычная.")
+    import session_defaults
+    lines.append(f"Режим: caffeinate — Mac не уснёт, пока идёт сессия; normal — обычная. По умолчанию {session_defaults.open_mode()}.")
     lines.append("Можно добавить первый запрос (prompt) или продолжить прошлую сессию (continue).")
     lines.append("Покажи список пользователю и спроси, какой проект и режим открыть, "
                  "затем вызови open_claude с project и mode.")
