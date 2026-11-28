@@ -41,7 +41,23 @@ enum TerminalThemes {
     /// Свои темы, импортированные из iTerm2 или Ghostty: по файлу JSON на тему.
     static var userDir: String { (AppDirs.config as NSString).appendingPathComponent("terminal-themes") }
 
+    /// Свои темы читаются с диска один раз: resolve зовется при каждой отрисовке вкладки. Импорт и удаление
+    /// сбрасывают кеш, а раздел "Терминал" перечитывает папку, когда открывается.
+    private static var cached: [TerminalTheme]?
+
     static func user() -> [TerminalTheme] {
+        if let cached { return cached }
+        let themes = readUser()
+        cached = themes
+        return themes
+    }
+
+    static func reloadUser() -> [TerminalTheme] {
+        cached = nil
+        return user()
+    }
+
+    private static func readUser() -> [TerminalTheme] {
         let fm = FileManager.default
         let names = ((try? fm.contentsOfDirectory(atPath: userDir)) ?? []).filter { $0.hasSuffix(".json") }.sorted()
         return names.compactMap { name in
@@ -65,7 +81,8 @@ enum TerminalThemes {
     }
 
     static func resolve(_ id: String, windowDark: Bool) -> Resolved {
-        if let t = theme(id), let bg = color(t.background), let fg = color(t.foreground) {
+        // "window" и "dark" не темы из списка: папку тем ради них не читаем
+        if id != "window", id != "dark", let t = theme(id), let bg = color(t.background), let fg = color(t.foreground) {
             let ansi = (t.ansi ?? []).compactMap(termColor)
             return Resolved(key: id, background: bg, foreground: fg, cursor: t.cursor.flatMap(color) ?? fg,
                             selection: t.selection.flatMap(color), ansi: ansi.count == 16 ? ansi : SwiftTerm.Color.terminalAppColors)
@@ -121,12 +138,14 @@ enum TerminalThemes {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(theme).write(to: URL(fileURLWithPath: out), options: .atomic)
+        cached = nil
         return theme
     }
 
     static func remove(_ id: String) {
         guard id.hasPrefix("user-") else { return }
         try? FileManager.default.removeItem(atPath: (userDir as NSString).appendingPathComponent(id.dropFirst(5) + ".json"))
+        cached = nil
     }
 
     static func slug(_ name: String) -> String {
