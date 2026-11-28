@@ -718,6 +718,55 @@ def write_private(path, data):
     os.replace(path + ".tmp", path)
 
 
+UPSTREAM = "upstream:"  # в файле ссылки вместо подписки: свой HTTP или SOCKS5 прокси (proxy setup --upstream)
+UPSTREAM_TYPES = {"socks5": "socks5", "socks5h": "socks5", "http": "http", "https": "http"}
+
+
+def upstream_url(raw):
+    """Свой прокси для --upstream: socks5://, socks5h://, http:// или https:// с хостом и портом. -> url или None."""
+    try:
+        u = urllib.parse.urlsplit(raw.strip())
+        port = u.port
+    except ValueError:
+        return None
+    if u.scheme.lower() not in UPSTREAM_TYPES or not u.hostname or not port or u.path not in ("", "/") or u.query:
+        return None
+    return raw.strip()
+
+
+def route_interface(host):
+    """Интерфейс, через который система ходит к host: lo0 для localhost, иначе по route get. None, если не узнать.
+    Глобальный interface-name в конфиге привязывает mihomo к Wi-Fi, а свой прокси может быть на этом Mac
+    или за корпоративным VPN, поэтому у его записи свой интерфейс."""
+    try:
+        ip = socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+    except (OSError, IndexError):
+        return None
+    if ip.startswith("127."):
+        return "lo0"
+    out = subprocess.run(["route", "-n", "get", ip], capture_output=True, text=True).stdout
+    m = re.search(r"interface:\s*(\S+)", out)
+    return m.group(1) if m else None
+
+
+def upstream_yaml(url):
+    """Подписка из одного сервера, своего прокси, в формате YAML mihomo."""
+    u = urllib.parse.urlsplit(url)
+    scheme = u.scheme.lower()
+    lines = ["proxies:", "  - name: upstream", f"    type: {UPSTREAM_TYPES[scheme]}",
+             f"    server: {json.dumps(u.hostname)}", f"    port: {u.port}"]
+    if scheme == "https":
+        lines.append("    tls: true")
+    if u.username:
+        lines.append(f"    username: {json.dumps(urllib.parse.unquote(u.username))}")
+    if u.password:
+        lines.append(f"    password: {json.dumps(urllib.parse.unquote(u.password))}")
+    iface = route_interface(u.hostname)
+    if iface:
+        lines.append(f"    interface-name: {iface}")
+    return "\n".join(lines) + "\n"
+
+
 def refresh_subscription(sub=None):
     """Скачать подписку мимо VPN (сами, а не mihomo). Не вышло: остаётся прошлая копия, если она есть."""
     url_file, sub_file = sub_files(sub)
@@ -727,6 +776,10 @@ def refresh_subscription(sub=None):
     except OSError:
         url = ""
     label = f"agentmeister proxy ({sub})" if sub not in (None, MAIN) else "agentmeister proxy"
+    if url.startswith(UPSTREAM):
+        # свой прокси: качать нечего, файл подписки собирается заново, вдруг сменилась сеть
+        write_private(sub_file, upstream_yaml(url[len(UPSTREAM):]).encode())
+        return True
     if url:
         iface = physical_interface()
         # ссылку curl читает из stdin (-K -), а не из аргументов: их видит ps любого процесса на этом Mac
@@ -1625,10 +1678,18 @@ def sub_options(args):
     """Разобрать [ссылка] --country XX --only RE. -> (rest, country, only) или None, если ошибка уже напечатана."""
     opts, rest, it = {}, [], iter(args)
     for a in it:
-        if a in ("--country", "--only"):
+        if a in ("--country", "--only", "--upstream"):
             opts[a[2:]] = next(it, "")
         else:
             rest.append(a)
+    if "upstream" in opts:
+        url = upstream_url(opts["upstream"])
+        if not url:
+            print(f"{BAD} " + tr("--upstream ждёт адрес прокси с портом: socks5://127.0.0.1:1080 или http://proxy.corp:3128",
+                                 "--upstream expects a proxy address with a port: socks5://127.0.0.1:1080 or http://proxy.corp:3128"))
+            return None
+        # свой прокси встает на место ссылки на подписку: для setup после флагов, для add после имени
+        rest.append(UPSTREAM + url)
     country, only = opts.get("country", "").strip(), opts.get("only", "").strip()
     if country and not re.match(r"^[A-Za-z]{2}$", country):
         print(f"{BAD} " + tr("--country ждёт код страны из двух букв, например DE",
@@ -1646,6 +1707,8 @@ def sub_options(args):
 def ask_url(given, usage):
     """Ссылка на подписку из аргумента или со скрытым вводом. None, если ее нет или она не подходит."""
     url = given
+    if url.startswith(UPSTREAM):
+        return url
     if not url:
         if not sys.stdin.isatty():
             print(usage, file=sys.stderr)
@@ -2169,6 +2232,9 @@ agentmeister proxy setup [ссылка] [--country DE] [--only DE]
                                   настроить по ссылке на подписку (https://…, Clash, mihomo или v2ray).
                                   --country: если выход окажется в другой стране, сессия не запустится;
                                   --only: брать из подписки только серверы, чьё имя подходит под это выражение
+agentmeister proxy setup --upstream socks5://127.0.0.1:1080
+                                  вместо подписки свой прокси: socks5://, http:// или https:// с портом,
+                                  логин и пароль можно в адресе. Так же и proxy add <имя> --upstream …
 agentmeister proxy add <имя> [ссылка] [--country NL] [--only RE]
                                   еще одна подписка. agentmeister <проект> -x <имя> идет только через нее,
                                   а просто -x по всем по очереди: следующая, когда в прошлой нет живых серверов
@@ -2196,6 +2262,10 @@ agentmeister proxy setup [link] [--country DE] [--only DE]
                                   set up from a subscription link (https://…, Clash, mihomo or v2ray).
                                   --country: if the exit lands in another country, the session won't start;
                                   --only: take only servers whose name matches this expression
+agentmeister proxy setup --upstream socks5://127.0.0.1:1080
+                                  your own proxy instead of a subscription: socks5://, http:// or https://
+                                  with a port, a login and password can go in the address. Same for
+                                  proxy add <name> --upstream …
 agentmeister proxy add <name> [link] [--country NL] [--only RE]
                                   one more subscription. agentmeister <project> -x <name> goes only through it,
                                   and plain -x goes through all of them in order: the next one when the previous

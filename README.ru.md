@@ -407,6 +407,7 @@ VLESS (в том числе XHTTP) и Hysteria2 и берет из подпис�
 
 ```bash
 agentmeister proxy setup 'https://…/sub/…' --country DE   # ссылка на подписку для Clash, mihomo или v2ray
+agentmeister proxy setup --upstream socks5://127.0.0.1:1080  # или свой HTTP/SOCKS5 прокси вместо подписки
 agentmeister proxy test                                    # выход напрямую и через сервер: IP и страна
 ```
 
@@ -417,6 +418,12 @@ agentmeister proxy test                                    # выход напр
 `--only <выражение>` оставляет из подписки
 только серверы с подходящим именем. Зашифрованные ссылки `happ://crypt…` читает только Happ,
 нужна обычная `https://`.
+
+`--upstream` берет вместо подписки свой прокси: корпоративный HTTP, уже запущенный на этом Mac клиент Clash или
+Shadowsocks, туннель SSH `-D`. Адреса `socks5://`, `http://` и `https://` нужны с портом, логин и пароль пишутся
+в адресе (`http://user:pass@proxy.corp:3128`). mihomo ходит к нему так же, как система: к localhost через lo0,
+к остальным через интерфейс маршрута, поэтому работает и прокси за корпоративным VPN. `proxy add <имя> --upstream …`
+добавляет такой прокси еще одной подпиской.
 
 Страну выхода agentmeister проверяет через `https://1.1.1.1/cdn-cgi/trace`, а mihomo проверяет серверы через
 `https://www.gstatic.com/generate_204`. Если в сети они закрыты, их заменяют `agentmeister proxy check-url <адрес>`

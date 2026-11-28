@@ -71,3 +71,44 @@ class Refresh(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Upstream(unittest.TestCase):
+    def test_accepts_socks_and_http_with_a_port_only(self):
+        for good in ("socks5://127.0.0.1:1080", "socks5h://u:p@proxy.corp:1080", "http://proxy.corp:3128",
+                     "https://proxy.corp:443/"):
+            self.assertEqual(p.upstream_url(good), good)
+        for bad in ("socks5://127.0.0.1", "ftp://x:21", "http://proxy.corp:3128/sub/abc", "vless://x@y:443",
+                    "https://sub.example.net/x?token=1", "nonsense"):
+            self.assertIsNone(p.upstream_url(bad), bad)
+
+    def test_yaml_with_credentials_tls_and_interface(self):
+        with patch.object(p, "route_interface", return_value="utun4"):
+            text = p.upstream_yaml("https://me%40corp:p%3Ass@proxy.corp:8443")
+        self.assertIn("    type: http\n    server: \"proxy.corp\"\n    port: 8443\n    tls: true\n", text)
+        self.assertIn('    username: "me@corp"\n    password: "p:ss"\n    interface-name: utun4\n', text)
+        self.assertTrue(p.subscription_ok(text.encode()))
+
+    def test_localhost_goes_through_lo0(self):
+        self.assertEqual(p.route_interface("127.0.0.1"), "lo0")
+
+    def test_flag_takes_the_place_of_the_link(self):
+        with redirect_stderr(io.StringIO()), patch("sys.stdout", io.StringIO()):
+            self.assertEqual(p.sub_options(["--upstream", "socks5://127.0.0.1:1080", "--country", "de"]),
+                             (["upstream:socks5://127.0.0.1:1080"], "de", ""))
+            self.assertEqual(p.sub_options(["work", "--upstream", "http://h:3128"]), (["work", "upstream:http://h:3128"], "", ""))
+            self.assertIsNone(p.sub_options(["--upstream", "socks5://nohost"]))
+        self.assertEqual(p.ask_url("upstream:socks5://127.0.0.1:1080", "usage"), "upstream:socks5://127.0.0.1:1080")
+
+    def test_refresh_builds_the_file_without_network(self):
+        tmp = tempfile.mkdtemp()
+        url, sub = os.path.join(tmp, "subscription.url"), os.path.join(tmp, "subscription.txt")
+        with open(url, "w") as f:
+            f.write("upstream:socks5://127.0.0.1:1080")
+        with patch.multiple(p, SUB_URL=url, SUB_FILE=sub), patch.object(p.subprocess, "run") as run:
+            self.assertTrue(p.refresh_subscription())
+        run.assert_not_called()
+        with open(sub) as f:
+            text = f.read()
+        self.assertIn("type: socks5", text)
+        self.assertIn("interface-name: lo0", text)
