@@ -9,7 +9,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CM, HOME, MNRH, lang, tilde  # noqa: E402
+from mnrhlib import CM, HOME, MNRH, lang, tilde, tr  # noqa: E402
 from claude_proc import RestartError, current_sid  # noqa: E402
 from claude_restart import restart, slim_current  # noqa: E402
 import mac_status  # noqa: E402
@@ -76,17 +76,23 @@ def call_restart(tool, a):
     try:
         if tool == "forget":
             p = restart(update=False, delay=2.5, forget=True)
-            return (f"Готово: через пару секунд Claude Code закроется, сессия {p['sid']} будет удалена, "
-                    f"и в {tilde(p['cwd'])} откроется новая."), False
+            return tr(f"Готово: через пару секунд Claude Code закроется, сессия {p['sid']} будет удалена, "
+                      f"и в {tilde(p['cwd'])} откроется новая.",
+                      f"Done: in a couple of seconds Claude Code will close, session {p['sid']} will be deleted, "
+                      f"and a new one will open in {tilde(p['cwd'])}."), False
         if tool == "fresh":
             p = restart(update=False, delay=2.5, fresh=True)
-            return (f"Готово: через пару секунд Claude Code закроется, и в {tilde(p['cwd'])} откроется новая сессия. "
-                    f"Сессия {p['sid']} останется в /resume."), False
+            return tr(f"Готово: через пару секунд Claude Code закроется, и в {tilde(p['cwd'])} откроется новая сессия. "
+                      f"Сессия {p['sid']} останется в /resume.",
+                      f"Done: in a couple of seconds Claude Code will close and a new session will open in {tilde(p['cwd'])}. "
+                      f"Session {p['sid']} stays in /resume."), False
         p = restart(update=bool(update), delay=2.5)
-        return (f"Перезапуск запущен: через пару секунд Claude Code закроется"
-                f"{', обновится' if update else ''} и снова откроет сессию {p['sid']} в {tilde(p['cwd'])}."), False
+        return tr(f"Перезапуск запущен: через пару секунд Claude Code закроется"
+                  f"{', обновится' if update else ''} и снова откроет сессию {p['sid']} в {tilde(p['cwd'])}.",
+                  f"Restart started: in a couple of seconds Claude Code will close"
+                  f"{', update' if update else ''} and reopen session {p['sid']} in {tilde(p['cwd'])}."), False
     except RestartError as e:
-        return f"Не получилось: {e}", True
+        return tr(f"Не получилось: {e}", f"Failed: {e}"), True
 
 
 SLIM_TOOL = {
@@ -106,7 +112,7 @@ def call_slim(a):
         text, _ = slim_current(dry=bool(a.get("dry_run")), delay=2.5)
         return text, False
     except RestartError as e:
-        return f"Не получилось: {e}", True
+        return tr(f"Не получилось: {e}", f"Failed: {e}"), True
 
 
 def schema_args(tool, a):
@@ -128,16 +134,21 @@ import json, os, subprocess, sys
 lib, args, cwd, base = sys.argv[1:5]
 sys.path.insert(0, lib)
 try:
+    from mnrhlib import tr
+except Exception:
+    def tr(ru, en):
+        return ru
+try:
     import claude_parallel
     text, bad = claude_parallel.handle("parallel_finish", json.loads(args), cwd)
 except Exception as e:
-    text, bad = "Не получилось: %r" % (e,), True
+    text, bad = tr("Не получилось: %r", "Failed: %r") % (e,), True
 print(text, flush=True)
 with open(base + ".json.tmp", "w") as f:
     json.dump({"text": text, "error": bool(bad)}, f, ensure_ascii=False)
 os.replace(base + ".json.tmp", base + ".json")
 if os.path.exists(base + ".detached"):
-    title = "agentmeister: PR " + ("не слит" if bad else "готов")
+    title = "agentmeister: PR " + (tr("не слит", "not merged") if bad else tr("готов", "done"))
     try:
         subprocess.run(["osascript", "-e", "on run argv", "-e",
                         "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run",
@@ -176,9 +187,13 @@ def parallel_finish(a):
         result = finish_result(base)
         if result:
             return result
-        return f"Фоновый parallel_finish завершился без результата, лог: {tilde(base + '.log')}", True
-    return (f"PR для {a.get('branch')} в работе: процесс {proc.pid} ждёт CI и сливает в фоне. Когда закончит, "
-            f"придёт уведомление macOS; итог будет в {tilde(base + '.log')}. Ждать ответа здесь не нужно."), False
+        return tr(f"Фоновый parallel_finish завершился без результата, лог: {tilde(base + '.log')}",
+                  f"Background parallel_finish ended without a result, log: {tilde(base + '.log')}"), True
+    return tr(f"PR для {a.get('branch')} в работе: процесс {proc.pid} ждёт CI и сливает в фоне. Когда закончит, "
+              f"придёт уведомление macOS; итог будет в {tilde(base + '.log')}. Ждать ответа здесь не нужно.",
+              f"PR for {a.get('branch')} is in progress: process {proc.pid} waits for CI and merges in the background. "
+              f"When it's done, a macOS notification arrives; the result will be in {tilde(base + '.log')}. "
+              f"No need to wait for an answer here."), False
 
 
 HANDLERS = {
@@ -302,7 +317,7 @@ def mcp():
         try:
             result = handler(args)
         except Exception as e:
-            result = (f"Не получилось: {e!r}", True)
+            result = (tr(f"Не получилось: {e!r}", f"Failed: {e!r}"), True)
         if isinstance(result, dict):
             send({"jsonrpc": "2.0", "id": rid, "result": result})
             return
@@ -352,7 +367,7 @@ def mcp():
             name = params.get("name")
             handler = HANDLERS.get(name) if isinstance(name, str) and name in visible_tools else None
             if not handler:
-                send({"jsonrpc": "2.0", "id": rid, "error": {"code": -32602, "message": "нет такого инструмента"}})
+                send({"jsonrpc": "2.0", "id": rid, "error": {"code": -32602, "message": tr("нет такого инструмента", "no such tool")}})
                 continue
             args = params.get("arguments")
             # каждый вызов в своём потоке: долгий инструмент не держит остальные
@@ -363,4 +378,4 @@ def mcp():
         elif method == "ping":
             send({"jsonrpc": "2.0", "id": rid, "result": {}})
         else:
-            send({"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": f"не умею {method}"}})
+            send({"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": tr(f"не умею {method}", f"unsupported method {method}")}})

@@ -8,7 +8,7 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CACHE, settings_path, tilde
+from mnrhlib import CACHE, settings_path, tilde, tr
 
 SHOTS = os.path.join(CACHE, "shots")
 MAX_SIDE = 1600
@@ -48,15 +48,19 @@ def windows():
 
 
 def describe(ws):
-    lines = [f"  {w['app']}: {w['title'] or '(без заголовка)'}  [{int(w['w'])}×{int(w['h'])}]" for w in ws]
-    return "\n".join(lines) or "  открытых окон не видно"
+    untitled = tr('(без заголовка)', '(untitled)')
+    lines = [f"  {w['app']}: {w['title'] or untitled}  [{int(w['w'])}×{int(w['h'])}]" for w in ws]
+    return "\n".join(lines) or tr("  открытых окон не видно", "  no open windows visible")
 
 
 def choose(app=None, title=None):
     ws = windows()
     if not ws:
-        return None, ("Не вижу ни одного окна. Нужно разрешение «Запись экрана» для терминала, в котором идёт "
-                      f"Claude: {settings_path('settings', 'privacy', 'screen')}.")
+        where = settings_path('settings', 'privacy', 'screen')
+        return None, tr("Не вижу ни одного окна. Нужно разрешение «Запись экрана» для терминала, в котором идёт "
+                        f"Claude: {where}.",
+                        "I don't see any windows. The terminal running Claude needs the Screen Recording "
+                        f"permission: {where}.")
     hits = ws
     if app:
         q = app.lower()
@@ -65,7 +69,7 @@ def choose(app=None, title=None):
         hits = [w for w in hits if title.lower() in w["title"].lower()]
     if not hits:
         wanted = " ".join(x for x in (app, title) if x)
-        return None, f"Нет окна «{wanted}». Видны:\n{describe(ws)}"
+        return None, tr(f"Нет окна «{wanted}». Видны:\n{describe(ws)}", f"No window \"{wanted}\". Visible:\n{describe(ws)}")
     return hits[0], None
 
 
@@ -88,8 +92,11 @@ def capture(w):
     r = subprocess.run(["screencapture", "-x", "-o", "-l", str(w["id"]), path], capture_output=True, text=True,
                        timeout=20)
     if r.returncode or not os.path.exists(path) or os.path.getsize(path) == 0:
-        return None, (f"Снимок не получился ({(r.stderr or '').strip() or 'пустой файл'}). Нужно разрешение «Запись экрана» "
-                      "для терминала, в котором идёт Claude.")
+        why = (r.stderr or '').strip() or tr('пустой файл', 'empty file')
+        return None, tr(f"Снимок не получился ({why}). Нужно разрешение «Запись экрана» "
+                        "для терминала, в котором идёт Claude.",
+                        f"The screenshot failed ({why}). The terminal running Claude needs the Screen Recording "
+                        "permission.")
     subprocess.run(["sips", "-Z", str(MAX_SIDE), path], capture_output=True, timeout=20)
     return path, None
 
@@ -118,25 +125,32 @@ TOOL = {
 def handle(a):
     if not a.get("app") and not a.get("title"):
         ws = windows()
-        return {"content": [{"type": "text", "text": "Открытые окна (сверху — переднее):\n" + describe(ws)}],
+        head = tr("Открытые окна (сверху — переднее):\n", "Open windows (frontmost first):\n")
+        return {"content": [{"type": "text", "text": head + describe(ws)}],
                 "isError": False}
     path, w, err = shot(a.get("app"), a.get("title"))
     if err:
         return {"content": [{"type": "text", "text": err}], "isError": True}
     with open(path, "rb") as f:
         data = base64.b64encode(f.read()).decode()
-    return {"content": [{"type": "text", "text": f"{w['app']}: {w['title'] or '(без заголовка)'} — {tilde(path)}"},
+    untitled = tr('(без заголовка)', '(untitled)')
+    sep = tr(" — ", ": ")
+    return {"content": [{"type": "text", "text": f"{w['app']}: {w['title'] or untitled}{sep}{tilde(path)}"},
                         {"type": "image", "data": data, "mimeType": "image/png"}], "isError": False}
 
 
 def main():
     args = sys.argv[1:]
     if args[:1] in (["-h"], ["--help"]):
-        print("agentmeister shot                           список открытых окон")
-        print("agentmeister shot <приложение> [заголовок]  снимок переднего окна приложения в ~/.cache/agentmeister/shots")
+        print(tr("agentmeister shot                           список открытых окон",
+                 "agentmeister shot                     list open windows"))
+        print(tr("agentmeister shot <приложение> [заголовок]  снимок переднего окна приложения в ~/.cache/agentmeister/shots",
+                 "agentmeister shot <app> [title]       screenshot of the app's front window to ~/.cache/agentmeister/shots"))
         print()
-        print(f"Снимки уменьшаются до {MAX_SIDE} px по большей стороне и удаляются через {KEEP_DAYS} дня.")
-        print("Нужно разрешение «Запись экрана» для терминала. В Claude Code: /shot или инструмент window_screenshot.")
+        print(tr(f"Снимки уменьшаются до {MAX_SIDE} px по большей стороне и удаляются через {KEEP_DAYS} дня.",
+                 f"Screenshots are scaled down to {MAX_SIDE} px on the longer side and deleted after {KEEP_DAYS} days."))
+        print(tr("Нужно разрешение «Запись экрана» для терминала. В Claude Code: /shot или инструмент window_screenshot.",
+                 "The terminal needs the Screen Recording permission. In Claude Code: /shot or the window_screenshot tool."))
         return 0
     if not args:
         print(describe(windows()))
