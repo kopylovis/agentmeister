@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -71,6 +72,24 @@ class Migrate(unittest.TestCase):
         r = run(home, "import migrate_dirs as m; sys.exit(m.main([]))", MNRH_PROXY="17890")
         self.assertEqual(r.returncode, 1)
         self.assertTrue(os.path.isdir(f"{home}/.config/mnrh/proxy"))
+
+    def test_help_follows_lang(self):
+        home = self.home()
+        en = run(home, "import migrate_dirs as m; sys.exit(m.main(['-h']))", AGENTMEISTER_LANG="en")
+        self.assertEqual(en.returncode, 0)
+        self.assertIsNone(re.search("[А-Яа-яЁё]", en.stdout), en.stdout)
+        self.assertIn("agentmeister migrate [--dry-run]", en.stdout)
+        self.assertIn("lid.pid", en.stdout)
+        ru = run(home, "import migrate_dirs as m; sys.exit(m.main(['--help']))", AGENTMEISTER_LANG="ru")
+        self.assertTrue(ru.stdout.startswith("agentmeister migrate: перенести папки со старым именем mnrh"), ru.stdout)
+        self.assertTrue(ru.stdout.endswith("\n\nagentmeister migrate [--dry-run]\n"), ru.stdout)
+
+    def test_refusal_in_english(self):
+        home = self.home()
+        r = run(home, "import migrate_dirs as m; sys.exit(m.main([]))", MNRH_PROXY="17890", AGENTMEISTER_LANG="en")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("Not moving:", r.stderr)
+        self.assertIsNone(re.search("[А-Яа-яЁё]", r.stdout + r.stderr), r.stdout + r.stderr)
 
 
 if __name__ == "__main__":

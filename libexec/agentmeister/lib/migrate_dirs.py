@@ -20,6 +20,19 @@ from mnrhlib import CONFIG_HOME, HOME, STATE_HOME, tilde, tr  # noqa: E402
 
 LID_FILES = ("lid.pid", "lid.log")
 
+HELP_EN = """agentmeister migrate: move the folders with the old name mnrh to agentmeister folders.
+
+~/.config/mnrh, ~/.cache/mnrh and ~/.local/state/mnrh move to ~/.config/agentmeister, ~/.cache/agentmeister
+and ~/.local/state/agentmeister. While ~/.config/mnrh exists and the new one doesn't, agentmeister reads the old
+ones (mnrhlib.app_dir).
+
+Run it in a regular terminal with proxy sessions, mihomo, the host-run runner and the Agentmeister app closed.
+The sandbox of running sessions locks the subscription links and the host-run allowlist by the old path, and
+after the move those rules don't apply to the new files. So the move doesn't run from a proxy session, and no
+links from the old path to the new one are left. There are two exceptions. The lid files (lid.pid, lid.log)
+stay in ~/.local/state/mnrh because the mnrh utility shares them with agentmeister. And if mnrh is installed,
+~/.config/mnrh/config stays as a link to the new config, because mnrh reads the same file."""
+
 
 def places():
     """[(старая, новая, что оставить на месте)], конфиг последним: его перенос переключает agentmeister на новые."""
@@ -86,7 +99,7 @@ def move(old, new, keep):
 
 def main(args):
     if args[:1] in (["-h"], ["--help"]):
-        print(__doc__.strip())
+        print(tr(__doc__.strip(), HELP_EN))
         print("\nagentmeister migrate [--dry-run]")
         return 0
     todo = [(o, n, k) for o, n, k in places() if os.path.isdir(o) and not os.path.islink(o)

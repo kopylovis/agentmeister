@@ -17,8 +17,8 @@ commands before they run.
   <img src="docs/screenshots/main-dark.png#gh-dark-mode-only" width="900" alt="Agentmeister with Claude Code, Codex and terminal tabs, each through its own proxy subscription"><img src="docs/screenshots/main-light.png#gh-light-mode-only" width="900" alt="Agentmeister with Claude Code, Codex and terminal tabs, each through its own proxy subscription">
 </p>
 
-The menu follows the macOS language, Russian or English. Some messages, such as `agentmeister -h` and
-`agentmeister proxy -h`, are in Russian only for now.
+The menu and the commands follow the macOS language, Russian or English. `agentmeister lang ru` or
+`agentmeister lang en` fixes the language.
 
 ```
 # Open the menu for Claude Code or Codex
