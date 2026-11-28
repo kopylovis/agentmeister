@@ -231,14 +231,15 @@ request the MCP server checks whether its code changed (a `brew upgrade` or a `g
 so, replaces itself with the new one on the same connection, without losing the request. `agentmeister setup --remove` takes everything out of Claude Code,
 and `brew uninstall agentmeister` removes the program.
 
-Settings, cache and state live in `~/.config/agentmeister`, `~/.cache/agentmeister` and
+Environment variables you set yourself are named `AGENTMEISTER_*` (`AGENTMEISTER_PROJECTS`, `AGENTMEISTER_NO_MENU`,
+`AGENTMEISTER_PLAIN_MENU`); the old `MNRH_*` names still work. Settings, cache and state live in `~/.config/agentmeister`, `~/.cache/agentmeister` and
 `~/.local/state/agentmeister`. Older installs used `mnrh` folders and keep using them until you run
 `agentmeister migrate` in a regular terminal with proxy sessions, the host-run runner and the app closed
 (`--dry-run` shows what moves). `agentmeister doctor` reminds you while the old folders are in use.
 
 Projects live in folders of projects, `~/Developer` by default. Each subfolder of such a folder is a project.
 `agentmeister projects-dir add <folder>` adds another one, `remove` takes it out, `projects-dir` lists them. The same
-list sits in `~/.config/agentmeister/config` as `projects=<folder>[:<folder>...]`, and `MNRH_PROJECTS` overrides it. Projects
+list sits in `~/.config/agentmeister/config` as `projects=<folder>[:<folder>...]`, and `AGENTMEISTER_PROJECTS` overrides it. Projects
 with the same name in two folders show with their folder, like `backend · Work`. The desktop app asks for the folders
 on first run. setup puts the read-only MCP tools (`session_search`,
 `session_read`, `usage_report`, `deps_outdated` and others) into `permissions.allow` in `~/.claude/settings.json`, so Claude
@@ -292,9 +293,9 @@ Submenus open on the same screen. Commands run from the menu stay in a frame too
 lists and questions on the same screen; afterwards Enter goes back to the menu and `q` quits, leaving the output
 in the terminal. Only Claude Code itself runs outside. Esc goes one step back,
 Ctrl+C quits.
-`MNRH_PLAIN_MENU=1` brings back the plain inline lists. The menu
+`AGENTMEISTER_PLAIN_MENU=1` brings back the plain inline lists. The menu
 follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in `~/.config/agentmeister/config` picks
-one explicitly. `agentmeister lang en` or `ru` writes that line, and `lang auto` removes it. `MNRH_NO_MENU=1`
+one explicitly. `agentmeister lang en` or `ru` writes that line, and `lang auto` removes it. `AGENTMEISTER_NO_MENU=1`
 skips the menu and goes straight to the project list.
 
 Sessions that `open_claude`, `/parallel` and the menu open start without caffeinate and without Remote Control

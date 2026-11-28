@@ -229,6 +229,11 @@ def read_config():
     return conf
 
 
+def user_env(name):
+    """Переменная, которую задает сам пользователь: AGENTMEISTER_<name>, а старое имя MNRH_<name> тоже читается."""
+    return os.environ.get("AGENTMEISTER_" + name) or os.environ.get("MNRH_" + name)
+
+
 def config_int(key, default, low, high):
     """Целое из config в пределах [low, high]; пустое или неверное значение дает default."""
     try:
@@ -249,9 +254,9 @@ def write_config(**values):
 
 
 def projects_dirs():
-    """Папки с проектами (категории, а не сами проекты): projects=<путь>[:<путь>...] в config или MNRH_PROJECTS,
+    """Папки с проектами (категории, а не сами проекты): projects=<путь>[:<путь>...] в config или AGENTMEISTER_PROJECTS,
     через двоеточие, как PATH. По умолчанию ~/Developer. Первая главная: в ней лежат worktree параллельных задач."""
-    raw = os.environ.get("MNRH_PROJECTS") or read_config().get("projects") or DEFAULT_DEV
+    raw = user_env("PROJECTS") or read_config().get("projects") or DEFAULT_DEV
     out = []
     for part in raw.split(":"):
         part = part.strip()

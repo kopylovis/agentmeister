@@ -16,8 +16,8 @@ LIBEXEC="$ROOT/libexec/agentmeister"
 # CLI внутри Agentmeister.app: __pycache__ рядом с модулями сломал бы подпись приложения
 case "$ROOT" in */Contents/Resources/*) export PYTHONDONTWRITEBYTECODE=1 ;; esac
 
-# без аргументов в терминале: меню действий, как у mnrh claude; MNRH_NO_MENU=1 сразу выбирает проект
-if [ $# -eq 0 ] && [ -t 0 ] && [ -t 1 ] && [ -z "${MNRH_NO_MENU:-}" ]; then
+# без аргументов в терминале: меню действий; AGENTMEISTER_NO_MENU=1 (или MNRH_NO_MENU) сразу выбирает проект
+if [ $# -eq 0 ] && [ -t 0 ] && [ -t 1 ] && [ -z "${AGENTMEISTER_NO_MENU:-${MNRH_NO_MENU:-}}" ]; then
   exec /usr/bin/python3 "$LIBEXEC/lib/main_menu.py"
 fi
 

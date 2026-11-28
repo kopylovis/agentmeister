@@ -782,8 +782,8 @@ class Panel(Menu):
 
 
 def roomy(fd):
-    """Хватит ли места на рамки. MNRH_PLAIN_MENU=1 оставляет старый список в строку."""
-    if os.environ.get("MNRH_PLAIN_MENU"):
+    """Хватит ли места на рамки. AGENTMEISTER_PLAIN_MENU=1 (или MNRH_PLAIN_MENU) оставляет старый список в строку."""
+    if os.environ.get("AGENTMEISTER_PLAIN_MENU") or os.environ.get("MNRH_PLAIN_MENU"):
         return False
     try:
         cols, rows = os.get_terminal_size(fd)

@@ -6,9 +6,9 @@ CFG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 if [ -d "$CFG_HOME/mnrh" ] && [ ! -d "$CFG_HOME/agentmeister" ]; then CONF="$CFG_HOME/mnrh/config"; else CONF="$CFG_HOME/agentmeister/config"; fi
 LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 
-# папки, в которых лежат проекты: projects=<путь>[:<путь>...] в config или MNRH_PROJECTS, по одной в строке
+# папки, в которых лежат проекты: projects=<путь>[:<путь>...] в config или AGENTMEISTER_PROJECTS (MNRH_PROJECTS), по одной в строке
 projects_dirs() {
-  local d="${MNRH_PROJECTS:-}" p seen=":"
+  local d="${AGENTMEISTER_PROJECTS:-${MNRH_PROJECTS:-}}" p seen=":"
   [ -z "$d" ] && [ -f "$CONF" ] && d=$(sed -n 's/^projects=//p' "$CONF" | head -1)
   d="${d:-$HOME/Developer}"
   local IFS=':'
@@ -34,7 +34,7 @@ MENU="$LIB/menu.py"
 help() {
   cat <<'EOF'
 Запуск
-  agentmeister                     меню (MNRH_NO_MENU=1 сразу к выбору проекта)
+  agentmeister                     меню (AGENTMEISTER_NO_MENU=1 сразу к выбору проекта)
   agentmeister open                выбрать проект в папке проектов
   agentmeister <имя>               сразу в проекте (начала имени хватит) или в папке по пути
   agentmeister --harness codex     запустить Codex или настроить его через setup
@@ -100,7 +100,7 @@ caffeinate (по умолчанию) не даёт Mac уснуть, пока и
 удобно для долгих задач и Remote Control с телефона. Экран при этом гаснуть может.
 С закрытой крышкой на батарее Mac все равно уснет, caffeinate этого не отменяет.
 agentmeister lid setup разрешит не засыпать и с закрытой крышкой (спросит пароль sudo).
-Папки с проектами: ~/Developer, agentmeister projects-dir add <папка>, строка projects=<путь>[:<путь>] в ~/.config/agentmeister/config или MNRH_PROJECTS.
+Папки с проектами: ~/Developer, agentmeister projects-dir add <папка>, строка projects=<путь>[:<путь>] в ~/.config/agentmeister/config или AGENTMEISTER_PROJECTS.
 EOF
 }
 
@@ -177,7 +177,7 @@ fi
 
 DEV=$(projects_dir)
 # папку проектов спрашивает mnrh init, если стоит полный mnrh; без него остаются ~ и пути
-if [ ! -f "$CONF" ] && [ -z "${MNRH_PROJECTS:-}" ] && [ ! -d "$DEV" ] && command -v mnrh >/dev/null; then
+if [ ! -f "$CONF" ] && [ -z "${AGENTMEISTER_PROJECTS:-${MNRH_PROJECTS:-}}" ] && [ ! -d "$DEV" ] && command -v mnrh >/dev/null; then
   mnrh init --projects-only || exit 1
   DEV=$(projects_dir)
 fi
