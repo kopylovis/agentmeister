@@ -404,6 +404,7 @@ and Hysteria2 and uses the first live server from the subscription. One-time set
 
 ```bash
 agentmeister proxy setup 'https://…/sub/…' --country DE   # Clash, mihomo or v2ray subscription link
+agentmeister proxy setup --upstream socks5://127.0.0.1:1080  # or your own HTTP/SOCKS5 proxy instead
 agentmeister proxy test                                    # exit IP and country, direct and through the server
 ```
 
@@ -413,6 +414,12 @@ restarts mihomo under running sessions, a wrong exit is only reported (the watch
 `~/.local/state/agentmeister/proxy/watch.log`) and mihomo keeps running, so those sessions don't lose the network.
 `--only <pattern>` keeps only the servers whose names
 match. Encrypted `happ://crypt…` links can only be read by Happ, so use the plain `https://` one.
+
+`--upstream` takes your own proxy instead of a subscription: a corporate HTTP proxy, a Clash or Shadowsocks client
+already running on this Mac, an SSH `-D` tunnel. `socks5://`, `http://` and `https://` addresses need a port; a
+login and password go in the address (`http://user:pass@proxy.corp:3128`). mihomo reaches it the way the system
+does, through lo0 for localhost and through the route's own interface otherwise (so a proxy behind a corporate
+VPN works), and `proxy add <name> --upstream …` adds one as another subscription.
 
 The exit check asks `https://1.1.1.1/cdn-cgi/trace` and mihomo checks servers with
 `https://www.gstatic.com/generate_204`. Where either is blocked, `agentmeister proxy check-url <url>` (any Cloudflare
