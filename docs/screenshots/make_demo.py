@@ -229,7 +229,7 @@ def build(out):
     modes = {"humanize": True, "translate": True, "guard": True, "buildlog": True, "notify": True, "lid": False, "alias": True}
     state = {
         "version": "1.23.0", "lang": LANG, "langSetting": LANG, "projectsDir": D, "projectsDirs": [D],
-        "sessionDefaults": {"mode": "caffeinate", "remoteControl": True, "restartUpdate": True, "askModel": "sonnet"},
+        "sessionDefaults": {"mode": "caffeinate", "remoteControl": True, "restartUpdate": True, "askModel": "sonnet", "compactHintK": 200},
         "generatedAt": NOW, "errors": {},
         "projects": [{"name": n, "path": f"{D}/{n}"} for n in ("atlas-web", "infra", "ledger-api", "orbit-ios")],
         "sessions": [

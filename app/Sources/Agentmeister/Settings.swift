@@ -643,6 +643,7 @@ struct GeneralPane: View {
     @AppStorage(MenuBarPrefs.showKey) private var showMenuBar = true
     @AppStorage(MenuBarPrefs.keepRunningKey) private var keepRunning = false
     @AppStorage(BrewSync.enabledKey) private var brewSync = true
+    @AppStorage(SubAgentPrefs.keepKey) private var subagentMinutes = 15
     @ObservedObject private var updates = Updates.shared
 
     var l: L { L(backend.state.lang) }
@@ -719,6 +720,28 @@ struct GeneralPane: View {
                             l.t("После обновления приложения, если они стоят из kopylovis/tap. Лог в ~/Library/Logs/Agentmeister/brew-upgrade.log.",
                                 "After the app updates, if they're installed from kopylovis/tap. Log in ~/Library/Logs/Agentmeister/brew-upgrade.log.")) {
                     HeaderSwitch(label: l.t("Обновлять Homebrew", "Upgrade Homebrew"), on: brewSync) { brewSync = $0 }
+                }
+            }
+        }
+        GlassSection {
+            Text(l.t("Дополнительно", "Advanced")).font(.system(size: 13, weight: .semibold))
+            if let hint = backend.state.sessionDefaults?.compactHintK {
+                SettingsRow(l.t("Подсказка о /compact", "/compact hint"),
+                            l.t("Когда контекст сессии больше этого, счетчик контекста и /slim советуют /compact.",
+                                "Above this context size the context meter and /slim suggest /compact.")) {
+                    HStack(spacing: 6) {
+                        NumberField(value: hint) { value in Task { _ = await backend.perform(["defaults", "compact-hint", String(value)]) } }
+                        Text(l.t("тыс. токенов", "k tokens")).foregroundStyle(Ink.muted).fixedSize()
+                    }
+                }
+                Divider()
+            }
+            SettingsRow(l.t("Субагенты в списке", "Subagents in the list"),
+                        l.t("Сколько минут субагент виден в панели сессии после последней записи.",
+                            "How many minutes a subagent stays in the session panel after its last write.")) {
+                HStack(spacing: 6) {
+                    NumberField(value: subagentMinutes) { subagentMinutes = max(1, min($0, 240)) }
+                    Text(l.t("мин", "min")).foregroundStyle(Ink.muted).fixedSize()
                 }
             }
         }
