@@ -461,7 +461,8 @@ Sessions can't read subscription links or the downloaded server lists, and agent
 curl on stdin, so it doesn't show up in `ps`. A Claude Code session can't listen on mihomo's ports either, so it
 can't take a port over while mihomo restarts, and a launch checks that the ports it needs belong to mihomo.
 Pages the agent opens and links clicked in a tab go through that tab's subscription, each subscription in its
-own browser window and Chrome profile.
+own browser window and Chrome profile. Instead of Chrome the separate profile can be Brave, Edge, Vivaldi,
+Chromium or Yandex Browser: with more than one installed, Settings → Proxy → Proxy browser lets you pick.
 
 The network watcher also keeps the exit country during a session. Every 2 seconds it looks at the server
 mihomo picked for each subscription in use. When mihomo moves to another server (inside the same

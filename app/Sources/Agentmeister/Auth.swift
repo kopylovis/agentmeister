@@ -393,9 +393,9 @@ struct AuthDialog: View {
                       proxied ? l.t("страница идет через тот же proxy, что и агенты", "the page goes through the same proxy as the agents")
                               : l.t("страница идет напрямую", "the page goes direct"))
                 if ChromeProfile.app != nil {
-                    place(.chrome, l.t("Отдельный профиль Chrome", "Separate Chrome profile"),
-                          proxied ? l.t("Chrome с proxy и чистым профилем", "Chrome with the proxy and a clean profile")
-                              : l.t("Chrome с чистым профилем", "Chrome with a clean profile"))
+                    place(.chrome, l.t("Отдельный профиль \(ChromeProfile.name)", "Separate \(ChromeProfile.name) profile"),
+                          proxied ? l.t("\(ChromeProfile.name) с proxy и чистым профилем", "\(ChromeProfile.name) with the proxy and a clean profile")
+                              : l.t("\(ChromeProfile.name) с чистым профилем", "\(ChromeProfile.name) with a clean profile"))
                 }
                 place(.system, l.t("Браузер по умолчанию", "Default browser"),
                       l.t("по сети системы, мимо proxy", "over the system network, bypassing the proxy"))
@@ -425,14 +425,14 @@ struct AuthDialog: View {
                 .font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
             // без Chrome совет про Chrome не нужен, как и кнопка ниже
             if ChromeProfile.app != nil {
-                Text(l.t("Google может не пустить вход через Google во встроенном окне. Тогда открой страницу в Chrome через proxy.",
-                         "Google may refuse \"Sign in with Google\" in an embedded window. If it does, open the page in Chrome through the proxy."))
+                Text(l.t("Google может не пустить вход через Google во встроенном окне. Тогда открой страницу в \(ChromeProfile.name) через proxy.",
+                         "Google may refuse \"Sign in with Google\" in an embedded window. If it does, open the page in \(ChromeProfile.name) through the proxy."))
                     .font(.system(size: 12)).foregroundStyle(Ink.warn).fixedSize(horizontal: false, vertical: true)
             }
             output
             HStack(spacing: 8) {
                 if ChromeProfile.app != nil {
-                    LinkButton(title: proxied ? l.t("Открыть в Chrome через proxy", "Open in Chrome through the proxy") : l.t("Открыть в Chrome", "Open in Chrome")) {
+                    LinkButton(title: proxied ? l.t("Открыть в \(ChromeProfile.name) через proxy", "Open in \(ChromeProfile.name) through the proxy") : l.t("Открыть в \(ChromeProfile.name)", "Open in \(ChromeProfile.name)")) {
                         flow.moveToChrome()
                     }
                 }
@@ -505,8 +505,8 @@ struct AuthDialog: View {
             return proxied ? l.t("Браузер идет по сети системы, токен агент получает через \(proxy)", "The browser uses the system network, the agent gets its token through \(proxy)")
                            : l.t("Вход и токен напрямую, без proxy", "Sign-in and token go direct, no proxy")
         }
-        return proxied ? l.t("Chrome и агент идут через \(proxy)", "Chrome and the agent both go through \(proxy)")
-                       : l.t("Chrome и агент идут напрямую", "Chrome and the agent both go direct")
+        return proxied ? l.t("\(ChromeProfile.name) и агент идут через \(proxy)", "\(ChromeProfile.name) and the agent both go through \(proxy)")
+                       : l.t("\(ChromeProfile.name) и агент идут напрямую", "\(ChromeProfile.name) and the agent both go direct")
     }
 
     private var checkButton: some View {
