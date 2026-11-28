@@ -19,7 +19,8 @@ APP = os.path.join(ROOT, "app", ".build", "out", "Products", "Debug", "Agentmeis
 SCENES = {"main": ("main", 7), "new-session": ("sheet", 8), "project": ("main", 8), "settings": ("settings", 9),
           "settings-modes": ("settings", 9), "settings-notify": ("settings", 9), "settings-general": ("settings", 9), "settings-buildlog": ("settings", 9), "settings-lid": ("settings", 9), "settings-humanize": ("settings", 9), "settings-guard": ("settings", 9), "onboarding-proxy": ("main", 9), "settings-setup-steps": ("settings", 9), "settings-terminal": ("settings", 9), "theme-dracula": ("main", 8), "theme-solarized-light": ("main", 8),
           "settings-notify-phone": ("settings", 10), "settings-notify-add": ("settings", 10), "rail": ("main", 8), "about": ("settings", 8), "headsup": ("settings", 9),
-          "inspector-scroll": ("main", 7), "settings-doctor": ("settings", 9), "settings-doctor-fixing": ("settings", 10), "settings-doctor-failed": ("settings", 10), "settings-doctor-fixed": ("settings", 10)}
+          "inspector-scroll": ("main", 7), "settings-doctor": ("settings", 9), "settings-doctor-fixing": ("settings", 10), "settings-doctor-failed": ("settings", 10), "settings-doctor-fixed": ("settings", 10),
+          "command-running": ("settings", 10), "command-done": ("settings", 10), "command-failed": ("settings", 10)}
 # сцены, которые показывает README
 README_SCENES = ["main", "new-session", "project", "settings"]
 THEMES = ["dark", "light"]

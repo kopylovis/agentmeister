@@ -56,6 +56,7 @@ struct ProjectView: View {
     @EnvironmentObject var ui: UIState
     let path: String
     @State private var data: ProjectData?
+    @ObservedObject private var runs = CommandRuns.shared
     @State private var newTask = ""
     /// Ширина экрана: от нее зависит, две колонки или одна.
     @State private var width: CGFloat = 1000
@@ -407,7 +408,10 @@ struct ProjectView: View {
             toolRow(l.t("Заметки к релизу", "Release notes"), l.t("\"Что нового\" для fastlane на языках проекта", "\"What's new\" for fastlane in the project's languages"),
                     data?.tools?.releaseSince.map { l.t("с ", "since ") + $0 } ?? "") { openWithPrompt("/release-notes") }
             toolRow(l.t("Устаревшие зависимости", "Outdated dependencies"), l.t("Gradle и libs.versions.toml", "Gradle and libs.versions.toml"),
-                    data?.tools?.gradle == true ? "" : l.t("нет Gradle", "no Gradle"), enabled: data?.tools?.gradle == true) { utility(["deps", path]) }
+                    data?.tools?.gradle == true ? "" : l.t("нет Gradle", "no Gradle"), enabled: data?.tools?.gradle == true) {
+                CommandRuns.shared.start(["deps", path], title: l.t("Устаревшие зависимости", "Outdated dependencies"),
+                                         icon: "shippingbox", host: .main, sheet: true)
+            }
         }
     }
 
@@ -530,15 +534,34 @@ struct ProjectView: View {
                         }
                         .buttonStyle(PillStyle(small: true))
                         .disabled(tabOpen)
-                        Menu(l.t("Завершить…", "Finish…")) {
-                            Button(l.t("Через PR, дождаться CI и слить", "Through a PR, wait for CI and merge")) { utility(["parallel", "pr", e.branch, "-p", path]) }
-                            Button(l.t("Влить локально", "Merge locally")) { utility(["parallel", "merge", e.branch, "-p", path]) }
-                            Divider()
-                            Button(l.t("Выбросить", "Drop"), role: .destructive) { utility(["parallel", "drop", e.branch, "-p", path]) }
+                        if let run = finishing(e.branch), run.phase == .running {
+                            Button { CommandRuns.shared.show(run) } label: {
+                                HStack(spacing: 6) {
+                                    ProgressView().controlSize(.mini)
+                                    Text(run.title).lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(PillStyle(small: true))
+                            .help(run.command)
+                        } else {
+                            Menu(l.t("Завершить…", "Finish…")) {
+                                Button(l.t("Через PR, дождаться CI и слить", "Through a PR, wait for CI and merge")) { finish("pr", e.branch) }
+                                Button(l.t("Влить локально", "Merge locally")) { finish("merge", e.branch) }
+                                Divider()
+                                Button(l.t("Выбросить", "Drop"), role: .destructive) { finish("drop", e.branch) }
+                            }
+                            .menuStyle(.button)
+                            .buttonStyle(PillStyle(small: true))
+                            .fixedSize()
                         }
-                        .menuStyle(.button)
-                        .buttonStyle(PillStyle(small: true))
-                        .fixedSize()
+                    }
+                    if let run = finishing(e.branch), run.phase == .failed {
+                        Text(run.stopped ? l.t("Остановлено", "Stopped") : run.reason ?? l.t("Команда не прошла", "The command failed"))
+                            .font(.system(size: 12)).foregroundStyle(Ink.red)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button(l.t("Весь вывод", "Full output")) { CommandRuns.shared.show(run) }
+                            .buttonStyle(.link).font(.system(size: 12))
                     }
                 }
                 .padding(12)
@@ -582,11 +605,19 @@ struct ProjectView: View {
         }
     }
 
-    private func utility(_ args: [String]) {
-        var spec = LaunchSpec(projectName: "agentmeister", projectPath: path)
-        spec.utility = args
-        workspace.open(spec)
-        ui.projectScreen = nil
+    /// Последняя команда parallel этой ветки этого проекта.
+    private func finishing(_ branch: String) -> CommandRun? {
+        runs.latest { $0.count == 5 && $0[0] == "parallel" && $0[2] == branch && $0[4] == path }
+    }
+
+    /// Завершить параллельную задачу без вкладки терминала. PR ждет CI минутами, его вывод идет в лист,
+    /// слияние и выброс короткие и показывают себя прямо в строке задачи.
+    private func finish(_ action: String, _ branch: String) {
+        let title = ["pr": l.t("Через PR, дождаться CI и слить", "Through a PR, wait for CI and merge"),
+                     "merge": l.t("Вливаю локально", "Merging locally"),
+                     "drop": l.t("Выбрасываю", "Dropping")][action] ?? action
+        CommandRuns.shared.start(["parallel", action, branch, "-p", path], title: title, icon: "arrow.triangle.merge",
+                                 host: .main, sheet: action == "pr") { await reload() }
     }
 
     private func addTask() {

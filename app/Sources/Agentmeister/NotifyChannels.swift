@@ -803,7 +803,7 @@ struct AddChannelSheet: View {
             Spacer()
             Button(l.t("Отмена", "Cancel")) { dismiss() }.buttonStyle(PillStyle()).keyboardShortcut(.cancelAction)
             if c == .telegram {
-                UtilityButton(title: l.t("Открыть мастер", "Open setup"), args: ["notify", "telegram"], prominent: true)
+                UtilityButton(title: l.t("Открыть мастер", "Open setup"), args: ["notify", "telegram"], prominent: true, mode: .terminal)
                     .simultaneousGesture(TapGesture().onEnded { dismiss() })
             } else {
                 Button(l.t("Подключить", "Connect")) { connect(c) }
