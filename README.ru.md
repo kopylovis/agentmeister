@@ -230,7 +230,9 @@ Buildlog сокращает вывод команд сборки вроде `./g
 
 Обновление: `brew upgrade agentmeister`. Открытые сессии подхватят новую версию сами: перед каждым
 запросом MCP-сервер проверяет, не сменился ли его код (`brew upgrade` или `git pull` в папке проекта), и если
-сменился, заменяет себя новым на том же соединении, не теряя запрос. Убрать из Claude Code: `agentmeister setup --remove`.
+сменился, заменяет себя новым на том же соединении, не теряя запрос. `agentmeister setup --steps hooks,commands` ставит только перечисленные шаги (commands, hooks, zsh, mcp,
+notify-app, proxy, promptsill), остальные не трогает. Тот же список с галочками есть в Настройках, Агенты, Хуки и MCP.
+Убрать из Claude Code: `agentmeister setup --remove`.
 Удаление: `brew uninstall agentmeister`.
 
 Переменные, которые задаешь сам, называются `AGENTMEISTER_*` (`AGENTMEISTER_PROJECTS`, `AGENTMEISTER_NO_MENU`,

@@ -1225,6 +1225,7 @@ struct AgentCard: View {
     @State private var check: UpdateCheck?
     @State private var checking = false
     @State private var signingIn: LaunchSpec.Agent?
+    @State private var choosingSteps = false
 
     private var name: String { agent == .claude ? "Claude Code" : "Codex" }
     private var proxyReady: Bool { backend.state.proxy?.configured == true }
@@ -1269,10 +1270,15 @@ struct AgentCard: View {
         .onAppear {
             flags = UserDefaults.standard.string(forKey: AgentPrefs.flagsKey(agent)) ?? ""
             if info?.installed == true { runCheck() }
+            // демо-сцена settings-setup-steps сразу открывает лист шагов setup
+            if Demo.active && Demo.scene == "settings-setup-steps" && agent == .claude { choosingSteps = true }
         }
         .onChange(of: info?.installed) { if info?.installed == true && check == nil { runCheck() } }
         .sheet(item: $signingIn, onDismiss: { Task { await reload() } }) { agent in
             AuthDialog(agent: agent)
+        }
+        .sheet(isPresented: $choosingSteps, onDismiss: { Task { await reload() } }) {
+            SetupStepsSheet()
         }
     }
 
@@ -1339,9 +1345,14 @@ struct AgentCard: View {
                 .lineLimit(1)
         }
         .buttonStyle(CardActionStyle())
-        UtilityButton(title: l.t("Хуки и MCP", "Hooks and MCP"),
-                      args: agent == .claude ? ["setup"] : ["--harness", "codex", "setup"], expand: true,
-                      icon: "puzzlepiece.extension")
+        if agent == .claude {
+            Button { choosingSteps = true } label: { Label(l.t("Хуки и MCP", "Hooks and MCP"), systemImage: "puzzlepiece.extension").lineLimit(1) }
+                .help("agentmeister setup --steps …")
+                .buttonStyle(CardActionStyle())
+        } else {
+            UtilityButton(title: l.t("Хуки и MCP", "Hooks and MCP"), args: ["--harness", "codex", "setup"], expand: true,
+                          icon: "puzzlepiece.extension")
+        }
     }
 
     private func gridRow(_ title: String, _ value: String, mono: Bool = false) -> some View {
@@ -1903,5 +1914,84 @@ struct FlowChips: View {
             .buttonStyle(.plain)
             .help(item)
         }
+    }
+}
+
+
+/// Что ставит agentmeister setup для Claude Code, по шагам. Выбранные уходят в setup --steps, остальные не трогаются.
+struct SetupStepsSheet: View {
+    @EnvironmentObject var backend: Backend
+    @EnvironmentObject var workspace: Workspace
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.utilityRunner) private var runner
+    @Environment(\.dismiss) private var dismiss
+    @State private var chosen: Set<String> = ["commands", "hooks", "zsh", "mcp", "notify-app", "promptsill"]
+
+    var l: L { L(backend.state.lang) }
+
+    private var steps: [(String, String, String)] {
+        [("commands", l.t("Слэш-команды", "Slash commands"),
+          l.t("/restart, /slim, /todo, /parallel и другие в ~/.claude/commands. Свои команды с теми же именами не трогаются.",
+              "/restart, /slim, /todo, /parallel and others in ~/.claude/commands. Your own commands with the same names stay.")),
+         ("hooks", l.t("Хуки Claude Code", "Claude Code hooks"),
+          l.t("Уведомления, guard, humanize, buildlog, справка на старте и строка состояния в ~/.claude/settings.json. Переписки хранятся год.",
+              "Notifications, guard, humanize, buildlog, session-start notes and the status line in ~/.claude/settings.json. Transcripts are kept a year.")),
+         ("zsh", l.t("Хук zsh", "zsh hook"),
+          l.t("Строка в ~/.zshrc, без нее /restart в iTerm2 и Terminal не откроет сессию снова.",
+              "A line in ~/.zshrc; without it /restart can't reopen the session in iTerm2 or Terminal.")),
+         ("mcp", l.t("MCP-сервер agentmeister", "agentmeister MCP server"),
+          l.t("Поиск по сессиям, open_claude, бэклог и другие инструменты. Инструменты чтения разрешены без вопроса.",
+              "Session search, open_claude, the backlog and other tools. Read-only tools are allowed without asking.")),
+         ("notify-app", l.t("Приложение уведомлений", "Notification app"),
+          l.t("Маленькое приложение для уведомлений \"Claude ждет\" и звук в ~/Library/Sounds. Нужен swiftc.",
+              "A small app for \"Claude is waiting\" notifications and a sound in ~/Library/Sounds. Needs swiftc.")),
+         ("promptsill", l.t("Строка promptsill", "promptsill status line"),
+          l.t("Контекст, лимиты и proxy под полем ввода. Ставится через Homebrew, если его нет.",
+              "Context, limits and proxy under the prompt. Installed through Homebrew if missing.")),
+         ("proxy", "Proxy",
+          l.t("Спросит ссылку на подписку, если proxy еще не настроен.", "Asks for a subscription link if the proxy isn't set up yet."))]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(l.t("Что поставить для Claude Code", "What to install for Claude Code")).font(.system(size: 20, weight: .semibold))
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(steps, id: \.0) { id, title, text in
+                    Toggle(isOn: Binding(get: { chosen.contains(id) }, set: { on in if on { chosen.insert(id) } else { chosen.remove(id) } })) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(title).fontWeight(.semibold)
+                            Text(text).font(.system(size: 12)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                }
+            }
+            Note(text: l.t("Невыбранные шаги не трогаются, уже поставленное остается. Убрать все: agentmeister setup --remove.",
+                           "Unchecked steps are left as they are, anything already installed stays. To remove everything: agentmeister setup --remove."))
+            HStack {
+                Spacer()
+                Button(l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(l.t("Поставить", "Install")) {
+                    let ids = steps.map(\.0).filter { chosen.contains($0) }
+                    run(["setup", "--steps", ids.joined(separator: ",")])
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(chosen.isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+    }
+
+    private func run(_ args: [String]) {
+        if let runner {
+            runner(args)
+            return
+        }
+        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
+        spec.utility = args
+        workspace.open(spec)
+        openWindow(id: "main")
     }
 }
