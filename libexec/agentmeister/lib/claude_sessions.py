@@ -27,7 +27,8 @@ agentmeister sessions mv <id> <папка>  перенести в другую �
 agentmeister sessions rm <id>... [-y]  удалить вместе с историей запросов этой сессии
 agentmeister sessions rename <id> <название>  переименовать, как /rename в Claude Code
 agentmeister sessions clean [-y]       битые ссылки, сессии без единого ответа, папки удалённых проектов,
-                                      папки с неверным именем от старого mv
+                                      папки с неверным именем от старого mv. --json: только найти, без
+                                      изменений; --only empty,broken,orphans,misnamed: только эти группы
 agentmeister sessions search <слова>   поиск по всем сессиям; -p <проект>, -d <дней>, -r error — по ошибкам
 agentmeister sessions show <id> [N]    прочитать сессию с сообщения N (из search), -N — с конца
 agentmeister sessions slim             что даст сжатие старых частей сессий (скриншоты, длинные выводы)
@@ -46,7 +47,8 @@ agentmeister sessions mv <id> <folder>  move to another folder: a path, a projec
 agentmeister sessions rm <id>... [-y]  delete along with the prompt history of this session
 agentmeister sessions rename <id> <title>  rename, like /rename in Claude Code
 agentmeister sessions clean [-y]       broken links, sessions without a single reply, folders of deleted projects,
-                                      folders misnamed by the old mv
+                                      folders misnamed by the old mv. --json: only find, change nothing;
+                                      --only empty,broken,orphans,misnamed: only these groups
 agentmeister sessions search <words>   search all sessions; -p <project>, -d <days>, -r error to search errors
 agentmeister sessions show <id> [N]    read a session from message N (from search), -N counts from the end
 agentmeister sessions slim             how much slimming old parts of sessions would save (screenshots, long outputs)
@@ -345,8 +347,8 @@ def migrate_misnamed(pdir, home, sessions, snapshot):
     return "moved", clashes
 
 
-def clean_misnamed(everything, assume_yes):
-    """Шаг уборки: папки, которые назвал старый mv. Ответ (нашлось ли что-то, перенесено ли что-то)."""
+def find_misnamed(everything):
+    """Папки, которые назвал старый mv: [(папка, настоящий путь проекта, сессии, снимок дерева)]."""
     found = []
     for d in sorted(os.listdir(PROJECTS)):
         pdir = os.path.join(PROJECTS, d)
@@ -359,6 +361,12 @@ def clean_misnamed(everything, assume_yes):
                 found.append((pdir, home, sessions, tree_snapshot(pdir)))
             except OSError:
                 continue
+    return found
+
+
+def clean_misnamed(everything, assume_yes):
+    """Шаг уборки: папки, которые назвал старый mv. Ответ (нашлось ли что-то, перенесено ли что-то)."""
+    found = find_misnamed(everything)
     if not found:
         return False, False
     print(tr(f"Папки с неверным именем от старого agentmeister sessions mv, Claude Code их не видит ({len(found)}):",
@@ -397,11 +405,12 @@ def clean_misnamed(everything, assume_yes):
     return True, did
 
 
-def clean(assume_yes):
-    everything = load()
-    misnamed, did = clean_misnamed(everything, assume_yes)
-    if did:
-        everything = load()
+GROUPS = ("misnamed", "broken", "empty", "orphans")
+
+
+def find_litter(everything):
+    """Что убрать, кроме папок от старого mv: (битые ссылки, сессии без ответа, папки удаленных проектов,
+    проекты на отключенных дисках, папки без записи о пути)."""
     broken, empty, orphans, away, unknown = [], [], [], [], []
     for d in sorted(os.listdir(PROJECTS)):
         pdir = os.path.join(PROJECTS, d)
@@ -439,6 +448,42 @@ def clean(assume_yes):
         for s in sessions:
             if s["answered"] is False and not s["running"] and not s["link"]:
                 empty.append(s)
+    return broken, empty, orphans, away, unknown
+
+
+def clean_report():
+    """agentmeister sessions clean --json: что нашлось, без изменений. Для листа "Очистить лишние" в приложении."""
+    everything = load()
+    misnamed = find_misnamed(everything)
+    broken, empty, orphans, away, unknown = find_litter(everything)
+
+    def folder(pdir, home, sessions):
+        return {"home": tilde(home) if home else os.path.basename(pdir), "sessions": len(sessions),
+                "size": tree_size(pdir), "memory": os.path.isdir(os.path.join(pdir, "memory")),
+                "open": any(s["running"] for s in sessions)}
+
+    return {"misnamed": [dict(folder(pdir, home, ss), merge=os.path.lexists(os.path.join(PROJECTS, encode(home))))
+                         for pdir, home, ss, _ in misnamed],
+            "broken": [{"path": tilde(p), "target": target} for p, _, target in broken],
+            "empty": [{"id": s["id"], "title": row(s), "size": s["size"]} for s in empty],
+            "orphans": [folder(pdir, home, ss) for pdir, home, ss, _ in orphans],
+            "away": [tilde(h) for h in away], "unknown": len(unknown)}
+
+
+def clean(assume_yes, only=None):
+    """Уборка сессий. only: группы из GROUPS, остальные не трогаются и не показываются (так зовет приложение)."""
+    want = set(GROUPS if only is None else only)
+    everything = load()
+    misnamed, did = clean_misnamed(everything, assume_yes) if "misnamed" in want else (False, False)
+    if did:
+        everything = load()
+    broken, empty, orphans, away, unknown = find_litter(everything)
+    if "broken" not in want:
+        broken = []
+    if "empty" not in want:
+        empty = []
+    if "orphans" not in want:
+        orphans = []
 
     if away:
         print(tr(f"Проекты на отключенных дисках ({len(away)}) не трогаю: ",
@@ -769,7 +814,17 @@ def main():
                 delete(s)
             print(tr("Удалено.", "Deleted."))
     elif cmd == "clean":
-        clean(yes)
+        if "--json" in args:
+            print(json.dumps(clean_report(), ensure_ascii=False))
+            return 0
+        only = None
+        if "--only" in args:
+            i = args.index("--only")
+            only = set(args[i + 1].split(",")) if i + 1 < len(args) else set()
+            if not only or not only <= set(GROUPS):
+                sys.exit(tr("agentmeister sessions clean: после --only группы из ", "agentmeister sessions clean: --only takes groups from ")
+                         + ", ".join(GROUPS))
+        clean(yes, only)
     elif cmd == "slim":
         import session_slim
         return session_slim.slim_cmd(args[1:], yes)

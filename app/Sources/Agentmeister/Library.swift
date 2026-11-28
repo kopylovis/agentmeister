@@ -19,6 +19,7 @@ struct LibraryRow: Identifiable, Hashable {
 /// превью с действиями справа. Замена agentmeister sessions.
 struct LibraryView: View {
     @EnvironmentObject var backend: Backend
+    @State private var cleaning = false
     @EnvironmentObject var workspace: Workspace
     @Environment(\.openWindow) private var openWindow
 
@@ -189,6 +190,10 @@ struct LibraryView: View {
         .onChange(of: selection) { storedSelection = selection ?? "" }
         .onAppear { if selection == nil, !storedSelection.isEmpty { selection = storedSelection } }
         .frame(minWidth: 1000, minHeight: 580)
+        .commandSheets(.library)
+        .sheet(isPresented: $cleaning) { CleanSessionsSheet() }
+        // демо sessions-clean: лист уборки поверх библиотеки
+        .task { if Demo.active && Demo.scene == "sessions-clean" { try? await Task.sleep(for: .seconds(1)); cleaning = true } }
         .onAppear { WindowMemory.set("library", open: true) }
         .onDisappear { WindowMemory.set("library", open: false) }
     }
@@ -204,7 +209,8 @@ struct LibraryView: View {
                 .font(.system(size: 12))
                 .frame(width: 250)
                 .accessibilityLabel(l.agent)
-            UtilityButton(title: l.t("Очистить лишние", "Clean up"), args: ["sessions", "clean"], small: true, mode: .terminal)
+            Button(l.t("Очистить лишние", "Clean up")) { cleaning = true }
+                .buttonStyle(PillStyle(small: true))
                 .help(l.t("Битые ссылки, сессии без ответа, папки удаленных проектов. Сначала покажет список.",
                           "Broken links, sessions without a reply, folders of deleted projects. Shows the list first."))
         }

@@ -352,9 +352,20 @@ def build(out):
             ("modes", "ok", t("modes: humanize on, translate off, guard off, notify on, buildlog on, lid on",
                               "режимы: humanize вкл, translate выкл, guard выкл, notify вкл, buildlog вкл, lid вкл"))]
     doctor = {"rows": [{"check": c, "level": lv, "text": text} for c, lv, text in rows]}
+    # sessions clean --json для листа "Очистить лишние"
+    clean = {"empty": [{"id": f"{i:08x}-0000-4000-8000-000000000000", "title": t(f"api · {i + 2} Nov, 1 prompt", f"api · {i + 2} нояб, 1 запрос"),
+                        "size": 150_000} for i in range(14)],
+             "broken": [{"path": "~/.claude/projects/-Users-me-Developer-app/4f1c9a2e.jsonl", "target": "/Volumes/Work/app/4f1c9a2e.jsonl"},
+                        {"path": "~/.claude/projects/-Users-me-Developer-old/a90e11b3.jsonl", "target": "~/old/a90e11b3.jsonl"},
+                        {"path": "~/.claude/projects/-Users-me-tmp/77b2c4d0.jsonl", "target": "/tmp/77b2c4d0.jsonl"}],
+             "orphans": [{"home": "~/Developer/prototype", "sessions": 9, "size": 31_000_000, "memory": True, "open": False},
+                         {"home": "~/Developer/hackathon", "sessions": 4, "size": 17_000_000, "memory": False, "open": False}],
+             "misnamed": [{"home": "~/Developer/kcalm-ios", "sessions": 3, "size": 2_400_000, "memory": False, "open": False,
+                           "merge": True}],
+             "away": ["/Volumes/Work/app"], "unknown": 2}
     for name, data in (("app-state.json", state), ("app-state-settings.json", settings), ("tabs.json", tabs),
                        ("app-state-project.json", project), ("app-state-headsup.json", headsup),
-                       ("app-state-doctor.json", doctor)):
+                       ("app-state-doctor.json", doctor), ("sessions-clean.json", clean)):
         with open(os.path.join(out, name), "w") as f:
             json.dump(data, f, indent=1, ensure_ascii=False)
     for theme in PALETTES:

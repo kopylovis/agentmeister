@@ -109,6 +109,9 @@ struct MainView: View {
                 ui.showOnboarding = true
             case "about":
                 openWindow(id: "about")
+            case "sessions-clean":
+                // окно библиотеки, лист уборки открывает оно само
+                openWindow(id: "library")
             case "rail":
                 ui.sidebarCollapsed = true
             case "modes-toggle":

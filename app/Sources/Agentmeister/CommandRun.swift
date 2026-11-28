@@ -4,7 +4,7 @@ import SwiftUI
 /// Окно, в котором показывается лист команды. Свой у главного окна, Настроек и мастера первого запуска:
 /// лист с одного корня в другом окне не появится.
 enum CommandHost: Hashable {
-    case main, settings, onboarding
+    case main, settings, onboarding, library
 }
 
 struct CommandHostKey: EnvironmentKey {

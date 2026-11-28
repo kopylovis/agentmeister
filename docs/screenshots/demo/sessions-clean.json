@@ -1,0 +1,118 @@
+{
+ "empty": [
+  {
+   "id": "00000000-0000-4000-8000-000000000000",
+   "title": "api · 2 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "00000001-0000-4000-8000-000000000000",
+   "title": "api · 3 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "00000002-0000-4000-8000-000000000000",
+   "title": "api · 4 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "00000003-0000-4000-8000-000000000000",
+   "title": "api · 5 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "00000004-0000-4000-8000-000000000000",
+   "title": "api · 6 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "00000005-0000-4000-8000-000000000000",
+   "title": "api · 7 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "00000006-0000-4000-8000-000000000000",
+   "title": "api · 8 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "00000007-0000-4000-8000-000000000000",
+   "title": "api · 9 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "00000008-0000-4000-8000-000000000000",
+   "title": "api · 10 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "00000009-0000-4000-8000-000000000000",
+   "title": "api · 11 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "0000000a-0000-4000-8000-000000000000",
+   "title": "api · 12 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "0000000b-0000-4000-8000-000000000000",
+   "title": "api · 13 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "0000000c-0000-4000-8000-000000000000",
+   "title": "api · 14 Nov, 1 prompt",
+   "size": 150000
+  },
+  {
+   "id": "0000000d-0000-4000-8000-000000000000",
+   "title": "api · 15 Nov, 1 prompt",
+   "size": 150000
+  }
+ ],
+ "broken": [
+  {
+   "path": "~/.claude/projects/-Users-me-Developer-app/4f1c9a2e.jsonl",
+   "target": "/Volumes/Work/app/4f1c9a2e.jsonl"
+  },
+  {
+   "path": "~/.claude/projects/-Users-me-Developer-old/a90e11b3.jsonl",
+   "target": "~/old/a90e11b3.jsonl"
+  },
+  {
+   "path": "~/.claude/projects/-Users-me-tmp/77b2c4d0.jsonl",
+   "target": "/tmp/77b2c4d0.jsonl"
+  }
+ ],
+ "orphans": [
+  {
+   "home": "~/Developer/prototype",
+   "sessions": 9,
+   "size": 31000000,
+   "memory": true,
+   "open": false
+  },
+  {
+   "home": "~/Developer/hackathon",
+   "sessions": 4,
+   "size": 17000000,
+   "memory": false,
+   "open": false
+  }
+ ],
+ "misnamed": [
+  {
+   "home": "~/Developer/kcalm-ios",
+   "sessions": 3,
+   "size": 2400000,
+   "memory": false,
+   "open": false,
+   "merge": true
+  }
+ ],
+ "away": [
+  "/Volumes/Work/app"
+ ],
+ "unknown": 2
+}
