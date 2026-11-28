@@ -121,7 +121,7 @@ struct AboutView: View {
     private var lastCheckText: String {
         guard let date = updates.lastCheck else { return l.t("Обновления еще не проверялись", "Updates not checked yet") }
         let f = RelativeDateTimeFormatter()
-        f.locale = Locale(identifier: l.en ? "en_US" : "ru_RU")
+        f.locale = l.locale
         f.unitsStyle = .short
         return l.t("Проверено ", "Checked ") + f.localizedString(for: date, relativeTo: Date())
     }

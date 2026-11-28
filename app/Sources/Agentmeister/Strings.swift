@@ -9,6 +9,15 @@ struct L {
 
     func t(_ ru: String, _ en: String) -> String { self.en ? en : ru }
 
+    /// Формат дат и чисел: системный, если язык системы совпадает с языком интерфейса (en_GB, de_DE с английским),
+    /// иначе en_US или ru_RU, чтобы месяцы не оказались на третьем языке.
+    var locale: Locale {
+        let current = Locale.current
+        let code = current.language.languageCode?.identifier
+        if code == (en ? "en" : "ru") { return current }
+        return Locale(identifier: en ? "en_US" : "ru_RU")
+    }
+
     var projects: String { t("Проекты", "Projects") }
     var modes: String { t("Режимы", "Modes") }
     var newSession: String { t("Новая сессия", "New session") }
