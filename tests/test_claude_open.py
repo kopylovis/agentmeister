@@ -65,7 +65,7 @@ class OpenTerminal(unittest.TestCase):
             return 0
 
         with patch.object(host_run, "send_op", side_effect=send) as sent:
-            (text, error), _ = self.launch("iTerm.app", denied, remote_control=True, prompt=prompt)
+            (text, error), _ = self.launch("iTerm.app", denied, remote_control=True, prompt=prompt, mode="caffeinate")
         self.assertFalse(error)
         self.assertIn("/dev/ttys009", text)
         argv = sent.call_args.args[0]["argv"]

@@ -22,18 +22,18 @@ class SessionDefaults(unittest.TestCase):
         self.patch.stop()
 
     def test_defaults_without_config(self):
-        self.assertEqual(d.state(), {"mode": "caffeinate", "remoteControl": True, "restartUpdate": True,
+        self.assertEqual(d.state(), {"mode": "normal", "remoteControl": False, "restartUpdate": True,
                                      "askModel": "sonnet"})
 
     def test_set_and_reset(self):
-        self.assertEqual(d.main(["mode", "normal"]), 0)
-        self.assertEqual(d.main(["remote-control", "off"]), 0)
+        self.assertEqual(d.main(["mode", "caffeinate"]), 0)
+        self.assertEqual(d.main(["remote-control", "on"]), 0)
         self.assertEqual(d.main(["ask-model", "opus"]), 0)
-        self.assertEqual(d.state(), {"mode": "normal", "remoteControl": False, "restartUpdate": True,
+        self.assertEqual(d.state(), {"mode": "caffeinate", "remoteControl": True, "restartUpdate": True,
                                      "askModel": "opus"})
         with open(self.conf) as f:
-            self.assertIn("open_mode=normal", f.read())
-        d.main(["mode", "caffeinate"])
+            self.assertIn("open_mode=caffeinate", f.read())
+        d.main(["mode", "normal"])
         with open(self.conf) as f:
             self.assertNotIn("open_mode", f.read())
 
@@ -42,7 +42,7 @@ class SessionDefaults(unittest.TestCase):
         self.assertEqual(d.main(["nope", "on"]), 2)
         with open(self.conf, "w") as f:
             f.write("open_remote_control=maybe\n")
-        self.assertTrue(d.remote_control())
+        self.assertFalse(d.remote_control())
 
     def test_open_claude_uses_the_defaults(self):
         import claude_open

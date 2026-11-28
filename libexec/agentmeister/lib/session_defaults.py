@@ -1,8 +1,8 @@
 """Умолчания для сессий, которые agentmeister открывает сам (open_claude, /parallel, меню) и перезапускает.
 
 Строки в ~/.config/mnrh/config:
-  open_mode=caffeinate|normal       режим новой сессии, по умолчанию caffeinate
-  open_remote_control=on|off        Remote Control в новых сессиях, по умолчанию on
+  open_mode=caffeinate|normal       режим новой сессии, по умолчанию normal
+  open_remote_control=on|off        Remote Control в новых сессиях, по умолчанию off
   restart_update=on|off             /restart сначала обновляет Claude Code, по умолчанию on
   ask_model=sonnet|opus|haiku       модель для /ask, по умолчанию sonnet
 
@@ -15,8 +15,8 @@ from mnrhlib import read_config, tr, write_config  # noqa: E402
 
 # ключ команды: (строка в config, допустимые значения, умолчание)
 KEYS = {
-    "mode": ("open_mode", ("caffeinate", "normal"), "caffeinate"),
-    "remote-control": ("open_remote_control", ("on", "off"), "on"),
+    "mode": ("open_mode", ("caffeinate", "normal"), "normal"),
+    "remote-control": ("open_remote_control", ("on", "off"), "off"),
     "restart-update": ("restart_update", ("on", "off"), "on"),
     "ask-model": ("ask_model", ("sonnet", "opus", "haiku"), "sonnet"),
 }
