@@ -23,8 +23,10 @@ struct ProxySourceSheet: View {
     private var busy: Int { proxy?.configured == true ? proxy?.sessions ?? 0 : 0 }
     private var clean: String { secret.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    /// Что не так с введенным, до запуска команды. Подробную проверку делает сам proxy setup.
-    private var problem: String? {
+    private var problem: String? { Self.problem(clean, own: ownProxy, l) }
+
+    /// Что не так со ссылкой или адресом, до запуска команды. Подробную проверку делает сам agentmeister proxy.
+    static func problem(_ clean: String, own ownProxy: Bool, _ l: L) -> String? {
         guard !clean.isEmpty else { return nil }
         if ownProxy {
             return clean.range(of: #"^(socks5h?|https?)://\S+:\d+/?$"#, options: .regularExpression) == nil
