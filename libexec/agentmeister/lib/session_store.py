@@ -365,8 +365,9 @@ def find(ss, prefix):
     if len(hits) == 1:
         return hits[0]
     if hits:
-        sys.exit(f"agentmeister sessions: «{prefix}» подходит к {len(hits)} сессиям, дай больше символов id")
-    sys.exit(f"agentmeister sessions: сессии «{prefix}» нет")
+        sys.exit(tr(f"agentmeister sessions: «{prefix}» подходит к {len(hits)} сессиям, дай больше символов id",
+                    f"agentmeister sessions: \"{prefix}\" matches {len(hits)} sessions, give more characters of the id"))
+    sys.exit(tr(f"agentmeister sessions: сессии «{prefix}» нет", f"agentmeister sessions: no session \"{prefix}\""))
 
 
 def fast_session(sid):
@@ -424,7 +425,8 @@ class SessionInUse(SystemExit):
 
 def require_idle(s):
     if s["id"] in running_ids():
-        raise SessionInUse("Сессия открыта в другом окне. Сначала закрой ее.")
+        raise SessionInUse(tr("Сессия открыта в другом окне. Сначала закрой ее.",
+                              "The session is open in another window. Close it first."))
 
 
 def delete(s, *, unanswered_only=False):
