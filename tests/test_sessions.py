@@ -642,3 +642,31 @@ class Lookup(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CleanForTheApp(unittest.TestCase):
+    def test_report_changes_nothing_and_only_cleans_chosen_groups(self):
+        r, _ = with_misnamed("""
+            import json
+            cwd = os.path.join(home, "a😀b")
+            old, new = misnamed(cwd)
+            proj = os.path.join(home, "proj")
+            os.makedirs(proj)
+            pdir = os.path.join(s.PROJECTS, s.encode(proj))
+            session(pdir, B, proj)
+            link = os.path.join(pdir, "gone.jsonl")
+            os.symlink(os.path.join(home, "nowhere.jsonl"), link)
+            before = sorted(os.listdir(old))
+            report = c.clean_report()
+            json.dumps(report, ensure_ascii=False)
+            assert len(report["misnamed"]) == 1 and report["misnamed"][0]["sessions"] == 1, report
+            assert [b["target"] for b in report["broken"]] == [os.path.join(home, "nowhere.jsonl")], report
+            assert sorted(os.listdir(old)) == before and os.path.islink(link)
+            c.clean(True, only={"broken"})
+            assert os.path.exists(old) and not os.path.lexists(link)
+            c.clean(True, only={"misnamed"})
+            assert not os.path.exists(old)
+            print("ok")
+        """)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertEqual(r.stdout.split()[-1], "ok", r.stdout)
