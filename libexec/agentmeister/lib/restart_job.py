@@ -19,7 +19,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CM, LOCAL_CLI, RESTART_QUEUE, UUID_RE  # noqa: E402
+from mnrhlib import CM, LOCAL_CLI, RESTART_QUEUE, UUID_RE, tr  # noqa: E402
 from claude_proc import CLAUDE_BIN, DROP, FLAG_VALUES  # noqa: E402
 
 FORMAT = 2
@@ -82,10 +82,11 @@ def clean_flags(flags):
 
 def check_flags(flags):
     if not isinstance(flags, list) or not all(isinstance(a, str) and "\0" not in a for a in flags):
-        raise JobError("flags должен быть списком строк")
+        raise JobError(tr("flags должен быть списком строк", "flags must be a list of strings"))
     kept, dropped = clean_flags(flags)
     if dropped or kept != flags:
-        raise JobError(f"незнакомые флаги claude: {' '.join(dropped) or ' '.join(flags)}")
+        raise JobError(tr(f"незнакомые флаги claude: {' '.join(dropped) or ' '.join(flags)}",
+                          f"unknown claude flags: {' '.join(dropped) or ' '.join(flags)}"))
     return flags
 
 
@@ -93,62 +94,64 @@ def check_caffeinate(flags):
     if flags is None:
         return None
     if not isinstance(flags, list) or not all(isinstance(a, str) for a in flags):
-        raise JobError("caffeinate должен быть списком строк")
+        raise JobError(tr("caffeinate должен быть списком строк", "caffeinate must be a list of strings"))
     i = 0
     while i < len(flags):
         if flags[i] in ("-t", "-w"):
             if i + 1 >= len(flags) or not flags[i + 1].isdigit():
-                raise JobError(f"caffeinate {flags[i]} без числа")
+                raise JobError(tr(f"caffeinate {flags[i]} без числа", f"caffeinate {flags[i]} without a number"))
             i += 2
         elif CAFFEINATE_FLAG.match(flags[i]):
             i += 1
         else:
-            raise JobError(f"незнакомый флаг caffeinate: {flags[i]}")
+            raise JobError(tr(f"незнакомый флаг caffeinate: {flags[i]}", f"unknown caffeinate flag: {flags[i]}"))
     return flags
 
 
 def check_session(value, field):
     if not isinstance(value, str) or not UUID_RE.fullmatch(value):
-        raise JobError(f"{field} не похож на id сессии")
+        raise JobError(tr(f"{field} не похож на id сессии", f"{field} doesn't look like a session id"))
     return value
 
 
 def validate(job):
     """Проверить задание и вернуть его в нормальном виде. Ошибка — JobError."""
     if not isinstance(job, dict) or job.get("v") != FORMAT:
-        raise JobError("не задание agentmeister этой версии")
+        raise JobError(tr("не задание agentmeister этой версии", "not a job for this agentmeister version"))
     kind = job.get("kind")
     keys = CLAUDE_KEYS if kind == "claude" else CODEX_KEYS if kind == "codex" else None
     if keys is None:
-        raise JobError(f"неизвестный вид задания {kind!r}")
+        raise JobError(tr(f"неизвестный вид задания {kind!r}", f"unknown job kind {kind!r}"))
     extra = set(job) - keys
     if extra:
-        raise JobError(f"лишние поля: {', '.join(sorted(extra))}")
+        raise JobError(tr(f"лишние поля: {', '.join(sorted(extra))}", f"extra fields: {', '.join(sorted(extra))}"))
     cwd = job.get("cwd")
     if not isinstance(cwd, str) or not os.path.isabs(cwd) or "\0" in cwd:
-        raise JobError("cwd должен быть полным путем")
+        raise JobError(tr("cwd должен быть полным путем", "cwd must be an absolute path"))
     if not os.path.isdir(cwd):
-        raise JobError(f"папки {cwd} нет")
+        raise JobError(tr(f"папки {cwd} нет", f"folder {cwd} doesn't exist"))
     if not isinstance(job.get("update", False), bool):
-        raise JobError("update должен быть true или false")
+        raise JobError(tr("update должен быть true или false", "update must be true or false"))
     proxy = job.get("proxy", False)
     # proxy: true (каскад по подпискам) или имя подписки, через которую шла сессия
     if not isinstance(proxy, bool) and not (isinstance(proxy, str) and SUB_NAME.fullmatch(proxy)):
-        raise JobError("proxy должен быть true, false или именем подписки")
+        raise JobError(tr("proxy должен быть true, false или именем подписки",
+                          "proxy must be true, false or a subscription name"))
     out = {"v": FORMAT, "kind": kind, "cwd": cwd, "session": check_session(job.get("session"), "session"),
            "update": job.get("update", False), "proxy": job.get("proxy", False)}
     if kind == "codex":
         return out
     mode = job.get("mode")
     if mode not in MODES:
-        raise JobError(f"неизвестный режим {mode!r}")
+        raise JobError(tr(f"неизвестный режим {mode!r}", f"unknown mode {mode!r}"))
     new = mode in ("forget", "fresh")
     out.update(mode=mode, new_session=check_session(job.get("new_session", out["session"]), "new_session"),
                caffeinate=check_caffeinate(job.get("caffeinate")), flags=check_flags(job.get("flags", [])))
     if new == (out["new_session"] == out["session"]):
-        raise JobError("new_session нужен для forget и fresh и только для них")
+        raise JobError(tr("new_session нужен для forget и fresh и только для них",
+                          "new_session is needed for forget and fresh, and only for them"))
     if out["update"] and mode != "restart":
-        raise JobError("update бывает только у restart")
+        raise JobError(tr("update бывает только у restart", "update is only allowed for restart"))
     return out
 
 
@@ -244,16 +247,17 @@ def read(path):
             os.unlink(path)
         except OSError:
             pass
-        raise JobError(f"не открыл задание: {e.strerror or e}")
+        raise JobError(tr(f"не открыл задание: {e.strerror or e}", f"couldn't open the job: {e.strerror or e}"))
     try:
         info = os.fstat(fd)
         os.unlink(path)
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
-            raise JobError("задание не обычный файл этого пользователя")
+            raise JobError(tr("задание не обычный файл этого пользователя",
+                              "the job isn't a regular file owned by this user"))
         if time.time() - info.st_mtime > MAX_AGE:
             return None
         if info.st_size > MAX_SIZE:
-            raise JobError("задание слишком большое")
+            raise JobError(tr("задание слишком большое", "the job is too large"))
         raw = os.read(fd, MAX_SIZE + 1)
     finally:
         os.close(fd)
@@ -262,8 +266,9 @@ def read(path):
         job = json.loads(text)
     except ValueError:
         hint = legacy_hint(text)
-        raise JobError("задание в старом формате (строка shell), такие больше не выполняются"
-                       + (f". Открыть сессию: {hint}" if hint else ""))
+        raise JobError(tr("задание в старом формате (строка shell), такие больше не выполняются",
+                          "the job is in the old format (a shell line), these no longer run")
+                       + (tr(f". Открыть сессию: {hint}", f". To open the session: {hint}") if hint else ""))
     return validate(job)
 
 
@@ -274,7 +279,7 @@ def take(path, out=None, err=None):
     try:
         job = read(path)
     except JobError as e:
-        print(f"agentmeister: перезапуск пропущен: {e}", file=err)
+        print(tr(f"agentmeister: перезапуск пропущен: {e}", f"agentmeister: restart skipped: {e}"), file=err)
         return 1
     if job is None:
         return 1
@@ -288,7 +293,7 @@ def run(text):
     try:
         job = validate(json.loads(text))
     except (ValueError, JobError) as e:
-        print(f"agentmeister: перезапуск пропущен: {e}", file=sys.stderr)
+        print(tr(f"agentmeister: перезапуск пропущен: {e}", f"agentmeister: restart skipped: {e}"), file=sys.stderr)
         return 1
     os.chdir(job["cwd"])
     todo = steps(job)
@@ -299,7 +304,8 @@ def run(text):
                 subprocess.run(argv, **quiet_io)
             except OSError as e:
                 if not quiet:
-                    print(f"agentmeister: не запустил {argv[0]}: {e}", file=sys.stderr)
+                    print(tr(f"agentmeister: не запустил {argv[0]}: {e}", f"agentmeister: couldn't start {argv[0]}: {e}"),
+                          file=sys.stderr)
             if argv == ["clear"]:
                 sys.stdout.write("\033[3J")
                 sys.stdout.flush()
@@ -312,7 +318,8 @@ def run(text):
     try:
         os.execvp(argv[0], argv)
     except OSError as e:
-        print(f"agentmeister: не запустил {argv[0]}: {e}", file=sys.stderr)
+        print(tr(f"agentmeister: не запустил {argv[0]}: {e}", f"agentmeister: couldn't start {argv[0]}: {e}"),
+              file=sys.stderr)
         return 127
 
 
@@ -321,7 +328,9 @@ def main(args):
         return take(args[1])
     if len(args) == 2 and args[0] == "run":
         return run(args[1])
-    print("restart_job.py take <файл> | run <json>: вызывает хук share/agentmeister/restart.zsh", file=sys.stderr)
+    print(tr("restart_job.py take <файл> | run <json>: вызывает хук share/agentmeister/restart.zsh",
+             "restart_job.py take <file> | run <json>: called by the share/agentmeister/restart.zsh hook"),
+          file=sys.stderr)
     return 2
 
 

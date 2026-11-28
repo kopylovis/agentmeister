@@ -10,7 +10,7 @@ import time
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import HOME, NOTICES, RESTART_QUEUE, UUID_RE, settings_path, tilde, write_json  # noqa: E402
+from mnrhlib import HOME, NOTICES, RESTART_QUEUE, UUID_RE, settings_path, tilde, tr, write_json  # noqa: E402
 from claude_proc import (SHELLS, RestartError, argv_of, caffeinate_args, claude_version,  # noqa: E402
                          drop_name, find_claude, launcher, ps, resume_flags, session_file, session_path)
 import claude_search  # noqa: E402
@@ -58,20 +58,28 @@ end run''',
 
 
 def no_hook_reason(pid, term):
-    head = f"в этом терминале ({term}) Claude возвращается во вкладку только через хук zsh, а его здесь нет: "
+    head = tr(f"в этом терминале ({term}) Claude возвращается во вкладку только через хук zsh, а его здесь нет: ",
+              f"in this terminal ({term}) Claude can only return to the tab through the zsh hook, and it isn't here: ")
     parent = launcher(pid)
     if parent not in SHELLS:
-        return (head + f"Claude запущен не из shell, а напрямую ({parent or 'неизвестно кем'}), например вкладкой "
-                "Claude Code в IDE, и после выхода вкладке некуда вернуться. Открой обычную вкладку терминала "
-                "и запусти claude там")
+        return head + tr(f"Claude запущен не из shell, а напрямую ({parent or 'неизвестно кем'}), например вкладкой "
+                         "Claude Code в IDE, и после выхода вкладке некуда вернуться. Открой обычную вкладку терминала "
+                         "и запусти claude там",
+                         f"Claude was started directly, not from a shell ({parent or 'unknown parent'}), for example "
+                         "by a Claude Code tab in an IDE, so the tab has nothing to return to. Open a regular "
+                         "terminal tab and run claude there")
     if parent != "zsh":
-        return head + f"shell здесь {parent}, а хук есть только для zsh"
+        return head + tr(f"shell здесь {parent}, а хук есть только для zsh",
+                         f"the shell here is {parent}, and the hook only exists for zsh")
     from setup_cmd import ZSHRC, is_zsh_hook, zshrc_lines
     hooked = any(is_zsh_hook(l) for l in zshrc_lines())
     if not hooked:
-        return head + f"в {tilde(ZSHRC)} нет строки с хуком. Выполни agentmeister setup и открой новую вкладку"
-    return (head + f"в {tilde(ZSHRC)} он есть, но эта вкладка открыта раньше. Открой новую вкладку терминала "
-            "и запусти claude там")
+        return head + tr(f"в {tilde(ZSHRC)} нет строки с хуком. Выполни agentmeister setup и открой новую вкладку",
+                         f"{tilde(ZSHRC)} has no hook line. Run agentmeister setup and open a new tab")
+    return head + tr(f"в {tilde(ZSHRC)} он есть, но эта вкладка открыта раньше. Открой новую вкладку терминала "
+                     "и запусти claude там",
+                     f"{tilde(ZSHRC)} has it, but this tab was opened before that. Open a new terminal tab "
+                     "and run claude there")
 
 
 def proxy_sub_args():
@@ -89,8 +97,10 @@ def proxy_job_value():
 def plan(update=True, forget=False, slim=False, fresh=False):
     if os.environ.get("CLAUDE_CODE_SKIP_PROMPT_HISTORY") == "1" and not (forget or fresh):
         # agentmeister -i: переписка не пишется на диск, открывать заново нечего
-        raise RestartError("эта сессия без записи на диск (agentmeister -i), открыть ее заново нечем. "
-                           "/fresh или /forget откроют новую, тоже без записи")
+        raise RestartError(tr("эта сессия без записи на диск (agentmeister -i), открыть ее заново нечем. "
+                              "/fresh или /forget откроют новую, тоже без записи",
+                              "this session isn't saved to disk (agentmeister -i), so there's nothing to reopen. "
+                              "/fresh or /forget will open a new one, also not saved"))
     from claude_proxy_restart import CHANNEL, session_pid
     proxy_restart = os.environ.get("MNRH_PROXY") and not (forget or slim or fresh)
     channel = os.environ.get(CHANNEL) if proxy_restart else None
@@ -99,14 +109,16 @@ def plan(update=True, forget=False, slim=False, fresh=False):
         with open(session_file(pid)) as f:
             info = json.load(f)
     except (OSError, ValueError) as e:
-        raise RestartError(f"не прочитал {tilde(session_file(pid))}: {e}")
+        raise RestartError(tr(f"не прочитал {tilde(session_file(pid))}: {e}",
+                              f"couldn't read {tilde(session_file(pid))}: {e}"))
     sid = info.get("sessionId") or os.environ.get("CLAUDE_CODE_SESSION_ID")
     if not sid:
-        raise RestartError("не знаю id текущей сессии")
+        raise RestartError(tr("не знаю id текущей сессии", "don't know the current session id"))
     cwd = info.get("cwd") or os.getcwd()
     if channel:
         if not UUID_RE.fullmatch(sid) or os.environ.get("CLAUDE_CODE_SESSION_ID") not in (None, "", sid):
-            raise RestartError("не удалось подтвердить номер этой прокси-сессии")
+            raise RestartError(tr("не удалось подтвердить номер этой прокси-сессии",
+                                  "couldn't confirm the id of this proxy session"))
         return {"pid": pid, "sid": sid, "cwd": cwd, "via": "proxy", "channel": channel,
                 "title": info.get("name") or sid}
     tty = ps("tty", pid)
@@ -118,9 +130,12 @@ def plan(update=True, forget=False, slim=False, fresh=False):
     if not tty or tty in ("??", "-"):
         if proxy_restart:
             command = shlex.join(["agentmeister", "-x", *proxy_sub_args(), cwd, "--", "--resume", sid])
-            raise RestartError(f"не удалось определить терминал этой прокси-сессии. Введи /exit, "
-                               f"затем выполни в терминале:\n{command}")
-        raise RestartError("у Claude нет терминала, перезапускать некуда")
+            raise RestartError(tr(f"не удалось определить терминал этой прокси-сессии. Введи /exit, "
+                                  f"затем выполни в терминале:\n{command}",
+                                  f"couldn't find the terminal of this proxy session. Type /exit, "
+                                  f"then run in the terminal:\n{command}"))
+        raise RestartError(tr("у Claude нет терминала, перезапускать некуда",
+                              "Claude has no terminal, there's nowhere to restart it"))
     tty = "/dev/" + tty if not tty.startswith("/dev/") else tty
     term = os.environ.get("TERM_PROGRAM", "")
     hook = os.environ.get("MNRH_RESTART_HOOK")
@@ -130,10 +145,13 @@ def plan(update=True, forget=False, slim=False, fresh=False):
         via = term
     elif hook:
         # хук старой версии выполняет задание как команду shell, новое задание в JSON он не поймет
-        raise RestartError("в этой вкладке хук zsh от старой версии agentmeister. Открой новую вкладку терминала "
-                           "и запусти claude там")
+        raise RestartError(tr("в этой вкладке хук zsh от старой версии agentmeister. Открой новую вкладку терминала "
+                              "и запусти claude там",
+                              "this tab has the zsh hook from an old agentmeister version. Open a new terminal tab "
+                              "and run claude there"))
     else:
-        raise RestartError(no_hook_reason(pid, term or os.environ.get("TERMINAL_EMULATOR") or "неизвестный"))
+        raise RestartError(no_hook_reason(pid, term or os.environ.get("TERMINAL_EMULATOR")
+                                          or tr("неизвестный", "unknown")))
 
     flags = resume_flags(argv_of(pid)[1:])
     caffeinate = caffeinate_args(pid)
@@ -151,7 +169,7 @@ def plan(update=True, forget=False, slim=False, fresh=False):
         job = restart_job.claude_job(cwd, mode, sid, new_sid, update=update and not new and not slim,
                                      proxy=proxy_job_value(), caffeinate=caffeinate, flags=flags)
     except restart_job.JobError as e:
-        raise RestartError(f"не собрал команду перезапуска: {e}")
+        raise RestartError(tr(f"не собрал команду перезапуска: {e}", f"couldn't build the restart command: {e}"))
     line = restart_job.shell_line(job)
     return {"pid": pid, "sid": sid, "cwd": cwd, "tty": tty, "term": term, "via": via, "line": line, "job": job,
             "forget": forget,
@@ -171,10 +189,12 @@ def preflight(p):
         return
     code, out = osascript(p["term"], p["tty"])
     if code != 0:
-        raise RestartError("macOS не дал управлять терминалом: разреши в "
-                           f"{settings_path('settings', 'privacy', 'automation')} ({out})")
+        raise RestartError(tr("macOS не дал управлять терминалом: разреши в "
+                              f"{settings_path('settings', 'privacy', 'automation')} ({out})",
+                              "macOS didn't allow controlling the terminal. Allow it in "
+                              f"{settings_path('settings', 'privacy', 'automation')} ({out})"))
     if out != "ok":
-        raise RestartError(f"не нашёл вкладку с {p['tty']}")
+        raise RestartError(tr(f"не нашёл вкладку с {p['tty']}", f"couldn't find the tab with {p['tty']}"))
 
 
 def log(msg):
@@ -224,7 +244,7 @@ def session_title(sid):
     path = session_path(sid)
     data = claude_search.update(sid, path) if path else None
     title = claude_search.title(sid, data) if data else ""
-    return "" if title == "без названия" else title
+    return "" if title in ("без названия", "untitled") else title
 
 
 def write_notice(p, status):
@@ -242,28 +262,45 @@ def notice_text(n):
     now = claude_version()
     if n["kind"] == "slim":
         if n.get("status") == "done":
-            return (f"✓ agentmeister: сессия «{title}» сжата: {n.get('before')} → {n.get('after')}, скриншотов убрано "
-                    f"{n.get('images', 0)}. То, что видит модель, не менялось. Вернуть: "
-                    f"agentmeister sessions slim {n.get('old_sid', '')[:8]} --undo." + compact_hint(n.get("context")))
+            return tr(f"✓ agentmeister: сессия «{title}» сжата: {n.get('before')} → {n.get('after')}, скриншотов убрано "
+                      f"{n.get('images', 0)}. То, что видит модель, не менялось. Вернуть: "
+                      f"agentmeister sessions slim {n.get('old_sid', '')[:8]} --undo.",
+                      f"✓ agentmeister: session \"{title}\" compacted: {n.get('before')} → {n.get('after')}, "
+                      f"screenshots removed: {n.get('images', 0)}. What the model sees didn't change. To undo: "
+                      f"agentmeister sessions slim {n.get('old_sid', '')[:8]} --undo.") + compact_hint(n.get("context"))
         if n.get("status") == "failed":
-            return f"! agentmeister: сессию «{title}» сжать не удалось ({n.get('error')}). Она открыта без изменений."
-        return f"… agentmeister: сессия «{title}» открыта, но сжатие не отчиталось — проверь: agentmeister sessions slim"
+            return tr(f"! agentmeister: сессию «{title}» сжать не удалось ({n.get('error')}). Она открыта без изменений.",
+                      f"! agentmeister: couldn't compact session \"{title}\" ({n.get('error')}). "
+                      "It's open unchanged.")
+        return tr(f"… agentmeister: сессия «{title}» открыта, но сжатие не отчиталось — проверь: agentmeister sessions slim",
+                  f"… agentmeister: session \"{title}\" is open, but compacting didn't report back. "
+                  "Check: agentmeister sessions slim")
     if n["kind"] == "restart":
         was = n.get("version")
         if was and now and was != now:
-            ver = f"обновлён {was} → {now}"
+            ver = tr(f"обновлён {was} → {now}", f"updated {was} → {now}")
         else:
-            ver = f"версия {now or was}" + (", обновлений не было" if was and now else "")
-        return f"✓ agentmeister: Claude Code перезапущен ({ver}). Сессия «{title}» продолжается."
+            ver = (tr(f"версия {now or was}", f"version {now or was}")
+                   + (tr(", обновлений не было", ", no updates") if was and now else ""))
+        return tr(f"✓ agentmeister: Claude Code перезапущен ({ver}). Сессия «{title}» продолжается.",
+                  f"✓ agentmeister: Claude Code restarted ({ver}). Session \"{title}\" continues.")
     if n["kind"] == "fresh":
-        return (f"✓ agentmeister: новая чистая сессия. Прошлая «{title}» сохранена, вернуться к ней: "
-                f"/resume или claude --resume {n.get('old_sid', '')}")
+        return tr(f"✓ agentmeister: новая чистая сессия. Прошлая «{title}» сохранена, вернуться к ней: "
+                  f"/resume или claude --resume {n.get('old_sid', '')}",
+                  f"✓ agentmeister: new clean session. The previous one, \"{title}\", is saved. To go back to it: "
+                  f"/resume or claude --resume {n.get('old_sid', '')}")
     if n.get("status") == "done":
-        return (f"✓ agentmeister: прошлая сессия «{title}» удалена — переписка, история запросов и file-history. "
-                "Это новая чистая сессия.")
+        return tr(f"✓ agentmeister: прошлая сессия «{title}» удалена — переписка, история запросов и file-history. "
+                  "Это новая чистая сессия.",
+                  f"✓ agentmeister: previous session \"{title}\" deleted, with its transcript, prompt history and "
+                  "file-history. This is a new clean session.")
     if n.get("status") == "failed":
-        return f"! agentmeister: прошлую сессию «{title}» не удалось найти и удалить, проверь: agentmeister sessions -l"
-    return f"… agentmeister: прошлая сессия «{title}» ещё удаляется, проверь позже: agentmeister sessions -l"
+        return tr(f"! agentmeister: прошлую сессию «{title}» не удалось найти и удалить, проверь: agentmeister sessions -l",
+                  f"! agentmeister: couldn't find and delete previous session \"{title}\". "
+                  "Check: agentmeister sessions -l")
+    return tr(f"… agentmeister: прошлая сессия «{title}» ещё удаляется, проверь позже: agentmeister sessions -l",
+              f"… agentmeister: previous session \"{title}\" is still being deleted. "
+              "Check later: agentmeister sessions -l")
 
 
 def hook_payload():
@@ -482,22 +519,34 @@ def cli(args, forget=False, fresh=False):
     name = "forget" if forget else "fresh" if fresh else "restart"
     if "-h" in args or "--help" in args:
         if fresh:
-            print("agentmeister fresh              изнутри Claude Code: закрыть его и открыть новую сессию без названия")
-            print("                               и с пустым контекстом в той же папке и вкладке; эта остаётся в /resume")
-            print("agentmeister fresh --dry-run    только показать, что будет сделано")
+            print(tr("agentmeister fresh              изнутри Claude Code: закрыть его и открыть новую сессию без названия",
+                     "agentmeister fresh              from inside Claude Code: close it and open a new untitled session"))
+            print(tr("                               и с пустым контекстом в той же папке и вкладке; эта остаётся в /resume",
+                     "                               with an empty context in the same folder and tab. This one stays in /resume"))
+            print(tr("agentmeister fresh --dry-run    только показать, что будет сделано",
+                     "agentmeister fresh --dry-run    only show what would be done"))
         elif forget:
-            print("agentmeister forget             изнутри Claude Code: закрыть его, удалить эту сессию без следа")
-            print("                               (переписка, история запросов, file-history) и открыть чистый Claude")
-            print("                               в той же папке и вкладке — как /clear, только старое не сохраняется")
-            print("agentmeister forget --dry-run   только показать, что будет сделано")
+            print(tr("agentmeister forget             изнутри Claude Code: закрыть его, удалить эту сессию без следа",
+                     "agentmeister forget             from inside Claude Code: close it, delete this session without a trace"))
+            print(tr("                               (переписка, история запросов, file-history) и открыть чистый Claude",
+                     "                               (transcript, prompt history, file-history) and open a clean Claude"))
+            print(tr("                               в той же папке и вкладке — как /clear, только старое не сохраняется",
+                     "                               in the same folder and tab. Like /clear, but the old one isn't kept"))
+            print(tr("agentmeister forget --dry-run   только показать, что будет сделано",
+                     "agentmeister forget --dry-run   only show what would be done"))
         else:
-            print("agentmeister restart            изнутри Claude Code: закрыть его и открыть эту же сессию в той же вкладке")
-            print("                               перед запуском обновляется Claude Code (claude update или brew upgrade)")
-            print("agentmeister restart --no-update  без обновления")
-            print("agentmeister restart --dry-run    только показать, что будет сделано")
+            print(tr("agentmeister restart            изнутри Claude Code: закрыть его и открыть эту же сессию в той же вкладке",
+                     "agentmeister restart            from inside Claude Code: close it and reopen this session in the same tab"))
+            print(tr("                               перед запуском обновляется Claude Code (claude update или brew upgrade)",
+                     "                               Claude Code is updated before it starts (claude update or brew upgrade)"))
+            print(tr("agentmeister restart --no-update  без обновления",
+                     "agentmeister restart --no-update  without the update"))
+            print(tr("agentmeister restart --dry-run    только показать, что будет сделано",
+                     "agentmeister restart --dry-run    only show what would be done"))
         print()
-        print(f"Обычно вызывается из Claude: /{name} или инструментом {name} из MCP-сервера agentmeister")
-        print("(установить: agentmeister setup). Лог: " + tilde(LOG))
+        print(tr(f"Обычно вызывается из Claude: /{name} или инструментом {name} из MCP-сервера agentmeister",
+                 f"Usually called from Claude: /{name} or the {name} tool of the agentmeister MCP server"))
+        print(tr("(установить: agentmeister setup). Лог: ", "(install: agentmeister setup). Log: ") + tilde(LOG))
         return 0
     try:
         import session_defaults
@@ -507,21 +556,29 @@ def cli(args, forget=False, fresh=False):
         print(f"agentmeister {name}: {e}", file=sys.stderr)
         return 1
     if "--dry-run" in args and p["via"] == "proxy":
-        print(f"продолжу сессию {p['sid']} в той же вкладке через текущий прокси")
+        print(tr(f"продолжу сессию {p['sid']} в той же вкладке через текущий прокси",
+                 f"would continue session {p['sid']} in the same tab through the current proxy"))
     elif "--dry-run" in args:
-        extra = f"удалю сессию {p['sid']}, " if forget else ""
-        print(f"закрою pid {p['pid']}, {extra}в {p['tty']} через {p['via']} выполню:\n  {p['line']}")
+        extra = tr(f"удалю сессию {p['sid']}, ", f"delete session {p['sid']}, ") if forget else ""
+        print(tr(f"закрою pid {p['pid']}, {extra}в {p['tty']} через {p['via']} выполню:\n  {p['line']}",
+                 f"would close pid {p['pid']}, {extra}run in {p['tty']} via {p['via']}:\n  {p['line']}"))
     elif forget:
-        print(f"Через пару секунд Claude Code закроется, сессия «{p['title']}» будет удалена, и откроется чистая.")
+        print(tr(f"Через пару секунд Claude Code закроется, сессия «{p['title']}» будет удалена, и откроется чистая.",
+                 f"In a couple of seconds Claude Code will close, session \"{p['title']}\" will be deleted, "
+                 "and a clean one will open."))
     elif fresh:
-        print(f"Через пару секунд Claude Code закроется и откроется новая сессия. «{p['title']}» останется в /resume.")
+        print(tr(f"Через пару секунд Claude Code закроется и откроется новая сессия. «{p['title']}» останется в /resume.",
+                 f"In a couple of seconds Claude Code will close and a new session will open. "
+                 f"\"{p['title']}\" stays in /resume."))
     else:
-        print(f"Перезапускаю Claude Code через пару секунд, сессия «{p['title']}» откроется снова в этой вкладке.")
+        print(tr(f"Перезапускаю Claude Code через пару секунд, сессия «{p['title']}» откроется снова в этой вкладке.",
+                 f"Restarting Claude Code in a couple of seconds. Session \"{p['title']}\" will reopen in this tab."))
     return 0
 
 
 def fmt_mb(n):
-    return f"{n / 1048576:.0f} МБ" if n >= 10 << 20 else f"{n / 1048576:.1f} МБ"
+    unit = tr("МБ", "MB")
+    return f"{n / 1048576:.0f} {unit}" if n >= 10 << 20 else f"{n / 1048576:.1f} {unit}"
 
 
 def slim_current(dry=False, delay=1.5):
@@ -534,44 +591,67 @@ def slim_current(dry=False, delay=1.5):
         sid = None
     path = session_path(sid) if sid else None
     if not path:
-        raise RestartError("не нашёл файл этой сессии")
+        raise RestartError(tr("не нашёл файл этой сессии", "couldn't find this session's file"))
     tokens = claude_slim.context_tokens(path)
     hint = compact_hint(tokens)
     _, _, st = claude_slim.plan(path)
     if not st:
-        return "Сжимать нечего: в сессии меньше двух /compact, а последние два отрезка не трогаются." + hint, False
+        return tr("Сжимать нечего: в сессии меньше двух /compact, а последние два отрезка не трогаются.",
+                  "Nothing to compact: the session has fewer than two /compact, and the last two parts "
+                  "are never touched.") + hint, False
     before, after = st["before"] + st["side_before"], st["after"] + st["side_after"]
     if before - after < SLIM_MIN:
-        return (f"Сжимать почти нечего: {fmt_mb(before)} → {fmt_mb(after)}. "
-                "Старые скриншоты и выводы уже маленькие." + hint), False
-    what = (f"«{session_title(sid) or sid}»: {fmt_mb(before)} → {fmt_mb(after)} вместе с папкой сессии, "
-            f"скриншотов {st['images']}, длинных выводов {st['texts']}")
+        return tr(f"Сжимать почти нечего: {fmt_mb(before)} → {fmt_mb(after)}. "
+                  "Старые скриншоты и выводы уже маленькие.",
+                  f"Almost nothing to compact: {fmt_mb(before)} → {fmt_mb(after)}. "
+                  "Old screenshots and outputs are already small.") + hint, False
+    title = session_title(sid) or sid
+    what = tr(f"«{title}»: {fmt_mb(before)} → {fmt_mb(after)} вместе с папкой сессии, "
+              f"скриншотов {st['images']}, длинных выводов {st['texts']}",
+              f"\"{title}\": {fmt_mb(before)} → {fmt_mb(after)} with the session folder, "
+              f"screenshots: {st['images']}, long outputs: {st['texts']}")
     if st["side_files"] or st["side_agents"]:
-        what += f", старых файлов {st['side_files']}, переписок субагентов {st['side_agents']}"
+        what += tr(f", старых файлов {st['side_files']}, переписок субагентов {st['side_agents']}",
+                   f", old files: {st['side_files']}, subagent transcripts: {st['side_agents']}")
     if dry:
-        return f"Сожму {what}." + hint, False
+        return tr(f"Сожму {what}.", f"Would compact {what}.") + hint, False
     restart(update=False, delay=delay, slim=True)
-    return (f"Сжимаю {what}. Claude Code сейчас закроется, сессия сожмётся в этой вкладке и откроется снова; "
-            "то, что видит модель, не меняется." + compact_hint(tokens, later=True)), True
+    # «Сжимаю» и «Compacting» в начале проверяет текст /slim из slash.py
+    return tr(f"Сжимаю {what}. Claude Code сейчас закроется, сессия сожмётся в этой вкладке и откроется снова; "
+              "то, что видит модель, не меняется.",
+              f"Compacting {what}. Claude Code is about to close, the session will be compacted in this tab "
+              "and reopen. What the model sees doesn't change.") + compact_hint(tokens, later=True), True
 
 
 def compact_hint(tokens, later=False):
     if not tokens or tokens < COMPACT_HINT:
         return ""
-    return (f" В контексте {tokens // 1000} тыс. токенов, а /slim их не убирает. Чтобы сжать сам разговор, "
-            "набери /compact" + (", когда сессия откроется снова." if later else "."))
+    if later:
+        return tr(f" В контексте {tokens // 1000} тыс. токенов, а /slim их не убирает. Чтобы сжать сам разговор, "
+                  "набери /compact, когда сессия откроется снова.",
+                  f" The context holds {tokens // 1000}k tokens, and /slim doesn't remove them. To compact "
+                  "the conversation itself, type /compact once the session reopens.")
+    return tr(f" В контексте {tokens // 1000} тыс. токенов, а /slim их не убирает. Чтобы сжать сам разговор, "
+              "набери /compact.",
+              f" The context holds {tokens // 1000}k tokens, and /slim doesn't remove them. To compact "
+              "the conversation itself, type /compact.")
 
 
 def cli_slim(args):
     import session_slim
     if "-h" in args or "--help" in args:
-        print("agentmeister slim            изнутри Claude Code: закрыть его, сжать эту сессию (старые скриншоты и")
-        print("                            длинные выводы до двух последних /compact) и открыть её снова")
-        print("agentmeister slim --dry-run  только посчитать")
-        print("agentmeister slim list       что можно сжать среди закрытых сессий")
-        print("agentmeister slim <id>       сжать закрытую сессию (вернуть: agentmeister sessions slim <id> --undo)")
+        print(tr("agentmeister slim            изнутри Claude Code: закрыть его, сжать эту сессию (старые скриншоты и",
+                 "agentmeister slim            from inside Claude Code: close it, compact this session (old screenshots and"))
+        print(tr("                            длинные выводы до двух последних /compact) и открыть её снова",
+                 "                            long outputs before the last two /compact) and reopen it"))
+        print(tr("agentmeister slim --dry-run  только посчитать", "agentmeister slim --dry-run  only count"))
+        print(tr("agentmeister slim list       что можно сжать среди закрытых сессий",
+                 "agentmeister slim list       what can be compacted among closed sessions"))
+        print(tr("agentmeister slim <id>       сжать закрытую сессию (вернуть: agentmeister sessions slim <id> --undo)",
+                 "agentmeister slim <id>       compact a closed session (undo: agentmeister sessions slim <id> --undo)"))
         print()
-        print("Обычно вызывается из Claude: /slim или инструментом slim из MCP-сервера agentmeister.")
+        print(tr("Обычно вызывается из Claude: /slim или инструментом slim из MCP-сервера agentmeister.",
+                 "Usually called from Claude: /slim or the slim tool of the agentmeister MCP server."))
         return 0
     rest = [a for a in args if a != "--dry-run"]
     if rest[:1] == ["list"]:
