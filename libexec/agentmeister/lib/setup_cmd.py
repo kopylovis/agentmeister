@@ -142,10 +142,10 @@ def notice_hook(install, rename_rules=()):
                         "push --force, rm -r вне проекта…) → хук PreToolUse (agentmeister guard)",
                         "guard: a question before reading or deleting keys and before irreversible commands (reset --hard, "
                         "push --force, rm -r outside the project…) → PreToolUse hook (agentmeister guard)"))
-        print("✓ " + tr("длинный вывод сборок и тестов: Claude видит выжимку, полный лог в ~/.cache/mnrh/logs, в iTerm2 "
+        print("✓ " + tr("длинный вывод сборок и тестов: Claude видит выжимку, полный лог в ~/.cache/agentmeister/logs, в iTerm2 "
                         "идущая сборка подписана во вкладке → хуки PreToolUse, PostToolUse и PostToolUseFailure "
                         "(agentmeister buildlog)",
-                        "long build and test output: Claude sees a digest, the full log goes to ~/.cache/mnrh/logs, in iTerm2 "
+                        "long build and test output: Claude sees a digest, the full log goes to ~/.cache/agentmeister/logs, in iTerm2 "
                         "a running build is labeled in the tab → PreToolUse, PostToolUse and PostToolUseFailure hooks "
                         "(agentmeister buildlog)"))
         print("✓ " + tr("уведомления, когда Claude ждёт тебя → хуки UserPromptSubmit, Stop и Notification "

@@ -20,8 +20,9 @@ import mnrhlib  # noqa: E402
 from mnrhlib import CLAUDE_HOME, HOME, UUID_RE, tilde, tr  # noqa: E402
 
 STORE_GLOB = os.path.join(CLAUDE_HOME, "plugins", "store", "cc-plugin-you-should-know_builtin-*.json")
-# не в ~/.cache/mnrh: историю не должна стереть уборка кеша
-STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local", "state"), "mnrh")
+# не в ~/.cache/agentmeister: историю не должна стереть уборка кеша
+from mnrhlib import CACHE_HOME, CONFIG_HOME, STATE_HOME, app_dir  # noqa: E402
+STATE = app_dir(STATE_HOME)
 HISTORY = os.path.join(STATE, "headsup.jsonl")
 # прошлый снимок файла плагина: размер и время, seen и offeredTurn сессий
 MARK = os.path.join(STATE, "headsup-mark.json")

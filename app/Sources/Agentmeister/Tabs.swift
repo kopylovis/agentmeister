@@ -282,7 +282,7 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     }
 
     /// После agentmeister вкладка выполняет задания перезапуска, как хук share/agentmeister/restart.zsh в iTerm2.
-    /// /restart, /forget, /fresh и /slim кладут задание в ~/.cache/mnrh/restart/<tty>, restart_job.py take
+    /// /restart, /forget, /fresh и /slim кладут задание в ~/.cache/agentmeister/restart/<tty>, restart_job.py take
     /// проверяет его поля, run строит argv сам. Без этого цикла вкладке после выхода Claude некуда вернуться.
     static let shellScript = """
     export MNRH_TTY=${TTY:-$(tty)}
@@ -290,7 +290,9 @@ final class TerminalTab: NSObject, ObservableObject, Identifiable, LocalProcessT
     j=${MNRH_RESTART_JOB:-}
     [[ -n $j && -f $j ]] || exit
     t=${TTY:-$(tty)}
-    f=$HOME/.cache/mnrh/restart/${t:t}
+    c=${XDG_CONFIG_HOME:-$HOME/.config} d=$HOME/.cache/agentmeister
+    [[ -d $c/mnrh && ! -d $c/agentmeister ]] && d=$HOME/.cache/mnrh
+    f=$d/restart/${t:t}
     while [[ -e $f || -L $f ]]; do
       out=$(/usr/bin/python3 -I -B $j take $f) || break
       job=( "${(@0)out}" )
@@ -1298,7 +1300,7 @@ final class Workspace: ObservableObject {
 
     /// В демо своя папка: front.json, focus.json и запросы настоящего приложения демо не трогает.
     static let appDir = Demo.active ? (NSTemporaryDirectory() as NSString).appendingPathComponent("agentmeister-demo-app")
-        : (NSHomeDirectory() as NSString).appendingPathComponent(".cache/mnrh/app")
+        : (AppDirs.cache as NSString).appendingPathComponent("app")
     static let frontFile = (appDir as NSString).appendingPathComponent("front.json")
     static let focusFile = (appDir as NSString).appendingPathComponent("focus.json")
     /// Обмен с редактором editor/agentmeister при переводе строки ввода: edit-<вкладка>.json, .status.json и .cancel.
@@ -1650,14 +1652,13 @@ enum BrowserSettings {
     }
 }
 
-/// Ключ переводчика для ⌘⇧T: файл в ~/.config/mnrh, как его сохраняет agentmeister translate key, или переменная
+/// Ключ переводчика для ⌘⇧T: файл в ~/.config/agentmeister, как его сохраняет agentmeister translate key, или переменная
 /// окружения. Без ключа перевод не начнется, вместо этого во вкладке карточка с полем для ключа.
 @MainActor
 enum TranslateKey {
     static var saved: Bool {
         let env = LoginEnvironment.shared
-        let config = env["XDG_CONFIG_HOME"].map { ($0 as NSString).appendingPathComponent("mnrh") }
-            ?? (NSHomeDirectory() as NSString).appendingPathComponent(".config/mnrh")
+        let config = AppDirs.config
         let files = ["openrouter-key", "gemini-key"].map { (config as NSString).appendingPathComponent($0) }
         let inFile = files.contains { path in
             (try? String(contentsOfFile: path, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false

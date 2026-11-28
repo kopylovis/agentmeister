@@ -96,7 +96,7 @@ for action in (lambda: os.remove(sock), lambda: open(os.path.join(conf, "config.
 
 
 def proxy_paths(root):
-    state, conf = f"{root}/state/mnrh/proxy", f"{root}/conf/mnrh/proxy"
+    state, conf = f"{root}/state/agentmeister/proxy", f"{root}/conf/agentmeister/proxy"
     return {"STATE": state, "LOCK": f"{state}/lock", "HOLDERS": f"{state}/holders", "SOCK": f"{state}/mihomo.sock",
             "EXIT": f"{state}/exit.json", "WATCH_LOG": f"{state}/watch.log", "CONF_DIR": conf}
 
@@ -116,7 +116,7 @@ class StateGuard(unittest.TestCase):
                         self.assertEqual(params["MIHOMO_STATE0"], paths["STATE"])
                         self.assertEqual(params["MIHOMO_LOCK0"], paths["LOCK"])
                         ups = {v for k, v in params.items() if k.startswith("MIHOMO_UP")}
-                        for up in (f"{real}/state/mnrh", f"{real}/state", f"{real}/conf/mnrh", real):
+                        for up in (f"{real}/state/agentmeister", f"{real}/state", f"{real}/conf/agentmeister", real):
                             self.assertIn(up, ups)
                         self.assertNotIn("/", ups)
                         profile = command[command.index("-p") + 1]

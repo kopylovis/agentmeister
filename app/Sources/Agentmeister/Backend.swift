@@ -4,6 +4,28 @@ import Foundation
 /// Окружение входа пользователя. Приложение запускают из Finder или Dock, а там PATH короткий и без Homebrew.
 /// Поэтому один раз спрашиваем zsh и дальше запускаем agentmeister и вкладки с тем же окружением. Нужен именно
 /// интерактивный вход (-l -i): PATH часто дописывают в .zshrc, а zsh -l его не читает.
+/// Папки agentmeister, как mnrhlib.app_dir: раньше они звались mnrh. Пока их не перенесли (agentmeister migrate),
+/// то есть есть ~/.config/mnrh и нет ~/.config/agentmeister, берется старое имя. Кеш в ~/.cache, как mnrhlib.CACHE.
+enum AppDirs {
+    static var configHome: String {
+        LoginEnvironment.shared["XDG_CONFIG_HOME"].flatMap { $0.isEmpty ? nil : $0 }
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent(".config")
+    }
+
+    static var name: String {
+        let fm = FileManager.default
+        func isDir(_ path: String) -> Bool {
+            var dir: ObjCBool = false
+            return fm.fileExists(atPath: path, isDirectory: &dir) && dir.boolValue
+        }
+        let base = configHome as NSString
+        return isDir(base.appendingPathComponent("mnrh")) && !isDir(base.appendingPathComponent("agentmeister")) ? "mnrh" : "agentmeister"
+    }
+
+    static var config: String { (configHome as NSString).appendingPathComponent(name) }
+    static var cache: String { (NSHomeDirectory() as NSString).appendingPathComponent(".cache/" + name) }
+}
+
 enum LoginEnvironment {
     static let shared: [String: String] = load()
 
@@ -298,7 +320,7 @@ struct AppState: Decodable {
 
     var version = ""
     var lang = "en"
-    /// Что выбрано в ~/.config/mnrh/config: ru, en или auto (язык macOS).
+    /// Что выбрано в ~/.config/agentmeister/config: ru, en или auto (язык macOS).
     var langSetting: String?
     var projectsDir = ""
     /// Все папки с проектами, первая главная. Nil в старом ответе app-state.

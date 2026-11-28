@@ -344,8 +344,8 @@ struct OnboardingView: View {
                     set: { on in Task { _ = await backend.perform(["proxy", "remember", on ? "vps" : "direct"]); await reload() } }
                 ))
                 .disabled(!p.configured)
-                Note(text: l.t("Ссылка и подписка лежат в ~/.config/mnrh/proxy/, читать их можешь только ты. Сессиям они не видны.",
-                               "The link and subscription live in ~/.config/mnrh/proxy/, readable only by you. Sessions can't see them."))
+                Note(text: l.t("Ссылка и подписка лежат в ~/.config/agentmeister/proxy/, читать их можешь только ты. Сессиям они не видны.",
+                               "The link and subscription live in ~/.config/agentmeister/proxy/, readable only by you. Sessions can't see them."))
             } else {
                 ProgressView()
             }

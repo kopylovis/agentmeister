@@ -11,7 +11,7 @@ if has_flag(args, "-h", "--help"):
     print("agentmeister deps <проект>  в одном проекте (имя папки или путь)")
     print("agentmeister deps --pre     показывать и alpha, beta, rc")
     print()
-    print("Версии сверяются с Google Maven, Maven Central и Gradle Plugin Portal (кеш 6 ч в ~/.cache/mnrh/maven).")
+    print("Версии сверяются с Google Maven, Maven Central и Gradle Plugin Portal (кеш 6 ч в ~/.cache/agentmeister/maven).")
     print("Ничего не меняет. То же самое Claude видит через MCP-инструмент deps_outdated.")
     sys.exit(0)
 if args[:1] == ["status"]:

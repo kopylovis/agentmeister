@@ -1048,8 +1048,8 @@ struct ProxyHostRunPane: View {
                 HostRunTable(commands: h.commands, l: l) { name in
                     Task { _ = await backend.perform(["host-run", "remove", name]); await reload() }
                 }
-                Note(text: l.t("Список меняешь только ты, из сессии агента он открыт на чтение. Сейчас его держит файл ~/.config/mnrh/host-run/commands.json, приложение читает тот же файл. Добавление и удаление подтверждаются окном на Mac, кнопку нажимает только мышь.",
-                               "Only you can change this list. Agent sessions can read it but not write it. It lives in ~/.config/mnrh/host-run/commands.json today, and the app reads the same file. Adding and removing are confirmed in a window on the Mac, and only a mouse click counts there."))
+                Note(text: l.t("Список меняешь только ты, из сессии агента он открыт на чтение. Сейчас его держит файл ~/.config/agentmeister/host-run/commands.json, приложение читает тот же файл. Добавление и удаление подтверждаются окном на Mac, кнопку нажимает только мышь.",
+                               "Only you can change this list. Agent sessions can read it but not write it. It lives in ~/.config/agentmeister/host-run/commands.json today, and the app reads the same file. Adding and removing are confirmed in a window on the Mac, and only a mouse click counts there."))
             }
             .sheet(isPresented: $adding) {
                 AddHostRunSheet(l: l) { Task { await reload() } }
@@ -1467,8 +1467,8 @@ struct AddSubscriptionSheet: View {
                     "Plain -x uses this subscription in order only if its country is \(c), like the main one. With another country it's used only when chosen on its own.")
             } ?? l.t("Если страна задана, а выход через подписку окажется в другой стране, подписка не добавится.",
                      "If a country is set and the subscription exits elsewhere, it won't be added."))
-            Note(text: l.t("Ссылку на подписку спросит вкладка, которая откроется, на экране ее видно не будет. Хранится она в ~/.config/mnrh/proxy/subs/, читать ее можешь только ты.",
-                           "The tab that opens asks for the subscription link and doesn't show it. It's kept in ~/.config/mnrh/proxy/subs/, readable only by you."))
+            Note(text: l.t("Ссылку на подписку спросит вкладка, которая откроется, на экране ее видно не будет. Хранится она в ~/.config/agentmeister/proxy/subs/, читать ее можешь только ты.",
+                           "The tab that opens asks for the subscription link and doesn't show it. It's kept in ~/.config/agentmeister/proxy/subs/, readable only by you."))
             HStack {
                 Spacer()
                 Button(l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)

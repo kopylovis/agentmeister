@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-CONF="${XDG_CONFIG_HOME:-$HOME/.config}/mnrh/config"
+# как mnrhlib.app_dir: старое имя mnrh, пока папку не перенесли (agentmeister migrate)
+CFG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+if [ -d "$CFG_HOME/mnrh" ] && [ ! -d "$CFG_HOME/agentmeister" ]; then CONF="$CFG_HOME/mnrh/config"; else CONF="$CFG_HOME/agentmeister/config"; fi
 LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 
 # папки, в которых лежат проекты: projects=<путь>[:<путь>...] в config или MNRH_PROJECTS, по одной в строке
@@ -89,6 +91,7 @@ help() {
   agentmeister app-state           состояние для десктопного Agentmeister в JSON
   agentmeister lang [ru|en|auto]   язык интерфейса, auto берет язык macOS
   agentmeister defaults            режим и Remote Control новых сессий, обновление при /restart, модель /ask
+  agentmeister migrate             перенести ~/.config/mnrh и другие папки mnrh в папки agentmeister
   agentmeister projects-dir [add|remove] <папка>|default  папки, в которых лежат проекты (по умолчанию ~/Developer)
   agentmeister alias               короткое имя am; on, off
   agentmeister --version           версия
@@ -97,7 +100,7 @@ caffeinate (по умолчанию) не даёт Mac уснуть, пока и
 удобно для долгих задач и Remote Control с телефона. Экран при этом гаснуть может.
 С закрытой крышкой на батарее Mac все равно уснет, caffeinate этого не отменяет.
 agentmeister lid setup разрешит не засыпать и с закрытой крышкой (спросит пароль sudo).
-Папки с проектами: ~/Developer, agentmeister projects-dir add <папка>, строка projects=<путь>[:<путь>] в ~/.config/mnrh/config или MNRH_PROJECTS.
+Папки с проектами: ~/Developer, agentmeister projects-dir add <папка>, строка projects=<путь>[:<путь>] в ~/.config/agentmeister/config или MNRH_PROJECTS.
 EOF
 }
 
@@ -115,6 +118,7 @@ case "${1:-}" in
   agent-update) shift; exec /usr/bin/python3 "$LIB/agent_update.py" "$@" ;;
   lang) shift; exec /usr/bin/python3 "$LIB/app_state.py" lang "$@" ;;
   defaults) shift; exec /usr/bin/python3 "$LIB/session_defaults.py" "$@" ;;
+  migrate) shift; exec /usr/bin/python3 "$LIB/migrate_dirs.py" "$@" ;;
   projects-dir) shift; exec /usr/bin/python3 "$LIB/app_state.py" projects-dir "$@" ;;
   restore) exec /usr/bin/python3 "$(dirname "$MENU")/claude_live.py" "$@" ;;
   doctor) shift; exec /usr/bin/python3 "$(dirname "$MENU")/doctor.py" "$@" ;;

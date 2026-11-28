@@ -19,6 +19,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import HOME, config_int, read_config, run, tilde, tr, write_config
 
+# Файлы lid остаются под старым именем mnrh и после agentmeister migrate: pid-файл и журнал общие с mnrh
 STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local", "state"), "mnrh")
 PIDFILE = os.path.join(STATE, "lid.pid")
 LOG = os.path.join(STATE, "lid.log")

@@ -39,6 +39,10 @@ def check_install():
     if not shutil.which("agentmeister"):
         rows.append(("bad", tr("agentmeister нет в PATH, а команды и хуки вызывают его по имени",
                                "agentmeister isn't in PATH, but commands and hooks call it by name")))
+    import mnrhlib
+    if mnrhlib.LEGACY_DIRS:
+        rows.append(("warn", tr("настройки лежат в ~/.config/mnrh, старой папке: agentmeister migrate в обычном терминале перенесет их",
+                                "settings are in ~/.config/mnrh, the old folder: agentmeister migrate in a regular terminal moves them")))
     claude = shutil.which(CLAUDE_BIN)
     if not claude:
         return rows + [("bad", tr(f"нет {CLAUDE_BIN} в PATH: поставь Claude Code",

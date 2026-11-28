@@ -136,7 +136,7 @@ class ZshHook(unittest.TestCase):
             f.write("#!/usr/bin/python3\nimport json, os, sys\n"
                     f"json.dump([os.getcwd()] + sys.argv[1:], open({self.log!r}, 'w'))\n")
         os.chmod(self.fake, 0o755)
-        self.queue = os.path.join(self.home, ".cache", "mnrh", "restart")
+        self.queue = os.path.join(self.home, ".cache", "agentmeister", "restart")
         os.makedirs(self.queue)
 
     def hook(self):

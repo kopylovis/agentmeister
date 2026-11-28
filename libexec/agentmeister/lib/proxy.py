@@ -39,9 +39,10 @@ from mnrhlib import BAD, HOME, OK, WARN, paint, tilde, tr  # noqa: E402
 import mnrhlib  # noqa: E402
 import host_run  # noqa: E402
 
-CONF_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "mnrh", "proxy")
+from mnrhlib import CACHE_HOME, CONFIG_HOME, STATE_HOME, app_dir  # noqa: E402
+CONF_DIR = os.path.join(app_dir(CONFIG_HOME), "proxy")
 CONFIG = os.path.join(CONF_DIR, "config.yaml")
-STATE = os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local", "state"), "mnrh", "proxy")
+STATE = os.path.join(app_dir(STATE_HOME), "proxy")
 HOLDERS = os.path.join(STATE, "holders")
 PIDFILE = os.path.join(STATE, "mihomo.pid")
 LOCK = os.path.join(STATE, "lock")

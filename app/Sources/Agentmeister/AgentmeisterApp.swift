@@ -68,7 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // обычный выход: при следующем запуске вкладки откроются без вопроса
         UserDefaults.standard.set(true, forKey: Workspace.cleanExitKey)
         // окно закрылось: уведомления снова нужны для всех вкладок
-        let front = (NSHomeDirectory() as NSString).appendingPathComponent(".cache/mnrh/app/front.json")
+        let front = (AppDirs.cache as NSString).appendingPathComponent("app/front.json")
         try? FileManager.default.removeItem(atPath: front)
     }
 }

@@ -6,7 +6,7 @@ import Foundation
 /// Только в отладочной сборке. Вместо agentmeister ответы берутся из JSON в папке: app-state.json (проекты,
 /// сессии, proxy с выдуманными данными), app-state-settings.json и т. п. по первым двум аргументам команды.
 /// Вкладки описаны в tabs.json, вместо агента в каждой печатается текст из своего файла. Настоящие ~/.claude и
-/// ~/.config/mnrh не читаются, tabs.json, front.json и focus.json настоящего приложения не пишутся, обновления,
+/// ~/.config/agentmeister не читаются, tabs.json, front.json и focus.json настоящего приложения не пишутся, обновления,
 /// горячая клавиша и мастер первого запуска выключены. Снимки делает docs/screenshots/shoot.py.
 enum Demo {
     #if DEBUG

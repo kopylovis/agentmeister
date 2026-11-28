@@ -425,8 +425,8 @@ _ICONS = None
 
 
 def config_value(key):
-    """Строка key=значение из ~/.config/mnrh/config, общего для agentmeister и mnrh."""
-    path = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "mnrh", "config")
+    """Строка key=значение из ~/.config/agentmeister/config, общего для agentmeister и mnrh."""
+    from mnrhlib import CONFIG as path
     try:
         with open(path, encoding="utf-8") as f:
             for line in f:
@@ -441,7 +441,7 @@ def config_value(key):
 def images_ok():
     """Умеет ли терминал картинки в строке по протоколу iTerm2: iTerm2 и WezTerm, в том числе по ssh (LC_TERMINAL).
     В tmux и screen картинкам нужен проброс, там остаются emoji. Явно задают MNRH_ICONS=emoji или images
-    и строка icons=emoji или icons=images в ~/.config/mnrh/config."""
+    и строка icons=emoji или icons=images в ~/.config/agentmeister/config."""
     want = os.environ.get("MNRH_ICONS", "").lower() or config_value("icons")
     if want in ("emoji", "images"):
         return want == "images"

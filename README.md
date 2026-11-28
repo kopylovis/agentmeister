@@ -203,11 +203,11 @@ to do it now (`--country KZ` sets the expected exit country). If the
 Claude Code deletes transcripts older than `cleanupPeriodDays`, 30 days by default, and with them goes everything
 `session_search` and `/resume` could find. setup sets it to 365 unless you already have your own value.
 
-setup records the steps it has done in `~/.config/mnrh/claude-setup.json`. If you run `agentmeister` before
+setup records the steps it has done in `~/.config/agentmeister/claude-setup.json`. If you run `agentmeister` before
 setup, or after an update that added a setup step, it lists what isn't configured and offers to do it. "Не
 предлагать" (don't offer) stops asking about those steps; `agentmeister setup` still configures them.
 
-Every session start records the session in `~/.cache/mnrh/open/` with its folder, terminal tab, caffeinate,
+Every session start records the session in `~/.cache/agentmeister/open/` with its folder, terminal tab, caffeinate,
 proxy and launch flags, and a normal exit removes the record. `agentmeister ps` lists the open sessions with
 their state (waiting for you, working, idle) and jumps to the chosen one's tab in Terminal or iTerm2. After a
 reboot, a macOS update or a crash, `agentmeister restore` reopens the sessions whose records are left, each in
@@ -231,9 +231,14 @@ request the MCP server checks whether its code changed (a `brew upgrade` or a `g
 so, replaces itself with the new one on the same connection, without losing the request. `agentmeister setup --remove` takes everything out of Claude Code,
 and `brew uninstall agentmeister` removes the program.
 
+Settings, cache and state live in `~/.config/agentmeister`, `~/.cache/agentmeister` and
+`~/.local/state/agentmeister`. Older installs used `mnrh` folders and keep using them until you run
+`agentmeister migrate` in a regular terminal with proxy sessions, the host-run runner and the app closed
+(`--dry-run` shows what moves). `agentmeister doctor` reminds you while the old folders are in use.
+
 Projects live in folders of projects, `~/Developer` by default. Each subfolder of such a folder is a project.
 `agentmeister projects-dir add <folder>` adds another one, `remove` takes it out, `projects-dir` lists them. The same
-list sits in `~/.config/mnrh/config` as `projects=<folder>[:<folder>...]`, and `MNRH_PROJECTS` overrides it. Projects
+list sits in `~/.config/agentmeister/config` as `projects=<folder>[:<folder>...]`, and `MNRH_PROJECTS` overrides it. Projects
 with the same name in two folders show with their folder, like `backend · Work`. The desktop app asks for the folders
 on first run. setup puts the read-only MCP tools (`session_search`,
 `session_read`, `usage_report`, `deps_outdated` and others) into `permissions.allow` in `~/.claude/settings.json`, so Claude
@@ -279,7 +284,7 @@ them in place without leaving the menu. The menu fills the screen: the list on t
 description of the selected item, the command that does the same and the current setup (versions, modes that
 are on, the proxy). Tab hides the description, and a narrow window hides it on its own. iTerm2 and WezTerm show custom icons for
 the items, Terminal.app and other terminals show emoji. An `icons=emoji` or `icons=images` line in
-`~/.config/mnrh/config` (or `MNRH_ICONS`) picks one explicitly. iTerm2 3.7 asks once whether to allow the
+`~/.config/agentmeister/config` (or `MNRH_ICONS`) picks one explicitly. iTerm2 3.7 asks once whether to allow the
 pictures: answer Yes with "Remember my choice". `tools/icons.py` draws the icons, the PNGs live in
 `share/agentmeister/icons`. Submenus look the same: the project list
 (branch and the last three commits on the right), sessions (latest messages), session mode and network.
@@ -288,7 +293,7 @@ lists and questions on the same screen; afterwards Enter goes back to the menu a
 in the terminal. Only Claude Code itself runs outside. Esc goes one step back,
 Ctrl+C quits.
 `MNRH_PLAIN_MENU=1` brings back the plain inline lists. The menu
-follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in `~/.config/mnrh/config` picks
+follows the macOS language, Russian or English. A `lang=en` or `lang=ru` line in `~/.config/agentmeister/config` picks
 one explicitly. `agentmeister lang en` or `ru` writes that line, and `lang auto` removes it. `MNRH_NO_MENU=1`
 skips the menu and goes straight to the project list.
 
@@ -346,7 +351,7 @@ the proxy. Other Mac applications keep their own network settings. Use `-d` for 
 
 Claude runs commands that break in the sandbox, such as xcodebuild with Swift packages or firebase-tools,
 through `agentmeister host-run <name> [args]`. A runner starts with the proxied session before the sandbox
-applies and runs only the commands listed in `~/.config/mnrh/host-run/commands.json`. A listed command runs
+applies and runs only the commands listed in `~/.config/agentmeister/host-run/commands.json`. A listed command runs
 as it would in a normal terminal, with a direct network. Its output and exit code come back to the session,
 and Ctrl+C stops it. A proxied session can't write the list, but it can ask for a change:
 
@@ -383,8 +388,8 @@ the runner reads the list only if it belongs to you, nobody else can write to it
 go through your own symlinks. If `~/.config` is a symlink, set `XDG_CONFIG_HOME` to the real folder.
 
 The sandbox limits the network and protects agentmeister's own control files. Those include the mihomo
-config and subscription in `~/.config/mnrh/proxy/` and mihomo's control socket, because through the socket
-mihomo would load any config. The session also can't change anything in `~/.local/state/mnrh/proxy/` (the
+config and subscription in `~/.config/agentmeister/proxy/` and mihomo's control socket, because through the socket
+mihomo would load any config. The session also can't change anything in `~/.local/state/agentmeister/proxy/` (the
 records of running sessions, mihomo's pid, the watcher's log) or hard-link files out of these folders, and it
 can't even open the lock there. The session launcher records the session under its own pid before the sandbox
 starts. So inside a proxied session `agentmeister proxy` shows the server picked when
@@ -404,7 +409,7 @@ agentmeister proxy test                                    # exit IP and country
 `--country` protects the account: if the server exits in another country, the proxied session refuses to
 start instead of showing up from an unexpected place. When the network watcher or `agentmeister proxy restart`
 restarts mihomo under running sessions, a wrong exit is only reported (the watcher writes it to
-`~/.local/state/mnrh/proxy/watch.log`) and mihomo keeps running, so those sessions don't lose the network.
+`~/.local/state/agentmeister/proxy/watch.log`) and mihomo keeps running, so those sessions don't lose the network.
 `--only <pattern>` keeps only the servers whose names
 match. Encrypted `happ://crypt…` links can only be read by Happ, so use the plain `https://` one.
 
@@ -471,7 +476,7 @@ a hotspot), it writes the new interface into the config and reloads mihomo. A su
 server gets its servers checked right away instead of waiting for mihomo's five-minute check. When every
 subscription in use stays without a live server for 30 seconds while the network is up, it restarts mihomo,
 at most once every five minutes. If mihomo itself exits while proxied sessions run, the watcher starts it
-again, at most once every 30 seconds. Its log is `~/.local/state/mnrh/proxy/watch.log`.
+again, at most once every 30 seconds. Its log is `~/.local/state/agentmeister/proxy/watch.log`.
 `agentmeister proxy restart` restarts mihomo by hand and keeps the proxied sessions open.
 
 mihomo listens on `127.0.0.1:17890` (or the next free port when 17890 was taken at setup), starts with the
@@ -489,10 +494,10 @@ subscription's server names through the system DNS and writes them into the `hos
 config, so mihomo never does DNS itself. Without this, a corporate VPN whose DNS server is only reachable
 through the tunnel would leave mihomo unable to find the server, because its query goes out over Wi-Fi.
 
-Settings, the link and the subscription live in `~/.config/mnrh/proxy/`, readable only by you. agentmeister
+Settings, the link and the subscription live in `~/.config/agentmeister/proxy/`, readable only by you. agentmeister
 checks the exit country every time mihomo starts and passes it to the session in `PROMPTSILL_PROXY_LABEL`, which
 promptsill shows as `proxy KZ` in the status line. It also asks mihomo over the unix socket
-`~/.local/state/mnrh/proxy/mihomo.sock` which server from the subscription is selected and with which protocol,
+`~/.local/state/agentmeister/proxy/mihomo.sock` which server from the subscription is selected and with which protocol,
 and passes the protocol and IP in `PROMPTSILL_PROXY_DETAIL`. In macOS Terminal the status line shows
 `proxy KZ vless 203.0.113.7`. In iTerm2, Ghostty and other terminals with link support it stays `proxy KZ`, and
 Cmd-click opens a page with the details (`exit.html` in the same folder). With more than one subscription, a
@@ -547,7 +552,7 @@ than 200 thousand tokens, `/slim` suggests `/compact`.
 
 Before writing, the slimmed file is checked against the original: line count, `uuid`, `parentUuid`, types and
 timestamps must match, and everything that goes into the model's context must match byte for byte. Otherwise
-nothing is written. The original is compressed into `~/.cache/mnrh/slim-backup/` and kept for 14 days.
+nothing is written. The original is compressed into `~/.cache/agentmeister/slim-backup/` and kept for 14 days.
 `slim <id> --undo` restores it, along with any messages added after slimming. The session date doesn't change.
 Open sessions are never slimmed.
 
@@ -587,7 +592,7 @@ stem, 3 letters or longer, also matches longer words (`fastl` finds `fastlane`).
 first, with a small bonus for recent ones, and within a session the best snippets are shown first. The current
 session is excluded.
 
-The index lives in `~/.cache/mnrh/sessions-index/`: `<id>.json` holds only text (about 1 MB for a 481 MB
+The index lives in `~/.cache/agentmeister/sessions-index/`: `<id>.json` holds only text (about 1 MB for a 481 MB
 session) and `<id>.terms.json` the stems of each message (about 40% of the text size). The first pass over
 all sessions takes a few seconds (4 s for 700 MB of transcripts). After that only new lines are read, and a query
 takes under 0.1 s. The index is refreshed in the background when each session starts (the
@@ -606,7 +611,7 @@ subagents' time merged in, so a long break or a night with an open session doesn
 amounts: on a subscription tokens and time are what matter. Claude gets the same report through the
 `usage_report` MCP tool ("how many tokens did kcalm take this week?").
 
-Per-day totals are cached in `~/.cache/mnrh/usage/<id>.json` (260 KB for 700 MB of transcripts) and, like the
+Per-day totals are cached in `~/.cache/agentmeister/usage/<id>.json` (260 KB for 700 MB of transcripts) and, like the
 search index, only new lines are read. The first run over all sessions takes about 3 s, later ones 0.05 s, and
 the cache is also refreshed in the background when a session starts. A rewritten session (`slim`) is counted
 again from scratch, and a deleted one loses its cache.
@@ -659,7 +664,7 @@ Off by default. With `agentmeister translate on` (or `/translate`, or the switch
 `UserPromptSubmit` hook sends your message to OpenRouter (`google/gemini-3.1-flash-lite` by default, change it
 with `translate model <id>`) and adds the English translation next to the original. The agent works from the
 translation, keeps your wording when the two differ, and replies in your language. Save the key with
-`agentmeister translate key` (`--clipboard` takes it from the clipboard), it goes to `~/.config/mnrh` with
+`agentmeister translate key` (`--clipboard` takes it from the clipboard), it goes to `~/.config/agentmeister` with
 mode 600 and picks the provider by its shape.
 
 Google AI Studio works too (`translate provider google`, model `gemini-3.1-flash-lite`). It is free within
@@ -698,7 +703,7 @@ Turn it off with `agentmeister brief off`.
 ## Backlog: `agentmeister todo`
 
 Tasks for later that live between sessions, unlike the task list inside a single session. One file per project,
-`~/.config/mnrh/todo/<project>.md`, a plain checklist. The project is the git root of the current folder;
+`~/.config/agentmeister/todo/<project>.md`, a plain checklist. The project is the git root of the current folder;
 `-p <project>` picks another one. Claude sees open items when a session starts and can add ("note this for
 later…") and close them itself (`todo_add`, `todo_done`, `todo_list` run without asking for permission).
 
@@ -708,7 +713,7 @@ later…") and close them itself (`todo_add`, `todo_done`, `todo_list` run witho
 (`appversion`/`versionName`) or `versionName`/`MARKETING_VERSION`, the commits since the last release (counted
 from the last tag, the last fastlane run in `fastlane/report.xml` or the previous notes, whichever is newer) and
 the Claude sessions from that period. Claude writes "What's new" for each language in `fastlane/metadata` (or `release_locales=en-US,de-DE` in
-`~/.config/mnrh/config`, en-US by default) in up to 500 characters
+`~/.config/agentmeister/config`, en-US by default) in up to 500 characters
 (enough for Google Play; the App Store and TestFlight allow 4000, RuStore 5000, Firebase 16000), shows it to
 you, and once you agree saves it to `fastlane/release_notes/<version>.<lang>.txt`. If there is
 `fastlane/metadata`, it also writes `changelogs/<versionCode>.txt` and `release_notes.txt`. The Fastfile takes
@@ -772,7 +777,7 @@ PR. In Claude Code the same is `parallel_finish` with `action: "pr"`.
 `/shot chrome why did the button move` takes a screenshot of Chrome's front window (or Safari, Simulator,
 Android Studio, Figma, VS Code…), and Claude looks at it and answers. Without an app it lists windows, hiding
 title fragments that look like tokens. The screenshot is scaled down to 1600 px and kept in
-`~/.cache/mnrh/shots` for three days. The terminal needs Screen Recording permission. The `window_screenshot`
+`~/.cache/agentmeister/shots` for three days. The terminal needs Screen Recording permission. The `window_screenshot`
 tool hands the image straight to Claude and asks for permission every time, since the screen may show other
 people's things.
 
@@ -833,7 +838,7 @@ How the command gets back into the tab:
 
 - The zsh hook is the main way and works in any terminal (Android Studio, VS Code, Terminal, iTerm2).
   `agentmeister setup` adds a line with `share/agentmeister/restart.zsh` to `~/.zshrc`. Before Claude quits,
-  a job is written to `~/.cache/mnrh/restart/<tty>`, and zsh runs it before the next prompt. Jobs older than two
+  a job is written to `~/.cache/agentmeister/restart/<tty>`, and zsh runs it before the next prompt. Jobs older than two
   minutes are ignored. It works in tabs opened after setup.
   The job is JSON data (session id, folder, mode, flags), not a shell command: a session through proxy writes it
   from its sandbox. The hook passes it to `libexec/agentmeister/lib/restart_job.py`, which accepts only known
@@ -847,7 +852,7 @@ How the command gets back into the tab:
 After it starts, Claude shows what happened under the input line: "Claude Code перезапущен (обновлён 2.1.278 →
 2.1.280). Сессия «…» продолжается" (restarted and updated, the session continues) or that the previous session
 was deleted and this is a clean one. That's the `SessionStart` hook in `~/.claude/settings.json`, installed by
-`agentmeister setup`: before quitting, a note is written to `~/.cache/mnrh/notice/<session id>.json`, and the
+`agentmeister setup`: before quitting, a note is written to `~/.cache/agentmeister/notice/<session id>.json`, and the
 hook shows and deletes it. The model doesn't see it. That's why `/forget` starts the new session with a known
 `--session-id`.
 
@@ -912,7 +917,7 @@ or 20 KB, Claude sees a digest instead: errors with a few lines around them, fai
 (one line per distinct warning, with a count of repeats), blocks like Gradle's "What went wrong" and xcodebuild's
 "The following build commands failed", summary lines (`BUILD SUCCESSFUL`, `** TEST FAILED **`, `Executed 120
 tests`) and the last lines. The first line of the digest names the full log in
-`~/.cache/mnrh/logs/<session>/<time>.log`, so Claude can grep it when the digest isn't enough. Logs are kept for
+`~/.cache/agentmeister/logs/<session>/<time>.log`, so Claude can grep it when the digest isn't enough. Logs are kept for
 7 days and are deleted together with the session by `/forget`.
 
 The output is replaced through `updatedToolOutput`, which Claude Code only accepts from `PostToolUse`, and that
@@ -975,7 +980,7 @@ priorities, questions and permission requests go with a higher one than "done".
 the command: on a server that isn't yours the text can hold a command the agent asks to allow.
 `<channel> body full | title` switches it. Tokens and keys live in the macOS Keychain under `agentmeister.notify`,
 never in the config. Both the settings window and the CLI pass them through stdin, and they reach `security` through
-stdin too, so they don't show up in `ps`. A failed send is logged to `~/.cache/mnrh/notify/errors.log` and shown on
+stdin too, so they don't show up in `ps`. A failed send is logged to `~/.cache/agentmeister/notify/errors.log` and shown on
 the channel's card until the next successful send or `<channel> test`.
 
 There's no channel that pushes through Firebase or APNs directly. A device token there belongs to one app, and
@@ -991,7 +996,7 @@ for older versions until `telegram off`); the config only holds the chat id. `te
 `agentmeister notify away <sec>` sets how long without input counts as away for all phone channels
 (`telegram away <sec>` does the same), `telegram always` sends every time, and
 `telegram off` disconnects and deletes the token. If you're looking at Claude's tab but have walked away, the
-notification only goes to Telegram. Send errors are logged to `~/.cache/mnrh/notify/errors.log`.
+notification only goes to Telegram. Send errors are logged to `~/.cache/agentmeister/notify/errors.log`.
 
 Permission requests can also be answered from Telegram. `agentmeister notify telegram approve on` turns it on
 (off by default) and adds a blocking `PermissionRequest` hook to `~/.claude/settings.json` (`agentmeister setup`

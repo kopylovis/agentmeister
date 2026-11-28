@@ -105,7 +105,7 @@ final class ProxyBrowser {
     static let helper: String? = {
         let fm = FileManager.default
         // путь без пробелов: gh и другие программы делят BROWSER по пробелам
-        let dir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".cache/mnrh/app/bin")
+        let dir = URL(fileURLWithPath: AppDirs.cache).appendingPathComponent("app/bin")
         let file = dir.appendingPathComponent("agentmeister-browse")
         let script = """
         #!/bin/sh

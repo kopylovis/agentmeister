@@ -320,7 +320,8 @@ def claude_on(tty):
     return None
 
 
-APP_OPEN_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "mnrh", "app", "open")
+from mnrhlib import CACHE_HOME, CONFIG_HOME, STATE_HOME, app_dir  # noqa: E402
+APP_OPEN_DIR = os.path.join(app_dir(CACHE_HOME), "app", "open")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 APP_WAIT = 6.0  # приложение забирает запросы раз в секунду
 

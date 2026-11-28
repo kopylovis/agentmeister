@@ -6,7 +6,7 @@ enum LinkPlace: String, CaseIterable {
     case ask, builtin, chrome, system
 }
 
-/// Chrome с отдельным профилем в ~/.cache/mnrh/app. С proxyPort он идет через mihomo (--proxy-server), без него
+/// Chrome с отдельным профилем в ~/.cache/agentmeister/app. С proxyPort он идет через mihomo (--proxy-server), без него
 /// напрямую. Флаги Chrome берет только при первом запуске профиля, поэтому у маршрутов профили разные.
 /// 127.0.0.1 Chrome и с proxy открывает напрямую, туда агент принимает ответ входа.
 @MainActor
@@ -19,7 +19,7 @@ enum ChromeProfile {
             NSWorkspace.shared.open(link)
             return
         }
-        var args = ["--user-data-dir=" + NSHomeDirectory() + "/.cache/mnrh/app/" + profile,
+        var args = ["--user-data-dir=" + AppDirs.cache + "/app/" + profile,
                     "--no-first-run", "--no-default-browser-check"]
         if let proxyPort {
             args.append("--proxy-server=http://127.0.0.1:\(proxyPort)")

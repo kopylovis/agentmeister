@@ -1,6 +1,6 @@
 """Умолчания для сессий, которые agentmeister открывает сам (open_claude, /parallel, меню) и перезапускает.
 
-Строки в ~/.config/mnrh/config:
+Строки в ~/.config/agentmeister/config:
   open_mode=caffeinate|normal       режим новой сессии, по умолчанию normal
   open_remote_control=on|off        Remote Control в новых сессиях, по умолчанию off
   restart_update=on|off             /restart сначала обновляет Claude Code, по умолчанию on
