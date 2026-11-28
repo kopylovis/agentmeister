@@ -171,6 +171,15 @@ SETUP_USAGE = f"""agentmeister setup [--country DE] [--only <имя>]
     и настроить прокси, если он еще не настроен. --country и --only уходят в agentmeister proxy setup
 agentmeister setup --remove    убрать настройку Claude Code
 {CODEX_SETUP}    настроить хуки и MCP для Codex"""
+SETUP_USAGE_EN = f"""agentmeister setup [--country DE] [--only <name>]
+    install /restart, /forget and other commands, Claude Code hooks, the zsh hook, the agentmeister MCP server
+    and set up the proxy if it isn't set up yet. --country and --only go to agentmeister proxy setup
+agentmeister setup --remove    remove the Claude Code setup
+{CODEX_SETUP}    set up hooks and MCP for Codex"""
+
+
+def setup_usage():
+    return tr(SETUP_USAGE, SETUP_USAGE_EN)
 
 
 def setup_args(args):
@@ -182,14 +191,17 @@ def setup_args(args):
         elif a in ("--country", "--only"):
             value = next(it, "").strip()
             if not value or value.startswith("-"):
-                print(f"agentmeister setup: после {a} нужно значение\n\n{SETUP_USAGE}", file=sys.stderr)
+                print(tr(f"agentmeister setup: после {a} нужно значение", f"agentmeister setup: {a} needs a value")
+                      + f"\n\n{setup_usage()}", file=sys.stderr)
                 return None
             opts[a[2:]] = value
         else:
-            print(f"agentmeister setup: не знаю {a}\n\n{SETUP_USAGE}", file=sys.stderr)
+            print(tr(f"agentmeister setup: не знаю {a}", f"agentmeister setup: unknown option {a}")
+                  + f"\n\n{setup_usage()}", file=sys.stderr)
             return None
     if opts["country"] and not re.match(r"^[A-Za-z]{2}$", opts["country"]):
-        print("agentmeister setup: --country ждет код страны из двух букв, например DE", file=sys.stderr)
+        print(tr("agentmeister setup: --country ждет код страны из двух букв, например DE",
+                 "agentmeister setup: --country expects a two-letter country code, e.g. DE"), file=sys.stderr)
         return None
     return opts
 
@@ -253,20 +265,23 @@ def configure_mcp(remove=False):
 def setup(args):
     import setup_steps
     if any(a in ("-h", "--help", "help") for a in args):
-        print(SETUP_USAGE)
+        print(setup_usage())
         return 0
     opts = setup_args(args)
     if opts is None:
         return 2
     if not shutil.which(CLAUDE_BIN):
         # без claude не зарегистрировать MCP-сервер, а setup бросил бы работу на полпути с traceback
-        print(f"Не нашел {CLAUDE_BIN} в PATH. Для установки Claude Code запусти agentmeister --harness claude install. "
-              f"Для Codex запусти {CODEX_SETUP}.", file=sys.stderr)
+        print(tr(f"Не нашел {CLAUDE_BIN} в PATH. Для установки Claude Code запусти agentmeister --harness claude install. "
+                 f"Для Codex запусти {CODEX_SETUP}.",
+                 f"{CLAUDE_BIN} isn't in PATH. To install Claude Code, run agentmeister --harness claude install. "
+                 f"For Codex, run {CODEX_SETUP}."), file=sys.stderr)
         return 1
     try:
         legacy_names = configure_mcp(opts["remove"])
     except (OSError, ValueError, subprocess.CalledProcessError):
-        print("Не удалось обновить регистрацию MCP agentmeister. Проверь настройки MCP пользователя.", file=sys.stderr)
+        print(tr("Не удалось обновить регистрацию MCP agentmeister. Проверь настройки MCP пользователя.",
+                 "Couldn't update the agentmeister MCP registration. Check your user MCP settings."), file=sys.stderr)
         return 1
     if opts["remove"]:
         for f in [COMMAND_FILE, FORGET_FILE, FRESH_FILE, SLIM_FILE, OLD_FORGET_FILE] + \
@@ -278,8 +293,10 @@ def setup(args):
         kept = [l for l in lines if not is_zsh_hook(l)]
         if kept != lines:
             write_zshrc(kept)
-        print("Убрал /restart, /forget, /fresh, /slim, /todo, /where, /release-notes, /parallel, /shot, /ask, "
-              f"/humanize, /import-codex, MCP-сервер {MCP_NAME} и хук из {tilde(ZSHRC)}.")
+        print(tr("Убрал /restart, /forget, /fresh, /slim, /todo, /where, /release-notes, /parallel, /shot, /ask, "
+                 f"/humanize, /import-codex, MCP-сервер {MCP_NAME} и хук из {tilde(ZSHRC)}.",
+                 "Removed /restart, /forget, /fresh, /slim, /todo, /where, /release-notes, /parallel, /shot, /ask, "
+                 f"/humanize, /import-codex, the {MCP_NAME} MCP server and the hook from {tilde(ZSHRC)}."))
         # agentmeister больше не предлагает setup при запуске; вернуть все: agentmeister setup
         setup_steps.write(set(), set(setup_steps.IDS))
         return 0

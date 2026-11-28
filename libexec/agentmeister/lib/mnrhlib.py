@@ -336,11 +336,12 @@ def confirm(question, assume_yes):
     if assume_yes:
         return True
     if not _sys.stdin.isatty():
-        print("Не терминал, подтвердить нельзя. Повтори с -y")
+        print(tr("Не терминал, подтвердить нельзя. Повтори с -y", "Not a terminal, can't confirm. Run it again with -y"))
         _sys.exit(2)
     try:
         from menu import choice
-        return choice(question, [("yes", "Да", "yд"), ("no", "Нет", "nн")], default=1, back="no", esc="нет") == "yes"
+        return choice(question, [("yes", tr("Да", "Yes"), "yд"), ("no", tr("Нет", "No"), "nн")], default=1, back="no",
+                      esc=tr("нет", "no")) == "yes"
     except OSError:
         return input(f"{question} [y/N] ").strip().lower() in ("y", "yes", "д", "да")
 
@@ -370,5 +371,8 @@ def find_project(query=None, cwd=None):
     if len(hits) == 1:
         return hits[0], None
     if hits:
-        return None, f"«{query}» подходит к нескольким проектам: {', '.join(tilde(d) for d in hits)}, укажи путь"
-    return None, f"проекта «{query}» нет в {', '.join(tilde(d) for d in projects_dirs())}"
+        found = ', '.join(tilde(d) for d in hits)
+        return None, tr(f"«{query}» подходит к нескольким проектам: {found}, укажи путь",
+                        f"\"{query}\" matches several projects: {found}, give the path")
+    roots = ', '.join(tilde(d) for d in projects_dirs())
+    return None, tr(f"проекта «{query}» нет в {roots}", f"no project \"{query}\" in {roots}")

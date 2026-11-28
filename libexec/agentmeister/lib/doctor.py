@@ -14,6 +14,8 @@ import codex_harness  # noqa: E402
 
 USAGE = """agentmeister doctor    проверить установку Claude Code и Codex, хуки, статус в iTerm2, MCP-сервер, хук zsh,
                        уведомления, promptsill, прокси, крышку, хранение переписок. Код выхода 1, если что-то сломано"""
+USAGE_EN = """agentmeister doctor    check the Claude Code and Codex install, hooks, iTerm2 status, MCP server, zsh hook,
+                       notifications, promptsill, proxy, lid, transcript retention. Exit code 1 if something is broken"""
 
 
 def run(cmd, timeout=15, stdin=None):
@@ -335,7 +337,7 @@ CHECKS = [check_install, check_commands, check_settings, check_iterm, check_mcp,
 
 def main(args):
     if any(a in ("-h", "--help", "help") for a in args):
-        print(USAGE)
+        print(tr(USAGE, USAGE_EN))
         return 0
     marks = {"ok": OK, "off": "-", "warn": WARN, "bad": BAD}
     worst = "ok"
