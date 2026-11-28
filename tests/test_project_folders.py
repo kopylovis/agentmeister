@@ -56,7 +56,7 @@ class ProjectFolders(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         r = subprocess.run(cli + ["add", self.b], env=env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
-        config = Path(self.tmp.name, "mnrh", "config").read_text()
+        config = Path(self.tmp.name, "agentmeister", "config").read_text()
         self.assertIn(":" + mnrhlib.tilde(self.b), config)
 
 

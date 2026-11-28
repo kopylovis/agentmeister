@@ -26,7 +26,7 @@ class Forget(unittest.TestCase):
         r, home = in_sandbox("""
             import os, session_store as s
             sid, other = "11111111-2222-3333-4444-555555555555", "99999999-2222-3333-4444-555555555555"
-            cache = os.path.join(os.environ["HOME"], ".cache", "mnrh")
+            cache = os.path.join(os.environ["HOME"], ".cache", "agentmeister")
             files = ["slim-backup/{}.20260101-000000.jsonl.gz", "notify/{}.json", "humanize/{}.hits",
                      "humanize/{}.primed", "guard/{}.json", "notice/{}.json"]
             for f in files:

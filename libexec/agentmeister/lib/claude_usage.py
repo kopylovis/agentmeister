@@ -3,7 +3,7 @@
 
 Берётся поле usage у ответов модели (одно на запрос, хотя строк в переписке у ответа бывает несколько) и время
 строк. Активное время — сумма промежутков меньше 5 минут между соседними строками, вместе с субагентами.
-Итоги по дням хранятся в ~/.cache/mnrh/usage/<id>.json и дочитываются только по новым строкам.
+Итоги по дням хранятся в ~/.cache/agentmeister/usage/<id>.json и дочитываются только по новым строкам.
 """
 import glob
 import json
@@ -17,7 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from mnrhlib import HOME, has_flag, write_json  # noqa: E402
 import claude_search  # noqa: E402
 
-CACHE = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "mnrh", "usage")
+from mnrhlib import CACHE_HOME, CONFIG_HOME, STATE_HOME, app_dir  # noqa: E402
+CACHE = os.path.join(app_dir(CACHE_HOME), "usage")
 VERSION = 1
 GAP = 300  # перерыв дольше 5 минут не считается работой
 KINDS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")

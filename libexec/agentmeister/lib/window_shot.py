@@ -133,7 +133,7 @@ def main():
     args = sys.argv[1:]
     if args[:1] in (["-h"], ["--help"]):
         print("agentmeister shot                           список открытых окон")
-        print("agentmeister shot <приложение> [заголовок]  снимок переднего окна приложения в ~/.cache/mnrh/shots")
+        print("agentmeister shot <приложение> [заголовок]  снимок переднего окна приложения в ~/.cache/agentmeister/shots")
         print()
         print(f"Снимки уменьшаются до {MAX_SIDE} px по большей стороне и удаляются через {KEEP_DAYS} дня.")
         print("Нужно разрешение «Запись экрана» для терминала. В Claude Code: /shot или инструмент window_screenshot.")

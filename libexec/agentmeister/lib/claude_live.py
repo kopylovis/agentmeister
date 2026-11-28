@@ -1,7 +1,7 @@
 """Открытые сессии Claude Code: agentmeister ps показывает их и переводит во вкладку, restore открывает заново
 те, что были открыты, когда Mac перезагрузился или Claude Code упал.
 
-SessionStart (хук notice) записывает каждую сессию в ~/.cache/mnrh/open/<id>.json: папку, терминал, вкладку,
+SessionStart (хук notice) записывает каждую сессию в ~/.cache/agentmeister/open/<id>.json: папку, терминал, вкладку,
 caffeinate, прокси и флаги запуска. SessionEnd (хук session-end) убирает запись. Запись, у которой процесса
 больше нет, значит, что сессия закрылась не сама.
 """

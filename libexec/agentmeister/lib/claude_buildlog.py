@@ -2,7 +2,7 @@
 
 Если команда — Gradle, xcodebuild, swift build/test, npm/pnpm/yarn test или build, pytest или make, а вывод длинный,
 Claude видит вместо него выжимку: упавшие задачи и тесты, ошибки и предупреждения со строками вокруг, итоговые строки
-и путь к полному логу в ~/.cache/mnrh/logs/<сессия>/. Подменяет вывод поле updatedToolOutput хука PostToolUse.
+и путь к полному логу в ~/.cache/agentmeister/logs/<сессия>/. Подменяет вывод поле updatedToolOutput хука PostToolUse.
 PostToolUse приходит только после вызова с кодом 0. При ненулевом коде Claude Code шлет PostToolUseFailure, а там
 заменить вывод нельзя. Поэтому хук PreToolUse дописывает к сборке || echo с меткой FAIL_MARK: упавшая сборка
 завершается с кодом 0, а PostToolUse по метке пишет Claude, что команда упала. Код возврата при этом теряется.

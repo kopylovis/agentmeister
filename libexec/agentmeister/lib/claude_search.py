@@ -11,7 +11,8 @@ from mnrhlib import CLAUDE_HOME, HOME, UUID_RE, tilde, write_json
 
 CLAUDE = CLAUDE_HOME
 PROJECTS = os.path.join(CLAUDE, "projects")
-INDEX = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "mnrh", "sessions-index")
+from mnrhlib import CACHE_HOME, CONFIG_HOME, STATE_HOME, app_dir  # noqa: E402
+INDEX = os.path.join(app_dir(CACHE_HOME), "sessions-index")
 VERSION = 3
 # основы слов лежат рядом в <id>.terms.json: хукам нужен только текст, а основы досчитываются при поиске
 TERMS_VERSION = 1

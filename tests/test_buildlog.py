@@ -68,7 +68,7 @@ class CodexBuild(unittest.TestCase):
                 result = subprocess.run(["/bin/sh", "-c", cmd], cwd=tmp, capture_output=True, text=True,
                                         env=dict(os.environ, HOME=tmp))
                 self.assertEqual(result.returncode, 23, result.stderr)
-                logs = list((root / ".cache/mnrh/logs/session").glob("*.log"))
+                logs = list((root / ".cache/agentmeister/logs/session").glob("*.log"))
                 if long:
                     self.assertLess(len(result.stdout), len(original))
                     self.assertIn("BUILD FAILED", result.stdout)

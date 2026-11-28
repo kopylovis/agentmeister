@@ -2305,8 +2305,8 @@ struct TranslateKeyCard: View {
                 Circle().fill(Ink.amber).frame(width: 7, height: 7).shadow(color: Ink.amber.opacity(0.8), radius: 4)
                 Text(l.t("Ключ для перевода", "Translator key")).font(.system(size: 14, weight: .semibold)).foregroundStyle(Ink.strong)
             }
-            Text(l.t("Вставь ключ OpenRouter или Google AI Studio. Он ляжет в ~/.config/mnrh с правами 600, как через agentmeister translate key. Строка ввода осталась как была.",
-                     "Paste an OpenRouter or Google AI Studio key. It goes to ~/.config/mnrh with mode 600, as with agentmeister translate key. The input line is unchanged."))
+            Text(l.t("Вставь ключ OpenRouter или Google AI Studio. Он ляжет в ~/.config/agentmeister с правами 600, как через agentmeister translate key. Строка ввода осталась как была.",
+                     "Paste an OpenRouter or Google AI Studio key. It goes to ~/.config/agentmeister with mode 600, as with agentmeister translate key. The input line is unchanged."))
                 .font(.system(size: 12.5)).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 6) {
                 SecureField("sk-or-v1-…  /  AQ.… / AIza…", text: $key)

@@ -1,6 +1,6 @@
 """Шаги agentmeister setup и проверка перед запуском agentmeister.
 
-setup записывает в ~/.config/mnrh/claude-setup.json, какие шаги сделаны и от каких отказались.
+setup записывает в ~/.config/agentmeister/claude-setup.json, какие шаги сделаны и от каких отказались.
 agentmeister перед запуском сверяет запись со STEPS. Если setup на этом Mac не запускали или после
 обновления в STEPS появился шаг, которого нет в записи, предлагает настроить.
 Новый шаг в setup: добавь его id и описание в STEPS, и при первом запуске после обновления его предложат.
@@ -17,7 +17,8 @@ from mnrhlib import (CLAUDE_HOME, HOME, LEGACY_CALL, OK, PROMPTSILL_HINT, WARN, 
                      write_json)
 import claude_settings  # noqa: E402
 
-STATE = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "mnrh", "claude-setup.json")
+from mnrhlib import CACHE_HOME, CONFIG_HOME, STATE_HOME, app_dir  # noqa: E402
+STATE = os.path.join(app_dir(CONFIG_HOME), "claude-setup.json")
 CLAUDE = CLAUDE_HOME
 STEPS = [
     ("commands", "команды /restart, /forget, /fresh, /slim, /todo и другие"),

@@ -10,7 +10,23 @@ HOME = os.path.expanduser("~")
 # Папка Claude Code; MNRH_CLAUDE_HOME подменяет ее в тестах
 CLAUDE_HOME = os.environ.get("MNRH_CLAUDE_HOME", os.path.join(HOME, ".claude"))
 # Кеш agentmeister. Путь от mnrh, его же читает share/agentmeister/restart.zsh
-CACHE = os.path.join(HOME, ".cache", "mnrh")
+CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config")
+STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local", "state")
+CACHE_HOME = os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache")
+
+
+# Раньше папки agentmeister звались mnrh. Пока их не перенесли (agentmeister migrate), то есть есть
+# ~/.config/mnrh и нет ~/.config/agentmeister, все три места (config, cache, state) берутся по старому имени.
+# Решение одно на все, по папке настроек: случайная пустая ~/.local/state/agentmeister его не меняет.
+LEGACY_DIRS = os.path.isdir(os.path.join(CONFIG_HOME, "mnrh")) and not os.path.isdir(os.path.join(CONFIG_HOME, "agentmeister"))
+
+
+def app_dir(base):
+    """Папка agentmeister в base: ~/.config, ~/.cache или ~/.local/state."""
+    return os.path.join(base, "mnrh" if LEGACY_DIRS else "agentmeister")
+
+
+CACHE = app_dir(os.path.join(HOME, ".cache"))
 # Задания перезапуска для хука zsh (по имени tty) и сообщения после /restart, /forget, /slim (по id новой сессии)
 RESTART_QUEUE = os.path.join(CACHE, "restart")
 NOTICES = os.path.join(CACHE, "notice")
@@ -135,7 +151,7 @@ def system_english():
 
 
 def lang():
-    """Язык интерфейса: lang=ru или lang=en в ~/.config/mnrh/config, иначе русский, если он первый в macOS,
+    """Язык интерфейса: lang=ru или lang=en в ~/.config/agentmeister/config, иначе русский, если он первый в macOS,
     и английский во всех остальных случаях."""
     value = read_config().get("lang", "").lower()
     if value in ("ru", "en"):
@@ -156,7 +172,7 @@ def settings_path(*keys):
     return " → ".join(settings_name(k) for k in keys)
 
 
-CONFIG = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config"), "mnrh", "config")
+CONFIG = os.path.join(app_dir(CONFIG_HOME), "config")
 DEFAULT_DEV = os.path.join(HOME, "Developer")
 TOSSLING_PATHS = tuple(os.path.join(d, name) for name in ("tossling", "tossy")
                     for d in ("/opt/homebrew/bin", "/usr/local/bin", os.path.join(HOME, ".local", "bin")))

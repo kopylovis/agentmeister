@@ -231,7 +231,8 @@ def context(english):
 
 # Перевод строки ввода по ⌘⇧T: в журнал идет с пометкой input вместо сессии. Приложение кладет edit-<вкладка>.json и шлет Ctrl+G, редактор пишет ход работы
 # в edit-<вкладка>.status.json, а edit-<вкладка>.cancel от приложения (Esc) оставляет текст как был.
-EDIT_DIR = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache"), "mnrh", "app", "translate")
+from mnrhlib import CACHE_HOME, CONFIG_HOME, STATE_HOME, app_dir  # noqa: E402
+EDIT_DIR = os.path.join(app_dir(CACHE_HOME), "app", "translate")
 EDIT_TTL = 10
 IMAGE = re.compile(r"\[Image #\d+\]")
 LANGUAGES = [("Ukrainian", r"[іїєґІЇЄҐ]"), ("Russian", r"[А-Яа-яЁё]"), ("Japanese", r"[\u3040-\u30ff]"),

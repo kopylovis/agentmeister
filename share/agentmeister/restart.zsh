@@ -1,4 +1,4 @@
-# Хук перезапуска: /restart, /forget, /fresh, /slim кладут задание в ~/.cache/mnrh/restart/<tty>, а этот хук
+# Хук перезапуска: /restart, /forget, /fresh, /slim кладут задание в ~/.cache/agentmeister/restart/<tty>, а этот хук
 # перед следующим приглашением снова открывает Claude в этой вкладке. Задание — JSON с данными, его пишет и
 # сессия из песочницы, поэтому как команду shell его не выполняем: restart_job.py проверяет поля и сам строит
 # argv. 2 — версия хука: с ним agentmeister пишет задания в JSON, со старым (1) в эту вкладку не пишет.
@@ -8,7 +8,10 @@ export MNRH_TTY=$TTY
 typeset -g _mnrh_restart_job=${${(%):-%x}:a:h:h:h}/libexec/agentmeister/lib/restart_job.py
 
 _mnrh_restart() {
-  local f=$HOME/.cache/mnrh/restart/${TTY:t} out
+  # как mnrhlib.app_dir: старое имя mnrh, пока папки не перенесли (agentmeister migrate)
+  local c=${XDG_CONFIG_HOME:-$HOME/.config} d=$HOME/.cache/agentmeister
+  [[ -d $c/mnrh && ! -d $c/agentmeister ]] && d=$HOME/.cache/mnrh
+  local f=$d/restart/${TTY:t} out
   local -a job
   while [[ -e $f || -L $f ]]; do
     out=$(/usr/bin/python3 -I -B $_mnrh_restart_job take $f) || return 0

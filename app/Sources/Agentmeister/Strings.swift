@@ -1,6 +1,6 @@
 import Foundation
 
-/// Тексты интерфейса на двух языках. Язык тот же, что у меню agentmeister: lang из ~/.config/mnrh/config,
+/// Тексты интерфейса на двух языках. Язык тот же, что у меню agentmeister: lang из ~/.config/agentmeister/config,
 /// иначе первый язык macOS. Его присылает app-state.
 struct L {
     let en: Bool
