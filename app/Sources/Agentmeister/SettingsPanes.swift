@@ -1333,7 +1333,9 @@ struct AgentCard: View {
                 }
             } else {
                 Spacer(minLength: 0)
-                UtilityButton(title: l.t("Установить", "Install"), args: ["--harness", agent.rawValue, "install"], expand: true)
+                UtilityButton(title: l.t("Установить", "Install"), args: ["--harness", agent.rawValue, "install"], expand: true,
+                              sheetTitle: l.t("Установить ", "Install ") + (agent == .codex ? "Codex" : "Claude Code"),
+                              onFinish: { await reload() })
             }
         }
         .padding(20)
@@ -1423,7 +1425,8 @@ struct AgentCard: View {
                 .buttonStyle(CardActionStyle())
         } else {
             UtilityButton(title: l.t("Хуки и MCP", "Hooks and MCP"), args: ["--harness", "codex", "setup"], expand: true,
-                          icon: "puzzlepiece.extension")
+                          icon: "puzzlepiece.extension", mode: .inline, busyTitle: l.t("Ставлю хуки", "Installing hooks"),
+                          onFinish: { await reload() })
         }
     }
 
@@ -2039,7 +2042,7 @@ struct DoctorPane: View {
                         }
                         // в терминале sudo сам спросит пароль: окно macOS там не нужно
                         UtilityButton(title: l.t("Открыть в терминале", "Open in Terminal"),
-                                      args: run.args.filter { $0 != "--gui" }, small: true)
+                                      args: run.args.filter { $0 != "--gui" }, small: true, mode: .terminal)
                     }
                     .padding(.top, 4)
                 }

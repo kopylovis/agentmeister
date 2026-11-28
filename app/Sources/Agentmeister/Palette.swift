@@ -128,9 +128,12 @@ struct PaletteView: View {
         out.append(slash("t-release", l.t("Заметки к релизу", "Release notes"),
                          l.t("\"Что нового\" для fastlane", "\"What's new\" for fastlane"), "/release-notes"))
         out.append(PaletteItem(id: "t-deps", group: .tools, title: l.t("Устаревшие зависимости", "Outdated dependencies"), detail: "Gradle") {
-            var spec = LaunchSpec(projectName: "agentmeister", projectPath: workspace.current?.spec.projectPath ?? NSHomeDirectory())
-            spec.utility = ["deps"] + (workspace.current.map { [$0.spec.projectPath] } ?? [])
-            workspace.open(spec)
+            let args = ["deps"] + (workspace.current.map { [$0.spec.projectPath] } ?? [])
+            let title = l.t("Устаревшие зависимости", "Outdated dependencies")
+            // лист открывается, когда палитра (тоже лист главного окна) уже закрылась
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                CommandRuns.shared.start(args, title: title, icon: "shippingbox", host: .main, sheet: true)
+            }
         })
         out.append(slash("t-mac", l.t("Состояние Mac", "Mac status"), l.t("память, swap, диск", "memory, swap, disk"),
                          l.t("Покажи состояние Mac: память, swap, диск (mac_status)", "Show the Mac status: memory, swap, disk (mac_status)")))

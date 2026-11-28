@@ -131,6 +131,7 @@ struct OnboardingView: View {
         }
         .frame(width: 820, height: 540)
         .environment(\.utilityRunner) { args in run(args) }
+        .commandSheets(.onboarding)
         .task { await reload() }
         .interactiveDismissDisabled(!done)
         .onAppear {
@@ -294,7 +295,9 @@ struct OnboardingView: View {
             }
             if data != nil, info?.installed != true {
                 UtilityButton(title: agent == .codex ? l.t("Установить через Homebrew", "Install with Homebrew") : l.t("Установить", "Install"),
-                              args: ["--harness", agent.rawValue, "install"], prominent: true, small: true, symbol: "arrow.down.circle")
+                              args: ["--harness", agent.rawValue, "install"], prominent: true, small: true, symbol: "arrow.down.circle",
+                              sheetTitle: l.t("Установить ", "Install ") + (agent == .codex ? "Codex" : "Claude Code"),
+                              onFinish: { await reload() })
             }
         }
     }
@@ -315,11 +318,11 @@ struct OnboardingView: View {
                     .glassEffect(.regular.tint(Ink.tealDot.opacity(0.18)), in: .rect(cornerRadius: 14))
                     HStack {
                         UtilityButton(title: l.t("Проверить выход", "Check the exit"), args: ["proxy", "test"],
-                                      small: true, symbol: "checkmark.shield")
+                                      small: true, symbol: "checkmark.shield", onFinish: { await reload() })
                         UtilityButton(title: l.t("Сменить подписку", "Change subscription"), args: ["proxy", "setup"],
-                                      small: true, symbol: "arrow.triangle.2.circlepath")
+                                      small: true, symbol: "arrow.triangle.2.circlepath", mode: .terminal)
                         UtilityButton(title: l.t("Свой прокси", "Your own proxy"), args: ["proxy", "setup", "--upstream", "-"],
-                                      small: true, symbol: "point.3.connected.trianglepath.dotted")
+                                      small: true, symbol: "point.3.connected.trianglepath.dotted", mode: .terminal)
                     }
                 } else {
                     SegmentedCapsule(selection: Binding(get: { ownProxy ? "own" : "sub" }, set: { ownProxy = $0 == "own" }),
@@ -421,7 +424,8 @@ struct OnboardingView: View {
                 HStack {
                     if info.signedInValue {
                         UtilityButton(title: l.t("Выйти", "Sign out"), args: ["proxy", "run", "--claude", "--"] + logout,
-                                      small: true, symbol: "rectangle.portrait.and.arrow.right")
+                                      small: true, symbol: "rectangle.portrait.and.arrow.right", mode: .inline,
+                                      busyTitle: l.t("Выхожу", "Signing out"), onFinish: { await reload() })
                             .disabled(!ready)
                     } else {
                         // способ, маршрут и где открыть вход выбираются в диалоге, по умолчанию через proxy
@@ -475,7 +479,7 @@ struct OnboardingView: View {
             } else if ok {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Ink.tealDot)
             } else {
-                UtilityButton(title: l.t("Поставить", "Install"), args: ["setup"], small: true, symbol: "arrow.down.circle")
+                UtilityButton(title: l.t("Поставить", "Install"), args: ["setup"], small: true, symbol: "arrow.down.circle", mode: .terminal)
             }
         }
         .padding(14)

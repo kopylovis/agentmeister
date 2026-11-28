@@ -91,7 +91,7 @@ struct TabAlert: View {
                               title: l.t("Proxy закрыт: \(who)", "Proxy closed: \(who)"),
                               body: l.t("Сервер вывел бы не в ту страну, а живого сервера нужной страны в подписке нет. Запросы отклоняются, пока такой сервер не появится, сторож проверяет раз в 5 минут.",
                                         "A server would exit in the wrong country and the subscription has no live server in the right one. Requests are refused until one shows up; the watcher checks every 5 minutes."),
-                              primary: (l.t("Подробнее", "Details"), { utility(["proxy"]) }),
+                              primary: (l.t("Подробнее", "Details"), { proxyReport() }),
                               secondary: nil))
         }
         if tab.spec.proxied, let change = backend.exitChange {
@@ -99,7 +99,7 @@ struct TabAlert: View {
                               title: l.t("Выход сменился с \(change.from) на \(change.to)", "Exit switched from \(change.from) to \(change.to)"),
                               body: l.t("Сервер \(change.from) перестал отвечать, mihomo переключился на следующий из подписки. Сессии работают дальше.",
                                         "The \(change.from) server stopped answering, mihomo moved to the next one in the subscription. Sessions keep working."),
-                              primary: (l.t("Подробнее", "Details"), { utility(["proxy"]) }),
+                              primary: (l.t("Подробнее", "Details"), { proxyReport() }),
                               secondary: (l.t("Скрыть", "Dismiss"), { backend.exitChange = nil })))
         }
         if let file = tab.downloadedImage {
@@ -170,10 +170,10 @@ struct TabAlert: View {
         }
     }
 
-    private func utility(_ args: [String]) {
-        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
-        spec.utility = args
-        workspace.open(spec)
+    /// Отчет agentmeister proxy в листе главного окна.
+    private func proxyReport() {
+        CommandRuns.shared.start(["proxy"], title: l.t("Сервер и протокол", "Server and protocol"),
+                                 icon: "list.bullet.rectangle", host: .main, sheet: true)
     }
 
     /// Вывод обновления Claude Code в окне с прокруткой: в баннер он не влезает, а причина обычно в нем.

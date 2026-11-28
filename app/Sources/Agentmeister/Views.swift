@@ -115,9 +115,9 @@ struct MainView: View {
                 ui.sidebarCollapsed = false
             case "project":
                 ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
-            case "settings", "settings-modes", "settings-notify", "settings-notify-phone", "settings-notify-add", "settings-general", "settings-buildlog", "settings-lid", "settings-humanize", "settings-guard", "settings-setup-steps", "settings-terminal", "settings-doctor", "settings-doctor-toggle", "settings-doctor-fixing", "settings-doctor-failed", "settings-doctor-fixed", "headsup":
+            case "settings", "settings-modes", "settings-notify", "settings-notify-phone", "settings-notify-add", "settings-general", "settings-buildlog", "settings-lid", "settings-humanize", "settings-guard", "settings-setup-steps", "settings-terminal", "settings-doctor", "settings-doctor-toggle", "settings-doctor-fixing", "settings-doctor-failed", "settings-doctor-fixed", "headsup", "command-running", "command-done", "command-failed":
                 // settings-modes: раздел режимов; settings-notify: уведомления; headsup: раздел агентов с историей заметок Heads up под карточками
-                let section = ["settings-modes": "modes", "settings-notify": "notify", "settings-notify-phone": "notify", "settings-notify-add": "notify", "settings-general": "general", "settings-buildlog": "modes", "settings-lid": "modes", "settings-humanize": "modes", "settings-guard": "modes", "settings-setup-steps": "agents", "settings-terminal": "terminal", "settings-doctor": "doctor", "settings-doctor-toggle": "doctor", "settings-doctor-fixing": "doctor", "settings-doctor-failed": "doctor", "settings-doctor-fixed": "doctor", "headsup": "agents"][Demo.scene] ?? "proxy"
+                let section = ["settings-modes": "modes", "settings-notify": "notify", "settings-notify-phone": "notify", "settings-notify-add": "notify", "settings-general": "general", "settings-buildlog": "modes", "settings-lid": "modes", "settings-humanize": "modes", "settings-guard": "modes", "settings-setup-steps": "agents", "settings-terminal": "terminal", "settings-doctor": "doctor", "settings-doctor-toggle": "doctor", "settings-doctor-fixing": "doctor", "settings-doctor-failed": "doctor", "settings-doctor-fixed": "doctor", "headsup": "agents", "command-failed": "agents"][Demo.scene] ?? "proxy"
                 UserDefaults.standard.set(section, forKey: "settingsSection")
                 // settings-buildlog и settings-lid открывают режимы с выбранной карточкой
                 if let mode = ["settings-buildlog": "buildlog", "settings-lid": "lid", "settings-humanize": "humanize", "settings-guard": "guard"][Demo.scene] {
@@ -132,12 +132,23 @@ struct MainView: View {
                     let height = min(screen.height, 800)
                     settings.setFrame(NSRect(x: screen.minX + 60, y: screen.maxY - height, width: 1040, height: height), display: true)
                 }
+                // command-running, -done, -failed: лист команды в трех состояниях, вывод из Demo.commandOutput
+                if Demo.scene.hasPrefix("command-") {
+                    let l = L(backend.state.lang)
+                    if Demo.scene == "command-failed" {
+                        CommandRuns.shared.start(["--harness", "codex", "install"], title: l.t("Установить Codex", "Install Codex"),
+                                                 icon: "arrow.down.circle", host: .settings, sheet: true)
+                    } else {
+                        CommandRuns.shared.start(["proxy", "test"], title: l.t("Проверить выход", "Check exit"),
+                                                 icon: "checkmark.shield", host: .settings, sheet: true)
+                    }
+                }
             default:
                 break
             }
             // у окна настроек нет свертывания и масштаба, и их кнопки серые. На скриншоте они цветные, как у
             // обычного окна. Кнопку закрытия под листом macOS гасит в любом случае, ее перекрашивает shoot.py
-            if Demo.scene.hasPrefix("settings") || Demo.scene == "headsup",
+            if Demo.scene.hasPrefix("settings") || Demo.scene.hasPrefix("command-") || Demo.scene == "headsup",
                let settings = NSApp.windows.first(where: { $0.isVisible && $0.title != "Agentmeister Demo" && $0.frame.width > 300 }) {
                 settings.styleMask.formUnion([.miniaturizable, .resizable])
             }
@@ -160,6 +171,7 @@ struct MainView: View {
             ui.mainKey = (note.object as? NSWindow)?.identifier?.rawValue.hasPrefix("main") == true
         }
         .onChange(of: backend.state.lang) { UserDefaults.standard.set(backend.state.lang, forKey: "lastLang") }
+        .commandSheets(.main)
         .sheet(isPresented: $ui.showNewSession) {
             NewSessionSheet(initialProject: ui.newSessionProject)
         }

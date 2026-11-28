@@ -327,6 +327,7 @@ struct SettingsView: View {
         // окно Settings из SwiftUI нельзя ни растянуть, ни развернуть; двойной клик по верху его разворачивает
         .background(ZoomableWindow())
         .frame(minWidth: 960, idealWidth: 1080, minHeight: 640, idealHeight: 740)
+        .commandSheets(.settings)
         .task { await reload() }
     }
 
@@ -449,12 +450,19 @@ extension EnvironmentValues {
     }
 }
 
-/// Открыть служебную вкладку с командой agentmeister в главном окне.
+/// Кнопка команды agentmeister. По умолчанию команда идет в фоне, а ее вывод показывает лист CommandSheet.
+/// Команды без отчета (inline) работают прямо в кнопке: индикатор, пока идут, и причина под кнопкой, если
+/// не прошли. terminal оставлен командам, которые спрашивают что-то в терминале: служебная вкладка главного
+/// окна или терминал мастера (utilityRunner).
 struct UtilityButton: View {
+    enum Mode { case sheet, inline, terminal }
+
     @EnvironmentObject var workspace: Workspace
     @EnvironmentObject var backend: Backend
     @Environment(\.openWindow) private var openWindow
     @Environment(\.utilityRunner) private var runner
+    @Environment(\.commandHost) private var host
+    @ObservedObject private var runs = CommandRuns.shared
     let title: String
     let args: [String]
     /// Растянуть кнопку на всю доступную ширину (ряд одинаковых кнопок внизу карточки).
@@ -465,37 +473,86 @@ struct UtilityButton: View {
     var small = false
     /// Значок перед подписью в капсуле (у icon он рисуется тихой кнопкой карточки).
     var symbol: String? = nil
+    var mode: Mode = .sheet
+    /// Заголовок листа, если подпись кнопки для него коротка ("Установить" → "Установить Codex").
+    var sheetTitle: String? = nil
+    /// Подпись на время работы inline-команды, например "Выхожу".
+    var busyTitle: String? = nil
+    /// После команды, кроме общего обновления состояния: мастер перечитывает свои данные.
+    var onFinish: (() async -> Void)? = nil
+
+    private var current: CommandRun? { mode == .terminal ? nil : runs.latest(args) }
+    private var busy: Bool { current?.phase == .running }
 
     var body: some View {
-        if let icon {
-            Button { run() } label: { Label(title, systemImage: icon).lineLimit(1) }
-                .help("agentmeister " + args.joined(separator: " "))
-                .buttonStyle(CardActionStyle())
-        } else {
-            Button {
-                run()
-            } label: {
-                Group {
-                    if let symbol { Label(title, systemImage: symbol) } else { Text(title) }
-                }
-                .lineLimit(1)
-                .frame(maxWidth: expand ? .infinity : nil)
+        VStack(alignment: expand ? .center : .leading, spacing: 6) {
+            button
+            if mode == .inline, let run = current, run.phase == .failed {
+                Text(run.stopped ? L(backend.state.lang).t("Остановлено", "Stopped")
+                                 : run.reason ?? L(backend.state.lang).t("Команда не прошла", "The command failed"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Ink.red)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(L(backend.state.lang).t("Весь вывод", "Full output")) { CommandRuns.shared.show(run) }
+                    .buttonStyle(.link).font(.system(size: 12))
             }
-            .help("agentmeister " + args.joined(separator: " "))
-            .buttonStyle(PillStyle(prominent: prominent, small: small))
         }
     }
 
-    private func run() {
-        if let runner {
-            runner(args)
-            return
+    @ViewBuilder private var button: some View {
+        if let icon {
+            Button { run() } label: { label(icon: icon) }
+                .help("agentmeister " + args.joined(separator: " "))
+                .buttonStyle(CardActionStyle())
+                .disabled(busy && mode == .inline)
+        } else {
+            Button { run() } label: { label(icon: symbol).frame(maxWidth: expand ? .infinity : nil) }
+                .help("agentmeister " + args.joined(separator: " "))
+                .buttonStyle(PillStyle(prominent: prominent && !busy, small: small))
+                .disabled(busy && mode == .inline)
         }
-        let home = NSHomeDirectory()
-        var spec = LaunchSpec(projectName: "agentmeister", projectPath: home)
-        spec.utility = args
-        workspace.open(spec)
-        openWindow(id: "main")
+    }
+
+    @ViewBuilder private func label(icon: String?) -> some View {
+        Group {
+            if busy {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text(mode == .inline ? busyTitle ?? title : title)
+                }
+            } else if let icon {
+                Label(title, systemImage: icon)
+            } else {
+                Text(title)
+            }
+        }
+        .lineLimit(1)
+    }
+
+    private func run() {
+        switch mode {
+        case .terminal:
+            if let runner {
+                runner(args)
+                return
+            }
+            var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
+            spec.utility = args
+            workspace.open(spec)
+            openWindow(id: "main")
+        case .sheet, .inline:
+            if let current, current.phase == .running {
+                CommandRuns.shared.show(current)
+                return
+            }
+            let after = onFinish
+            CommandRuns.shared.start(args, title: sheetTitle ?? title, icon: icon ?? symbol ?? "terminal", host: host,
+                                     sheet: mode == .sheet) { [backend] in
+                backend.refresh()
+                await after?()
+            }
+        }
     }
 }
 
@@ -1055,7 +1112,7 @@ struct ProxyHostRunPane: View {
                             .foregroundStyle(Ink.red)
                             .font(.system(size: 12))
                     } else {
-                        UtilityButton(title: l.t("Настроить proxy", "Set up proxy"), args: ["proxy", "setup"], prominent: true)
+                        UtilityButton(title: l.t("Настроить proxy", "Set up proxy"), args: ["proxy", "setup"], prominent: true, mode: .terminal)
                     }
                 }
                 .confirmationDialog(l.t("Удалить настройку proxy?", "Remove the proxy setup?"), isPresented: $confirmRemove) {
@@ -1288,6 +1345,8 @@ struct ProxyActions: View {
     @EnvironmentObject var workspace: Workspace
     @Environment(\.openWindow) private var openWindow
     @Environment(\.utilityRunner) private var runner
+    @Environment(\.commandHost) private var host
+    @ObservedObject private var runs = CommandRuns.shared
     var columns = 2
     let reload: () async -> Void
     @State private var restarting = false
@@ -1297,7 +1356,10 @@ struct ProxyActions: View {
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: columns), spacing: 8) {
             tile("checkmark.shield", l.t("Проверить выход", "Check exit"),
-                 l.t("Страна и IP, с которых сессии выходят в сеть", "Country and IP your sessions go out from")) { utility(["proxy", "test"]) }
+                 l.t("Страна и IP, с которых сессии выходят в сеть", "Country and IP your sessions go out from"),
+                 busy: running(["proxy", "test"]), reopens: true) {
+                sheet(["proxy", "test"], l.t("Проверить выход", "Check exit"), "checkmark.shield")
+            }
             tile("arrow.triangle.2.circlepath", l.t("Обновить подписку", "Update subscription"),
                  l.t("Заново скачать список серверов по ссылке", "Download the server list again from the link")) { utility(["proxy", "setup"]) }
             tile("power", l.t("Перезапустить mihomo", "Restart mihomo"),
@@ -1311,11 +1373,15 @@ struct ProxyActions: View {
                 }
             }
             tile("list.bullet.rectangle", l.t("Сервер и протокол", "Server and protocol"),
-                 l.t("Подробный отчет во вкладке терминала", "A detailed report in a terminal tab")) { utility(["proxy"]) }
+                 l.t("Подробный отчет: mihomo, сторож сети, сервер при запуске", "A detailed report: mihomo, the network watcher, the server at start"),
+                 busy: running(["proxy"]), reopens: true) {
+                sheet(["proxy"], l.t("Сервер и протокол", "Server and protocol"), "list.bullet.rectangle")
+            }
         }
     }
 
-    private func tile(_ icon: String, _ title: String, _ desc: String, busy: Bool = false,
+    /// reopens: плитка с листом, пока команда идет, остается нажимаемой и открывает лист снова.
+    private func tile(_ icon: String, _ title: String, _ desc: String, busy: Bool = false, reopens: Bool = false,
                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
@@ -1340,10 +1406,17 @@ struct ProxyActions: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.hover(12, .overlay))
-        .disabled(busy)
+        .disabled(busy && !reopens)
     }
 
-    /// Команда agentmeister во вкладке-утилите главного окна, как у UtilityButton.
+    private func running(_ args: [String]) -> Bool { runs.latest(args)?.phase == .running }
+
+    /// Отчет команды в листе CommandSheet. Если она еще идет, лист просто открывается снова.
+    private func sheet(_ args: [String], _ title: String, _ icon: String) {
+        CommandRuns.shared.start(args, title: title, icon: icon, host: host, sheet: true) { await reload() }
+    }
+
+    /// Команда agentmeister во вкладке-утилите главного окна: пока только смена подписки, она спрашивает ссылку.
     private func utility(_ args: [String]) {
         if let runner {
             runner(args)

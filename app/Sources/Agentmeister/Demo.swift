@@ -35,6 +35,25 @@ enum Demo {
         return .success(data)
     }
 
+    /// Вывод команды для листа CommandSheet: сцены command-running, command-done (proxy test) и
+    /// command-failed (установка Codex). Текст на языке демо.
+    static func commandOutput(_ args: [String]) -> (String, Int32) {
+        let ru = lang == "ru"
+        if args.starts(with: ["proxy", "test"]) {
+            let head = ru
+                ? "✓ настроен: ~/.config/agentmeister/proxy/config.yaml, порт 17890\n✓ mihomo 1.19.34 из Homebrew\n✓ mihomo запущен (pid 81091), сессий через proxy 2\n✓ сторож сети запущен\n  При запуске mihomo взял сервер Georgia-georgia, протокол vless\n"
+                : "✓ set up: ~/.config/agentmeister/proxy/config.yaml, port 17890\n✓ mihomo 1.19.34 from Homebrew\n✓ mihomo is running (pid 81091), proxied sessions 2\n✓ the network watcher is running\n  At start mihomo used server Georgia-georgia, protocol vless\n"
+            if scene == "command-running" { return (head, 0) }
+            return (head + (ru ? "✓ напрямую не открылось, через proxy 185.163.203.91 (GE)\n"
+                               : "✓ direct didn't open, via proxy 185.163.203.91 (GE)\n"), 0)
+        }
+        if args.last == "install" {
+            return ("brew install codex\n==> Fetching downloads for: codex\n==> Downloading https://ghcr.io/v2/homebrew/core/codex/manifests/0.63.0\ncurl: (28) Failed to connect to ghcr.io port 443 after 15002 ms\nError: codex: Failed to download resource \"codex_bottle_manifest\"\n"
+                    + (ru ? "✗ brew install codex не сработал\n" : "✗ brew install codex failed\n"), 1)
+        }
+        return ("", 0)
+    }
+
     struct Tab: Decodable {
         let project: String
         let path: String
