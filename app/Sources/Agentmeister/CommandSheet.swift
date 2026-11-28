@@ -146,7 +146,7 @@ struct CommandSheet: View {
 
     private func again() {
         CommandRuns.shared.start(run.args, title: run.title, icon: run.icon, host: run.host, sheet: true,
-                                 onFinish: run.onFinish)
+                                 input: run.input, onFinish: run.onFinish)
     }
 
     /// Запасной путь: та же команда во вкладке-утилите главного окна, где она может спросить что-то сама.

@@ -1030,6 +1030,7 @@ struct ProxyHostRunPane: View {
     @AppStorage(BrowserSettings.linkPlaceKey) private var linkPlace = BrowserSettings.linkPlace.rawValue
     @AppStorage(ChromeProfile.key) private var chromium = ""
     @State private var confirmRemove = false
+    @State private var settingUp = false
     @State private var adding = false
 
     var l: L { L(backend.state.lang) }
@@ -1112,8 +1113,12 @@ struct ProxyHostRunPane: View {
                             .foregroundStyle(Ink.red)
                             .font(.system(size: 12))
                     } else {
-                        UtilityButton(title: l.t("Настроить proxy", "Set up proxy"), args: ["proxy", "setup"], prominent: true, mode: .terminal)
+                        Button(l.t("Настроить proxy", "Set up proxy")) { settingUp = true }
+                            .buttonStyle(PillStyle(prominent: true))
                     }
+                }
+                .sheet(isPresented: $settingUp) {
+                    ProxySourceSheet(title: l.t("Настроить proxy", "Set up proxy"), onFinish: reload)
                 }
                 .confirmationDialog(l.t("Удалить настройку proxy?", "Remove the proxy setup?"), isPresented: $confirmRemove) {
                     Button(l.t("Удалить", "Remove"), role: .destructive) {
@@ -1342,14 +1347,12 @@ func shellWords(_ text: String) -> [String] {
 /// у значка proxy в шапке.
 struct ProxyActions: View {
     @EnvironmentObject var backend: Backend
-    @EnvironmentObject var workspace: Workspace
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.utilityRunner) private var runner
     @Environment(\.commandHost) private var host
     @ObservedObject private var runs = CommandRuns.shared
     var columns = 2
     let reload: () async -> Void
     @State private var restarting = false
+    @State private var changing = false
 
     var l: L { L(backend.state.lang) }
 
@@ -1360,10 +1363,10 @@ struct ProxyActions: View {
                  busy: running(["proxy", "test"]), reopens: true) {
                 sheet(["proxy", "test"], l.t("Проверить выход", "Check exit"), "checkmark.shield")
             }
-            tile("arrow.triangle.2.circlepath", l.t("Обновить подписку", "Update subscription"),
-                 l.t("Заново скачать список серверов по ссылке", "Download the server list again from the link")) { utility(["proxy", "setup"]) }
+            tile("arrow.triangle.2.circlepath", l.t("Сменить подписку", "Change subscription"),
+                 l.t("Новая ссылка или свой прокси вместо подписки", "A new link or your own proxy instead of a subscription")) { changing = true }
             tile("power", l.t("Перезапустить mihomo", "Restart mihomo"),
-                 l.t("Локальный proxy перезапустится, сессии дождутся сети", "The local proxy restarts, sessions wait for the network"),
+                 l.t("Подписки скачаются заново, сессии дождутся сети", "Subscriptions download again, sessions wait for the network"),
                  busy: restarting) {
                 restarting = true
                 Task {
@@ -1378,6 +1381,11 @@ struct ProxyActions: View {
                 sheet(["proxy"], l.t("Сервер и протокол", "Server and protocol"), "list.bullet.rectangle")
             }
         }
+        .sheet(isPresented: $changing) {
+            ProxySourceSheet(title: l.t("Сменить подписку", "Change subscription"), onFinish: reload)
+        }
+        // демо proxy-change: лист смены подписки поверх раздела Proxy
+        .task { if Demo.active && Demo.scene == "proxy-change" { try? await Task.sleep(for: .seconds(1)); changing = true } }
     }
 
     /// reopens: плитка с листом, пока команда идет, остается нажимаемой и открывает лист снова.
@@ -1416,17 +1424,6 @@ struct ProxyActions: View {
         CommandRuns.shared.start(args, title: title, icon: icon, host: host, sheet: true) { await reload() }
     }
 
-    /// Команда agentmeister во вкладке-утилите главного окна: пока только смена подписки, она спрашивает ссылку.
-    private func utility(_ args: [String]) {
-        if let runner {
-            runner(args)
-            return
-        }
-        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
-        spec.utility = args
-        workspace.open(spec)
-        openWindow(id: "main")
-    }
 }
 
 

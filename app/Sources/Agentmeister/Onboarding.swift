@@ -20,9 +20,11 @@ struct OnboardingView: View {
     @State private var step = 0
     @State private var data: SettingsData?
     @State private var doctor: DoctorData?
-    /// Команда, запущенная кнопкой мастера. Ее терминал виден прямо в мастере.
-    @State private var console: TerminalTab?
     @State private var subscription = ""
+    /// Адрес своего прокси для proxy setup --upstream -: уходит через stdin, на экране скрыт.
+    @State private var upstream = ""
+    /// Открыт лист смены подписки; true, если сразу на "Свой прокси".
+    @State private var changingProxy: Bool?
     @State private var country = ""
     /// Источник серверов в шаге proxy: ссылка на подписку или свой прокси (proxy setup --upstream)
     @State private var ownProxy = false
@@ -103,19 +105,14 @@ struct OnboardingView: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
                 .frame(maxHeight: .infinity)
-                if let console {
-                    ConsolePanel(tab: console, l: l) { close() }
-                        .frame(height: 220)
-                }
                 HStack {
                     if current == .proxy && data?.proxy?.configured != true {
                         Button(l.t("Пропустить, работать без proxy", "Skip, work without the proxy")) { skipProxy() }
                             .buttonStyle(PillStyle(small: true))
                     }
                     Spacer()
-                    // Esc нужен терминалу, пока он открыт: иначе он закрыл бы мастер и оборвал команду. Настоящий первый
-                    // запуск Esc не закрывает вовсе: мастер проходят до конца, закрыть можно только открытый из меню.
-                    Button("") { finish() }.keyboardShortcut(console == nil && done ? .cancelAction : nil).hidden().frame(width: 0)
+                    // настоящий первый запуск Esc не закрывает: мастер проходят до конца, закрыть можно только открытый из меню
+                    Button("") { finish() }.keyboardShortcut(done ? .cancelAction : nil).hidden().frame(width: 0)
                     if step > 0 {
                         PillButton(title: l.t("Назад", "Back")) { step -= 1 }
                     }
@@ -123,15 +120,17 @@ struct OnboardingView: View {
                                prominent: true) {
                         if current == .permissions { finish() } else { step += 1 }
                     }
-                    // пока виден терминал, Return нужен ему, а не кнопке
-                    .keyboardShortcut(console == nil ? .defaultAction : nil)
+                    .keyboardShortcut(.defaultAction)
                 }
             }
             .padding(22)
         }
         .frame(width: 820, height: 540)
-        .environment(\.utilityRunner) { args in run(args) }
         .commandSheets(.onboarding)
+        .sheet(isPresented: Binding(get: { changingProxy != nil }, set: { if !$0 { changingProxy = nil } })) {
+            ProxySourceSheet(title: l.t("Сменить подписку", "Change subscription"), own: changingProxy == true,
+                             onFinish: { await reload() })
+        }
         .task { await reload() }
         .interactiveDismissDisabled(!done)
         .onAppear {
@@ -142,7 +141,6 @@ struct OnboardingView: View {
         }
         .onChange(of: ui.onboardingStep) { step = min(ui.onboardingStep, Step.allCases.count - 1) }
         .onChange(of: step) { Task { await reload() } }
-        .onDisappear { console?.terminate() }
         .sheet(item: $signingIn, onDismiss: { Task { await reload() } }) { agent in
             AuthDialog(agent: agent)
         }
@@ -178,23 +176,13 @@ struct OnboardingView: View {
         }
     }
 
-    /// Запустить команду agentmeister в терминале мастера. Предыдущая, если еще идет, останавливается.
-    private func run(_ args: [String]) {
-        console?.onExit = nil
-        console?.terminate()
-        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
-        spec.utility = args
-        let tab = TerminalTab(spec: spec)
-        tab.exitHint = false
-        tab.onExit = { Task { await reload() } }
-        console = tab
-    }
-
-    private func close() {
-        console?.onExit = nil
-        console?.terminate()
-        console = nil
-        Task { await reload() }
+    /// Первая настройка proxy из шага мастера: ссылка или адрес уходят через stdin, вывод в листе команды.
+    private func setUpProxy() {
+        var args = ["proxy", "setup"] + (ownProxy ? ["--upstream", "-"] : ["-"])
+        if !country.isEmpty { args += ["--country", country] }
+        let secret = (ownProxy ? upstream : subscription).trimmingCharacters(in: .whitespacesAndNewlines)
+        CommandRuns.shared.start(args, title: l.t("Настроить proxy", "Set up proxy"), icon: "arrow.triangle.2.circlepath",
+                                 host: .onboarding, sheet: true, input: secret) { await reload() }
     }
 
     private func reload() async {
@@ -205,7 +193,6 @@ struct OnboardingView: View {
     }
 
     private func finish() {
-        close()
         done = true
         dismiss()
     }
@@ -217,12 +204,9 @@ struct OnboardingView: View {
         }
     }
 
-    /// Пояснение под заголовком шага. Пока открыт терминал, его нет: так шаг и терминал помещаются без обрезки.
-    @ViewBuilder
+    /// Пояснение под заголовком шага.
     private func lead(_ text: String) -> some View {
-        if console == nil {
-            Text(text).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
-        }
+        Text(text).foregroundStyle(Ink.muted).fixedSize(horizontal: false, vertical: true)
     }
 
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -319,10 +303,14 @@ struct OnboardingView: View {
                     HStack {
                         UtilityButton(title: l.t("Проверить выход", "Check the exit"), args: ["proxy", "test"],
                                       small: true, symbol: "checkmark.shield", onFinish: { await reload() })
-                        UtilityButton(title: l.t("Сменить подписку", "Change subscription"), args: ["proxy", "setup"],
-                                      small: true, symbol: "arrow.triangle.2.circlepath", mode: .terminal)
-                        UtilityButton(title: l.t("Свой прокси", "Your own proxy"), args: ["proxy", "setup", "--upstream", "-"],
-                                      small: true, symbol: "point.3.connected.trianglepath.dotted", mode: .terminal)
+                        Button { changingProxy = false } label: {
+                            Label(l.t("Сменить подписку", "Change subscription"), systemImage: "arrow.triangle.2.circlepath")
+                        }
+                        .buttonStyle(PillStyle(small: true))
+                        Button { changingProxy = true } label: {
+                            Label(l.t("Свой прокси", "Your own proxy"), systemImage: "point.3.connected.trianglepath.dotted")
+                        }
+                        .buttonStyle(PillStyle(small: true))
                     }
                 } else {
                     SegmentedCapsule(selection: Binding(get: { ownProxy ? "own" : "sub" }, set: { ownProxy = $0 == "own" }),
@@ -330,15 +318,16 @@ struct OnboardingView: View {
                                      compact: true)
                     card {
                         if ownProxy {
-                            Text(l.t("Корпоративный HTTP-прокси, клиент Clash на этом Mac или туннель ssh -D. Адрес с портом (socks5://, http:// или https://) спросит терминал ниже, на экране его видно не будет.",
-                                     "A corporate HTTP proxy, a Clash client on this Mac or an ssh -D tunnel. The terminal below asks for the address with its port (socks5://, http:// or https://) and doesn't show it."))
+                            Text(l.t("Корпоративный HTTP-прокси, клиент Clash на этом Mac или туннель ssh -D. Адрес с портом: socks5://, http:// или https://, логин и пароль можно в адресе.",
+                                     "A corporate HTTP proxy, a Clash client on this Mac or an ssh -D tunnel. The address with its port: socks5://, http:// or https://, a login and password can go in it."))
                                 .font(.system(size: 12)).foregroundStyle(Ink.muted)
                                 .fixedSize(horizontal: false, vertical: true)
+                            SecureField("socks5://127.0.0.1:1080", text: $upstream)
+                                .textFieldStyle(.roundedBorder)
                         } else {
-                        Text(l.t("Ссылка на подписку для Clash, mihomo или v2ray", "Clash, mihomo or v2ray subscription link")).font(.system(size: 12)).foregroundStyle(Ink.muted)
-                        TextField("https://example.com/sub/…", text: $subscription)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 12, design: .monospaced))
+                            Text(l.t("Ссылка на подписку для Clash, mihomo или v2ray", "Clash, mihomo or v2ray subscription link")).font(.system(size: 12)).foregroundStyle(Ink.muted)
+                            SecureField("https://example.com/sub/…", text: $subscription)
+                                .textFieldStyle(.roundedBorder)
                         }
                         HStack(spacing: 10) {
                             Text(l.t("Страна выхода", "Exit country")).font(.system(size: 12)).foregroundStyle(Ink.muted)
@@ -350,12 +339,9 @@ struct OnboardingView: View {
                             .frame(width: 150)
                         }
                     }
-                    Button(l.t("Проверить", "Check")) {
-                        let source = ownProxy ? ["--upstream", "-"] : [subscription.trimmingCharacters(in: .whitespaces)]
-                        run(["proxy", "setup"] + source + (country.isEmpty ? [] : ["--country", country]))
-                    }
-                    .buttonStyle(PillStyle(prominent: true))
-                    .disabled(!ownProxy && !subscription.hasPrefix("http"))
+                    Button(l.t("Проверить", "Check"), action: setUpProxy)
+                        .buttonStyle(PillStyle(prominent: true))
+                        .disabled(ownProxy ? !upstream.contains("://") : !subscription.trimmingCharacters(in: .whitespaces).hasPrefix("http"))
                 }
                 Toggle(l.t("Новые сессии по умолчанию через proxy", "New sessions use the proxy by default"), isOn: Binding(
                     get: { p.defaultRoute != "direct" },

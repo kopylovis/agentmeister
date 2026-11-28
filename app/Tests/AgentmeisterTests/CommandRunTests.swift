@@ -33,3 +33,14 @@ private func wait(_ run: CommandRun) async {
     #expect(bad.code == 2)
     #expect(bad.reason?.contains("--harness") == true)
 }
+
+@MainActor
+@Test func inputToACommandThatDoesNotReadItDoesNotCrash() async throws {
+    try #require(LoginEnvironment.found)
+    // --version выходит, не читая stdin: запись в закрытый канал должна дать ошибку, а не SIGPIPE
+    let run = CommandRun(args: ["--version"], title: "version", icon: "terminal", host: .main)
+    run.input = String(repeating: "x", count: 200_000)
+    run.start()
+    await wait(run)
+    #expect(run.phase == .done)
+}

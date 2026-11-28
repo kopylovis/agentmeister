@@ -41,6 +41,9 @@ final class CommandRun: ObservableObject, Identifiable {
     /// Запущена с листом, а не кнопкой в строке: такой упавшей команде лист открывается снова.
     var sheet = false
     var onFinish: (() async -> Void)?
+    /// Строка для stdin: ссылка, адрес прокси или токен. В аргументах их видно в ps, поэтому они идут так.
+    /// Хранится, пока жив объект, чтобы "Повторить" не спрашивал ее снова.
+    var input: String?
     private var process: Process?
 
     /// Больше этого вывод не держим: начало обрезается, конец важнее.
@@ -72,7 +75,8 @@ final class CommandRun: ObservableObject, Identifiable {
         task.arguments = args
         task.environment = LoginEnvironment.shared
         task.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
-        task.standardInput = FileHandle.nullDevice
+        let stdin = input.map { _ in Pipe() }
+        task.standardInput = stdin ?? FileHandle.nullDevice
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = pipe
@@ -102,6 +106,14 @@ final class CommandRun: ObservableObject, Identifiable {
         do {
             try task.run()
             process = task
+            if let stdin, let input {
+                // команда могла уже выйти: запись в закрытый канал дала бы SIGPIPE и уронила бы приложение.
+                // F_SETNOSIGPIPE только у этого дескриптора: запись вернет ошибку. signal(SIGPIPE, SIG_IGN) не годится,
+                // его унаследовали бы вкладки терминала, и yes | head в них перестал бы завершаться сам
+                _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+                try? stdin.fileHandleForWriting.write(contentsOf: Data((input + "\n").utf8))
+                try? stdin.fileHandleForWriting.close()
+            }
         } catch {
             pipe.fileHandleForReading.readabilityHandler = nil
             append(error.localizedDescription + "\n")
@@ -189,13 +201,14 @@ final class CommandRuns: ObservableObject {
     /// Запустить команду. Такая же еще идет: новую не запускаем, а возвращаем ее (и показываем, если надо).
     @discardableResult
     func start(_ args: [String], title: String, icon: String = "terminal", host: CommandHost, sheet: Bool,
-               onFinish: (() async -> Void)? = nil) -> CommandRun {
+               input: String? = nil, onFinish: (() async -> Void)? = nil) -> CommandRun {
         if let running = latest(args), running.phase == .running {
             if sheet { show(running) }
             return running
         }
         let run = CommandRun(args: args, title: title, icon: icon, host: host)
         run.onFinish = onFinish
+        run.input = input
         run.sheet = sheet
         run.hidden = !sheet
         runs.removeAll { $0.args == args && $0.phase != .running }
