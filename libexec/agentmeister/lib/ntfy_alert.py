@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 
 import keychain
-from mnrhlib import HOME, read_config, tossling_path, write_config
+from mnrhlib import HOME, read_config, tossling_path, tr, write_config
 
 # Настройки старых версий Tossling (раньше Tossy), если команды tossling нет
 LEGACY_CONFIGS = (os.path.join(HOME, ".config", "tossling", "config.json"), os.path.join(HOME, ".config", "tossy", "config.json"))
@@ -50,12 +50,14 @@ def post(server, token, payload):
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace").strip()
         if e.code in (401, 403):
-            raise AlertError(f"сервер не пускает в канал {payload.get('topic')}: нужен доступ на запись (HTTP {e.code})")
+            raise AlertError(tr(f"сервер не пускает в канал {payload.get('topic')}: нужен доступ на запись (HTTP {e.code})",
+                                f"the server denies the topic {payload.get('topic')}: write access is needed (HTTP {e.code})"))
         if e.code == 429:
-            raise AlertError("сервер ограничил частоту отправки (HTTP 429)")
+            raise AlertError(tr("сервер ограничил частоту отправки (HTTP 429)", "the server rate limited sending (HTTP 429)"))
         raise AlertError(f"HTTP {e.code} {detail}".strip())
     except (urllib.error.URLError, OSError, ValueError) as e:
-        raise AlertError(f"нет связи с сервером: {getattr(e, 'reason', e)}")
+        raise AlertError(tr(f"нет связи с сервером: {getattr(e, 'reason', e)}",
+                            f"can't reach the server: {getattr(e, 'reason', e)}"))
 
 
 def payload(topic, message, title="", priority=3, tags=None, click=None, markdown=False, icon=None):
@@ -138,7 +140,9 @@ def body_mode():
 def publish(topic, message, title="", priority=3, tags=None, click=None, markdown=False):
     target = endpoint()
     if not target:
-        raise AlertError(f"Tossling на этом Mac не найден или не подключен к серверу. Как поставить: {INSTALL_DOCS}")
+        raise AlertError(tr(f"Tossling на этом Mac не найден или не подключен к серверу. Как поставить: {INSTALL_DOCS}",
+                            f"Tossling isn't installed on this Mac or isn't connected to a server. How to install: "
+                            f"{INSTALL_DOCS}"))
     server, token = target
     icon = None
     if topic == AGENTMEISTER_TOPIC:

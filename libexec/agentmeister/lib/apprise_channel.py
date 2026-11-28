@@ -71,7 +71,7 @@ def send(title, message, urgent=False):
     except (OSError, subprocess.TimeoutExpired) as e:
         raise AppriseError(f"apprise: {e}") from None
     if r.returncode != 0:
-        tail = (r.stderr or r.stdout).strip().splitlines()[-1:] or [f"код {r.returncode}"]
+        tail = (r.stderr or r.stdout).strip().splitlines()[-1:] or [tr(f"код {r.returncode}", f"code {r.returncode}")]
         raise AppriseError(f"apprise: {tail[0][:200]}")
     return 0
 

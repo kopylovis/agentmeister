@@ -13,7 +13,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from menu import secret
-from mnrhlib import HOME, read_config, tilde, write_config
+from mnrhlib import HOME, read_config, tilde, tr, write_config
 import keychain
 import presence
 from presence import away_after
@@ -38,6 +38,13 @@ class TelegramConflict(TelegramError):
 CONFLICT = ("этого бота уже опрашивает другая программа (например, плагин Telegram для Claude Code), "
             "а Telegram отдает обновления только одной. Заведи для agentmeister отдельного бота: "
             "agentmeister notify telegram setup")
+CONFLICT_EN = ("another program already polls this bot (for example, the Telegram plugin for Claude Code), "
+               "and Telegram gives updates to only one. Create a separate bot for agentmeister: "
+               "agentmeister notify telegram setup")
+
+
+def conflict():
+    return tr(CONFLICT, CONFLICT_EN)
 
 
 def plugin_env():
@@ -92,7 +99,7 @@ def token():
 def save_token(value):
     # через keychain.save: токен уходит в security через stdin, не аргументом
     if not keychain.save(ACCOUNT, value, "Agentmeister Telegram bot", service=SERVICE):
-        raise TelegramError("не сохранил токен в Связку ключей")
+        raise TelegramError(tr("не сохранил токен в Связку ключей", "couldn't save the token to the keychain"))
 
 
 def forget_token():
@@ -104,7 +111,8 @@ def forget_token():
 def call(method, tok=None, wait=15, **params):
     tok = tok or token()
     if not tok:
-        raise TelegramError("бот не подключён: agentmeister notify telegram")
+        raise TelegramError(tr("бот не подключён: agentmeister notify telegram",
+                               "the bot isn't connected: agentmeister notify telegram"))
     data = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None}).encode()
     try:
         with urllib.request.urlopen(urllib.request.Request(API.format(tok, method), data=data),
@@ -115,14 +123,15 @@ def call(method, tok=None, wait=15, **params):
             reply = json.load(e)
         except ValueError:
             if e.code == 409:
-                raise TelegramConflict(CONFLICT) from None
-            raise TelegramError(f"Telegram ответил HTTP {e.code}") from None
+                raise TelegramConflict(conflict()) from None
+            raise TelegramError(tr(f"Telegram ответил HTTP {e.code}", f"Telegram answered HTTP {e.code}")) from None
     except (urllib.error.URLError, OSError) as e:
-        raise TelegramError(f"нет связи с api.telegram.org ({getattr(e, 'reason', e)})") from None
+        raise TelegramError(tr(f"нет связи с api.telegram.org ({getattr(e, 'reason', e)})",
+                               f"can't reach api.telegram.org ({getattr(e, 'reason', e)})")) from None
     if not reply.get("ok"):
         if reply.get("error_code") == 409:
-            raise TelegramConflict(CONFLICT)
-        raise TelegramError(reply.get("description") or "Telegram вернул ошибку")
+            raise TelegramConflict(conflict())
+        raise TelegramError(reply.get("description") or tr("Telegram вернул ошибку", "Telegram returned an error"))
     return reply["result"]
 
 
@@ -158,11 +167,11 @@ def send(title, subtitle, body):
 
 def read_token():
     if sys.stdin.isatty():
-        return secret("Токен бота (при вводе не виден): ").strip()
+        return secret(tr("Токен бота (при вводе не виден): ", "Bot token (hidden): ")).strip()
     clip = subprocess.run(["pbpaste"], capture_output=True, text=True).stdout.strip()
     if TOKEN_RE.match(clip):
         subprocess.run(["pbcopy"], input="", text=True)
-        print("Взял токен из буфера обмена и очистил буфер.")
+        print(tr("Взял токен из буфера обмена и очистил буфер.", "Took the token from the clipboard and cleared the clipboard."))
         return clip
     return ""
 
@@ -205,40 +214,52 @@ def wait_for_start(tok, code, seconds=180):
                 return ch
             if ch.get("id") not in skipped:
                 skipped.add(ch.get("id"))
-                print(f"  Пропускаю /start без верного кода от {who(ch)}: нужна ссылка выше или /start {code}")
+                print(tr(f"  Пропускаю /start без верного кода от {who(ch)}: нужна ссылка выше или /start {code}",
+                         f"  Skipping /start without the right code from {who(ch)}: use the link above or /start {code}"))
     return None
 
 
 def setup():
-    print("Подключаю уведомления в Telegram.")
-    print("  1. В Telegram открой @BotFather, отправь /newbot, придумай имя и адрес бота.")
-    print("  2. BotFather пришлёт токен вида 123456789:AA… — скопируй его.")
-    print("Токен хранится в Связке ключей macOS, в файлы и в вывод не попадает.")
+    print(tr("Подключаю уведомления в Telegram.", "Connecting Telegram notifications."))
+    print(tr("  1. В Telegram открой @BotFather, отправь /newbot, придумай имя и адрес бота.",
+             "  1. In Telegram open @BotFather, send /newbot, pick a name and a username for the bot."))
+    print(tr("  2. BotFather пришлёт токен вида 123456789:AA… — скопируй его.",
+             "  2. BotFather sends a token like 123456789:AA…, copy it."))
+    print(tr("Токен хранится в Связке ключей macOS, в файлы и в вывод не попадает.",
+             "The token is kept in the macOS keychain and never goes to files or output."))
     tok = read_token()
     if not TOKEN_RE.match(tok or ""):
-        print("Нет токена. Скопируй его из сообщения BotFather и запусти команду ещё раз.")
+        print(tr("Нет токена. Скопируй его из сообщения BotFather и запусти команду ещё раз.",
+                 "No token. Copy it from the BotFather message and run the command again."))
         return 1
     try:
         bot = call("getMe", tok)
     except TelegramError as e:
-        print(f"✗ Telegram не принял токен: {e}")
+        print(tr(f"✗ Telegram не принял токен: {e}", f"✗ Telegram didn't accept the token: {e}"))
         return 1
     if shares_plugin_bot(tok):
-        print(f"! Этот же бот настроен в плагине Telegram для Claude Code ({tilde(plugin_env())}).")
-        print("  Telegram отдает обновления только одной программе: agentmeister и плагин будут перебивать")
-        print("  друг друга, кнопки «Разрешить» и «Отклонить» с этим ботом работать не будут.")
-        print("  Лучше заведи для agentmeister отдельного бота в @BotFather.")
-        if not sys.stdin.isatty() or input("Все равно подключить этого бота? [y/N] ").strip().lower() not in (
+        print(tr(f"! Этот же бот настроен в плагине Telegram для Claude Code ({tilde(plugin_env())}).",
+                 f"! The same bot is set up in the Telegram plugin for Claude Code ({tilde(plugin_env())})."))
+        print(tr("  Telegram отдает обновления только одной программе: agentmeister и плагин будут перебивать",
+                 "  Telegram gives updates to only one program: agentmeister and the plugin will get in each"))
+        print(tr("  друг друга, кнопки «Разрешить» и «Отклонить» с этим ботом работать не будут.",
+                 "  other's way, and the Allow and Deny buttons won't work with this bot."))
+        print(tr("  Лучше заведи для agentmeister отдельного бота в @BotFather.",
+                 "  Better create a separate bot for agentmeister in @BotFather."))
+        if not sys.stdin.isatty() or input(tr("Все равно подключить этого бота? [y/N] ",
+                                              "Connect this bot anyway? [y/N] ")).strip().lower() not in (
                 "y", "yes", "д", "да"):
-            print("Не подключил.")
+            print(tr("Не подключил.", "Not connected."))
             return 1
     save_token(tok)
     name = bot.get("username", "")
-    print(f"✓ бот @{name}")
+    print(tr(f"✓ бот @{name}", f"✓ bot @{name}"))
     code = secrets.token_hex(4)
     link = f"https://t.me/{name}?start={code}"
-    print(f"  3. Открываю {link} — нажми там «Start» (до 3 минут).")
-    print(f"     Если ссылка не открылась, отправь боту: /start {code}")
+    print(tr(f"  3. Открываю {link} — нажми там «Start» (до 3 минут).",
+             f"  3. Opening {link}, press Start there (within 3 minutes)."))
+    print(tr(f"     Если ссылка не открылась, отправь боту: /start {code}",
+             f"     If the link didn't open, send the bot: /start {code}"))
     subprocess.run(["open", link], capture_output=True)
     try:
         ch = wait_for_start(tok, code)
@@ -246,27 +267,38 @@ def setup():
         print(f"✗ {e}")
         return 1
     if not ch:
-        print("Не дождался /start. Запусти agentmeister notify telegram ещё раз.")
+        print(tr("Не дождался /start. Запусти agentmeister notify telegram ещё раз.",
+                 "No /start arrived. Run agentmeister notify telegram again."))
         return 1
     write_config(telegram_chat=str(ch["id"]), telegram_bot=name)
     try:
-        call("sendMessage", chat_id=ch["id"], text="agentmeister подключен ✓ Сюда будут приходить уведомления Claude, "
-                                                   "когда ты не за Mac.")
+        call("sendMessage", chat_id=ch["id"], text=tr("agentmeister подключен ✓ Сюда будут приходить уведомления Claude, "
+                                                      "когда ты не за Mac.",
+                                                      "agentmeister is connected ✓ Claude notifications will arrive here "
+                                                      "when you are away from the Mac."))
     except TelegramError:
         pass
-    print(f"✓ подключено к чату с {who(ch)}. Если это не ты — agentmeister notify telegram off")
-    print(f"Уведомления идут в Telegram, когда ты не за Mac: экран заблокирован или {away_after() // 60} мин "
-          f"без мыши и клавиатуры.")
+    print(tr(f"✓ подключено к чату с {who(ch)}. Если это не ты — agentmeister notify telegram off",
+             f"✓ connected to the chat with {who(ch)}. If this isn't you: agentmeister notify telegram off"))
+    print(tr(f"Уведомления идут в Telegram, когда ты не за Mac: экран заблокирован или {away_after() // 60} мин "
+             f"без мыши и клавиатуры.",
+             f"Notifications go to Telegram when you are away from the Mac: the screen is locked or "
+             f"{away_after() // 60} min without mouse and keyboard."))
     return 0
 
 
 def describe():
     if not configured():
-        return "Telegram: не подключён — agentmeister notify telegram"
+        return tr("Telegram: не подключён — agentmeister notify telegram",
+                  "Telegram: not connected, agentmeister notify telegram")
     bot = read_config().get("telegram_bot", "")
-    when = "всегда" if mode() == "always" else f"когда ты не за Mac (блокировка или {away_after()} с без ввода)"
-    shared = (". ! Тот же бот, что у плагина Telegram для Claude Code: кнопки разрешений с ним не работают, "
-              "заведи отдельного: agentmeister notify telegram setup") if shares_plugin_bot() else ""
+    when = tr("всегда", "always") if mode() == "always" else tr(
+        f"когда ты не за Mac (блокировка или {away_after()} с без ввода)",
+        f"when you are away (screen locked or {away_after()}s without input)")
+    shared = tr(". ! Тот же бот, что у плагина Telegram для Claude Code: кнопки разрешений с ним не работают, "
+                "заведи отдельного: agentmeister notify telegram setup",
+                ". ! Same bot as the Telegram plugin for Claude Code: permission buttons don't work with it, "
+                "create a separate one: agentmeister notify telegram setup") if shares_plugin_bot() else ""
     return f"Telegram: @{bot}, {when}{shared}"
 
 
@@ -275,7 +307,8 @@ def main(args):
     if not cmd:
         if configured():
             print(describe())
-            print("  test | off | always | away [сек] | approve on|off")
+            print(tr("  test | off | always | away [сек] | approve on|off",
+                     "  test | off | always | away [sec] | approve on|off"))
             return 0
         return setup()
     if cmd == "setup":
@@ -283,16 +316,18 @@ def main(args):
     if cmd == "off":
         forget_token()
         write_config(telegram_chat="", telegram_bot="")
-        print("Telegram отключён, токен удалён из Связки ключей")
+        print(tr("Telegram отключён, токен удалён из Связки ключей",
+                 "Telegram disconnected, the token is removed from the keychain"))
         return 0
     if cmd == "always":
         write_config(telegram_when="always")
-        print("Telegram: присылаю всегда, даже если ты за Mac")
+        print(tr("Telegram: присылаю всегда, даже если ты за Mac", "Telegram: sending always, even when you are at the Mac"))
         return 0
     if cmd == "away":
         if len(args) > 1:
             if not args[1].isdigit():
-                print("agentmeister notify telegram away <секунд без ввода>")
+                print(tr("agentmeister notify telegram away <секунд без ввода>",
+                         "agentmeister notify telegram away <seconds without input>"))
                 return 2
             presence.set_away_after(args[1])
         write_config(telegram_when="away")
@@ -303,11 +338,14 @@ def main(args):
         return telegram_approve.main(args[1:])
     if cmd == "test":
         try:
-            send("agentmeister: пробное уведомление", "Claude Code", "Так будут выглядеть уведомления, когда ты не за Mac.")
+            send(tr("agentmeister: пробное уведомление", "agentmeister: test notification"), "Claude Code",
+                 tr("Так будут выглядеть уведомления, когда ты не за Mac.",
+                    "This is how notifications look when you are away from the Mac."))
         except TelegramError as e:
             print(f"✗ {e}")
             return 1
-        print("✓ отправлено в Telegram")
+        print(tr("✓ отправлено в Telegram", "✓ sent to Telegram"))
         return 0
-    print("agentmeister notify telegram [test | off | always | away [сек] | approve on|off]")
+    print(tr("agentmeister notify telegram [test | off | always | away [сек] | approve on|off]",
+             "agentmeister notify telegram [test | off | always | away [sec] | approve on|off]"))
     return 2

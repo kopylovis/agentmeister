@@ -76,7 +76,8 @@ def send(data):
         detail = e.read().decode(errors="replace").strip()[:200]
         raise WebhookError(f"HTTP {e.code} {detail}".strip()) from None
     except (urllib.error.URLError, OSError, ValueError) as e:
-        raise WebhookError(f"нет связи с {host()}: {getattr(e, 'reason', e)}") from None
+        raise WebhookError(tr(f"нет связи с {host()}: {getattr(e, 'reason', e)}",
+                              f"can't reach {host()}: {getattr(e, 'reason', e)}")) from None
 
 
 def describe():

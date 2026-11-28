@@ -8,7 +8,7 @@ import shlex
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CLAUDE_HOME, HOOK_TIMEOUTS, HOOKS, STATUS_CMD, hook_command, is_hook  # noqa: E402
+from mnrhlib import CLAUDE_HOME, HOOK_TIMEOUTS, HOOKS, STATUS_CMD, hook_command, is_hook, tr  # noqa: E402
 
 PATH = os.path.join(CLAUDE_HOME, "settings.json")
 # Ключи, которые старые версии Claude Code держали в ~/.claude.json; новые его еще читают
@@ -24,7 +24,7 @@ def load(path=PATH):
     except FileNotFoundError:
         return {}
     if not isinstance(data, dict):
-        raise ValueError("ожидался JSON-объект")
+        raise ValueError(tr("ожидался JSON-объект", "expected a JSON object"))
     return data
 
 

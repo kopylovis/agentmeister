@@ -86,16 +86,16 @@ def encrypt(data, key, iv):
     прямо в этом процессе: у openssl enc ключ передается только аргументом -K, а аргументы видны в ps."""
     plain, k, v = data.encode(), key.encode(), iv.encode()
     if len(k) != KEY_LEN or len(v) != IV_LEN:
-        raise BarkError("ключ шифрования или IV неверной длины")
+        raise BarkError(tr("ключ шифрования или IV неверной длины", "the encryption key or IV has the wrong length"))
     out = ctypes.create_string_buffer(len(plain) + 16)
     moved = ctypes.c_size_t(0)
     try:
         # kCCEncrypt 0, kCCAlgorithmAES 0, kCCOptionPKCS7Padding 1
         status = _commoncrypto()(0, 0, 1, k, len(k), v, plain, len(plain), out, len(out), ctypes.byref(moved))
     except (OSError, AttributeError) as e:
-        raise BarkError(f"CommonCrypto недоступен: {e}") from None
+        raise BarkError(tr(f"CommonCrypto недоступен: {e}", f"CommonCrypto isn't available: {e}")) from None
     if status != 0:
-        raise BarkError(f"CommonCrypto вернул {status}")
+        raise BarkError(tr(f"CommonCrypto вернул {status}", f"CommonCrypto returned {status}"))
     return base64.b64encode(out.raw[:moved.value]).decode()
 
 
@@ -126,10 +126,12 @@ def send(title, body, urgent=False):
         except ValueError:
             detail = ""
         if "device token" in detail or "device key" in detail:
-            raise BarkError(f"HTTP {e.code}, сервер не знает этот ключ устройства. Скопируй ключ заново в приложении Bark") from None
+            raise BarkError(tr(f"HTTP {e.code}, сервер не знает этот ключ устройства. Скопируй ключ заново в приложении Bark",
+                               f"HTTP {e.code}, the server doesn't know this device key. Copy the key again in the Bark app")) from None
         raise BarkError(f"HTTP {e.code} {detail}".strip()) from None
     except (urllib.error.URLError, OSError, ValueError) as e:
-        raise BarkError(f"нет связи с сервером Bark: {getattr(e, 'reason', e)}") from None
+        raise BarkError(tr(f"нет связи с сервером Bark: {getattr(e, 'reason', e)}",
+                           f"can't reach the Bark server: {getattr(e, 'reason', e)}")) from None
 
 
 def parse_key(text):
