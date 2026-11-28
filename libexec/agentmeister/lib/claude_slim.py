@@ -9,7 +9,7 @@ import tarfile
 import time
 import uuid
 
-from mnrhlib import CACHE, tilde
+from mnrhlib import CACHE, tilde, tr
 
 BACKUPS = os.path.join(CACHE, "slim-backup")
 BACKUP_DAYS = 14
@@ -24,7 +24,7 @@ class SlimError(Exception):
 
 
 def kb(n):
-    return f"{n / 1048576:.1f} МБ" if n >= 1048576 else f"{max(1, n // 1024)} КБ"
+    return (f"{n / 1048576:.1f} " + tr("МБ", "MB")) if n >= 1048576 else f"{max(1, n // 1024)} " + tr("КБ", "KB")
 
 
 def scan(path):
@@ -82,14 +82,15 @@ def protection(info, keep):
 
 
 def placeholder(kind, size):
-    return f"[{kind} {kb(size)} удалён: {MARK}]"
+    return tr(f"[{kind} {kb(size)} удалён: {MARK}]", f"[{kind} {kb(size)} removed: {MARK}]")
 
 
 def cut_text(text, stats):
     if len(text) <= TEXT_LIMIT or MARK in text[-200:]:
         return text
     stats["texts"] += 1
-    return text[:HEAD] + f"\n… [обрезано {len(text) - HEAD - TAIL} символов: {MARK}] …\n" + text[-TAIL:]
+    return text[:HEAD] + tr(f"\n… [обрезано {len(text) - HEAD - TAIL} символов: {MARK}] …\n",
+                            f"\n… [{len(text) - HEAD - TAIL} characters cut: {MARK}] …\n") + text[-TAIL:]
 
 
 def image_size(block):
@@ -105,7 +106,7 @@ def slim_blocks(blocks, stats):
         elif b.get("type") == "image" and image_size(b) > 2048:
             stats["images"] += 1
             stats["image_bytes"] += image_size(b)
-            out.append({"type": "text", "text": placeholder("скриншот", image_size(b) * 3 // 4)})
+            out.append({"type": "text", "text": placeholder(tr("скриншот", "screenshot"), image_size(b) * 3 // 4)})
         elif b.get("type") == "text" and isinstance(b.get("text"), str):
             out.append(dict(b, text=cut_text(b["text"], stats)))
         elif b.get("type") == "tool_result":
@@ -169,7 +170,8 @@ def write_slim(src, dst, info, prot, rename=None):
     with open(src, "rb") as fi, open(dst, "wb") as fo:
         for i, raw in enumerate(fi):
             if i >= len(info):
-                raise SlimError("сессия изменилась во время сжатия, повтори")
+                raise SlimError(tr("сессия изменилась во время сжатия, повтори",
+                                   "the session changed while compacting, try again"))
             if sid_re:
                 raw = sid_re.sub(b'"sessionId":"' + rename[1].encode() + b'"', raw)
             if prot["flags"][i] or info[i].get("type") not in ("user", "attachment"):
@@ -192,10 +194,12 @@ def write_slim(src, dst, info, prot, rename=None):
 def verify(src, dst, info, prot, keep, rename=None):
     info2 = scan(dst)
     if len(info2) != len(info):
-        raise SlimError(f"число строк изменилось: {len(info)} → {len(info2)}")
+        raise SlimError(tr(f"число строк изменилось: {len(info)} → {len(info2)}",
+                           f"the line count changed: {len(info)} → {len(info2)}"))
     prot2 = protection(info2, keep)
     if not prot2 or prot2["flags"] != prot["flags"]:
-        raise SlimError("после сжатия иначе определяется то, что Claude Code отправит модели")
+        raise SlimError(tr("после сжатия иначе определяется то, что Claude Code отправит модели",
+                           "after compacting, what Claude Code sends to the model would be determined differently"))
     back = (re.compile(rb'"sessionId":"' + re.escape(rename[1].encode()) + rb'"'),
             b'"sessionId":"' + rename[0].encode() + b'"') if rename else None
     with open(src, "rb") as fa, open(dst, "rb") as fb:
@@ -205,16 +209,18 @@ def verify(src, dst, info, prot, keep, rename=None):
             if a == b:
                 continue
             if prot["flags"][i]:
-                raise SlimError(f"строка {i + 1} попадает в контекст модели, но изменилась")
+                raise SlimError(tr(f"строка {i + 1} попадает в контекст модели, но изменилась",
+                                   f"line {i + 1} is in the model's context, but it changed"))
             try:
                 oa, ob = json.loads(a), json.loads(b)
             except ValueError:
-                raise SlimError(f"строка {i + 1} перестала читаться как JSON")
+                raise SlimError(tr(f"строка {i + 1} перестала читаться как JSON",
+                                   f"line {i + 1} no longer parses as JSON"))
             for k in ("uuid", "parentUuid", "logicalParentUuid", "type", "timestamp", "isSidechain", "sessionId"):
                 if oa.get(k) != ob.get(k):
-                    raise SlimError(f"в строке {i + 1} изменилось поле {k}")
+                    raise SlimError(tr(f"в строке {i + 1} изменилось поле {k}", f"field {k} changed in line {i + 1}"))
             if set(oa) != set(ob):
-                raise SlimError(f"в строке {i + 1} изменился набор полей")
+                raise SlimError(tr(f"в строке {i + 1} изменился набор полей", f"the set of fields changed in line {i + 1}"))
     return True
 
 
@@ -334,7 +340,8 @@ def restore_side(path, tar):
     with tarfile.open(tar) as t:
         for member in t.getmembers():
             if not member.isfile() or member.name.startswith("/") or ".." in member.name.split("/"):
-                raise SlimError(f"в {tilde(tar)} странный путь {member.name}")
+                raise SlimError(tr(f"в {tilde(tar)} странный путь {member.name}",
+                                   f"{tilde(tar)} has a strange path {member.name}"))
         # фильтр data есть с Python 3.12 (и в поздних 3.8–3.11), пути выше уже проверены
         if hasattr(tarfile, "data_filter"):
             t.extractall(folder, filter="data")
@@ -442,7 +449,8 @@ def apply(path, sid, keep=2):
     info = scan(path)
     prot = protection(info, keep)
     if not prot:
-        raise SlimError(f"в сессии меньше {keep} сжатий /compact, сжимать нечего")
+        raise SlimError(tr(f"в сессии меньше {keep} сжатий /compact, сжимать нечего",
+                           f"the session has fewer than {keep} /compact, nothing to compact"))
     tmp = path + ".mnrh-slim"
     base = backup_base(sid)
     try:
@@ -457,7 +465,8 @@ def apply(path, sid, keep=2):
             stats["after"] = os.path.getsize(tmp)
             stats["backup"] = backup(path, sid, stats["after"], tmp, base)
             if os.path.getsize(path) != size:
-                raise SlimError("сессия изменилась во время сжатия, повтори")
+                raise SlimError(tr("сессия изменилась во время сжатия, повтори",
+                                   "the session changed while compacting, try again"))
             os.replace(tmp, path)
     finally:
         if os.path.exists(tmp):
@@ -476,7 +485,8 @@ def copy(path, sid, title, keep=2):
     info = scan(path)
     prot = protection(info, keep)
     if not prot:
-        raise SlimError(f"в сессии меньше {keep} сжатий /compact, сжимать нечего")
+        raise SlimError(tr(f"в сессии меньше {keep} сжатий /compact, сжимать нечего",
+                           f"the session has fewer than {keep} /compact, nothing to compact"))
     new_sid = str(uuid.uuid4())
     dst = os.path.join(os.path.dirname(path), new_sid + ".jsonl")
     tmp = dst + ".mnrh-slim"
@@ -484,7 +494,7 @@ def copy(path, sid, title, keep=2):
         stats = write_slim(path, tmp, info, prot, rename=(sid, new_sid))
         verify(path, tmp, info, prot, keep, rename=(sid, new_sid))
         with open(tmp, "ab") as f:
-            f.write(dump({"type": "custom-title", "customTitle": f"{title} (сжатая копия)",
+            f.write(dump({"type": "custom-title", "customTitle": tr(f"{title} (сжатая копия)", f"{title} (compacted copy)"),
                           "sessionId": new_sid}).encode() + b"\n")
         shutil.copymode(path, tmp)
         os.replace(tmp, dst)
@@ -504,7 +514,8 @@ def backups_of(sid):
 def undo(path, sid):
     found, sides = backups_of(sid), side_backups_of(sid)
     if not found and not sides:
-        raise SlimError(f"резервной копии нет в {tilde(BACKUPS)} (хранятся {BACKUP_DAYS} дней)")
+        raise SlimError(tr(f"резервной копии нет в {tilde(BACKUPS)} (хранятся {BACKUP_DAYS} дней)",
+                           f"no backup in {tilde(BACKUPS)} (they're kept for {BACKUP_DAYS} days)"))
     added = undo_file(path, found[-1]) if found else 0
     for tar in reversed(sides):
         restore_side(path, tar)
@@ -515,11 +526,16 @@ def undo(path, sid):
 def undo_file(path, gz):
     with open(gz[:-9] + ".json") as f:
         meta = json.load(f)
-    rewritten = SlimError("сессию после сжатия переписали (перенос или другая правка), вернуть автоматически нельзя; "
-                          f"оригинал лежит в {tilde(gz)}")
+    rewritten = SlimError(tr("сессию после сжатия переписали (перенос или другая правка), вернуть автоматически нельзя; "
+                             f"оригинал лежит в {tilde(gz)}",
+                             "the session was rewritten after compacting (a move or another edit), so it can't be "
+                             f"restored automatically. The original is in {tilde(gz)}"))
     if not meta.get("slim_sha256"):
-        raise SlimError("копию сделала старая версия agentmeister: не видно, переписывали ли сессию после сжатия, "
-                        f"поэтому вернуть автоматически нельзя; оригинал лежит в {tilde(gz)}")
+        raise SlimError(tr("копию сделала старая версия agentmeister: не видно, переписывали ли сессию после сжатия, "
+                           f"поэтому вернуть автоматически нельзя; оригинал лежит в {tilde(gz)}",
+                           "an old agentmeister version made this backup. It can't tell whether the session was "
+                           "rewritten after compacting, so it can't be restored automatically. "
+                           f"The original is in {tilde(gz)}"))
     tmp = path + ".mnrh-undo"
     try:
         with open(path, "rb") as cur:
@@ -538,7 +554,8 @@ def undo_file(path, gz):
         shutil.copystat(path, tmp)
         info = os.stat(path)
         if (info.st_dev, info.st_ino) != (meta["slim_dev"], meta["slim_ino"]) or info.st_size != meta["slim_size"] + added:
-            raise SlimError("сессия изменилась во время возврата, повтори")
+            raise SlimError(tr("сессия изменилась во время возврата, повтори",
+                               "the session changed while restoring, try again"))
         os.replace(tmp, path)
     finally:
         if os.path.exists(tmp):

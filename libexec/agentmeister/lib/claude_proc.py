@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import CLAUDE_HOME  # noqa: E402
+from mnrhlib import CLAUDE_HOME, tr  # noqa: E402
 
 CLAUDE = CLAUDE_HOME
 CLAUDE_BIN = os.environ.get("MNRH_CLAUDE_BIN", "claude")
@@ -81,7 +81,8 @@ def find_claude():
     env_pid = os.environ.get("CLAUDE_PID")
     if env_pid and os.path.exists(session_file(env_pid)):
         return int(env_pid)
-    raise RestartError("не нашёл процесс Claude Code: запускай изнутри сессии (/restart или MCP)")
+    raise RestartError(tr("не нашёл процесс Claude Code: запускай изнутри сессии (/restart или MCP)",
+                          "couldn't find the Claude Code process. Run this from inside a session (/restart or MCP)"))
 
 
 def resume_flags(args):
