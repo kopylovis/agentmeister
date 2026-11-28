@@ -59,6 +59,7 @@ class Doctor(unittest.TestCase):
         env = dict(os.environ, HOME=home, XDG_CONFIG_HOME=os.path.join(home, ".config"), ZDOTDIR=home,
                    PYTHONDONTWRITEBYTECODE="1", MNRH_CLAUDE_BIN="/nonexistent/claude")
         env.pop("MNRH_CLAUDE_HOME", None)
+        env.pop("AGENTMEISTER_LANG", None)
         r = subprocess.run([os.path.join(ROOT, "bin", "agentmeister"), "doctor"], env=env, capture_output=True,
                            text=True, timeout=60)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)

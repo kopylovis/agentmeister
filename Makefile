@@ -3,6 +3,9 @@ BIN := $(PREFIX)/bin
 
 .PHONY: install uninstall test app dmg
 
+# проверки сверяют русский вывод, а lang в config у каждого свой
+test: export AGENTMEISTER_LANG := ru
+
 install:
 	@mkdir -p "$(BIN)"
 	@if [ "$$(readlink "$(BIN)/agentmeister")" = "$(CURDIR)/bin/agentmeister" ] || \

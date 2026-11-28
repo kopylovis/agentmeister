@@ -445,7 +445,7 @@ class Lang(unittest.TestCase):
                 f.write("projects=~/dev\n")
             with patch.object(app_state.mnrhlib, "CONFIG", conf), \
                     patch.object(app_state.mnrhlib, "system_english", return_value=True), \
-                    patch("sys.stdout"):
+                    patch.dict(os.environ, {"AGENTMEISTER_LANG": ""}), patch("sys.stdout"):
                 self.assertEqual(app_state.lang_setting(), "auto")
                 self.assertEqual(app_state.set_lang("ru"), 0)
                 self.assertEqual(app_state.lang_setting(), "ru")
