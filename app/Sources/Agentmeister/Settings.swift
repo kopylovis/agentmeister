@@ -213,7 +213,7 @@ struct DoctorData: Decodable {
         let text: String
     }
 
-    let rows: [Row]
+    var rows: [Row]
 }
 
 extension Backend {

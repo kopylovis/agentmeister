@@ -203,14 +203,7 @@ struct TabAlert: View {
     /// Исполнитель host-run в фоне, как (agentmeister host-run serve &) в обычном терминале.
     private func startHostRun() {
         busy = true
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: LoginEnvironment.agentmeister)
-        task.arguments = ["host-run", "serve"]
-        task.environment = LoginEnvironment.shared
-        task.standardInput = FileHandle.nullDevice
-        task.standardOutput = FileHandle.nullDevice
-        task.standardError = FileHandle.nullDevice
-        try? task.run()
+        Backend.startHostRunner()
         Task {
             try? await Task.sleep(for: .seconds(2))
             backend.refresh()

@@ -1658,10 +1658,37 @@ struct DoctorPane: View {
     @State private var loading = false
     @State private var checkedAt: Date?
     @State private var expanded: Set<CheckGroup> = []
+    /// Исправления, запущенные из этого раздела, по ключу проверки. Живут до "Проверить снова".
+    @State private var fixes: [String: FixRun] = [:]
+    /// У каких исправлений раскрыт вывод.
+    @State private var showOutput: Set<String> = []
+    @AppStorage("settingsSection") private var section = SettingsSection.general.rawValue
 
     var l: L { L(backend.state.lang) }
 
     fileprivate enum CheckGroup: Int, CaseIterable { case claude, codex, network, mac }
+
+    /// Что делает "Исправить". Команды без вопросов идут в фоне прямо в строке. Крышке пароль нужен от
+    /// системного окна macOS (lid setup --gui), proxy настраивается в своем разделе, исполнитель host-run
+    /// запускается в фоне, как в разделе Proxy.
+    fileprivate enum FixAction {
+        case run([String])
+        case proxy
+        case runner
+    }
+
+    fileprivate struct FixRun {
+        enum Phase { case running, done, failed }
+        var phase: Phase
+        var output: String
+        let group: CheckGroup
+        let title: String
+        let args: [String]
+    }
+
+    private static func key(_ row: DoctorData.Row) -> String { row.check + "|" + row.text }
+
+    private func hasFix(_ g: CheckGroup) -> Bool { fixes.values.contains { $0.group == g && $0.phase == .done } }
 
     private func group(of check: String) -> CheckGroup {
         switch check {
@@ -1682,15 +1709,51 @@ struct DoctorPane: View {
     }
 
     /// Чем исправить проверку: та же команда, что советует agentmeister doctor.
-    private func fix(_ row: DoctorData.Row) -> [String]? {
+    private func fix(_ row: DoctorData.Row) -> FixAction? {
         switch row.check {
         case "codex":
             if row.text.contains("/hooks") && !row.text.contains("--harness codex setup") { return nil }
-            return ["--harness", "codex", "setup"]
-        case "proxy": return ["proxy", "setup"]
-        case "lid": return ["lid", "setup"]
+            return .run(["--harness", "codex", "setup"])
+        case "proxy": return .proxy
+        case "lid": return .run(["lid", "setup", "--gui"])
+        case "hostrun": return .runner
         case "modes", "install": return nil
-        default: return ["setup"]
+        default: return .run(["setup"])
+        }
+    }
+
+    private func perform(_ action: FixAction, _ row: DoctorData.Row) {
+        switch action {
+        case .proxy:
+            section = SettingsSection.proxy.rawValue
+        case .runner:
+            Backend.startHostRunner()
+            Task {
+                try? await Task.sleep(for: .seconds(2))
+                backend.refresh()
+            }
+        case .run(let args):
+            let key = Self.key(row)
+            withAnimation(.snappy(duration: 0.2)) {
+                fixes[key] = FixRun(phase: .running, output: "", group: group(of: row.check),
+                                    title: Self.split(row.text).title, args: args)
+                showOutput.remove(key)
+            }
+            Task {
+                let result = await Task.detached(priority: .userInitiated) { Backend.runForText(args) }.value
+                guard result.ok else {
+                    withAnimation(.snappy(duration: 0.2)) {
+                        fixes[key]?.phase = .failed
+                        fixes[key]?.output = result.text
+                    }
+                    return
+                }
+                fixes[key]?.output = result.text
+                await load(keepFixes: true)
+                // команда прошла, а проверка осталась: показываем как неудачу, с выводом команды
+                let still = data?.rows.contains { Self.key($0) == key && Self.isProblem($0.level) } ?? false
+                withAnimation(.snappy(duration: 0.2)) { fixes[key]?.phase = still ? .failed : .done }
+            }
         }
     }
 
@@ -1762,13 +1825,37 @@ struct DoctorPane: View {
         let groups = CheckGroup.allCases
             .map { g in (g, rows.filter { group(of: $0.check) == g }.sorted { Self.rank($0.level) < Self.rank($1.level) }) }
             .filter { !$0.1.isEmpty }
-            .sorted { (Self.rank($0.1.first?.level ?? "ok"), $0.0.rawValue) < (Self.rank($1.1.first?.level ?? "ok"), $1.0.rawValue) }
+            // группа с только что исправленной проверкой идет выше остальных, где все в порядке: плашку видно сразу
+            .sorted { (Self.rank($0.1.first?.level ?? "ok"), hasFix($0.0) ? 0 : 1, $0.0.rawValue)
+                    < (Self.rank($1.1.first?.level ?? "ok"), hasFix($1.0) ? 0 : 1, $1.0.rawValue) }
         VStack(spacing: 10) {
             ForEach(groups, id: \.0) { g, items in
                 groupCard(g, items)
             }
         }
         .task { await load() }
+        // демо settings-doctor-fixing, -failed, -fixed: строка крышки в каждом состоянии исправления
+        .task {
+            guard Demo.active, Demo.scene.hasPrefix("settings-doctor-fix") || Demo.scene == "settings-doctor-failed" else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            guard let row = data?.rows.first(where: { $0.check == "lid" }) else { return }
+            let key = Self.key(row)
+            let output = l.t("Ставлю /etc/sudoers.d/mnrh-pmset:\n  me ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1, /usr/bin/pmset -a disablesleep 0\nотменено, правило не поставлено",
+                             "Installing /etc/sudoers.d/mnrh-pmset:\n  me ALL=(root) NOPASSWD: /usr/bin/pmset -a disablesleep 1, /usr/bin/pmset -a disablesleep 0\ncanceled, the rule isn't installed")
+            var run = FixRun(phase: .running, output: "", group: .mac, title: Self.split(row.text).title, args: ["lid", "setup", "--gui"])
+            switch Demo.scene {
+            case "settings-doctor-failed":
+                run.phase = .failed
+                run.output = output
+            case "settings-doctor-fixed":
+                run.phase = .done
+                run.output = output.components(separatedBy: "\n").dropLast().joined(separator: "\n")
+                showOutput.insert(key)
+                data?.rows.removeAll { $0.check == "lid" }
+            default: break
+            }
+            fixes[key] = run
+        }
         // демо settings-doctor-toggle: группа Claude Code сама раскрывается и сворачивается, чтобы снять анимацию
         .task {
             guard Demo.active, Demo.scene == "settings-doctor-toggle" else { return }
@@ -1816,7 +1903,8 @@ struct DoctorPane: View {
     private func groupCard(_ g: CheckGroup, _ items: [DoctorData.Row]) -> some View {
         let issues = items.filter { Self.isProblem($0.level) }
         let rest = items.filter { !Self.isProblem($0.level) }
-        let collapsible = issues.isEmpty
+        let fixed = fixes.filter { $0.value.group == g && $0.value.phase == .done }.sorted { $0.key < $1.key }
+        let collapsible = issues.isEmpty && fixed.isEmpty
         let open = !collapsible || expanded.contains(g)
         let bad = issues.filter { $0.level == "bad" }.count
         let off = rest.filter { $0.level == "off" }.count
@@ -1865,6 +1953,9 @@ struct DoctorPane: View {
             // раскрываются вниз из-под шапки, как шторка. Переход вставки сдвигал их вверх поверх шапки, а при
             // сворачивании они на миг ложились на соседнюю карточку
             VStack(alignment: .leading, spacing: 8) {
+                ForEach(fixed, id: \.key) { key, run in
+                    doneRow(run, key)
+                }
                 ForEach(Array(issues.enumerated()), id: \.offset) { _, row in
                     issueRow(row)
                 }
@@ -1921,22 +2012,50 @@ struct DoctorPane: View {
     }
 
     /// Ошибка или замечание: подсвеченная плашка, заголовок, пояснение целиком и "Исправить", если есть команда.
+    /// Ошибка или замечание. Пока идет исправление, вместо кнопки индикатор. Если оно не удалось, строка
+    /// красная, с концом вывода, "Повторить" и запасным "Открыть в терминале".
     private func issueRow(_ row: DoctorData.Row) -> some View {
         let (title, detail) = Self.split(row.text)
-        let isBad = row.level == "bad"
+        let key = Self.key(row)
+        let run = fixes[key]
+        let failed = run?.phase == .failed
+        let isBad = row.level == "bad" || failed
         return HStack(alignment: .top, spacing: 10) {
-            mark(row.level).font(.system(size: 13)).padding(.top, 1)
+            mark(failed ? "bad" : row.level).font(.system(size: 13)).padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(isBad ? Ink.red : Ink.warn)
+                Text(failed ? l.t("Не исправилось", "Not fixed") + ". " + title : title)
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(isBad ? Ink.red : Ink.warn)
                 if let detail {
                     Text(detail).font(.system(size: 12)).foregroundStyle(Ink.text2)
+                }
+                if failed, let run {
+                    output(run.output.isEmpty ? l.t("Команда ничего не вывела.", "The command printed nothing.")
+                                              : Self.tail(run.output))
+                    HStack(spacing: 12) {
+                        if let action = fix(row) {
+                            Button(l.t("Повторить", "Try again")) { perform(action, row) }
+                                .buttonStyle(.link).font(.system(size: 12))
+                        }
+                        // в терминале sudo сам спросит пароль: окно macOS там не нужно
+                        UtilityButton(title: l.t("Открыть в терминале", "Open in Terminal"),
+                                      args: run.args.filter { $0 != "--gui" }, small: true)
+                    }
+                    .padding(.top, 4)
                 }
             }
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
             Spacer(minLength: 0)
-            if let args = fix(row) {
-                UtilityButton(title: l.t("Исправить", "Fix"), args: args, prominent: true, small: true)
+            if run?.phase == .running {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text(l.t("Исправляю", "Fixing")).font(.system(size: 12)).foregroundStyle(Ink.text2)
+                }
+                .padding(.top, 2)
+            } else if !failed, let action = fix(row) {
+                Button(l.t("Исправить", "Fix")) { perform(action, row) }
+                    .buttonStyle(PillStyle(prominent: true, small: true))
+                    .help(Self.helpText(action))
             }
         }
         .padding(.horizontal, 12)
@@ -1944,6 +2063,57 @@ struct DoctorPane: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12).fill(isBad ? Ink.redChip : Ink.warnChip))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(isBad ? Ink.redBorder : Ink.amberDot.opacity(0.35)))
+    }
+
+    /// Исправленная проверка: зеленая плашка до следующего "Проверить снова", вывод команды по клику.
+    private func doneRow(_ run: FixRun, _ key: String) -> some View {
+        let open = showOutput.contains(key)
+        return HStack(alignment: .top, spacing: 10) {
+            mark("ok").font(.system(size: 13)).padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(l.t("Исправлено", "Fixed") + ". " + run.title).font(.system(size: 12, weight: .medium)).foregroundStyle(Ink.teal)
+                if !run.output.isEmpty {
+                    Button(open ? l.t("Скрыть", "Hide") : l.t("Подробнее", "Details")) {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            if open { showOutput.remove(key) } else { showOutput.insert(key) }
+                        }
+                    }
+                    .buttonStyle(.link).font(.system(size: 12))
+                    if open { output(Self.tail(run.output, lines: 40)) }
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Ink.tealChip))
+    }
+
+    private func output(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, design: .monospaced))
+            .foregroundStyle(Ink.text2)
+            .textSelection(.enabled)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Ink.card))
+            .padding(.top, 4)
+    }
+
+    /// Последние строки вывода: в ошибке важен конец.
+    static func tail(_ text: String, lines: Int = 8) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false).suffix(lines).joined(separator: "\n")
+    }
+
+    private static func helpText(_ action: FixAction) -> String {
+        switch action {
+        case .run(let args): return "agentmeister " + args.joined(separator: " ")
+        case .proxy: return "Proxy"
+        case .runner: return "agentmeister host-run serve"
+        }
     }
 
     private func chip(_ text: String, _ fg: Color, _ bg: Color, _ icon: String) -> some View {
@@ -1968,12 +2138,14 @@ struct DoctorPane: View {
         }
     }
 
-    private func load() async {
+    /// keepFixes: перечитать после исправления и оставить его плашку. Иначе ("Проверить снова") плашки уходят.
+    private func load(keepFixes: Bool = false) async {
         loading = true
         let fresh = await backend.doctor()
         withAnimation(.snappy(duration: 0.28)) {
             data = fresh
             checkedAt = Date()
+            if !keepFixes { fixes = fixes.filter { $0.value.phase == .running } }
         }
         loading = false
     }

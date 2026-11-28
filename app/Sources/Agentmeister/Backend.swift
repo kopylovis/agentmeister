@@ -621,6 +621,19 @@ final class Backend: ObservableObject {
         }.value
     }
 
+    /// Исполнитель host-run в фоне, как (agentmeister host-run serve &) в обычном терминале.
+    static func startHostRunner() {
+        guard !Demo.active, LoginEnvironment.found else { return }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: LoginEnvironment.agentmeister)
+        task.arguments = ["host-run", "serve"]
+        task.environment = LoginEnvironment.shared
+        task.standardInput = FileHandle.nullDevice
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        try? task.run()
+    }
+
     /// Команда agentmeister ради результата для человека: удалось ли и что она напечатала (stdout и stderr вместе,
     /// без цветов). Для действий, у которых вывод в терминале не нужен, а ошибку показать надо.
     nonisolated static func runForText(_ args: [String]) -> (ok: Bool, text: String) {
