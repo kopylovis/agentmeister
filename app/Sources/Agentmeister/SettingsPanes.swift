@@ -1769,6 +1769,14 @@ struct DoctorPane: View {
             }
         }
         .task { await load() }
+        // демо settings-doctor-toggle: группа Claude Code сама раскрывается и сворачивается, чтобы снять анимацию
+        .task {
+            guard Demo.active, Demo.scene == "settings-doctor-toggle" else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.5))
+                toggle(.claude)
+            }
+        }
     }
 
     private func header(total: Int, bad: Int, warn: Int) -> some View {
@@ -1821,7 +1829,7 @@ struct DoctorPane: View {
         return VStack(alignment: .leading, spacing: 0) {
             Button {
                 guard collapsible else { return }
-                if expanded.contains(g) { expanded.remove(g) } else { expanded.insert(g) }
+                toggle(g)
             } label: {
                 HStack(spacing: 8) {
                     if collapsible {
@@ -1853,30 +1861,42 @@ struct DoctorPane: View {
             .accessibilityAddTraits(collapsible ? .isButton : [])
             .accessibilityValue(collapsible ? (open ? l.t("развернуто", "expanded") : l.t("свернуто", "collapsed")) : "")
 
-            if open {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(issues.enumerated()), id: \.offset) { _, row in
-                        issueRow(row)
-                    }
-                    if !rest.isEmpty {
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 18, alignment: .topLeading)],
-                                  alignment: .leading, spacing: 7) {
-                            ForEach(Array(rest.enumerated()), id: \.offset) { _, row in
-                                okRow(row)
-                            }
-                        }
-                        .padding(.horizontal, issues.isEmpty ? 0 : 2)
-                    }
+            // строки всегда в раскладке, а свернутая группа сжимает их до нулевой высоты и обрезает. Так они
+            // раскрываются вниз из-под шапки, как шторка. Переход вставки сдвигал их вверх поверх шапки, а при
+            // сворачивании они на миг ложились на соседнюю карточку
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(issues.enumerated()), id: \.offset) { _, row in
+                    issueRow(row)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                if !rest.isEmpty {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 18, alignment: .topLeading)],
+                              alignment: .leading, spacing: 7) {
+                        ForEach(Array(rest.enumerated()), id: \.offset) { _, row in
+                            okRow(row)
+                        }
+                    }
+                    .padding(.horizontal, issues.isEmpty ? 0 : 2)
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: open ? nil : 0, alignment: .top)
+            .clipped()
+            .opacity(open ? 1 : 0)
+            .accessibilityHidden(!open)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .clipped()
+        .clipShape(.rect(cornerRadius: 18))
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
-        .animation(.snappy(duration: 0.28), value: open)
+    }
+
+    /// Раскрыть или свернуть группу. Анимация на все окно, а не на одну карточку: иначе карточки ниже прыгали
+    /// на новое место сразу и на миг ложились на сворачиваемые строки.
+    private func toggle(_ g: CheckGroup) {
+        withAnimation(.snappy(duration: 0.28)) {
+            if expanded.contains(g) { expanded.remove(g) } else { expanded.insert(g) }
+        }
     }
 
     /// Плотная строка проверки в порядке: значок, заголовок и приглушенное пояснение той же строкой.

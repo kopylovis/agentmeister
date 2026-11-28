@@ -330,8 +330,31 @@ def build(out):
     headsup = {"path": H + "/.local/state/mnrh/headsup.jsonl", "plugin": True, "max": 500, "entries": [
         {"ts": ts, "headline": text, "project": proj, "cwd": f"{D}/{proj}" if proj else None, "session": None,
          "tag": tag, "times": times} for ts, proj, tag, times, text in notes]}
+    # диагностика: одно замечание с "Исправить" в группе Mac, остальные группы в порядке и свернуты
+    rows = [("install", "ok", t("agentmeister 1.32.1", "agentmeister 1.32.1")),
+            ("install", "ok", "Claude Code 2.1.326"),
+            ("commands", "ok", t("commands /restart, /forget and 11 more in place", "команды /restart, /forget и еще 11 на месте")),
+            ("settings", "ok", t("Claude Code hooks in place", "хуки Claude Code на месте")),
+            ("settings", "ok", t("transcripts kept for 365 days", "переписки хранятся 365 дней")),
+            ("statusline", "ok", t("Promptsill status line", "строка состояния Promptsill")),
+            ("mcp", "ok", t("MCP server agentmeister responding, 22 tools", "MCP-сервер agentmeister отвечает, 22 инструмента")),
+            ("iterm", "ok", t("iTerm2 status: it2 handle-agent-hook", "статус iTerm2: it2 handle-agent-hook")),
+            ("restart", "ok", t("restart hook in ~/.zshrc", "хук перезапуска в ~/.zshrc")),
+            ("codex", "ok", "Codex 0.172.0"),
+            ("codex", "ok", t("Codex MCP responding, 6 tools", "Codex MCP отвечает, 6 инструментов")),
+            ("codex", "off", t("Codex translate is off", "Codex translate выключен")),
+            ("codex", "ok", t("Codex humanize, 3 of 3 hooks trusted", "Codex humanize, доверенных хуков 3 из 3")),
+            ("proxy", "ok", t("proxy configured (test the exit: agentmeister proxy test)", "прокси настроен (проверить выход: agentmeister proxy test)")),
+            ("notify", "ok", t("notifications: ~/Library/Application Support/Agentmeister/agentmeister Notify.app",
+                               "уведомления: ~/Library/Application Support/Agentmeister/agentmeister Notify.app")),
+            ("lid", "warn", t("lid: closing the lid puts the Mac to sleep even in caffeinate sessions (agentmeister lid setup)",
+                              "крышка: закрытая крышка усыпит Mac и в caffeinate-сессии (agentmeister lid setup)")),
+            ("modes", "ok", t("modes: humanize on, translate off, guard off, notify on, buildlog on, lid on",
+                              "режимы: humanize вкл, translate выкл, guard выкл, notify вкл, buildlog вкл, lid вкл"))]
+    doctor = {"rows": [{"check": c, "level": lv, "text": text} for c, lv, text in rows]}
     for name, data in (("app-state.json", state), ("app-state-settings.json", settings), ("tabs.json", tabs),
-                       ("app-state-project.json", project), ("app-state-headsup.json", headsup)):
+                       ("app-state-project.json", project), ("app-state-headsup.json", headsup),
+                       ("app-state-doctor.json", doctor)):
         with open(os.path.join(out, name), "w") as f:
             json.dump(data, f, indent=1, ensure_ascii=False)
     for theme in PALETTES:

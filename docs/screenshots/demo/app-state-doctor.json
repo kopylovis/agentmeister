@@ -1,0 +1,89 @@
+{
+ "rows": [
+  {
+   "check": "install",
+   "level": "ok",
+   "text": "agentmeister 1.32.1"
+  },
+  {
+   "check": "install",
+   "level": "ok",
+   "text": "Claude Code 2.1.326"
+  },
+  {
+   "check": "commands",
+   "level": "ok",
+   "text": "commands /restart, /forget and 11 more in place"
+  },
+  {
+   "check": "settings",
+   "level": "ok",
+   "text": "Claude Code hooks in place"
+  },
+  {
+   "check": "settings",
+   "level": "ok",
+   "text": "transcripts kept for 365 days"
+  },
+  {
+   "check": "statusline",
+   "level": "ok",
+   "text": "Promptsill status line"
+  },
+  {
+   "check": "mcp",
+   "level": "ok",
+   "text": "MCP server agentmeister responding, 22 tools"
+  },
+  {
+   "check": "iterm",
+   "level": "ok",
+   "text": "iTerm2 status: it2 handle-agent-hook"
+  },
+  {
+   "check": "restart",
+   "level": "ok",
+   "text": "restart hook in ~/.zshrc"
+  },
+  {
+   "check": "codex",
+   "level": "ok",
+   "text": "Codex 0.172.0"
+  },
+  {
+   "check": "codex",
+   "level": "ok",
+   "text": "Codex MCP responding, 6 tools"
+  },
+  {
+   "check": "codex",
+   "level": "off",
+   "text": "Codex translate is off"
+  },
+  {
+   "check": "codex",
+   "level": "ok",
+   "text": "Codex humanize, 3 of 3 hooks trusted"
+  },
+  {
+   "check": "proxy",
+   "level": "ok",
+   "text": "proxy configured (test the exit: agentmeister proxy test)"
+  },
+  {
+   "check": "notify",
+   "level": "ok",
+   "text": "notifications: ~/Library/Application Support/Agentmeister/agentmeister Notify.app"
+  },
+  {
+   "check": "lid",
+   "level": "warn",
+   "text": "lid: closing the lid puts the Mac to sleep even in caffeinate sessions (agentmeister lid setup)"
+  },
+  {
+   "check": "modes",
+   "level": "ok",
+   "text": "modes: humanize on, translate off, guard off, notify on, buildlog on, lid on"
+  }
+ ]
+}

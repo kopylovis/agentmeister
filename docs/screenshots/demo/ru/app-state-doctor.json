@@ -1,0 +1,89 @@
+{
+ "rows": [
+  {
+   "check": "install",
+   "level": "ok",
+   "text": "agentmeister 1.32.1"
+  },
+  {
+   "check": "install",
+   "level": "ok",
+   "text": "Claude Code 2.1.326"
+  },
+  {
+   "check": "commands",
+   "level": "ok",
+   "text": "команды /restart, /forget и еще 11 на месте"
+  },
+  {
+   "check": "settings",
+   "level": "ok",
+   "text": "хуки Claude Code на месте"
+  },
+  {
+   "check": "settings",
+   "level": "ok",
+   "text": "переписки хранятся 365 дней"
+  },
+  {
+   "check": "statusline",
+   "level": "ok",
+   "text": "строка состояния Promptsill"
+  },
+  {
+   "check": "mcp",
+   "level": "ok",
+   "text": "MCP-сервер agentmeister отвечает, 22 инструмента"
+  },
+  {
+   "check": "iterm",
+   "level": "ok",
+   "text": "статус iTerm2: it2 handle-agent-hook"
+  },
+  {
+   "check": "restart",
+   "level": "ok",
+   "text": "хук перезапуска в ~/.zshrc"
+  },
+  {
+   "check": "codex",
+   "level": "ok",
+   "text": "Codex 0.172.0"
+  },
+  {
+   "check": "codex",
+   "level": "ok",
+   "text": "Codex MCP отвечает, 6 инструментов"
+  },
+  {
+   "check": "codex",
+   "level": "off",
+   "text": "Codex translate выключен"
+  },
+  {
+   "check": "codex",
+   "level": "ok",
+   "text": "Codex humanize, доверенных хуков 3 из 3"
+  },
+  {
+   "check": "proxy",
+   "level": "ok",
+   "text": "прокси настроен (проверить выход: agentmeister proxy test)"
+  },
+  {
+   "check": "notify",
+   "level": "ok",
+   "text": "уведомления: ~/Library/Application Support/Agentmeister/agentmeister Notify.app"
+  },
+  {
+   "check": "lid",
+   "level": "warn",
+   "text": "крышка: закрытая крышка усыпит Mac и в caffeinate-сессии (agentmeister lid setup)"
+  },
+  {
+   "check": "modes",
+   "level": "ok",
+   "text": "режимы: humanize вкл, translate выкл, guard выкл, notify вкл, buildlog вкл, lid вкл"
+  }
+ ]
+}

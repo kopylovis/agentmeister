@@ -319,6 +319,9 @@ struct SettingsView: View {
         }
         .ignoresSafeArea(edges: .top)
         .toolbar(removing: .title)
+        // у сцены Settings есть панель инструментов, и macOS 26 показывает под курсором ее фон с разделителем
+        // полосой над разделом
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         // без сдвига светофор лежит на скругленном углу стеклянной карточки разделов
         .background(TrafficLightsInset())
         // окно Settings из SwiftUI нельзя ни растянуть, ни развернуть; двойной клик по верху его разворачивает
