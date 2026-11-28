@@ -102,6 +102,16 @@ class Upstream(unittest.TestCase):
                 self.assertIsNone(p.sub_options(["--upstream", "-"]))  # без терминала адрес не спросить
         self.assertEqual(p.ask_url("upstream:socks5://127.0.0.1:1080", "usage"), "upstream:socks5://127.0.0.1:1080")
 
+    def test_dash_reads_the_secret_from_stdin(self):
+        # так передает приложение: ссылка и адрес не попадают в аргументы, их видно в ps
+        with redirect_stderr(io.StringIO()), patch("sys.stdout", io.StringIO()):
+            with patch("sys.stdin", io.StringIO("socks5://me:pw@127.0.0.1:1080\n")):
+                self.assertEqual(p.sub_options(["work", "--upstream", "-"]), (["work", "upstream:socks5://me:pw@127.0.0.1:1080"], "", ""))
+            with patch("sys.stdin", io.StringIO("https://sub.example.net/abc\n")):
+                self.assertEqual(p.ask_url("-", "usage"), "https://sub.example.net/abc")
+            with patch("sys.stdin", io.StringIO("")):
+                self.assertIsNone(p.ask_url("-", "usage"))
+
     def test_refresh_builds_the_file_without_network(self):
         tmp = tempfile.mkdtemp()
         url, sub = os.path.join(tmp, "subscription.url"), os.path.join(tmp, "subscription.txt")

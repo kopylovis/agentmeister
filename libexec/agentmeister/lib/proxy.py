@@ -1683,7 +1683,13 @@ def sub_options(args):
         else:
             rest.append(a)
     if "upstream" in opts:
-        if opts["upstream"] in ("", "-"):
+        if opts["upstream"] == "-" and not sys.stdin.isatty():
+            # адрес строкой из stdin: так передает приложение, логин и пароль в аргументах видно в ps
+            opts["upstream"] = sys.stdin.readline().strip()
+            if not opts["upstream"]:
+                print(f"{BAD} " + tr("в stdin нет адреса прокси", "no proxy address on stdin"))
+                return None
+        elif opts["upstream"] in ("", "-"):
             # без адреса спрашиваем скрытым вводом: логин и пароль в аргументах видно в ps и в заголовке вкладки
             if not sys.stdin.isatty():
                 print(f"{BAD} " + tr("--upstream без адреса работает только в терминале", "--upstream without an address works only in a terminal"))
@@ -1713,10 +1719,18 @@ def sub_options(args):
 
 
 def ask_url(given, usage):
-    """Ссылка на подписку из аргумента или со скрытым вводом. None, если ее нет или она не подходит."""
+    """Ссылка на подписку из аргумента или со скрытым вводом. None, если ее нет или она не подходит.
+    "-" вместо ссылки: без терминала она читается строкой из stdin (так передает приложение, в аргументах ее
+    видно в ps), в терминале спрашивается скрытым вводом."""
     url = given
     if url.startswith(UPSTREAM):
         return url
+    if url == "-":
+        url = "" if sys.stdin.isatty() else sys.stdin.readline().strip()
+        if not url:
+            if not sys.stdin.isatty():
+                print(f"{BAD} " + tr("в stdin нет ссылки на подписку", "no subscription link on stdin"))
+                return None
     if not url:
         if not sys.stdin.isatty():
             print(usage, file=sys.stderr)
@@ -2239,10 +2253,12 @@ agentmeister proxy test            сравнить выход напрямую 
 agentmeister proxy setup [ссылка] [--country DE] [--only DE]
                                   настроить по ссылке на подписку (https://…, Clash, mihomo или v2ray).
                                   --country: если выход окажется в другой стране, сессия не запустится;
-                                  --only: брать из подписки только серверы, чьё имя подходит под это выражение
+                                  --only: брать из подписки только серверы, чьё имя подходит под это выражение.
+                                  Ссылка "-" читается из stdin, без ссылки ее спросит скрытый ввод
 agentmeister proxy setup --upstream socks5://127.0.0.1:1080
                                   вместо подписки свой прокси: socks5://, http:// или https:// с портом,
-                                  логин и пароль можно в адресе. Так же и proxy add <имя> --upstream …
+                                  логин и пароль можно в адресе, "-" читает адрес из stdin.
+                                  Так же и proxy add <имя> --upstream …
 agentmeister proxy add <имя> [ссылка] [--country NL] [--only RE]
                                   еще одна подписка. agentmeister <проект> -x <имя> идет только через нее,
                                   а просто -x по всем по очереди: следующая, когда в прошлой нет живых серверов
@@ -2269,11 +2285,12 @@ agentmeister proxy test            compare the exit direct and via proxy (IP and
 agentmeister proxy setup [link] [--country DE] [--only DE]
                                   set up from a subscription link (https://…, Clash, mihomo or v2ray).
                                   --country: if the exit lands in another country, the session won't start;
-                                  --only: take only servers whose name matches this expression
+                                  --only: take only servers whose name matches this expression.
+                                  The link "-" is read from stdin, without a link it's asked hidden
 agentmeister proxy setup --upstream socks5://127.0.0.1:1080
                                   your own proxy instead of a subscription: socks5://, http:// or https://
-                                  with a port, a login and password can go in the address. Same for
-                                  proxy add <name> --upstream …
+                                  with a port, a login and password can go in the address, "-" reads the
+                                  address from stdin. Same for proxy add <name> --upstream …
 agentmeister proxy add <name> [link] [--country NL] [--only RE]
                                   one more subscription. agentmeister <project> -x <name> goes only through it,
                                   and plain -x goes through all of them in order: the next one when the previous
