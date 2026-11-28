@@ -1204,7 +1204,7 @@ struct HeadsUpSection: View {
     private func when(_ ts: Double) -> String {
         let date = Date(timeIntervalSince1970: ts)
         let f = DateFormatter()
-        f.locale = Locale(identifier: l.en ? "en_US" : "ru_RU")
+        f.locale = l.locale
         let thisYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
         f.dateFormat = l.en ? (thisYear ? "MMM d, HH:mm" : "MMM d yyyy, HH:mm") : (thisYear ? "d MMM, HH:mm" : "d MMM yyyy, HH:mm")
         return f.string(from: date)

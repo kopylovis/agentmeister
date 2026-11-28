@@ -139,7 +139,7 @@ struct UsageView: View {
         let cal = Calendar.current
         let sameMonth = cal.component(.month, from: start) == cal.component(.month, from: end)
         let f = DateFormatter()
-        f.locale = Locale(identifier: l.en ? "en_US" : "ru_RU")
+        f.locale = l.locale
         if l.en {
             f.dateFormat = "MMM d"
             let a = f.string(from: start)
@@ -153,7 +153,7 @@ struct UsageView: View {
     }
 
     private func grouped(_ n: Int) -> String {
-        n.formatted(.number.locale(Locale(identifier: l.en ? "en_US" : "ru_RU")))
+        n.formatted(.number.locale(l.locale))
     }
 
     private func tiles(_ d: UsageData) -> some View {
@@ -253,7 +253,7 @@ struct UsageView: View {
     /// "24.11" / "Nov 24".
     private func shortDate(_ t: Double) -> String {
         let f = DateFormatter()
-        f.locale = Locale(identifier: l.en ? "en_US" : "ru_RU")
+        f.locale = l.locale
         f.dateFormat = l.en ? "MMM d" : "dd.MM"
         return f.string(from: Date(timeIntervalSince1970: t))
     }
