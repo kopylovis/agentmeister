@@ -246,7 +246,7 @@ def build(out):
         "signedIn": {"claude": True, "codex": True}, "retentionDays": 30, "models": {"claude": "opus", "codex": "gpt-5.5"}}
     settings = {
         "errors": {},
-        "notify": {"on": True, "after": 30, "sound": True, "away": 300,
+        "notify": {"on": True, "after": 30, "sound": True, "soundName": "Prompt", "soundChoices": ["Prompt", "Basso", "Glass", "Ping", "Tink"], "away": 300,
                    "telegram": {"connected": True, "bot": "demo_agents_bot", "when": "away", "away": 300, "approve": True},
                    "phone": {"mode": "off", "configured": True},
                    "tossling": {"mode": "off", "configured": True, "server": "https://tossling.example.com", "source": "cli",
