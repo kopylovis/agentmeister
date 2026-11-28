@@ -591,3 +591,59 @@ class ServeForever(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FreshHome(unittest.TestCase):
+    """Новый пользователь: ни ~/.config/mnrh, ни ~/.config/agentmeister еще нет, host-run берет папки agentmeister."""
+
+    BIN = str(Path(host_run.__file__).resolve().parents[3] / "bin" / "agentmeister")
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp(dir="/tmp", prefix="hr-")  # короткий путь: у сокета предел длины
+        self.env = {k: v for k, v in os.environ.items()
+                    if not k.startswith(("XDG_", "MNRH_", "AGENTMEISTER_")) and k.lower() not in
+                    ("https_proxy", "http_proxy", "all_proxy", "no_proxy")}
+        self.env.update(HOME=self.home, PYTHONDONTWRITEBYTECODE="1")
+
+    def tearDown(self):
+        subprocess.run([self.BIN, "host-run", "stop"], env=self.env, capture_output=True, timeout=20)
+        import shutil
+        shutil.rmtree(self.home, True)
+
+    def cli(self, *args, timeout=30):
+        return subprocess.run([self.BIN, "host-run", *args], env=self.env, capture_output=True, text=True,
+                              timeout=timeout, stdin=subprocess.DEVNULL)
+
+    def test_default_paths_and_sandbox_rules(self):
+        code = (f"import sys; sys.path.insert(0, {str(Path(host_run.__file__).parent)!r}); import host_run; "
+                "print(host_run.CONF_DIR); print(host_run.STATE); print(' '.join(host_run.sandbox_params()))")
+        out = subprocess.run([sys.executable, "-c", code], env=self.env, capture_output=True, text=True,
+                             check=True).stdout.splitlines()
+        home = os.path.realpath(self.home)
+        self.assertEqual(out[0], f"{self.home}/.config/agentmeister/host-run")
+        self.assertEqual(out[1], f"{self.home}/.local/state/agentmeister/host-run")
+        self.assertIn(f"HOST_RUN_CONF={home}/.config/agentmeister/host-run", out[2])
+        self.assertIn(f"HOST_RUN_STATE={home}/.local/state/agentmeister/host-run", out[2])
+        self.assertNotIn("mnrh", out[2])
+
+    @unittest.skipUnless(sys.platform == "darwin" and host_run.nested_sandbox_ok(), "requires running outside a sandbox")
+    def test_runner_serves_a_new_user(self):
+        conf = Path(self.home, ".config", "agentmeister", "host-run")
+        conf.mkdir(parents=True)
+        work = Path(self.home, "work")
+        work.mkdir()
+        write_commands(conf / "commands.json", {"hello": {"cwd": str(work), "run": ["/bin/echo", "hi from host-run"]}})
+        (conf / "commands.json").chmod(0o600)
+        runner = subprocess.Popen([self.BIN, "host-run", "serve"], env=self.env, stdin=subprocess.DEVNULL,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        self.addCleanup(lambda: runner.poll() is None and runner.kill())
+        sock = Path(self.home, ".local", "state", "agentmeister", "host-run", "host-run.sock")
+        deadline = time.time() + 15
+        while not sock.exists() and time.time() < deadline and runner.poll() is None:
+            time.sleep(0.2)
+        self.assertTrue(sock.exists(), "the runner didn't open its socket")
+        r = self.cli("hello")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("hi from host-run", r.stdout)
+        self.assertFalse(Path(self.home, ".config", "mnrh").exists())
+        self.assertFalse(Path(self.home, ".local", "state", "mnrh").exists())
