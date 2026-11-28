@@ -31,6 +31,16 @@ STEPS = [
     ("proxy", "прокси для agentmeister -x"),
     ("promptsill", "строка состояния promptsill: лимиты, контекст, порты, память"),
 ]
+STEPS_EN = {
+    "commands": "commands /restart, /forget, /fresh, /slim, /todo and others",
+    "hooks": "Claude Code hooks: messages after /restart, guard, notifications, humanization, build digest, "
+             "status line; keep transcripts for a year, not 30 days",
+    "zsh": "restart hook in ~/.zshrc",
+    "mcp": "agentmeister MCP server",
+    "notify-app": "notification app",
+    "proxy": "proxy for agentmeister -x",
+    "promptsill": "promptsill status line: limits, context, ports, memory",
+}
 IDS = [s for s, _ in STEPS]
 # Шаги с вопросами, у каждого своя функция. Остальные setup делает сам и отмечает сделанными все разом.
 ASKS = {"proxy", "promptsill"}
@@ -247,17 +257,22 @@ def check():
     steps, fresh = pending()
     if not steps:
         return 0
-    about = dict(STEPS)
+    about = {s: tr(text, STEPS_EN[s]) for s, text in STEPS}
     if fresh:
-        print("agentmeister setup на этом Mac еще не запускали. Он ставит:")
+        print(tr("agentmeister setup на этом Mac еще не запускали. Он ставит:",
+                 "agentmeister setup hasn't run on this Mac yet. It installs:"))
     elif legacy():
-        print("Найдены старые настройки mnrh claude или claudemeister. Теперь используется "
-              "agentmeister. Обновить настройки?")
+        print(tr("Найдены старые настройки mnrh claude или claudemeister. Теперь используется "
+                 "agentmeister. Обновить настройки?",
+                 "Found old mnrh claude or claudemeister settings. agentmeister is used now. Update the settings?"))
     else:
-        print("После обновления в agentmeister setup есть шаги, которые здесь не настроены:")
+        print(tr("После обновления в agentmeister setup есть шаги, которые здесь не настроены:",
+                 "After the update, agentmeister setup has steps that aren't set up here:"))
     for s in steps:
         print(f"  {about[s]}")
-    answer = ask("Настроить сейчас?", [("yes", "Да", "yд"), ("later", "Позже", "lп"), ("never", "Не предлагать", "nн")],
+    answer = ask(tr("Настроить сейчас?", "Set it up now?"),
+                 [("yes", tr("Да", "Yes"), "yд"), ("later", tr("Позже", "Later"), "lп"),
+                  ("never", tr("Не предлагать", "Don't offer"), "nн")],
                  back="later")
     print()
     if answer == "never":
@@ -267,7 +282,8 @@ def check():
             # шаги переноса в записи сделаны (их ставил mnrh claude setup), поэтому отказ помним отдельно
             done, skipped = current()
             write(done, skipped, legacy_declined=True)
-        print("Больше не спрошу. Настроить можно в любой момент: agentmeister setup\n")
+        print(tr("Больше не спрошу. Настроить можно в любой момент: agentmeister setup\n",
+                 "I won't ask again. You can set it up any time: agentmeister setup\n"))
     elif answer == "yes" and set(steps) <= ASKS:
         for step in steps:
             result = proxy_step() if step == "proxy" else promptsill_step()
@@ -281,7 +297,7 @@ def check():
                         "setup"])
         print()
     else:
-        print("Спрошу при следующем запуске.\n")
+        print(tr("Спрошу при следующем запуске.\n", "I'll ask at the next start.\n"))
     return 0
 
 

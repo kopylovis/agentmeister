@@ -6,6 +6,27 @@ CFG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 if [ -d "$CFG_HOME/mnrh" ] && [ ! -d "$CFG_HOME/agentmeister" ]; then CONF="$CFG_HOME/mnrh/config"; else CONF="$CFG_HOME/agentmeister/config"; fi
 LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib"
 
+# язык вывода как mnrhlib.lang(): AGENTMEISTER_LANG, потом lang= в config, потом первый язык macOS
+ui_lang() {
+  local v=""
+  case "${AGENTMEISTER_LANG:-}" in [Rr][Uu]) echo ru; return 0 ;; [Ee][Nn]) echo en; return 0 ;; esac
+  if [ -f "$CONF" ]; then
+    v=$(sed -n '/^[[:space:]]*lang[[:space:]]*=/{s/^[^=]*=[[:space:]]*//;s/[[:space:]]*$//;p;}' "$CONF" | tail -1)
+  fi
+  case "$v" in [Rr][Uu]) echo ru; return 0 ;; [Ee][Nn]) echo en; return 0 ;; esac
+  v=$(defaults read -g AppleLanguages 2>/dev/null | sed -n 's/^[^A-Za-z]*\([A-Za-z][A-Za-z]\).*/\1/p' | head -1)
+  case "$v" in [Rr][Uu]) echo ru ;; *) echo en ;; esac
+}
+UI_LANG=""
+is_en() {
+  [ -n "$UI_LANG" ] || UI_LANG=$(ui_lang)
+  [ "$UI_LANG" = en ]
+}
+# msg <русский> <английский>: строка на языке интерфейса
+msg() {
+  if is_en; then printf '%s\n' "$2"; else printf '%s\n' "$1"; fi
+}
+
 # папки, в которых лежат проекты: projects=<путь>[:<путь>...] в config или AGENTMEISTER_PROJECTS (MNRH_PROJECTS), по одной в строке
 projects_dirs() {
   local d="${AGENTMEISTER_PROJECTS:-${MNRH_PROJECTS:-}}" p seen=":"
@@ -32,6 +53,79 @@ CLAUDE_BIN="${MNRH_CLAUDE_BIN:-claude}"
 MENU="$LIB/menu.py"
 
 help() {
+  if is_en; then
+    cat <<'EOF'
+Start
+  agentmeister                     menu (AGENTMEISTER_NO_MENU=1 goes straight to the project picker)
+  agentmeister open                pick a project in the projects folder
+  agentmeister <name>              open a project right away (the start of the name is enough) or a folder by path
+  agentmeister --harness codex     run Codex or set it up with setup
+  agentmeister --harness claude status   Claude Code version and open sessions
+  agentmeister --harness codex statusline   Codex limits and context through promptsill
+  agentmeister --harness codex restart [ID]   reopen a Codex session
+  agentmeister root                in the home folder
+  agentmeister ... -k | -n         caffeinate or a normal session, without asking
+  agentmeister ... -x | -d         through the proxy or direct, without asking
+  agentmeister ... -x <sub>        only through this proxy subscription (agentmeister proxy list)
+  agentmeister ... --new           new session, don't offer saved ones
+  agentmeister ... -i              nothing written to disk: no transcript, no prompt history
+  agentmeister ... -- <args>       arguments for claude: agentmeister kcalm -- --continue
+  agentmeister sessions            saved sessions: resume, move, delete (sessions -h)
+  agentmeister ps                  running sessions: who is waiting for a reply, jump to the tab
+  agentmeister restore             reopen sessions that were open before a reboot or crash
+  agentmeister usage               tokens and active time by project (--days N, --project P)
+  agentmeister headsup             Heads up notes from Claude Code, closed ones too (headsup -h)
+
+From inside Claude Code (same as /restart, /forget, /fresh, /slim)
+  agentmeister restart             close and reopen this session, updating Claude Code
+  agentmeister agent-update claude|codex  update the agent the same way it was installed
+  agentmeister forget              delete this session without a trace and open a clean one
+  agentmeister fresh               new untitled session, this one stays in /resume
+  agentmeister slim                compact this session and open it again
+
+Modes (on, off)
+  agentmeister humanize            writing rules without AI tells; check <file>, rules
+  agentmeister translate           translate prompts to English; key, provider, check, log
+  agentmeister guard               ask before reading keys and before dangerous commands; test, log
+  agentmeister buildlog            digest of long build output for Claude Code and Codex; test <file>
+  agentmeister notify              notifications when Claude is waiting; after <sec>, test, telegram
+  agentmeister lid                 stay awake with the lid closed; setup, release, remove
+
+Session proxy
+  agentmeister proxy               status; setup, test, update, restart, remove (proxy -h)
+  agentmeister host-run <name>     allowlisted command outside the proxy sandbox (host-run -h)
+
+Project tools (Claude also calls them on its own)
+  agentmeister codex-context       read Codex sessions, instructions and memory (codex-context -h)
+  agentmeister brief               where we left off: git, last session, backlog (/where)
+  agentmeister todo                project backlog across sessions (/todo, todo -h)
+  agentmeister parallel "<…>"      task in its own branch and worktree, in a second window (/parallel)
+  agentmeister ask <proj> <…>      ask a separate Claude about another project (/ask)
+  agentmeister release-notes       material for "What's New" in a release (/release-notes)
+  agentmeister shot                screenshot of an app window (/shot)
+  agentmeister deps                outdated Gradle dependencies in gradle/libs.versions.toml
+
+Install
+  agentmeister --harness codex install    install Codex CLI with Homebrew
+  agentmeister --harness claude install   install Claude Code from claude.ai
+  agentmeister setup               commands, hooks, MCP server, zsh hook, proxy, promptsill (setup -h)
+  agentmeister doctor              check the install
+  agentmeister app-state           state for the Agentmeister desktop app as JSON
+  agentmeister lang [ru|en|auto]   interface language, auto follows the macOS language
+  agentmeister defaults            mode and Remote Control for new sessions, update on /restart, /ask model
+  agentmeister migrate             move ~/.config/mnrh and other mnrh folders to agentmeister folders
+  agentmeister projects-dir [add|remove] <folder>|default  folders that hold your projects (~/Developer by default)
+  agentmeister alias               short name am; on, off
+  agentmeister --version           version
+
+caffeinate (the default) keeps the Mac awake while a session runs:
+handy for long tasks and Remote Control from your phone. The screen can still turn off.
+With the lid closed on battery the Mac still sleeps, caffeinate doesn't change that.
+agentmeister lid setup lets it stay awake with the lid closed too (asks for your sudo password).
+Project folders: ~/Developer, agentmeister projects-dir add <folder>, a projects=<path>[:<path>] line in ~/.config/agentmeister/config or AGENTMEISTER_PROJECTS.
+EOF
+    return
+  fi
   cat <<'EOF'
 Запуск
   agentmeister                     меню (AGENTMEISTER_NO_MENU=1 сразу к выбору проекта)
@@ -155,20 +249,21 @@ while [ $# -gt 0 ]; do
       # -x home: только через подписку home. Имя проекта, совпавшее с подпиской, пиши до -x или путем
       if [ $# -gt 1 ] && proxy_sub "$2"; then net="vps:$2"; shift; fi ;;
     -x=*|--proxy=*)
-      [ -n "${1#*=}" ] || { echo "agentmeister: после $1 нужно имя подписки, список: agentmeister proxy list" >&2; exit 2; }
+      [ -n "${1#*=}" ] || { msg "agentmeister: после $1 нужно имя подписки, список: agentmeister proxy list" \
+        "agentmeister: $1 needs a subscription name, list: agentmeister proxy list" >&2; exit 2; }
       net="vps:${1#*=}" ;;
     -d|--direct) net=direct ;;
     --new) new=1 ;;
     -i|--incognito) new=1; export CLAUDE_CODE_SKIP_PROMPT_HISTORY=1 ;;
     --) shift; passthrough=("$@"); break ;;
-    -*) echo "agentmeister: неизвестный флаг $1" >&2; exit 2 ;;
-    *) [ -z "$target" ] && target="$1" || { echo "agentmeister: лишний аргумент $1" >&2; exit 2; } ;;
+    -*) msg "agentmeister: неизвестный флаг $1" "agentmeister: unknown flag $1" >&2; exit 2 ;;
+    *) [ -z "$target" ] && target="$1" || { msg "agentmeister: лишний аргумент $1" "agentmeister: extra argument $1" >&2; exit 2; } ;;
   esac
   shift
 done
 
 if [ ! -t 0 ] || [ ! -t 1 ]; then
-  echo "agentmeister: нужен терминал — Claude Code интерактивный." >&2
+  msg "agentmeister: нужен терминал — Claude Code интерактивный." "agentmeister: needs a terminal, Claude Code is interactive." >&2
   exit 2
 fi
 
@@ -197,7 +292,10 @@ match() {
   done
   if [ "${#found[@]}" -eq 1 ]; then echo "${found[0]}"; return 0; fi
   if [ "${#found[@]}" -gt 1 ]; then
-    echo "agentmeister: «${q}» есть в нескольких папках проектов: $(for f in "${found[@]}"; do printf '%s ' "${f/#$HOME/~}"; done), укажи путь" >&2
+    local list
+    list=$(for f in "${found[@]}"; do printf '%s ' "${f/#$HOME/~}"; done)
+    msg "agentmeister: «${q}» есть в нескольких папках проектов: $list, укажи путь" \
+      "agentmeister: \"${q}\" is in several project folders: $list, give the path" >&2
     return 1
   fi
   for d in ${dirs[@]+"${dirs[@]}"}; do
@@ -205,9 +303,13 @@ match() {
   done
   if [ "${#found[@]}" -eq 1 ]; then echo "${found[0]}"; return 0; fi
   if [ "${#found[@]}" -gt 1 ]; then
-    echo "agentmeister: «${q}» подходит к нескольким: $(for f in "${found[@]}"; do printf '%s ' "$(basename "$f")"; done)" >&2
+    local list
+    list=$(for f in "${found[@]}"; do printf '%s ' "$(basename "$f")"; done)
+    msg "agentmeister: «${q}» подходит к нескольким: $list" "agentmeister: \"${q}\" matches several: $list" >&2
   else
-    echo "agentmeister: проекта «${q}» нет в $(projects_dirs | sed "s|^$HOME|~|" | paste -sd ',' - | sed 's/,/, /g')" >&2
+    local roots
+    roots=$(projects_dirs | sed "s|^$HOME|~|" | paste -sd ',' - | sed 's/,/, /g')
+    msg "agentmeister: проекта «${q}» нет в $roots" "agentmeister: no project \"${q}\" in $roots" >&2
   fi
   return 1
 }
@@ -247,7 +349,8 @@ pre=()
 via=""
 case "$net" in vps:*) via="${net#vps:}" ;; esac
 if [ "${net%%:*}" = vps ]; then
-  /usr/bin/python3 "$PROXY" configured || { echo "agentmeister: прокси не настроен или нет mihomo: agentmeister proxy setup" >&2; exit 1; }
+  /usr/bin/python3 "$PROXY" configured || { msg "agentmeister: прокси не настроен или нет mihomo: agentmeister proxy setup" \
+    "agentmeister: the proxy isn't set up or mihomo is missing: agentmeister proxy setup" >&2; exit 1; }
   pre=(/usr/bin/python3 "$PROXY" run --claude ${via:+--via "$via"} --)
 else
   unset HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY http_proxy https_proxy all_proxy no_proxy
@@ -255,7 +358,8 @@ else
 fi
 
 cd "$dir" || exit 1
-echo "-> ${dir/#$HOME/~} · $mode$([ "${net%%:*}" = vps ] && echo " · через proxy${via:+ $via}")$([ "${CLAUDE_CODE_SKIP_PROMPT_HISTORY:-}" = 1 ] && echo ' · без записи')"
+if is_en; then via_note=" · via proxy" private_note=' · not saved'; else via_note=" · через proxy" private_note=' · без записи'; fi
+echo "-> ${dir/#$HOME/~} · $mode$([ "${net%%:*}" = vps ] && echo "$via_note${via:+ $via}")$([ "${CLAUDE_CODE_SKIP_PROMPT_HISTORY:-}" = 1 ] && echo "$private_note")"
 # после agentmeister lid setup сторож держит Mac и с закрытой крышкой; без правила шаг молча пропускается
 if [ "$mode" = caffeinate ]; then
   /usr/bin/python3 "$LIB/claude_lid.py" keep >/dev/null 2>&1
