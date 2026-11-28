@@ -957,10 +957,10 @@ def set_projects_dir(args):
     """agentmeister projects-dir [add|remove] <папка> или default. Это папки, в которых лежат проекты, а не проекты:
     проектами считаются их подпапки. Без add/remove папка заменяет весь список."""
     usage = "agentmeister projects-dir [add|remove] <папка> | default"
-    if os.environ.get("MNRH_PROJECTS"):
+    if mnrhlib.user_env("PROJECTS"):
         # переменная перекрывает config: запись в config ничего бы не поменяла
-        print(mnrhlib.tr("задан MNRH_PROJECTS, он перекрывает список в config. Убери переменную или поменяй ее",
-                         "MNRH_PROJECTS is set and overrides the list in config. Unset or change the variable"),
+        print(mnrhlib.tr("задан AGENTMEISTER_PROJECTS (или MNRH_PROJECTS), он перекрывает список в config. Убери переменную или поменяй ее",
+                         "AGENTMEISTER_PROJECTS (or MNRH_PROJECTS) is set and overrides the list in config. Unset or change the variable"),
               file=sys.stderr)
         return 2
     op = args[0] if args[0] in ("add", "remove") else "set"

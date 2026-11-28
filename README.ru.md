@@ -233,14 +233,15 @@ Buildlog сокращает вывод команд сборки вроде `./g
 сменился, заменяет себя новым на том же соединении, не теряя запрос. Убрать из Claude Code: `agentmeister setup --remove`.
 Удаление: `brew uninstall agentmeister`.
 
-Настройки, кеш и состояние лежат в `~/.config/agentmeister`, `~/.cache/agentmeister` и
+Переменные, которые задаешь сам, называются `AGENTMEISTER_*` (`AGENTMEISTER_PROJECTS`, `AGENTMEISTER_NO_MENU`,
+`AGENTMEISTER_PLAIN_MENU`), старые имена `MNRH_*` тоже работают. Настройки, кеш и состояние лежат в `~/.config/agentmeister`, `~/.cache/agentmeister` и
 `~/.local/state/agentmeister`. Старые установки держали их в папках `mnrh` и работают с ними, пока не
 выполнить `agentmeister migrate` в обычном терминале, закрыв proxy-сессии, исполнитель host-run и приложение
 (`--dry-run` покажет, что переедет). Пока используются старые папки, об этом напоминает `agentmeister doctor`.
 
 Проекты лежат в папках с проектами, по умолчанию это `~/Developer`, проектом считается каждая подпапка.
 Еще одну папку добавляет `agentmeister projects-dir add <папка>`, убирает `remove`, список показывает `projects-dir`.
-Он же хранится в `~/.config/agentmeister/config` строкой `projects=<папка>[:<папка>...]`, `MNRH_PROJECTS` его перекрывает.
+Он же хранится в `~/.config/agentmeister/config` строкой `projects=<папка>[:<папка>...]`, `AGENTMEISTER_PROJECTS` его перекрывает.
 Одноименные проекты из разных папок видны оба, с папкой в имени, например `backend · Work`. Десктопное
 приложение спрашивает папки при первом запуске. Читающие MCP-инструменты (`session_search`, `session_read`, `usage_report`,
 `deps_outdated` и другие) setup разрешает сразу в `permissions.allow` в `~/.claude/settings.json`.
@@ -290,12 +291,12 @@ Claude Code и Codex. В терминале `agentmeister --harness claude statu
 Подменю открываются на том же экране. Команды из меню тоже выполняются в рамке: вывод с цветами, их
 собственные списки и вопросы на том же экране, после конца Enter возвращает в меню, а `q` выходит и оставляет
 вывод в обычном терминале. Снаружи запускается только сам Claude Code. Esc возвращает на шаг
-назад, Ctrl+C выходит совсем. `MNRH_PLAIN_MENU=1`
+назад, Ctrl+C выходит совсем. `AGENTMEISTER_PLAIN_MENU=1`
 возвращает простые списки в строку. Меню говорит на языке macOS, русском или английском. Строка `lang=en` или
 `lang=ru` в `~/.config/agentmeister/config` выбирает язык явно. `agentmeister lang en` или `ru` записывает эту строку,
-а `lang auto` убирает. `MNRH_NO_MENU=1` пропускает меню и сразу открывает
+а `lang auto` убирает. `AGENTMEISTER_NO_MENU=1` пропускает меню и сразу открывает
 выбор проекта.
-`agentmeister open` показывает каталоги папки проектов (по умолчанию `~/Developer`, другую задает строка `projects=<путь>` в `~/.config/agentmeister/config` или `MNRH_PROJECTS`) с текущей веткой и датой последнего коммита.
+`agentmeister open` показывает каталоги папки проектов (по умолчанию `~/Developer`, другую задает строка `projects=<путь>` в `~/.config/agentmeister/config` или `AGENTMEISTER_PROJECTS`) с текущей веткой и датой последнего коммита.
 Выбор стрелками ↑↓ и Enter. Цифра сразу ставит курсор на пункт (`0` — домашний
 каталог, `1` и `0` подряд — десятый), буквы фильтруют список по имени, Esc
 сбрасывает фильтр или выходит.
