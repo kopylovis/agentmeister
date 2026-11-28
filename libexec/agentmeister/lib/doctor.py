@@ -309,7 +309,11 @@ def check_lid():
     if claude_lid.disabled() and not claude_lid.watcher_pid():
         return [("warn", tr("сон отключен (pmset disablesleep 1), а сторожа нет: agentmeister lid release",
                             "sleep is disabled (pmset disablesleep 1) with no watcher: agentmeister lid release"))]
-    if claude_lid.ready():
+    ready = claude_lid.ready()
+    if ready is None:
+        return [("ok", tr("крышка: из proxy-сессии sudo не запустить, проверь в обычном терминале (agentmeister doctor)",
+                          "lid: sudo can't run from a proxy session, check in a regular terminal (agentmeister doctor)"))]
+    if ready:
         return [("ok", tr(f"крышка: caffeinate-сессии не уснут и с закрытой крышкой (на батарее до "
                           f"{claude_lid.low_battery()}% заряда)",
                           f"lid: caffeinate sessions stay awake with the lid closed (on battery down to "

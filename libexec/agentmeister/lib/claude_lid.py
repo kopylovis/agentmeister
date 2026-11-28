@@ -55,9 +55,14 @@ def ready():
 
     Одного sudo -n мало: с закешированным паролем он тоже проходит, сторож включил бы
     disablesleep, а когда кеш истечёт, уже не смог бы его снять.
+    None, если sudo не запустить вовсе: так бывает в песочнице proxy-сессии, и проверить правило оттуда нельзя.
     """
-    return os.path.exists(SUDOERS) and all(
-        subprocess.run(["sudo", "-n", "-l", *c], capture_output=True).returncode == 0 for c in (ON, OFF))
+    if not os.path.exists(SUDOERS):
+        return False
+    try:
+        return all(subprocess.run(["sudo", "-n", "-l", *c], capture_output=True).returncode == 0 for c in (ON, OFF))
+    except OSError:
+        return None
 
 
 def disabled():
@@ -179,8 +184,9 @@ def switched_on():
 
 
 def active():
-    """Крышка не усыпляет caffeinate-сессии: правило есть и режим не выключен."""
-    return switched_on() and ready()
+    """Крышка не усыпляет caffeinate-сессии: правило есть и режим не выключен. Из песочницы, где sudo
+    не запустить, правило на месте считаем рабочим."""
+    return switched_on() and ready() is not False
 
 
 def keep():
