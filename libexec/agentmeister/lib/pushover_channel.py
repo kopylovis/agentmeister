@@ -54,7 +54,8 @@ def send(title, message, urgent=False):
             errors = []
         raise PushoverError(f"HTTP {e.code} {'; '.join(map(str, errors))}".strip()) from None
     except (urllib.error.URLError, OSError, ValueError) as e:
-        raise PushoverError(f"нет связи с api.pushover.net: {getattr(e, 'reason', e)}") from None
+        raise PushoverError(tr(f"нет связи с api.pushover.net: {getattr(e, 'reason', e)}",
+                               f"can't reach api.pushover.net: {getattr(e, 'reason', e)}")) from None
 
 
 def describe():

@@ -620,9 +620,12 @@ def cm_path():
 
 def status():
     on = enabled()
-    print(f"Уведомления: {'включены' if on else 'выключены'}; о готовом ответе — если ход дольше {after()} с; "
-          f"звук {'есть' if sound() else 'выключен'}")
-    print(f"Приложение: {tilde(AGENT.app)}" + ("" if os.path.exists(AGENT.bin) else " (соберётся при первом уведомлении)"))
+    print(tr(f"Уведомления: {'включены' if on else 'выключены'}; о готовом ответе — если ход дольше {after()} с; "
+             f"звук {'есть' if sound() else 'выключен'}",
+             f"Notifications: {'on' if on else 'off'}; done replies only if the turn took over {after()}s; "
+             f"sound {'on' if sound() else 'off'}"))
+    print(tr(f"Приложение: {tilde(AGENT.app)}", f"App: {tilde(AGENT.app)}") + (
+        "" if os.path.exists(AGENT.bin) else tr(" (соберётся при первом уведомлении)", " (builds on the first notification)")))
     import claude_settings
     rows = claude_settings.rows("notify-hook")
     try:
@@ -630,20 +633,27 @@ def status():
     except (OSError, ValueError):
         lost = rows
     have = [r[0] for r in rows if r not in lost]
-    print("Хуки Claude Code: " + (", ".join(have) if have else "не стоят — agentmeister setup"))
+    print(tr("Хуки Claude Code: ", "Claude Code hooks: ") + (
+        ", ".join(have) if have else tr("не стоят — agentmeister setup", "not installed, agentmeister setup")))
     from codex_harness import NOTIFY_EVENTS, configured_hooks
     count = configured_hooks("notify-hook")
-    print(f"Хуки Codex, настроено {count if count is not None else '?'} из {len(NOTIFY_EVENTS)}. "
-          "Проверь доверие в /hooks или запусти agentmeister --harness codex setup.")
-    print(f"Не за Mac: экран заблокирован или {presence.away_after()} с без мыши и клавиатуры, "
-          "общее для всех каналов на телефон")
+    print(tr(f"Хуки Codex, настроено {count if count is not None else '?'} из {len(NOTIFY_EVENTS)}. "
+             "Проверь доверие в /hooks или запусти agentmeister --harness codex setup.",
+             f"Codex hooks: {count if count is not None else '?'} of {len(NOTIFY_EVENTS)} set up. "
+             "Check trust in /hooks or run agentmeister --harness codex setup."))
+    print(tr(f"Не за Mac: экран заблокирован или {presence.away_after()} с без мыши и клавиатуры, "
+             "общее для всех каналов на телефон",
+             f"Away: the screen is locked or {presence.away_after()}s without mouse and keyboard, "
+             "shared by all phone channels"))
     print(telegram.describe())
     if telegram.configured():
         import telegram_approve
         print(telegram_approve.describe())
     if claude_settings.setting("inputNeededNotifEnabled", os.getcwd()) is True:
-        print("Remote Control: в сессии с /remote-control о запросах разрешения и вопросах на телефон пишет сам "
-              "Claude (Push when actions required), в каналы на телефон они не дублируются")
+        print(tr("Remote Control: в сессии с /remote-control о запросах разрешения и вопросах на телефон пишет сам "
+                 "Claude (Push when actions required), в каналы на телефон они не дублируются",
+                 "Remote Control: in a session with /remote-control, Claude itself pushes permission requests and "
+                 "questions to the phone (Push when actions required), so phone channels don't repeat them"))
     print(tossling_describe())
     print(ntfy_channel.describe())
     print(bark_channel.describe())
@@ -668,23 +678,28 @@ def tossling_describe():
 
 def test():
     if not ensure_app():
-        print("Не собрал приложение уведомлений: нужен swiftc из Xcode Command Line Tools")
+        print(tr("Не собрал приложение уведомлений: нужен swiftc из Xcode Command Line Tools",
+                 "Couldn't build the notification app: it needs swiftc from Xcode Command Line Tools"))
         return 1
     tty = os.ttyname(0) if os.isatty(0) else ""
     bundle = os.environ.get("__CFBundleIdentifier", "")
     cm = cm_path()
     click = f"{shlex.quote(cm)} focus {shlex.quote(tty)} {shlex.quote(bundle)}" if cm and tty else None
-    print("Отправляю пробное уведомление. В первый раз macOS спросит, можно ли agentmeister Notify их показывать — разреши.")
-    r = post("agentmeister: пробное уведомление", "Claude Code", "Нажми, чтобы вернуться в эту вкладку",
+    print(tr("Отправляю пробное уведомление. В первый раз macOS спросит, можно ли agentmeister Notify их показывать — разреши.",
+             "Sending a test notification. The first time macOS asks whether agentmeister Notify may show them, allow it."))
+    r = post(tr("agentmeister: пробное уведомление", "agentmeister: test notification"), "Claude Code",
+             tr("Нажми, чтобы вернуться в эту вкладку", "Click to return to this tab"),
              "00000000-0000-0000-0000-000000000000", click, wait=True)
     if r == "ok":
-        print("Центр уведомлений macOS принял уведомление.")
+        print(tr("Центр уведомлений macOS принял уведомление.", "macOS Notification Center accepted the notification."))
         return 0
     if r.startswith("denied"):
-        print(f"✗ macOS не разрешает уведомления: {settings_path('settings', 'notifications')} → agentmeister Notify → "
-              f"{settings_name('allow')}")
+        print(tr(f"✗ macOS не разрешает уведомления: {settings_path('settings', 'notifications')} → agentmeister Notify → "
+                 f"{settings_name('allow')}",
+                 f"✗ macOS doesn't allow notifications: {settings_path('settings', 'notifications')} → agentmeister Notify → "
+                 f"{settings_name('allow')}"))
     else:
-        print(f"✗ не получилось: {r}")
+        print(tr(f"✗ не получилось: {r}", f"✗ failed: {r}"))
     return 1
 
 
@@ -774,15 +789,17 @@ def main():
         return 0
     if rest[0] in ("on", "off"):
         write_config(notify=rest[0])
-        print(f"Уведомления {'включены' if rest[0] == 'on' else 'выключены'}")
+        print(tr(f"Уведомления {'включены' if rest[0] == 'on' else 'выключены'}",
+                 f"Notifications {'on' if rest[0] == 'on' else 'off'}"))
         return 0
     if rest[0] == "sound" and len(rest) == 2 and rest[1] in ("on", "off"):
         write_config(notify_sound=rest[1])
-        print(f"Звук {'включён' if rest[1] == 'on' else 'выключен'}")
+        print(tr(f"Звук {'включён' if rest[1] == 'on' else 'выключен'}", f"Sound {'on' if rest[1] == 'on' else 'off'}"))
         return 0
     if rest[0] == "after" and len(rest) == 2 and rest[1].isdigit():
         write_config(notify_after=rest[1])
-        print(f"О готовом ответе — если ход шёл дольше {rest[1]} с")
+        print(tr(f"О готовом ответе — если ход шёл дольше {rest[1]} с",
+                 f"Done replies only if the turn took over {rest[1]}s"))
         return 0
     if rest[0] == "away" and len(rest) <= 2:
         if len(rest) == 2:

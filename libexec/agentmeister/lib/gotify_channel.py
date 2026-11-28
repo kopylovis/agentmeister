@@ -67,15 +67,18 @@ def send(title, message, urgent=False):
             return r.status
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
-            raise GotifyError(f"HTTP {e.code}, сервер не принял токен. Нужен токен приложения из Apps, "
-                              "а не токен клиента") from None
+            raise GotifyError(tr(f"HTTP {e.code}, сервер не принял токен. Нужен токен приложения из Apps, "
+                                 "а не токен клиента",
+                                 f"HTTP {e.code}, the server didn't accept the token. You need an app token from Apps, "
+                                 "not a client token")) from None
         try:
             detail = json.loads(e.read().decode(errors="replace")).get("errorDescription", "")
         except ValueError:
             detail = ""
         raise GotifyError(f"HTTP {e.code} {detail}".strip()) from None
     except (urllib.error.URLError, OSError, ValueError) as e:
-        raise GotifyError(f"нет связи с сервером Gotify: {getattr(e, 'reason', e)}") from None
+        raise GotifyError(tr(f"нет связи с сервером Gotify: {getattr(e, 'reason', e)}",
+                             f"can't reach the Gotify server: {getattr(e, 'reason', e)}")) from None
 
 
 def describe():
