@@ -105,6 +105,11 @@ them in the background, so the terminal and the status line get the new version 
 `~/Library/Logs/Agentmeister/brew-upgrade.log`. What the
 app does and how to build it is described in [app/README.md](app/README.md), in Russian.
 
+Terminal tabs follow the window colors by default. Settings → Terminal → Terminal colors also offers Always dark,
+Solarized Dark and Light, Gruvbox Dark, Tomorrow Night and Dracula, and Import theme… reads an iTerm2
+`.itermcolors` file or a Ghostty theme (`background`, `foreground` and `palette = N=#rrggbb` lines). Imported themes
+are kept in `~/.config/agentmeister/terminal-themes/`.
+
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/new-session-dark.png#gh-dark-mode-only" alt="New session sheet with agent, route and subscription"><img src="docs/screenshots/new-session-light.png#gh-light-mode-only" alt="New session sheet with agent, route and subscription"></td>

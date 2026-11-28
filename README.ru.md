@@ -104,6 +104,11 @@ agentmeister или promptsill стоят из Homebrew, после обновл
 `~/Library/Logs/Agentmeister/brew-upgrade.log`. Что умеет
 приложение и как его собрать, описано в [app/README.md](app/README.md).
 
+Вкладки терминала по умолчанию берут цвета окна. В Настройках, Терминал, Цвета терминала есть еще Всегда темные,
+Solarized Dark и Light, Gruvbox Dark, Tomorrow Night и Dracula, а Импортировать тему… читает файл `.itermcolors`
+из iTerm2 или тему Ghostty (строки `background`, `foreground` и `palette = N=#rrggbb`). Свои темы лежат в
+`~/.config/agentmeister/terminal-themes/`.
+
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/ru/new-session-dark.png#gh-dark-mode-only" alt="Лист новой сессии с агентом, маршрутом и подпиской"><img src="docs/screenshots/ru/new-session-light.png#gh-light-mode-only" alt="Лист новой сессии с агентом, маршрутом и подпиской"></td>

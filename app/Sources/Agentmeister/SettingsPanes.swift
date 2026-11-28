@@ -856,7 +856,12 @@ enum TerminalPrefs {
     static var optionMeta: Bool { UserDefaults.standard.object(forKey: metaKey) as? Bool ?? true }
     static var linksAlways: Bool { UserDefaults.standard.string(forKey: linksKey) == "always" }
     static var bell: String { UserDefaults.standard.string(forKey: bellKey) ?? "tab" }
-    static var alwaysDark: Bool { UserDefaults.standard.string(forKey: colorsKey) == "dark" }
+    static var alwaysDark: Bool { colors == "dark" }
+    /// Тема терминала: window (как окно), dark (всегда темная) или id темы из TerminalThemes.
+    static var colors: String { demoColors ?? UserDefaults.standard.string(forKey: colorsKey) ?? "window" }
+    /// Тема для демо-сцены theme-*: только в памяти, чтобы не попасть в следующие снимки.
+    nonisolated(unsafe) static var demoColors: String? = Demo.active && Demo.scene.hasPrefix("theme-")
+        ? String(Demo.scene.dropFirst("theme-".count)) : nil
     /// Claude Code в классическом режиме (CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1): переписка уходит в прокрутку
     /// терминала, и ⌘F ее находит. В полноэкранном режиме в терминале только видимый экран.
     static var classicRenderer: Bool { UserDefaults.standard.object(forKey: classicKey) as? Bool ?? true }
@@ -900,6 +905,9 @@ struct TerminalPane: View {
     @AppStorage(TerminalPrefs.linksKey) private var links = "modifier"
     @AppStorage(TerminalPrefs.bellKey) private var bell = "tab"
     @AppStorage(TerminalPrefs.colorsKey) private var colors = "window"
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var userThemes = TerminalThemes.user()
+    @State private var themeNote: String?
     @AppStorage(TerminalPrefs.codexHistoryKey) private var codexHistory = true
     @AppStorage(TerminalPrefs.classicKey) private var classic = true
 
@@ -930,11 +938,37 @@ struct TerminalPane: View {
                 }
                 Divider()
                 row(l.t("Цвета терминала", "Terminal colors")) {
-                    Picker("", selection: $colors) {
-                        Text(l.t("Как у окна", "Match window")).tag("window")
-                        Text(l.t("Всегда темные", "Always dark")).tag("dark")
-                    }.labelsHidden()
+                        Picker("", selection: $colors) {
+                            Text(l.t("Как у окна", "Match window")).tag("window")
+                            Text(l.t("Всегда темные", "Always dark")).tag("dark")
+                            Divider()
+                            ForEach(TerminalThemes.builtins) { Text($0.name).tag($0.id) }
+                            if !userThemes.isEmpty {
+                                Divider()
+                                ForEach(userThemes) { Text($0.name).tag($0.id) }
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 190)
                 }
+                HStack(spacing: 10) {
+                    ThemeSwatch(colors: TerminalThemes.resolve(colors, windowDark: colorScheme == .dark))
+                    Button(l.t("Импортировать тему…", "Import theme…")) { importTheme() }
+                        .buttonStyle(PillStyle(small: true))
+                    if colors.hasPrefix("user-") {
+                        Button(l.t("Удалить эту тему", "Delete this theme")) {
+                            TerminalThemes.remove(colors)
+                            colors = "window"
+                            userThemes = TerminalThemes.user()
+                        }
+                        .buttonStyle(.textLink(Ink.red))
+                    }
+                    Spacer()
+                }
+                Text(themeNote ?? l.t("Файл .itermcolors из iTerm2 или тема Ghostty (строки background, foreground и palette).",
+                                      "An .itermcolors file from iTerm2 or a Ghostty theme (background, foreground and palette lines)."))
+                    .font(.system(size: 11)).foregroundStyle(themeNote == nil ? Ink.faint : Ink.amber)
+                    .fixedSize(horizontal: false, vertical: true)
                 Divider()
                 row(l.t("Курсор", "Cursor")) {
                     Picker("", selection: $cursor) {
@@ -1004,17 +1038,41 @@ struct TerminalPane: View {
     private var preview: some View {
         let nsFont = TerminalPrefs.font(name: font, size: size)
         let mono = Font(nsFont)
+        // пример в цветах выбранной темы; у "как окно" и "всегда темные" прежний темный вид
+        let theme = TerminalThemes.resolve(colors, windowDark: true)
+        func ansi(_ i: Int) -> Color {
+            let c = theme.ansi[i]
+            return Color(red: Double(c.red) / 65535, green: Double(c.green) / 65535, blue: Double(c.blue) / 65535)
+        }
         return VStack(alignment: .leading, spacing: 2) {
             Text("> " + l.t("собери debug", "build debug"))
-            (Text("● ").foregroundStyle(Ink.teal) + Text("Bash(./gradlew :app:assembleDebug)")).lineLimit(1)
-            Text("  ⎿  BUILD SUCCESSFUL in 41s").foregroundStyle(Color(hex: 0x8C909B))
-            (Text("██▏").foregroundStyle(Ink.link) + Text(" 42% · ") + Text("███▏").foregroundStyle(Ink.amberDot) + Text(" 63%"))
+            (Text("● ").foregroundStyle(ansi(2)) + Text("Bash(./gradlew :app:assembleDebug)")).lineLimit(1)
+            Text("  ⎿  BUILD SUCCESSFUL in 41s").foregroundStyle(ansi(8))
+            (Text("██▏").foregroundStyle(ansi(4)) + Text(" 42% · ") + Text("███▏").foregroundStyle(ansi(3)) + Text(" 63%"))
         }
         .font(mono)
-        .foregroundStyle(Color(hex: 0xD9DBE1))
+        .foregroundStyle(Color(nsColor: theme.foreground))
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color(hex: 0x08090B)))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color(nsColor: theme.background)))
+    }
+
+    private func importTheme() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.message = l.t("Тема iTerm2 (.itermcolors) или Ghostty", "An iTerm2 (.itermcolors) or Ghostty theme")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let theme = try TerminalThemes.importFile(url)
+            userThemes = TerminalThemes.user()
+            colors = theme.id
+            themeNote = nil
+        } catch let error as TerminalThemes.ImportError {
+            themeNote = error.text(l)
+        } catch {
+            themeNote = error.localizedDescription
+        }
     }
 
     private func applyAll() {
@@ -2006,5 +2064,27 @@ struct SetupStepsSheet: View {
         spec.utility = args
         workspace.open(spec)
         openWindow(id: "main")
+    }
+}
+
+
+/// Образец темы: фон с текстом и восемь основных цветов ANSI.
+struct ThemeSwatch: View {
+    let colors: TerminalThemes.Resolved
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Text("ab").font(.system(size: 10, design: .monospaced)).foregroundStyle(Color(nsColor: colors.foreground))
+                .padding(.horizontal, 4)
+            ForEach(0..<8, id: \.self) { i in
+                let c = colors.ansi[min(i + 1, colors.ansi.count - 1)]
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color(red: Double(c.red) / 65535, green: Double(c.green) / 65535, blue: Double(c.blue) / 65535))
+                    .frame(width: 8, height: 12)
+            }
+        }
+        .padding(4)
+        .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: colors.background)))
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Ink.hairline))
     }
 }
