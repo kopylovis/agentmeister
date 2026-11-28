@@ -368,3 +368,28 @@ class NoticeHook(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Steps(unittest.TestCase):
+    def test_only_chosen_steps_run_and_are_recorded(self):
+        out, after = sandbox({".zshrc": "# mine\n", ".claude/settings.json": {"theme": "dark"}}, """
+            import notify, setup_steps
+            import setup_cmd as s
+            s.CLAUDE_BIN = "sh"
+            s.configure_mcp = lambda remove: (_ for _ in ()).throw(AssertionError("mcp is not chosen"))
+            notify.ensure_app = lambda: (_ for _ in ()).throw(AssertionError("notify-app is not chosen"))
+            setup_steps.proxy_step = lambda *a: (_ for _ in ()).throw(AssertionError("proxy is not chosen"))
+            assert s.setup(["--steps", "commands"]) == 0
+            print(sorted(setup_steps.current()[0]))
+        """, promptsill=True)
+        self.assertIn("['commands']", out)
+        self.assertEqual(after[".zshrc"], "# mine\n")
+        self.assertEqual(after[".claude/settings.json"], {"theme": "dark"})
+
+    def test_unknown_step_is_refused(self):
+        out, _ = sandbox({}, """
+            import setup_cmd as s
+            s.CLAUDE_BIN = "sh"
+            print(s.setup_args(["--steps", "hooks,bogus"]))
+        """)
+        self.assertIn("None", out)

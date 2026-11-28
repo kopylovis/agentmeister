@@ -228,7 +228,9 @@ redirected output keep their usual behavior.
 
 Update with `brew upgrade agentmeister`. Open sessions pick up the new version on their own: before each
 request the MCP server checks whether its code changed (a `brew upgrade` or a `git pull` in a checkout) and, if
-so, replaces itself with the new one on the same connection, without losing the request. `agentmeister setup --remove` takes everything out of Claude Code,
+so, replaces itself with the new one on the same connection, without losing the request. `agentmeister setup --steps hooks,commands` installs only the listed steps (commands, hooks, zsh, mcp, notify-app,
+proxy, promptsill) and leaves the rest alone; Settings → Agents → Hooks and MCP shows the same list as checkboxes.
+`agentmeister setup --remove` takes everything out of Claude Code,
 and `brew uninstall agentmeister` removes the program.
 
 Environment variables you set yourself are named `AGENTMEISTER_*` (`AGENTMEISTER_PROJECTS`, `AGENTMEISTER_NO_MENU`,

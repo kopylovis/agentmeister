@@ -169,11 +169,15 @@ def notice_hook(install, rename_rules=()):
 SETUP_USAGE = f"""agentmeister setup [--country DE] [--only <имя>]
     поставить команды /restart, /forget и другие, хуки Claude Code, хук zsh, MCP-сервер agentmeister
     и настроить прокси, если он еще не настроен. --country и --only уходят в agentmeister proxy setup
+agentmeister setup --steps hooks,commands    только эти шаги: commands, hooks, zsh, mcp, notify-app,
+    proxy, promptsill. Остальные не трогаются
 agentmeister setup --remove    убрать настройку Claude Code
 {CODEX_SETUP}    настроить хуки и MCP для Codex"""
 SETUP_USAGE_EN = f"""agentmeister setup [--country DE] [--only <name>]
     install /restart, /forget and other commands, Claude Code hooks, the zsh hook, the agentmeister MCP server
     and set up the proxy if it isn't set up yet. --country and --only go to agentmeister proxy setup
+agentmeister setup --steps hooks,commands    only these steps: commands, hooks, zsh, mcp, notify-app,
+    proxy, promptsill. The others stay as they are
 agentmeister setup --remove    remove the Claude Code setup
 {CODEX_SETUP}    set up hooks and MCP for Codex"""
 
@@ -183,11 +187,21 @@ def setup_usage():
 
 
 def setup_args(args):
-    """{'remove': bool, 'country': str, 'only': str} или None с ошибкой в stderr."""
-    opts, it = {"remove": False, "country": "", "only": ""}, iter(args)
+    """{'remove': bool, 'country': str, 'only': str, 'steps': set или None} или None с ошибкой в stderr."""
+    import setup_steps
+    opts, it = {"remove": False, "country": "", "only": "", "steps": None}, iter(args)
     for a in it:
         if a == "--remove":
             opts["remove"] = True
+        elif a == "--steps":
+            value = next(it, "")
+            steps = {s.strip() for s in value.split(",") if s.strip()}
+            unknown = steps - set(setup_steps.IDS)
+            if not steps or unknown:
+                print(tr(f"agentmeister setup: шаги из {', '.join(setup_steps.IDS)}",
+                         f"agentmeister setup: steps are {', '.join(setup_steps.IDS)}"), file=sys.stderr)
+                return None
+            opts["steps"] = steps
         elif a in ("--country", "--only"):
             value = next(it, "").strip()
             if not value or value.startswith("-"):
@@ -277,8 +291,9 @@ def setup(args):
                  f"{CLAUDE_BIN} isn't in PATH. To install Claude Code, run agentmeister --harness claude install. "
                  f"For Codex, run {CODEX_SETUP}."), file=sys.stderr)
         return 1
+    want = opts["steps"] or set(setup_steps.IDS)
     try:
-        legacy_names = configure_mcp(opts["remove"])
+        legacy_names = configure_mcp(opts["remove"]) if opts["remove"] or "mcp" in want else []
     except (OSError, ValueError, subprocess.CalledProcessError):
         print(tr("Не удалось обновить регистрацию MCP agentmeister. Проверь настройки MCP пользователя.",
                  "Couldn't update the agentmeister MCP registration. Check your user MCP settings."), file=sys.stderr)
@@ -300,12 +315,14 @@ def setup(args):
         # agentmeister больше не предлагает setup при запуске; вернуть все: agentmeister setup
         setup_steps.write(set(), set(setup_steps.IDS))
         return 0
+    # что сделано, узнаем до записи: по /restart.md без файла состояния current() считает старые шаги сделанными
+    done, skipped = setup_steps.current()
     os.makedirs(os.path.dirname(COMMAND_FILE), exist_ok=True)
     if os.path.exists(OLD_FORGET_FILE):
         os.remove(OLD_FORGET_FILE)
     pages = [(COMMAND_FILE, SLASH), (FORGET_FILE, FORGET_SLASH), (FRESH_FILE, FRESH_SLASH), (SLIM_FILE, SLIM_SLASH)] + \
         [(os.path.join(COMMANDS, f"{n}.md"), EXTRA_SLASH[n]) for n in EXTRA_COMMANDS]
-    for path, text in pages:
+    for path, text in (pages if "commands" in want else []):
         name = os.path.basename(path)[:-3]
         if not command_is_ours(path):
             print(tr(f"! /{name}: в {tilde(path)} твоя команда, не трогаю",
@@ -316,22 +333,27 @@ def setup(args):
         print(f"✓ /{name} → {tilde(path)}")
 
     # до хуков: если promptsill поставится сейчас, notice_hook сразу пропишет его в statusLine
-    promptsill = setup_steps.promptsill_step()
-    notice_hook(True, legacy_names)
-    install_restart_hook()
-    print(f"✓ MCP {MCP_NAME}")
+    promptsill = setup_steps.promptsill_step() if "promptsill" in want else None
+    if "hooks" in want:
+        notice_hook(True, legacy_names)
+    if "zsh" in want:
+        install_restart_hook()
+    if "mcp" in want:
+        print(f"✓ MCP {MCP_NAME}")
     import notify
-    notify_ready = notify.ensure_app()
-    if notify_ready:
+    notify_ready = notify.ensure_app() if "notify-app" in want else None
+    if notify_ready is None:
+        pass
+    elif notify_ready:
         print("✓ " + tr(f"приложение уведомлений → {tilde(notify.AGENT.app)} (agentmeister notify test)",
                         f"notification app → {tilde(notify.AGENT.app)} (agentmeister notify test)"))
     else:
         print("✗ " + tr("не собрал приложение уведомлений: нужен swiftc (xcode-select --install)",
                         "couldn't build the notification app: swiftc is needed (xcode-select --install)"))
-    proxy = setup_steps.proxy_step(opts["country"], opts["only"])
-    results = {"proxy": proxy, "promptsill": promptsill, "notify-app": "done" if notify_ready else "failed"}
-    done, skipped = setup_steps.current()
-    done.update(setup_steps.AUTO)
+    proxy = setup_steps.proxy_step(opts["country"], opts["only"]) if "proxy" in want else None
+    results = {"proxy": proxy, "promptsill": promptsill,
+               "notify-app": None if notify_ready is None else "done" if notify_ready else "failed"}
+    done.update(setup_steps.AUTO & want)
     for step, result in results.items():
         if result is None:
             continue
