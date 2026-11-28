@@ -115,9 +115,9 @@ struct MainView: View {
                 ui.sidebarCollapsed = false
             case "project":
                 ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
-            case "settings", "settings-modes", "settings-notify", "settings-notify-phone", "settings-notify-add", "settings-general", "settings-buildlog", "settings-lid", "settings-humanize", "settings-guard", "settings-setup-steps", "headsup":
+            case "settings", "settings-modes", "settings-notify", "settings-notify-phone", "settings-notify-add", "settings-general", "settings-buildlog", "settings-lid", "settings-humanize", "settings-guard", "settings-setup-steps", "settings-terminal", "headsup":
                 // settings-modes: раздел режимов; settings-notify: уведомления; headsup: раздел агентов с историей заметок Heads up под карточками
-                let section = ["settings-modes": "modes", "settings-notify": "notify", "settings-notify-phone": "notify", "settings-notify-add": "notify", "settings-general": "general", "settings-buildlog": "modes", "settings-lid": "modes", "settings-humanize": "modes", "settings-guard": "modes", "settings-setup-steps": "agents", "headsup": "agents"][Demo.scene] ?? "proxy"
+                let section = ["settings-modes": "modes", "settings-notify": "notify", "settings-notify-phone": "notify", "settings-notify-add": "notify", "settings-general": "general", "settings-buildlog": "modes", "settings-lid": "modes", "settings-humanize": "modes", "settings-guard": "modes", "settings-setup-steps": "agents", "settings-terminal": "terminal", "headsup": "agents"][Demo.scene] ?? "proxy"
                 UserDefaults.standard.set(section, forKey: "settingsSection")
                 // settings-buildlog и settings-lid открывают режимы с выбранной карточкой
                 if let mode = ["settings-buildlog": "buildlog", "settings-lid": "lid", "settings-humanize": "humanize", "settings-guard": "guard"][Demo.scene] {
@@ -2033,18 +2033,13 @@ struct TerminalHost: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        let dark = context.environment.colorScheme == .dark || TerminalPrefs.alwaysDark
-        let background = dark ? NSColor(hex: 0x08090B) : NSColor.white
-        container.layer?.backgroundColor = background.cgColor
+        let colors = TerminalThemes.resolve(TerminalPrefs.colors, windowDark: context.environment.colorScheme == .dark)
+        container.layer?.backgroundColor = colors.background.cgColor
         guard let term = tab?.view else {
             container.subviews.forEach { $0.removeFromSuperview() }
             return
         }
-        if term.nativeBackgroundColor != background {
-            term.nativeBackgroundColor = background
-            term.nativeForegroundColor = dark ? NSColor(hex: 0xD9DBE1) : NSColor(hex: 0x24262B)
-            term.caretColor = dark ? .white : .black
-        }
+        TerminalThemes.apply(colors, to: term)
         if term.superview !== container {
             container.subviews.forEach { $0.removeFromSuperview() }
             term.translatesAutoresizingMaskIntoConstraints = false
