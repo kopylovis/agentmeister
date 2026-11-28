@@ -906,7 +906,7 @@ struct TerminalPane: View {
     @AppStorage(TerminalPrefs.bellKey) private var bell = "tab"
     @AppStorage(TerminalPrefs.colorsKey) private var colors = "window"
     @Environment(\.colorScheme) private var colorScheme
-    @State private var userThemes = TerminalThemes.user()
+    @State private var userThemes = TerminalThemes.reloadUser()
     @State private var themeNote: String?
     @AppStorage(TerminalPrefs.codexHistoryKey) private var codexHistory = true
     @AppStorage(TerminalPrefs.classicKey) private var classic = true

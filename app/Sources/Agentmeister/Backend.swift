@@ -78,7 +78,7 @@ enum LoginEnvironment {
             task.terminate()
             return nil
         }
-        task.waitUntilExit()
+        waitQuietly(task)
         guard let range = data.range(of: Data(marker.utf8)) else { return nil }
         var env: [String: String] = [:]
         for entry in data[range.upperBound...].split(separator: 0) {
@@ -161,8 +161,16 @@ enum LoginEnvironment {
         task.standardInput = FileHandle.nullDevice
         guard (try? task.run()) != nil else { return "0" }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
+        waitQuietly(task)
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "0"
+    }
+
+    /// Дождаться выхода процесса, который уже закрыл вывод, не крутя главный цикл. waitUntilExit его крутит, и
+    /// SwiftUI успевал перерисовать вкладку посреди создания LoginEnvironment.shared: тема терминала звала его
+    /// второй раз из той же разовой инициализации, и приложение падало.
+    private static func waitQuietly(_ task: Process) {
+        let deadline = Date().addingTimeInterval(2)
+        while task.isRunning, Date() < deadline { usleep(2000) }
     }
 
     private static func compareVersions(_ a: String, _ b: String) -> Int {
