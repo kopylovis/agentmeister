@@ -34,6 +34,15 @@ class Lid(unittest.TestCase):
         lid.run = lambda cmd, **kw: PS
         self.assertEqual(lid.sessions(), [202, 302, 303, 707])
 
+    def test_install_command_uses_sudo_or_macos_password_window(self):
+        lid.SUDOERS = "/etc/sudoers.d/mnrh-pmset"
+        self.assertEqual(lid.install_command("/tmp/a b/rule", gui=False)[:2], ["sudo", "install"])
+        cmd = lid.install_command("/tmp/a b/rule", gui=True)
+        self.assertEqual(cmd[:2], ["/usr/bin/osascript", "-e"])
+        self.assertIn('quoted form of "/tmp/a b/rule"', cmd[2])
+        self.assertIn('quoted form of "/etc/sudoers.d/mnrh-pmset"', cmd[2])
+        self.assertIn("with administrator privileges", cmd[2])
+
     def test_not_ready_without_rule(self):
         lid.SUDOERS = "/nonexistent-cm/sudoers.d/mnrh-pmset"
         self.assertFalse(lid.ready())

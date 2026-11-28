@@ -210,7 +210,19 @@ def release():
         set_disabled(False)
 
 
-def setup():
+def install_command(tmp, gui):
+    """Чем поставить правило: sudo в терминале или, с gui, системное окно пароля macOS через osascript. Окно
+    нужно приложению: у его команд нет терминала, где sudo спросил бы пароль."""
+    if not gui:
+        return ["sudo", "install", "-m", "0440", "-o", "root", "-g", "wheel", tmp, SUDOERS]
+    prompt = tr("Agentmeister ставит правило sudoers для pmset, чтобы caffeinate-сессии не засыпали с закрытой крышкой.",
+                "Agentmeister is installing a sudoers rule for pmset so caffeinate sessions stay awake with the lid closed.")
+    script = (f'do shell script "/usr/bin/install -m 0440 -o root -g wheel " & quoted form of "{tmp}" & " " & '
+              f'quoted form of "{SUDOERS}" with administrator privileges with prompt "{prompt}"')
+    return ["/usr/bin/osascript", "-e", script]
+
+
+def setup(gui=False):
     user = getpass.getuser()
     rule = f"{user} ALL=(root) NOPASSWD: {' '.join(ON)}, {' '.join(OFF)}\n"
     tmp = os.path.join(STATE, "mnrh-pmset.sudoers")
@@ -219,12 +231,18 @@ def setup():
         f.write(rule)
     if subprocess.run(["/usr/sbin/visudo", "-cf", tmp], capture_output=True).returncode:
         sys.exit(tr("visudo не принял правило, ничего не поставил", "visudo rejected the rule, nothing installed"))
-    print(tr(f"Ставлю {SUDOERS}, sudo спросит пароль:\n  {rule.strip()}",
-             f"Installing {SUDOERS}, sudo will ask for your password:\n  {rule.strip()}"))
-    r = subprocess.run(["sudo", "install", "-m", "0440", "-o", "root", "-g", "wheel", tmp, SUDOERS])
+    if gui:
+        print(tr(f"Ставлю {SUDOERS}:\n  {rule.strip()}", f"Installing {SUDOERS}:\n  {rule.strip()}"))
+    else:
+        print(tr(f"Ставлю {SUDOERS}, sudo спросит пароль:\n  {rule.strip()}",
+                 f"Installing {SUDOERS}, sudo will ask for your password:\n  {rule.strip()}"))
+    r = subprocess.run(install_command(tmp, gui), capture_output=gui, text=True)
     os.remove(tmp)
     if r.returncode:
-        sys.exit(tr("не поставил", "not installed"))
+        # osascript: -128, когда в окне пароля нажали "Отменить"
+        canceled = gui and "-128" in (r.stderr or "")
+        sys.exit(tr("отменено, правило не поставлено", "canceled, the rule isn't installed") if canceled
+                 else tr("не поставил", "not installed"))
     print(tr("Готово. Caffeinate-сессии Claude Code и Codex теперь не дают Mac уснуть и с закрытой крышкой на батарее.",
              "Done. Caffeinate sessions of Claude Code and Codex now keep the Mac awake with the lid closed on battery."))
 
@@ -269,6 +287,7 @@ def main(args):
             print("agentmeister lid           whether the lid keeps the Mac awake right now")
             print("agentmeister lid setup     sudoers rule for pmset: agent caffeinate sessions stay awake with the lid")
             print(f"                            closed on battery (down to {low_battery()}% charge)")
+            print("agentmeister lid setup --gui   the same, the password is asked in a macOS window instead of sudo")
             print("agentmeister lid on | off  turn on or off (on without the rule installs it first)")
             print("agentmeister lid release   let go now, until the next caffeinate session")
             print("agentmeister lid remove    turn off and remove the rule")
@@ -278,6 +297,7 @@ def main(args):
         print("agentmeister lid           держит ли сейчас крышка Mac от сна")
         print("agentmeister lid setup     правило sudoers для pmset: caffeinate-сессии агентов не уснут и с закрытой")
         print(f"                            крышкой на батарее (до {low_battery()}% заряда)")
+        print("agentmeister lid setup --gui   то же, пароль спросит окно macOS вместо sudo")
         print("agentmeister lid on | off  включить или выключить (on без правила сначала поставит его)")
         print("agentmeister lid release   отпустить сейчас, до следующей caffeinate-сессии")
         print("agentmeister lid remove    выключить и убрать правило")
@@ -302,7 +322,7 @@ def main(args):
     elif cmd == "keep":
         keep()
     elif cmd == "setup":
-        setup()
+        setup(gui="--gui" in args[1:])
     elif cmd == "remove":
         remove()
     elif cmd == "on":
