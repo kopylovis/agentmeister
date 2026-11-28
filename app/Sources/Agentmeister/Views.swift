@@ -115,7 +115,7 @@ struct MainView: View {
                 ui.sidebarCollapsed = false
             case "project":
                 ui.projectScreen = workspace.current.flatMap { backend.state.project(containing: $0.spec.projectPath)?.path }
-            case "settings", "settings-modes", "settings-notify", "settings-notify-phone", "settings-notify-add", "settings-general", "settings-buildlog", "settings-lid", "settings-humanize", "settings-guard", "settings-setup-steps", "settings-terminal", "settings-doctor", "settings-doctor-toggle", "settings-doctor-fixing", "settings-doctor-failed", "settings-doctor-fixed", "headsup", "command-running", "command-done", "command-failed", "proxy-change":
+            case "settings", "settings-modes", "settings-notify", "settings-notify-phone", "settings-notify-add", "settings-general", "settings-buildlog", "settings-lid", "settings-humanize", "settings-guard", "settings-setup-steps", "settings-terminal", "settings-doctor", "settings-doctor-toggle", "settings-doctor-fixing", "settings-doctor-failed", "settings-doctor-fixed", "headsup", "command-running", "command-done", "command-failed", "proxy-change", "proxy-add":
                 // settings-modes: раздел режимов; settings-notify: уведомления; headsup: раздел агентов с историей заметок Heads up под карточками
                 let section = ["settings-modes": "modes", "settings-notify": "notify", "settings-notify-phone": "notify", "settings-notify-add": "notify", "settings-general": "general", "settings-buildlog": "modes", "settings-lid": "modes", "settings-humanize": "modes", "settings-guard": "modes", "settings-setup-steps": "agents", "settings-terminal": "terminal", "settings-doctor": "doctor", "settings-doctor-toggle": "doctor", "settings-doctor-fixing": "doctor", "settings-doctor-failed": "doctor", "settings-doctor-fixed": "doctor", "headsup": "agents", "command-failed": "agents"][Demo.scene] ?? "proxy"
                 UserDefaults.standard.set(section, forKey: "settingsSection")
@@ -148,7 +148,7 @@ struct MainView: View {
             }
             // у окна настроек нет свертывания и масштаба, и их кнопки серые. На скриншоте они цветные, как у
             // обычного окна. Кнопку закрытия под листом macOS гасит в любом случае, ее перекрашивает shoot.py
-            if Demo.scene.hasPrefix("settings") || Demo.scene.hasPrefix("command-") || Demo.scene == "proxy-change" || Demo.scene == "headsup",
+            if Demo.scene.hasPrefix("settings") || Demo.scene.hasPrefix("command-") || Demo.scene.hasPrefix("proxy-") || Demo.scene == "headsup",
                let settings = NSApp.windows.first(where: { $0.isVisible && $0.title != "Agentmeister Demo" && $0.frame.width > 300 }) {
                 settings.styleMask.formUnion([.miniaturizable, .resizable])
             }

@@ -1431,9 +1431,7 @@ struct ProxyActions: View {
 /// вкладке-утилите, как proxy test: mihomo перезапускается и проверяет выход, это видно в выводе.
 struct ProxySubscriptions: View {
     @EnvironmentObject var backend: Backend
-    @EnvironmentObject var workspace: Workspace
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.utilityRunner) private var runner
+    @Environment(\.commandHost) private var host
     let subscriptions: [AppState.Proxy.Subscription]
     let mainCountry: String?
     let reload: () async -> Void
@@ -1466,11 +1464,16 @@ struct ProxySubscriptions: View {
             }
         }
         .sheet(isPresented: $adding) {
-            AddSubscriptionSheet(mainCountry: mainCountry, taken: subscriptions.map(\.name)) { args in
-                utility(args)
-                watchForChange()
+            AddSubscriptionSheet(mainCountry: mainCountry, taken: subscriptions.map(\.name)) { args, input in
+                // лист команды открывается, когда этот уже закрылся
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    CommandRuns.shared.start(args, title: l.t("Новая подписка \(args[2])", "New subscription \(args[2])"),
+                                             icon: "plus.circle", host: host, sheet: true, input: input) { await reload() }
+                }
             }
         }
+        // демо proxy-add: лист новой подписки поверх раздела Proxy
+        .task { if Demo.active && Demo.scene == "proxy-add" { try? await Task.sleep(for: .seconds(1)); adding = true } }
         .confirmationDialog(l.t("Удалить подписку \(removing ?? "")?", "Remove the \(removing ?? "") subscription?"),
                             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
                             presenting: removing) { name in
@@ -1534,29 +1537,6 @@ struct ProxySubscriptions: View {
         }
     }
 
-    /// Подписку добавляет вкладка-утилита, и когда она закончит, неизвестно. Список перечитывается, пока в нем
-    /// не появится новое имя, но не дольше трех минут.
-    private func watchForChange() {
-        let before = Set(subscriptions.map(\.name))
-        Task {
-            for _ in 0..<60 {
-                try? await Task.sleep(for: .seconds(3))
-                await reload()
-                if Set(subscriptions.map(\.name)) != before { return }
-            }
-        }
-    }
-
-    private func utility(_ args: [String]) {
-        if let runner {
-            runner(args)
-            return
-        }
-        var spec = LaunchSpec(projectName: "agentmeister", projectPath: NSHomeDirectory())
-        spec.utility = args
-        workspace.open(spec)
-        openWindow(id: "main")
-    }
 }
 
 /// Новая подписка: имя, страна выхода и отбор серверов. Запускает agentmeister proxy add во вкладке-утилите, а
@@ -1566,8 +1546,10 @@ struct AddSubscriptionSheet: View {
     @Environment(\.dismiss) private var dismiss
     let mainCountry: String?
     let taken: [String]
-    let run: ([String]) -> Void
+    /// Аргументы proxy add и ссылка или адрес для его stdin.
+    let run: ([String], String) -> Void
     @State private var name = ""
+    @State private var secret = ""
     @State private var country = ""
     @State private var only = ""
     @State private var ownProxy = false
@@ -1589,8 +1571,11 @@ struct AddSubscriptionSheet: View {
             && !["main", "vps", "direct", "reject", "all"].contains(name)
         let countryOK = country.isEmpty || country.range(of: "^[A-Za-z]{2}$", options: .regularExpression) != nil
         let onlyOK = only.isEmpty || (try? NSRegularExpression(pattern: only)) != nil
-        return nameOK && countryOK && onlyOK
+        return nameOK && countryOK && onlyOK && !clean.isEmpty && problem == nil
     }
+
+    private var clean: String { secret.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var problem: String? { ProxySourceSheet.problem(clean, own: ownProxy, l) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1605,18 +1590,27 @@ struct AddSubscriptionSheet: View {
                 }
                 GridRow {
                     Text(l.t("Источник", "Source")).foregroundStyle(Ink.muted)
-                    SegmentedCapsule(selection: Binding(get: { ownProxy ? "own" : "sub" }, set: { ownProxy = $0 == "own" }),
+                    SegmentedCapsule(selection: Binding(get: { ownProxy ? "own" : "sub" }, set: { ownProxy = $0 == "own"; secret = "" }),
                                      options: [("sub", l.t("Подписка", "Subscription"), nil), ("own", l.t("Свой прокси", "Your own proxy"), nil)],
                                      compact: true)
+                }
+                GridRow {
+                    Text(ownProxy ? l.t("Адрес", "Address") : l.t("Ссылка", "Link")).foregroundStyle(Ink.muted)
+                    VStack(alignment: .leading, spacing: 4) {
+                        SecureField(ownProxy ? "socks5://127.0.0.1:1080" : "https://…", text: $secret).textFieldStyle(.roundedBorder)
+                        if let problem { Text(problem).font(.system(size: 11)).foregroundStyle(Ink.red) }
+                    }
                 }
                 GridRow {
                     Text(l.t("Страна", "Country")).foregroundStyle(Ink.muted)
                     TextField(mainCountry ?? "DE", text: $country).textFieldStyle(.roundedBorder).frame(width: 80)
                 }
-                GridRow {
-                    Text(l.t("Серверы", "Servers")).foregroundStyle(Ink.muted)
-                    TextField(l.t("все, или выражение для имени, например DE", "all, or a name pattern such as DE"), text: $only)
-                        .textFieldStyle(.roundedBorder)
+                if !ownProxy {
+                    GridRow {
+                        Text(l.t("Серверы", "Servers")).foregroundStyle(Ink.muted)
+                        TextField(l.t("все, или выражение для имени, например DE", "all, or a name pattern such as DE"), text: $only)
+                            .textFieldStyle(.roundedBorder)
+                    }
                 }
             }
             Note(text: mainCountry.map { c in
@@ -1624,18 +1618,15 @@ struct AddSubscriptionSheet: View {
                     "Plain -x uses this subscription in order only if its country is \(c), like the main one. With another country it's used only when chosen on its own.")
             } ?? l.t("Если страна задана, а выход через подписку окажется в другой стране, подписка не добавится.",
                      "If a country is set and the subscription exits elsewhere, it won't be added."))
-            Note(text: ownProxy
-                 ? l.t("Адрес прокси с портом (socks5://, http:// или https://, логин и пароль можно в адресе) спросит вкладка, которая откроется, на экране его видно не будет.",
-                       "The tab that opens asks for the proxy address with its port (socks5://, http:// or https://, a login and password can go in it) and doesn't show it.")
-                 : l.t("Ссылку на подписку спросит вкладка, которая откроется, на экране ее видно не будет. Хранится она в ~/.config/agentmeister/proxy/subs/, читать ее можешь только ты.",
-                       "The tab that opens asks for the subscription link and doesn't show it. It's kept in ~/.config/agentmeister/proxy/subs/, readable only by you."))
+            Note(text: l.t("Ссылка или адрес уходят в agentmeister через stdin, в аргументах и в ps их не видно. Хранятся в ~/.config/agentmeister/proxy/subs/, читать их можешь только ты.",
+                           "The link or address goes to agentmeister through stdin, it isn't in the arguments or in ps. It's kept in ~/.config/agentmeister/proxy/subs/, readable only by you."))
             HStack {
                 Spacer()
                 Button(l.cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(l.t("Дальше", "Continue")) {
+                Button(l.t("Добавить", "Add")) {
                     let code = country.trimmingCharacters(in: .whitespaces).uppercased()
-                    run(["proxy", "add", name] + (ownProxy ? ["--upstream", "-"] : []) + (code.isEmpty ? [] : ["--country", code])
-                        + (only.isEmpty || ownProxy ? [] : ["--only", only]))
+                    run(["proxy", "add", name] + (ownProxy ? ["--upstream", "-"] : ["-"]) + (code.isEmpty ? [] : ["--country", code])
+                        + (only.isEmpty || ownProxy ? [] : ["--only", only]), clean)
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)
