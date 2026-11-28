@@ -905,6 +905,7 @@ struct ProxyHostRunPane: View {
     let reload: () async -> Void
     @AppStorage(BrowserSettings.forAgentKey) private var browserForAgent = true
     @AppStorage(BrowserSettings.linkPlaceKey) private var linkPlace = BrowserSettings.linkPlace.rawValue
+    @AppStorage(ChromeProfile.key) private var chromium = ""
     @State private var confirmRemove = false
     @State private var adding = false
 
@@ -1013,13 +1014,26 @@ struct ProxyHostRunPane: View {
                         Text(l.t("Спрашивать", "Ask")).tag(LinkPlace.ask.rawValue)
                         Text(l.t("Окно Agentmeister", "Agentmeister window")).tag(LinkPlace.builtin.rawValue)
                         if ChromeProfile.app != nil {
-                            Text(l.t("Отдельный профиль Chrome", "Separate Chrome profile")).tag(LinkPlace.chrome.rawValue)
+                            Text(l.t("Отдельный профиль \(ChromeProfile.name)", "Separate \(ChromeProfile.name) profile")).tag(LinkPlace.chrome.rawValue)
                         }
                         Text(l.t("Браузер по умолчанию", "Default browser")).tag(LinkPlace.system.rawValue)
                     }
                     .labelsHidden()
                     // запомненный Chrome без Chrome: в списке его нет, ссылка все равно спросит
                     .onAppear { if linkPlace == LinkPlace.chrome.rawValue && ChromeProfile.app == nil { linkPlace = LinkPlace.ask.rawValue } }
+                }
+                if ChromeProfile.installed.count > 1 {
+                    SettingsRow(l.t("Браузер для отдельного профиля", "Browser for the separate profile"),
+                                l.t("Тот, что откроет вход и ссылки с чистым профилем через proxy.",
+                                    "The one that opens sign-in and links with a clean profile through the proxy."),
+                                titleFont: .system(size: 13)) {
+                        Picker(l.t("Браузер для отдельного профиля", "Browser for the separate profile"), selection: $chromium) {
+                            ForEach(ChromeProfile.installed, id: \.id) { Text($0.name).tag($0.id) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 160)
+                        .onAppear { if !ChromeProfile.installed.contains(where: { $0.id == chromium }) { chromium = ChromeProfile.chosen?.id ?? "" } }
+                    }
                 }
                 Note(text: l.t("Вход в агента, OAuth для MCP и другие страницы, которые агент во вкладке через proxy открывает сам, грузятся во встроенном браузере через тот же mihomo. Если mihomo не запущен, браузер ничего не грузит. Ссылку, по которой кликнули во вкладке через proxy, приложение открывает там, где выбрано, или спрашивает. В вопросе можно запомнить выбор.",
                                "Agent sign-in, MCP OAuth and other pages a proxied tab opens by itself load in the built-in browser through the same mihomo. With mihomo stopped the browser loads nothing. A link you click in a proxied tab opens where you picked, or the app asks. The question can remember your choice."))

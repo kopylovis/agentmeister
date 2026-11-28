@@ -11,7 +11,32 @@ enum LinkPlace: String, CaseIterable {
 /// 127.0.0.1 Chrome и с proxy открывает напрямую, туда агент принимает ответ входа.
 @MainActor
 enum ChromeProfile {
-    static var app: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome") }
+    /// Браузеры на Chromium, которые понимают --user-data-dir и --proxy-server. Arc эти флаги не берет.
+    static let known: [(id: String, name: String)] = [
+        ("com.google.Chrome", "Chrome"), ("com.brave.Browser", "Brave"), ("com.microsoft.edgemac", "Edge"),
+        ("com.vivaldi.Vivaldi", "Vivaldi"), ("org.chromium.Chromium", "Chromium"), ("ru.yandex.desktop.yandex-browser", "Yandex"),
+    ]
+    /// Выбор в Настройках > Proxy > Браузер через proxy, по умолчанию первый установленный из known.
+    static let key = "chromium.bundle"
+
+    static var installed: [(id: String, name: String)] {
+        known.filter { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.id) != nil }
+    }
+
+    static var chosen: (id: String, name: String)? {
+        let list = installed
+        let saved = UserDefaults.standard.string(forKey: key)
+        return list.first { $0.id == saved } ?? list.first
+    }
+
+    static var app: URL? { chosen.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.id) } }
+    static var name: String { chosen?.name ?? "Chrome" }
+
+    /// Папка профиля: у Chrome прежние имена, у других браузеров свои, их профили между собой несовместимы.
+    static func dir(_ profile: String) -> String {
+        let suffix = (chosen?.id ?? "com.google.Chrome") == "com.google.Chrome" ? "" : "-" + name.lowercased()
+        return AppDirs.cache + "/app/" + profile + suffix
+    }
 
     /// Без Chrome ссылка уходит браузеру системы.
     static func open(_ link: URL, profile: String, proxyPort: Int?) {
@@ -19,7 +44,7 @@ enum ChromeProfile {
             NSWorkspace.shared.open(link)
             return
         }
-        var args = ["--user-data-dir=" + AppDirs.cache + "/app/" + profile,
+        var args = ["--user-data-dir=" + dir(profile),
                     "--no-first-run", "--no-default-browser-check"]
         if let proxyPort {
             args.append("--proxy-server=http://127.0.0.1:\(proxyPort)")
@@ -118,7 +143,7 @@ struct LinkPlaceSheet: View {
                 row(.builtin, l.t("Окно Agentmeister", "Agentmeister window"),
                     l.t("через тот же proxy, что и агенты", "through the same proxy as the agents"))
                 if ChromeProfile.app != nil {
-                    row(.chrome, l.t("Отдельный профиль Chrome", "Separate Chrome profile"),
+                    row(.chrome, l.t("Отдельный профиль \(ChromeProfile.name)", "Separate \(ChromeProfile.name) profile"),
                         l.t("через proxy, свои cookie", "through the proxy, own cookies"))
                 }
                 row(.system, l.t("Браузер по умолчанию", "Default browser"),
