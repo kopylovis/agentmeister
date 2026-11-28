@@ -10,7 +10,7 @@ import tempfile
 import time
 
 from claude_proc import CLAUDE_BIN, RestartError, resume_flags, session_file, split_caffeinate
-from mnrhlib import UUID_RE, write_json
+from mnrhlib import UUID_RE, tr, write_json
 
 
 CHANNEL = "AGENTMEISTER_CLAUDE_RESTART_DIR"
@@ -33,9 +33,11 @@ def session_pid(directory):
     try:
         pid = int((Path(directory) / "pid").read_text())
     except (OSError, ValueError) as exc:
-        raise RestartError("не удалось подтвердить процесс этой прокси-сессии") from exc
+        raise RestartError(tr("не удалось подтвердить процесс этой прокси-сессии",
+                              "couldn't confirm the process of this proxied session")) from exc
     if pid <= 1 or os.environ.get("CLAUDE_PID") not in (None, "", str(pid)):
-        raise RestartError("процесс не принадлежит этой прокси-сессии")
+        raise RestartError(tr("процесс не принадлежит этой прокси-сессии",
+                              "the process doesn't belong to this proxied session"))
     return pid
 
 

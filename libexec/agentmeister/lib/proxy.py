@@ -277,7 +277,8 @@ def resolve_sub(name):
         return None
     if name == MAIN or name in extra_subs():
         return name
-    raise ProxyError(f'нет подписки "{name}", есть {", ".join(sub_names())}')
+    raise ProxyError(tr(f'нет подписки "{name}", есть {", ".join(sub_names())}',
+                          f'no subscription "{name}", available: {", ".join(sub_names())}'))
 
 
 def sub_port(sub=None):
@@ -287,7 +288,7 @@ def sub_port(sub=None):
         return main_strict_port() or port()
     extra = extra_subs().get(sub)
     if not extra:
-        raise ProxyError(f'нет подписки "{sub}"')
+        raise ProxyError(tr(f'нет подписки "{sub}"', f'no subscription "{sub}"'))
     return extra["port"]
 
 
@@ -354,22 +355,25 @@ def country_problem(sub):
 
     for key in {sub, port_key(sub)}:
         if read_exit(key).get("blocked"):
-            return f"сторож закрыл {sub or 'очередь подписок'}: ни один живой сервер не выходит в нужной стране"
+            return tr(f"сторож закрыл {sub or 'очередь подписок'}: ни один живой сервер не выходит в нужной стране",
+                      f"the watcher closed {sub or 'the subscription order'}: no live server exits in the required country")
     if sub is not None:
         want, info = sub_country(sub), read_exit(sub)
         if want and (info.get("loc") or "").upper() != want:
-            return f"выход через {sub} {where(info)}, а нужен {want}"
+            return tr(f"выход через {sub} {where(info)}, а нужен {want}",
+                      f"the exit via {sub} is {where(info)}, but {want} is required")
         return None
     info = read_exit(None)
     want = sub_country(info.get("sub") or MAIN)
     if want and (info.get("loc") or "").upper() != want:
-        return f"выход через {where(info)}, а нужен {want}"
+        return tr(f"выход через {where(info)}, а нужен {want}", f"the exit is {where(info)}, but {want} is required")
     if main_strict_port():
         for name in cascade_subs():
             need, one = sub_country(name), read_exit(name)
             # подписка без ответа не опасна: mihomo на нее не перейдет, пока ее серверы лежат
             if need and one.get("loc") and one["loc"].upper() != need:
-                return f"подписка {name} из очереди выходит через {where(one)}, а нужен {need}"
+                return tr(f"подписка {name} из очереди выходит через {where(one)}, а нужен {need}",
+                          f"subscription {name} in the order exits via {where(one)}, but {need} is required")
     return None
 
 
@@ -407,7 +411,9 @@ def check_owner(sub):
     pid = read_pid()
     for q in sorted({port(), sub_port(sub)}):
         if pid and owned_by_mihomo(q, pid) is False:
-            raise ProxyError(f"порт {q} слушает не mihomo. Сессию через proxy не запускаю: agentmeister proxy restart")
+            raise ProxyError(tr(f"порт {q} слушает не mihomo. Сессию через proxy не запускаю: agentmeister proxy restart",
+                                f"something other than mihomo listens on port {q}. Not starting the proxied session: "
+                                "agentmeister proxy restart"))
 
 
 def listening(p):
@@ -473,7 +479,7 @@ def held_subs():
 class locked:
     def __enter__(self):
         if in_session():
-            raise ProxyError(IN_SESSION)  # папка состояния и замок для сессии закрыты
+            raise ProxyError(in_session_note())  # папка состояния и замок для сессии закрыты
         os.makedirs(STATE, exist_ok=True)
         os.chmod(STATE, 0o700)  # тут сокет управления mihomo, другим пользователям Mac он ни к чему
         self.f = open(LOCK, "w")
@@ -668,14 +674,22 @@ def html(text):
 
 
 def write_page(info, p, path=None):
-    rows = [("Страна", info.get("loc")), ("IP выхода", info.get("ip")), ("Протокол", info.get("proto")),
-            ("Подписка", info.get("sub") if info.get("subs", 1) > 1 else None),
-            ("Сервер из подписки", info.get("node")), ("Порт на этом Mac", f"127.0.0.1:{p}"),
-            ("mihomo запущен", info.get("since"))]
+    rows = [(tr("Страна", "Country"), info.get("loc")), (tr("IP выхода", "Exit IP"), info.get("ip")),
+            (tr("Протокол", "Protocol"), info.get("proto")),
+            (tr("Подписка", "Subscription"), info.get("sub") if info.get("subs", 1) > 1 else None),
+            (tr("Сервер из подписки", "Subscription server"), info.get("node")),
+            (tr("Порт на этом Mac", "Port on this Mac"), f"127.0.0.1:{p}"),
+            (tr("mihomo запущен", "mihomo started"), info.get("since"))]
     body = "".join(f"<tr><th>{html(k)}</th><td>{html(v)}</td></tr>" for k, v in rows if v)
+    title = tr("Прокси agentmeister", "agentmeister proxy")
+    heading = tr("Сессия идет через proxy", "The session goes through the proxy")
+    note = tr("""Данные на момент запуска mihomo. Если сервер с тех пор сменился, текущий покажет
+<code>agentmeister proxy</code>, а проверка выхода заново <code>agentmeister proxy test</code>.""",
+              """Data from when mihomo started. If the server has changed since, <code>agentmeister proxy</code>
+shows the current one, and <code>agentmeister proxy test</code> checks the exit again.""")
     page = f"""<!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Прокси agentmeister</title>
+<html lang="{tr('ru', 'en')}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
 <style>
 :root {{ color-scheme: light dark; --bg: #fff; --fg: #1d1d1f; --dim: #6e6e73; --line: #e5e5ea; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg: #1c1c1e; --fg: #f5f5f7; --dim: #98989d; --line: #38383a; }} }}
@@ -688,10 +702,9 @@ th {{ font-weight: 400; color: var(--dim); width: 45%; }}
 td {{ font-family: ui-monospace, Menlo, monospace; word-break: break-all; }}
 p {{ color: var(--dim); font-size: 13px; line-height: 1.5; }}
 </style></head><body>
-<h1>Сессия идет через proxy</h1>
+<h1>{heading}</h1>
 <table>{body}</table>
-<p>Данные на момент запуска mihomo. Если сервер с тех пор сменился, текущий покажет
-<code>agentmeister proxy</code>, а проверка выхода заново <code>agentmeister proxy test</code>.</p>
+<p>{note}</p>
 </body></html>
 """
     with open(path or PAGE, "w") as f:
@@ -724,15 +737,17 @@ def refresh_subscription(sub=None):
             write_private(sub_file, r.stdout)
             return True
         if r.returncode == 0:
-            why = "по ссылке пришел ответ без серверов (страница входа в Wi-Fi или ошибка?)"
+            why = tr("по ссылке пришел ответ без серверов (страница входа в Wi-Fi или ошибка?)",
+                     "the link returned no servers (a Wi-Fi sign-in page or an error?)")
         else:
-            why = "подписка не скачалась"
+            why = tr("подписка не скачалась", "the subscription didn't download")
     else:
-        why = "нет ссылки на подписку"
+        why = tr("нет ссылки на подписку", "there is no subscription link")
     if not os.path.exists(sub_file):
         fix = "agentmeister proxy setup" if sub in (None, MAIN) else f"agentmeister proxy add {sub}"
-        raise ProxyError(f"{why}, а прошлой копии нет. Проверь ссылку: {fix}")
-    print(f"{label}: {why}, беру прошлую копию", file=sys.stderr)
+        raise ProxyError(tr(f"{why}, а прошлой копии нет. Проверь ссылку: {fix}",
+                            f"{why}, and there is no earlier copy. Check the link: {fix}"))
+    print(tr(f"{label}: {why}, беру прошлую копию", f"{label}: {why}, using the earlier copy"), file=sys.stderr)
     return False
 
 
@@ -768,7 +783,9 @@ def in_session():
     return _sandboxed
 
 
-IN_SESSION = "из сессии через proxy это не сделать: песочница закрывает управление mihomo. Выполни в обычном терминале"
+def in_session_note():
+    return tr("из сессии через proxy это не сделать: песочница закрывает управление mihomo. Выполни в обычном терминале",
+              "you can't do this from a proxied session: the sandbox closes mihomo control. Run it in a regular terminal")
 
 
 def wait_ready(p, deadline):
@@ -811,39 +828,47 @@ def start(strict=True, sub=None):
     p = port()
     if read_pid() and listening(p):
         if sub is not None and not listening(sub_port(sub)):
-            raise ProxyError(f"mihomo запущен без порта подписки {sub}, перезапусти его: agentmeister proxy restart")
+            raise ProxyError(tr(f"mihomo запущен без порта подписки {sub}, перезапусти его: agentmeister proxy restart",
+                                f"mihomo is running without the port for subscription {sub}, restart it: "
+                                "agentmeister proxy restart"))
         if not in_session():
             check_owner(sub)
         # страну проверяем и у запущенного: подписка могла начать выходить не там после прошлого запуска
         problem = country_problem(sub)
         if problem and strict:
-            raise ProxyError(f"{problem}. Сессию через прокси не запускаю, проверь сервер: agentmeister proxy test")
+            raise ProxyError(tr(f"{problem}. Сессию через прокси не запускаю, проверь сервер: agentmeister proxy test",
+                            f"{problem}. Not starting the proxied session, check the server: agentmeister proxy test"))
         return problem
     if in_session():
         # mihomo из песочницы не смог бы ни поправить свою настройку, ни выйти к серверу напрямую
-        raise ProxyError(f"mihomo не запущен. {IN_SESSION}: agentmeister proxy restart")
+        raise ProxyError(tr("mihomo не запущен. ", "mihomo isn't running. ") + f"{in_session_note()}: agentmeister proxy restart")
     text = Path(CONFIG).read_text()
     if "GATE" not in text:
         # конфиг до ворот и проверки страны: собрать заново. mixed-port, страна, --only и подписки остаются, а
         # ручные правки уходят, поэтому прежний файл остается рядом
         write_private(CONFIG + ".bak", text.encode())
         rerender()
-        print(f"agentmeister proxy: настройка mihomo собрана заново, прежняя в {tilde(CONFIG)}.bak", file=sys.stderr)
+        print(tr(f"agentmeister proxy: настройка mihomo собрана заново, прежняя в {tilde(CONFIG)}.bak",
+                 f"agentmeister proxy: rebuilt the mihomo config, the old one is in {tilde(CONFIG)}.bak"), file=sys.stderr)
     pin_config()
     refresh_all(sub)
     pin_hosts()
     ports = all_ports()
     for name, q in ports.items():
         if listening(q):
-            where = f"mixed-port в {tilde(CONFIG)}" if name is None else f"port у {name} в {tilde(subs_meta())}"
+            where = tr(f"mixed-port в {tilde(CONFIG)}", f"mixed-port in {tilde(CONFIG)}") if name is None else \
+                tr(f"port у {name} в {tilde(subs_meta())}", f"port of {name} in {tilde(subs_meta())}")
             # без порта каскада и порта этой сессии запускать нечего, чужой порт mihomo просто пропустит
             if name is None or name == port_key(sub):
-                raise ProxyError(f"порт {q} занят другой программой. Поменяй {where}")
-            print(f"agentmeister proxy: порт {q} подписки {name} занят другой программой, она не заработает. "
-                  f"Поменяй {where}", file=sys.stderr)
+                raise ProxyError(tr(f"порт {q} занят другой программой. Поменяй {where}",
+                                    f"port {q} is taken by another program. Change {where}"))
+            print(tr(f"agentmeister proxy: порт {q} подписки {name} занят другой программой, она не заработает. "
+                     f"Поменяй {where}",
+                     f"agentmeister proxy: port {q} of subscription {name} is taken by another program, that "
+                     f"subscription won't work. Change {where}"), file=sys.stderr)
     exe = mihomo_bin()
     if not exe:
-        raise ProxyError("нет mihomo: brew install mihomo")
+        raise ProxyError(tr("нет mihomo: brew install mihomo", "mihomo is missing: brew install mihomo"))
     os.makedirs(STATE, exist_ok=True)
     with open(LOG, "a") as log:
         proc = subprocess.Popen([exe, "-d", CONF_DIR, "-f", CONFIG], stdin=subprocess.DEVNULL, stdout=log,
@@ -855,7 +880,8 @@ def start(strict=True, sub=None):
             break
         time.sleep(0.1)
     if not listening(p):
-        raise ProxyError(f"mihomo не поднялся на порту {p}, смотри {tilde(LOG)}")
+        raise ProxyError(tr(f"mihomo не поднялся на порту {p}, смотри {tilde(LOG)}",
+                            f"mihomo didn't come up on port {p}, see {tilde(LOG)}"))
     try:
         check_owner(sub)
     except ProxyError:
@@ -873,7 +899,8 @@ def start(strict=True, sub=None):
     with ThreadPoolExecutor(max_workers=len(ports)) as pool:
         results = dict(zip(ports, pool.map(ready_and_exit, ports.items())))
     if not results.get(port_key(sub), (True, None))[0]:
-        print(f"agentmeister proxy: proxy пока не отвечает, запросы могут завершаться ошибкой (лог {tilde(LOG)})",
+        print(tr(f"agentmeister proxy: proxy пока не отвечает, запросы могут завершаться ошибкой (лог {tilde(LOG)})",
+                 f"agentmeister proxy: the proxy isn't answering yet, requests may fail (log {tilde(LOG)})"),
               file=sys.stderr)
     for name, (_, info) in results.items():
         try:
@@ -886,7 +913,8 @@ def start(strict=True, sub=None):
     if problem and strict:
         if not holders():
             stop()  # mihomo подняли для этой сессии; сессии, которые его держат, без него остались бы без сети
-        raise ProxyError(f"{problem}. Сессию через прокси не запускаю, проверь сервер: agentmeister proxy test")
+        raise ProxyError(tr(f"{problem}. Сессию через прокси не запускаю, проверь сервер: agentmeister proxy test",
+                            f"{problem}. Not starting the proxied session, check the server: agentmeister proxy test"))
     return problem
 
 
@@ -1255,7 +1283,7 @@ def sandbox_params():
 
 def session_command(p, cmd, *, claude=False):
     if not 1 <= p <= 65535:
-        raise ValueError(f"Недопустимый порт proxy: {p}")
+        raise ValueError(tr(f"Недопустимый порт proxy: {p}", f"Invalid proxy port: {p}"))
     guard = "\n".join(sandbox_profile_lines()) + "\n"
     if claude:
         # Список команд host-run и его сокет сессия видит, но поменять не может. mihomo ей не подвластен.
@@ -1333,16 +1361,19 @@ def run(cmd, *, claude=False, sandbox=True, sub=None):
     агентов: brew upgrade распаковывает в своей песочнице macOS, а вложенную песочницу macOS не дает.
     sub (proxy run --via <имя>): только через эту подписку, без него каскад по всем."""
     if not cmd:
-        print("agentmeister proxy run [--via <подписка>] -- <команда>", file=sys.stderr)
+        print(tr("agentmeister proxy run [--via <подписка>] -- <команда>",
+                 "agentmeister proxy run [--via <subscription>] -- <command>"), file=sys.stderr)
         return 2
     if not configured():
-        print(f"agentmeister proxy: прокси не настроен, сначала agentmeister proxy setup", file=sys.stderr)
+        print(tr(f"agentmeister proxy: прокси не настроен, сначала agentmeister proxy setup",
+                 "agentmeister proxy: the proxy isn't set up, run agentmeister proxy setup first"), file=sys.stderr)
         return 2
     try:
         sub = resolve_sub(sub)
     except ProxyError as e:
         # подписку удалили или в имени опечатка. Каскадом ее не подменяем: он мог бы выйти из другой страны
-        print(f"agentmeister proxy: {e}. Сессию не запускаю: выбери подписку или просто -x (по очереди)",
+        print(tr(f"agentmeister proxy: {e}. Сессию не запускаю: выбери подписку или просто -x (по очереди)",
+                 f"agentmeister proxy: {e}. Not starting the session: pick a subscription or plain -x (in order)"),
               file=sys.stderr)
         return 2
     if in_session():
@@ -1371,7 +1402,8 @@ def run(cmd, *, claude=False, sandbox=True, sub=None):
         child = subprocess.Popen(session_command(p, cmd, claude=claude) if sandbox else cmd,
                                  env=proxy_env(p, claude=claude, sub=sub))
     except (OSError, ValueError, ProxyError) as e:
-        print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
+        print(tr(f"agentmeister proxy: не запустил {cmd[0]}: {e}", f"agentmeister proxy: couldn't start {cmd[0]}: {e}"),
+              file=sys.stderr)
         child = None
 
     def forward(sig, _frame):
@@ -1408,8 +1440,10 @@ def run_inside(cmd, *, claude=False, sub=None):
         mine = None
     if sub is not None and sub != mine:
         # порт другой подписки песочница сессии все равно закрывает
-        print(f"agentmeister proxy: эта сессия идет через {mine or 'подписки по очереди'}, другую подписку "
-              "изнутри не выбрать", file=sys.stderr)
+        print(tr(f"agentmeister proxy: эта сессия идет через {mine or 'подписки по очереди'}, другую подписку "
+                 "изнутри не выбрать",
+                 f"agentmeister proxy: this session goes through {mine or 'the subscriptions in order'}, you can't "
+                 "pick another subscription from inside it"), file=sys.stderr)
         return 2
     sub = mine
     try:
@@ -1419,14 +1453,17 @@ def run_inside(cmd, *, claude=False, sub=None):
         print(f"agentmeister proxy: {e}", file=sys.stderr)
         return 1
     if not claude:
-        print("agentmeister proxy: команда идет в песочнице этой сессии, вложенную macOS не дает", file=sys.stderr)
+        print(tr("agentmeister proxy: команда идет в песочнице этой сессии, вложенную macOS не дает",
+                 "agentmeister proxy: the command runs in this session's sandbox, macOS doesn't allow a nested one"),
+              file=sys.stderr)
     if claude and sys.stdin.isatty() and sys.stdout.isatty():
         from claude_proxy_restart import supervised_command
         cmd = supervised_command(cmd)
     try:
         os.execvpe(cmd[0], cmd, proxy_env(p, claude=claude, sub=sub))
     except OSError as e:
-        print(f"agentmeister proxy: не запустил {cmd[0]}: {e}", file=sys.stderr)
+        print(tr(f"agentmeister proxy: не запустил {cmd[0]}: {e}", f"agentmeister proxy: couldn't start {cmd[0]}: {e}"),
+              file=sys.stderr)
         return 127
 
 
@@ -1571,10 +1608,12 @@ def install_mihomo():
     brew = shutil.which("brew") or next((b for b in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
                                          if os.access(b, os.X_OK)), None)
     if not brew:
-        print(f"{BAD} нет mihomo и нет Homebrew. Поставь mihomo: https://wiki.metacubex.one")
+        print(f"{BAD} " + tr("нет mihomo и нет Homebrew. Поставь mihomo: https://wiki.metacubex.one",
+                             "mihomo and Homebrew are missing. Install mihomo: https://wiki.metacubex.one"))
         return False
     if sys.stdin.isatty():
-        answer = input("Нужен mihomo. Поставить через brew install mihomo? [Y/n] ").strip().lower()
+        answer = input(tr("Нужен mihomo. Поставить через brew install mihomo? [Y/n] ",
+                          "You need mihomo. Install it with brew install mihomo? [Y/n] ")).strip().lower()
         if answer not in ("", "y", "yes", "д", "да"):
             return False
     print("brew install mihomo …")
@@ -1592,13 +1631,14 @@ def sub_options(args):
             rest.append(a)
     country, only = opts.get("country", "").strip(), opts.get("only", "").strip()
     if country and not re.match(r"^[A-Za-z]{2}$", country):
-        print(f"{BAD} --country ждёт код страны из двух букв, например DE")
+        print(f"{BAD} " + tr("--country ждёт код страны из двух букв, например DE",
+                             "--country expects a two-letter country code, for example DE"))
         return None
     if only:
         try:
             re.compile(only)
         except re.error as e:
-            print(f"{BAD} --only: неправильное регулярное выражение ({e})")
+            print(f"{BAD} " + tr(f"--only: неправильное регулярное выражение ({e})", f"--only: invalid regular expression ({e})"))
             return None
     return rest, country, only
 
@@ -1610,14 +1650,19 @@ def ask_url(given, usage):
         if not sys.stdin.isatty():
             print(usage, file=sys.stderr)
             return None
-        print("Ссылка на подписку для Clash, mihomo или v2ray (из 3x-ui, Marzban, та же, что в Happ). На экране её видно не будет.")
-        url = secret("Подписка: ").strip()
+        print(tr("Ссылка на подписку для Clash, mihomo или v2ray (из 3x-ui, Marzban, та же, что в Happ). На экране её видно не будет.",
+                 "Subscription link for Clash, mihomo or v2ray (from 3x-ui or Marzban, the same one as in Happ). "
+                 "It won't show on screen."))
+        url = secret(tr("Подписка: ", "Subscription: ")).strip()
     if url.startswith("happ://"):
-        print(f"{BAD} это зашифрованная ссылка Happ (happ://crypt…), её читает только сам Happ. "
-              "Нужна обычная https://… ссылка на подписку от того, кто её выдал")
+        print(f"{BAD} " + tr("это зашифрованная ссылка Happ (happ://crypt…), её читает только сам Happ. "
+                             "Нужна обычная https://… ссылка на подписку от того, кто её выдал",
+                             "this is an encrypted Happ link (happ://crypt…), only Happ itself can read it. "
+                             "You need a regular https://… subscription link from whoever gave it to you"))
         return None
     if not re.match(r"^https?://\S+$", url):
-        print(f"{BAD} это не ссылка на подписку: нужна https://…, а не vless:// или hysteria2://")
+        print(f"{BAD} " + tr("это не ссылка на подписку: нужна https://…, а не vless:// или hysteria2://",
+                             "this isn't a subscription link: you need https://…, not vless:// or hysteria2://"))
         return None
     return url
 
@@ -1636,21 +1681,24 @@ def restore(previous):
 
 def setup(args):
     if in_session():
-        print(f"{WARN} {IN_SESSION}: agentmeister proxy setup")
+        print(f"{WARN} {in_session_note()}: agentmeister proxy setup")
         return 1
     if not mihomo_bin() and not install_mihomo():
-        print(f"{BAD} без mihomo прокси не заработает: brew install mihomo")
+        print(f"{BAD} " + tr("без mihomo прокси не заработает: brew install mihomo",
+                             "the proxy won't work without mihomo: brew install mihomo"))
         return 1
     parsed = sub_options(args)
     if parsed is None:
         return 2
     rest, country, only = parsed
-    url = ask_url(rest[0] if rest else "", "agentmeister proxy setup <ссылка на подписку>")
+    url = ask_url(rest[0] if rest else "", tr("agentmeister proxy setup <ссылка на подписку>",
+                                              "agentmeister proxy setup <subscription link>"))
     if not url:
         return 2
     with locked():
         if holders():
-            print(f"{WARN} сейчас идут сессии через proxy ({len(holders())}). Закрой их и повтори setup.")
+            print(f"{WARN} " + tr(f"сейчас идут сессии через proxy ({len(holders())}). Закрой их и повтори setup.",
+                                  f"proxied sessions are running now ({len(holders())}). Close them and run setup again."))
             return 1
         stop()
         old = port() if configured() else None
@@ -1663,7 +1711,8 @@ def setup(args):
             start()
             direct, via = check_exit()
             if not via:
-                raise ProxyError("Не удалось подключиться через новую подписку.")
+                raise ProxyError(tr("Не удалось подключиться через новую подписку.",
+                                    "Couldn't connect through the new subscription."))
             verified = True
         except (OSError, ProxyError) as error:
             print(f"{BAD} {error}")
@@ -1674,10 +1723,12 @@ def setup(args):
             finally:
                 if not verified:
                     restore(previous)
-    print(f"{OK} настройка в {tilde(CONFIG)} (права 600), порт {p}"
-          + (f", только серверы «{only}»" if only else "") + (f", выход должен быть в {country.upper()}" if country else ""))
-    print(f"{OK} напрямую {fmt(direct)}, через proxy {fmt(via)}")
-    print('Выбери "через proxy" в меню Agentmeister или запусти agentmeister <проект> -x.')
+    print(f"{OK} " + tr(f"настройка в {tilde(CONFIG)} (права 600), порт {p}", f"config in {tilde(CONFIG)} (mode 600), port {p}")
+          + (tr(f", только серверы «{only}»", f', only servers "{only}"') if only else "")
+          + (tr(f", выход должен быть в {country.upper()}", f", the exit must be in {country.upper()}") if country else ""))
+    print(f"{OK} " + tr(f"напрямую {fmt(direct)}, через proxy {fmt(via)}", f"direct {fmt(direct)}, via proxy {fmt(via)}"))
+    print(tr('Выбери "через proxy" в меню Agentmeister или запусти agentmeister <проект> -x.',
+             'Choose "Via proxy" in the Agentmeister menu or run agentmeister <project> -x.'))
     return 0
 
 
@@ -1685,10 +1736,11 @@ def add_sub(args):
     """proxy add <имя> [ссылка] [--country XX] [--only RE]: еще одна подписка со своим портом. Та же команда
     с тем же именем меняет ссылку и настройки подписки."""
     if in_session():
-        print(f"{WARN} {IN_SESSION}: agentmeister proxy add")
+        print(f"{WARN} {in_session_note()}: agentmeister proxy add")
         return 1
     if not configured():
-        print(f"{WARN} сначала основная подписка: agentmeister proxy setup")
+        print(f"{WARN} " + tr("сначала основная подписка: agentmeister proxy setup",
+                              "set up the main subscription first: agentmeister proxy setup"))
         return 1
     parsed = sub_options(args)
     if parsed is None:
@@ -1696,22 +1748,28 @@ def add_sub(args):
     rest, country, only = parsed
     name = rest[0] if rest else ""
     if not SUB_NAME.match(name) or name in RESERVED:
-        print(f"{BAD} имя подписки: латинские строчные буквы, цифры и дефис, до 20 знаков, с буквы. "
-              f"Нельзя {', '.join(sorted(RESERVED))}")
+        print(f"{BAD} " + tr(f"имя подписки: латинские строчные буквы, цифры и дефис, до 20 знаков, с буквы. "
+                             f"Нельзя {', '.join(sorted(RESERVED))}",
+                             f"subscription name: lowercase Latin letters, digits and hyphens, up to 20 characters, "
+                             f"starting with a letter. Not allowed: {', '.join(sorted(RESERVED))}"))
         return 2
-    url = ask_url(rest[1] if len(rest) > 1 else "", "agentmeister proxy add <имя> <ссылка на подписку>")
+    url = ask_url(rest[1] if len(rest) > 1 else "", tr("agentmeister proxy add <имя> <ссылка на подписку>",
+                                                       "agentmeister proxy add <name> <subscription link>"))
     if not url:
         return 2
     url_file, sub_file = sub_files(name)
     with locked():
         held = held_subs()
         if name in held:
-            print(f"{WARN} через {name} идут сессии. Закрой их и повтори.")
+            print(f"{WARN} " + tr(f"через {name} идут сессии. Закрой их и повтори.",
+                                  f"sessions are running through {name}. Close them and try again."))
             return 1
         if MAIN in held and not main_strict_port():
             # у основной пока нет своего порта: ее строгие сессии на порту каскада, а он начнет переходить на name
-            print(f"{WARN} идут сессии только через {MAIN} (-x {MAIN}). Закрой их и повтори: с новой подпиской "
-                  f"у {MAIN} появится свой порт, а их порт станет общим для очереди.")
+            print(f"{WARN} " + tr(f"идут сессии только через {MAIN} (-x {MAIN}). Закрой их и повтори: с новой подпиской "
+                                  f"у {MAIN} появится свой порт, а их порт станет общим для очереди.",
+                                  f"sessions are running through {MAIN} only (-x {MAIN}). Close them and try again: with "
+                                  f"a new subscription {MAIN} gets its own port, and their port becomes shared by the order."))
             return 1
         data = read_subs()
         known = (data.get(name) or {}).get("port") if isinstance(data.get(name), dict) else None
@@ -1732,9 +1790,11 @@ def add_sub(args):
             start(strict=False)
             direct, via = check_exit(name)
             if not via:
-                raise ProxyError(f"не удалось подключиться через подписку {name}")
+                raise ProxyError(tr(f"не удалось подключиться через подписку {name}",
+                                    f"couldn't connect through subscription {name}"))
             if country and (via[1] or "").upper() != country.upper():
-                raise ProxyError(f"через {name} выход {fmt(via)}, а нужен {country.upper()}")
+                raise ProxyError(tr(f"через {name} выход {fmt(via)}, а нужен {country.upper()}",
+                                    f"the exit via {name} is {fmt(via)}, but {country.upper()} is required"))
             verified = True
         except (OSError, ProxyError) as error:
             print(f"{BAD} {error}")
@@ -1749,29 +1809,38 @@ def add_sub(args):
                 elif not running and not holders():
                     stop()
             except (OSError, ProxyError) as error:
-                print(f"{WARN} mihomo после отката: {error}")
+                print(f"{WARN} " + tr(f"mihomo после отката: {error}", f"mihomo after the rollback: {error}"))
             if running:
                 ensure_watch()
-    print(f"{OK} подписка {name}: порт {p}, напрямую {fmt(direct)}, через нее {fmt(via)}"
-          + (f", только серверы «{only}»" if only else ""))
-    print(f"agentmeister <проект> -x {name} пойдет только через {name}. "
-          f"Просто -x идет по подпискам по очереди: {', '.join(cascade_subs())}.")
+    print(f"{OK} " + tr(f"подписка {name}: порт {p}, напрямую {fmt(direct)}, через нее {fmt(via)}",
+                        f"subscription {name}: port {p}, direct {fmt(direct)}, through it {fmt(via)}")
+          + (tr(f", только серверы «{only}»", f', only servers "{only}"') if only else ""))
+    print(tr(f"agentmeister <проект> -x {name} пойдет только через {name}. "
+             f"Просто -x идет по подпискам по очереди: {', '.join(cascade_subs())}.",
+             f"agentmeister <project> -x {name} goes only through {name}. "
+             f"Plain -x goes through the subscriptions in order: {', '.join(cascade_subs())}."))
     if name not in cascade_subs():
-        print(paint(f"  {name} не в очереди: у основной подписки выход должен быть в {setting('country')}, "
-                    f"а у {name} {country.upper() or 'страна не задана'}. Иначе сессия посреди работы могла бы "
-                    "сменить страну выхода", "2"))
+        print(paint(tr(f"  {name} не в очереди: у основной подписки выход должен быть в {setting('country')}, "
+                       f"а у {name} {country.upper() or 'страна не задана'}. Иначе сессия посреди работы могла бы "
+                       "сменить страну выхода",
+                       f"  {name} isn't in the order: the main subscription must exit in {setting('country')}, "
+                       f"and {name} has {country.upper() or 'no country set'}. Otherwise a session could change "
+                       "its exit country midway"), "2"))
     return 0
 
 
 def remove_sub(name):
     if in_session():
-        print(f"{WARN} {IN_SESSION}: agentmeister proxy remove {name}")
+        print(f"{WARN} {in_session_note()}: agentmeister proxy remove {name}")
         return 1
     if name == MAIN:
-        print(f"{WARN} основную подписку меняет agentmeister proxy setup, а удаляет все agentmeister proxy remove")
+        print(f"{WARN} " + tr("основную подписку меняет agentmeister proxy setup, а удаляет все agentmeister proxy remove",
+                              "agentmeister proxy setup changes the main subscription, and agentmeister proxy remove "
+                              "removes everything"))
         return 2
     if name not in extra_subs():
-        print(f"{BAD} нет подписки {name}, есть {', '.join(sub_names())}")
+        print(f"{BAD} " + tr(f"нет подписки {name}, есть {', '.join(sub_names())}",
+                             f"no subscription {name}, available: {', '.join(sub_names())}"))
         return 1
     with locked():
         data = read_subs()
@@ -1780,7 +1849,8 @@ def remove_sub(name):
         held = held_subs()
         if name in held or (last and MAIN in held):
             # без дополнительных подписок пропадет и порт только основной
-            print(f"{WARN} через {name if name in held else MAIN} идут сессии. Закрой их и повтори.")
+            print(f"{WARN} " + tr(f"через {name if name in held else MAIN} идут сессии. Закрой их и повтори.",
+                                  f"sessions are running through {name if name in held else MAIN}. Close them and try again."))
             return 1
         if last:
             data.pop(MAIN, None)
@@ -1794,26 +1864,29 @@ def remove_sub(name):
                 ensure_watch()
             except ProxyError as error:
                 print(f"{WARN} mihomo: {error}")
-    print(f"{OK} подписка {name} удалена")
+    print(f"{OK} " + tr(f"подписка {name} удалена", f"subscription {name} removed"))
     return 0
 
 
 def list_subs():
     if not configured():
-        print(f"{WARN} прокси не настроен: agentmeister proxy setup")
+        print(f"{WARN} " + tr("прокси не настроен: agentmeister proxy setup", "proxy isn't set up: agentmeister proxy setup"))
         return 1
     extras = extra_subs()
     if not extras:
-        print(f"{OK} одна подписка {MAIN}, порт {port()}"
-              + (f", выход должен быть в {setting('country')}" if setting("country") else ""))
-        print(paint("  Добавить еще: agentmeister proxy add <имя> <ссылка>", "2"))
+        print(f"{OK} " + tr(f"одна подписка {MAIN}, порт {port()}", f"one subscription {MAIN}, port {port()}")
+              + (tr(f", выход должен быть в {setting('country')}", f", the exit must be in {setting('country')}")
+                 if setting("country") else ""))
+        print(paint(tr("  Добавить еще: agentmeister proxy add <имя> <ссылка>",
+                       "  Add another: agentmeister proxy add <name> <link>"), "2"))
         return 0
-    rows = [("-x", f"по очереди: {', '.join(cascade_subs())}", port(), "")]
-    rows += [(f"-x {n}", f"только {n}", sub_port(n), sub_country(n)) for n in sub_names()]
+    rows = [("-x", tr(f"по очереди: {', '.join(cascade_subs())}", f"in order: {', '.join(cascade_subs())}"), port(), "")]
+    rows += [(f"-x {n}", tr(f"только {n}", f"only {n}"), sub_port(n), sub_country(n)) for n in sub_names()]
     width = max(len(r[0]) for r in rows)
     text = max(len(r[1]) for r in rows)
     for flag, what, p, want in rows:
-        print(f"  {flag.ljust(width)}  {what.ljust(text)}  порт {p}" + (f", выход {want}" if want else ""))
+        print(f"  {flag.ljust(width)}  {what.ljust(text)}  " + tr(f"порт {p}", f"port {p}")
+              + (tr(f", выход {want}", f", exit {want}") if want else ""))
     return 0
 
 
@@ -1890,19 +1963,24 @@ def update():
     if not exe:
         return 0 if install_mihomo() else 1
     if not from_brew(exe):
-        print(f"{WARN} mihomo стоит не из Homebrew ({tilde(exe)}), обнови его тем же способом, каким ставил. "
-              "Релизы: https://github.com/MetaCubeX/mihomo/releases")
+        print(f"{WARN} " + tr(f"mihomo стоит не из Homebrew ({tilde(exe)}), обнови его тем же способом, каким ставил. "
+                              "Релизы: https://github.com/MetaCubeX/mihomo/releases",
+                              f"mihomo isn't from Homebrew ({tilde(exe)}), update it the same way you installed it. "
+                              "Releases: https://github.com/MetaCubeX/mihomo/releases"))
         return 1
     before = installed_version(exe)
     print("brew upgrade mihomo …", flush=True)
     if subprocess.run([brew_bin(), "upgrade", "mihomo"]).returncode != 0:
-        print(f"{BAD} brew upgrade mihomo не сработал")
+        print(f"{BAD} " + tr("brew upgrade mihomo не сработал", "brew upgrade mihomo failed"))
         return 1
     after = installed_version()
-    print(f"{OK} mihomo {before} → {after}" if newer(after, before) else f"{OK} mihomo {after}, это последняя версия")
+    print(f"{OK} mihomo {before} → {after}" if newer(after, before) else
+          f"{OK} " + tr(f"mihomo {after}, это последняя версия", f"mihomo {after} is the latest version"))
     if in_session():
-        print(f"{WARN} запущенный mihomo не перезапускаю: песочница сессии закрывает управление им. Если новая "
-              "версия нужна сейчас, выполни в обычном терминале agentmeister proxy restart")
+        print(f"{WARN} " + tr("запущенный mihomo не перезапускаю: песочница сессии закрывает управление им. Если новая "
+                              "версия нужна сейчас, выполни в обычном терминале agentmeister proxy restart",
+                              "not restarting the running mihomo: the session sandbox closes control over it. If you "
+                              "need the new version now, run agentmeister proxy restart in a regular terminal"))
         return 0
     running = running_version()
     if not running or running == after:
@@ -1911,10 +1989,13 @@ def update():
     if not live:
         with locked():
             stop()
-        print(f"{OK} старый mihomo {running} остановлен, новый запустится с первой сессией через proxy")
+        print(f"{OK} " + tr(f"старый mihomo {running} остановлен, новый запустится с первой сессией через proxy",
+                            f"stopped the old mihomo {running}, the new one starts with the first proxied session"))
         return 0
-    question = (f"Сейчас через proxy идут сессии ({len(live)}), они работают на mihomo {running}. Перезапустить его сейчас? "
-                "Запросы, которые идут в эту секунду, оборвутся, Claude Code их повторит [y/N] ")
+    question = tr(f"Сейчас через proxy идут сессии ({len(live)}), они работают на mihomo {running}. Перезапустить его сейчас? "
+                  "Запросы, которые идут в эту секунду, оборвутся, Claude Code их повторит [y/N] ",
+                  f"Proxied sessions are running now ({len(live)}) on mihomo {running}. Restart it now? "
+                  "Requests in flight right now will drop, and Claude Code will retry them [y/N] ")
     if sys.stdin.isatty() and input(question).strip().lower() in ("y", "yes", "д", "да"):
         try:
             with locked():
@@ -1924,19 +2005,24 @@ def update():
             print(f"{BAD} {e}")
             return 1
         if problem:
-            print(f"{WARN} {problem}: сессии через proxy работают через этот выход, проверь сервер")
-        print(f"{OK} mihomo перезапущен, работает {running_version() or after}")
+            print(f"{WARN} " + tr(f"{problem}: сессии через proxy работают через этот выход, проверь сервер",
+                                f"{problem}: proxied sessions use this exit, check the server"))
+        print(f"{OK} " + tr(f"mihomo перезапущен, работает {running_version() or after}",
+                            f"mihomo restarted, running {running_version() or after}"))
     else:
-        print(f"{OK} mihomo {running} работает, пока идут сессии через proxy. {after} заработает после последней")
+        print(f"{OK} " + tr(f"mihomo {running} работает, пока идут сессии через proxy. {after} заработает после последней",
+                            f"mihomo {running} keeps running while proxied sessions are open. {after} starts after "
+                            "the last one"))
     return 0
 
 
 def restart_cmd():
     if in_session():
-        print(f"{WARN} {IN_SESSION}: agentmeister proxy restart")
+        print(f"{WARN} {in_session_note()}: agentmeister proxy restart")
         return 1
     if not (read_pid() and listening(port())):
-        print(paint("  mihomo не запущен: он поднимется вместе с первой сессией через proxy", "2"))
+        print(paint("  " + tr("mihomo не запущен: он поднимется вместе с первой сессией через proxy",
+                              "mihomo isn't running: it starts with the first proxied session"), "2"))
         return 0
     try:
         with locked():
@@ -1946,9 +2032,12 @@ def restart_cmd():
         print(f"{BAD} {e}")
         return 1
     if problem:
-        print(f"{WARN} {problem}: сессии через proxy работают через этот выход, проверь сервер")
+        print(f"{WARN} " + tr(f"{problem}: сессии через proxy работают через этот выход, проверь сервер",
+                                f"{problem}: proxied sessions use this exit, check the server"))
     node, proto = active_node()
-    print(f"{OK} mihomo перезапущен" + (f", сервер {node}" + (f", протокол {proto}" if proto else "") if node else ""))
+    print(f"{OK} " + tr("mihomo перезапущен", "mihomo restarted")
+          + (tr(f", сервер {node}", f", server {node}") + (tr(f", протокол {proto}", f", protocol {proto}") if proto else "")
+             if node else ""))
     return 0
 
 
@@ -2040,16 +2129,17 @@ def status(test=False):
 
 def remove():
     if in_session():
-        print(f"{WARN} {IN_SESSION}: agentmeister proxy remove")
+        print(f"{WARN} {in_session_note()}: agentmeister proxy remove")
         return 1
     with locked():
         if holders():
-            print(f"{WARN} сейчас идут сессии через proxy. Закрой их и повтори.")
+            print(f"{WARN} " + tr("сейчас идут сессии через proxy. Закрой их и повтори.",
+                                  "proxied sessions are running now. Close them and try again."))
             return 1
         stop()
     if os.path.isdir(CONF_DIR):
         shutil.rmtree(CONF_DIR)
-    print(f"{OK} прокси удалён: {tilde(CONF_DIR)}")
+    print(f"{OK} " + tr(f"прокси удалён: {tilde(CONF_DIR)}", f"proxy removed: {tilde(CONF_DIR)}"))
     return 0
 
 
@@ -2100,12 +2190,44 @@ Claude Code с -x обращается к API Anthropic через mihomo. Пр�
 К серверу mihomo ходит через Wi-Fi или Ethernet в обход TUN Happ и других VPN, поэтому Happ можно
 включать и выключать во время сессии. Если живых серверов нет, соединения отклоняются, а не идут напрямую."""
 
+USAGE_EN = """agentmeister proxy                 status: whether it's set up, whether mihomo runs, how many proxied sessions
+agentmeister proxy test            compare the exit direct and via proxy (IP and country)
+agentmeister proxy setup [link] [--country DE] [--only DE]
+                                  set up from a subscription link (https://…, Clash, mihomo or v2ray).
+                                  --country: if the exit lands in another country, the session won't start;
+                                  --only: take only servers whose name matches this expression
+agentmeister proxy add <name> [link] [--country NL] [--only RE]
+                                  one more subscription. agentmeister <project> -x <name> goes only through it,
+                                  and plain -x goes through all of them in order: the next one when the previous
+                                  has no live servers
+agentmeister proxy list            subscriptions, their ports and -x flags
+agentmeister proxy remove <name>   remove one extra subscription
+agentmeister proxy update          update mihomo with Homebrew and restart it if it's running
+agentmeister proxy restart         restart mihomo without closing proxied sessions
+agentmeister proxy remove          remove the setup
+agentmeister proxy check-url <url>|default  where to check the exit IP and country (/cdn-cgi/trace format)
+agentmeister proxy probe-url <url>|default  how mihomo checks that servers are alive (204 or 200 response)
+agentmeister proxy run [--via <name>] -- <cmd>
+                                  run a command with network access only through mihomo
+
+With -x, Claude Code reaches the Anthropic API through mihomo. If the proxy drops, requests fail.
+Regular SSH and local services stay reachable. Outside HTTP and HTTPS on ports 80 and 443 need the proxy.
+Codex with -x and proxy run keeps a strict mode with access to the mihomo port and the ssh-agent socket.
+You need mihomo: brew install mihomo.
+It listens on 127.0.0.1:{port}, starts with the first such session and stops after the last one.
+mihomo reaches the server over Wi-Fi or Ethernet, bypassing the TUN of Happ and other VPNs, so you can
+turn Happ on and off during a session. If there are no live servers, connections are refused, not sent direct."""
+
+
+def usage():
+    return tr(USAGE, USAGE_EN).format(port=port())
+
 
 def main(argv):
     cmd = argv[0] if argv else "status"
     rest = argv[1:]
     if cmd in ("-h", "--help", "help"):
-        print(USAGE.format(port=port()))
+        print(usage())
         return 0
     if cmd == "status":
         return status()
@@ -2129,11 +2251,15 @@ def main(argv):
         key = {"check-url": "proxy_check_url", "probe-url": "proxy_probe_url"}[cmd]
         value = rest[0].strip()
         if value != "default" and not re.match(r"^https?://\S+$", value):
-            print(f"{BAD} нужен адрес https://… или default", file=sys.stderr)
+            print(f"{BAD} " + tr("нужен адрес https://… или default", "you need an https://… address or default"),
+                  file=sys.stderr)
             return 2
         mnrhlib.write_config(**{key: None if value == "default" else value})
-        print(f"{OK} проверка выхода: {check_url()}\n{OK} проверка серверов: {probe_url()}"
-              + ("\nНовый адрес проверки серверов mihomo возьмет после agentmeister proxy restart." if cmd == "probe-url" else ""))
+        print(tr(f"{OK} проверка выхода: {check_url()}\n{OK} проверка серверов: {probe_url()}",
+                 f"{OK} exit check: {check_url()}\n{OK} server check: {probe_url()}")
+              + (tr("\nНовый адрес проверки серверов mihomo возьмет после agentmeister proxy restart.",
+                    "\nmihomo picks up the new server check address after agentmeister proxy restart.")
+                 if cmd == "probe-url" else ""))
         return 0
     if cmd == "restart":
         return restart_cmd()
@@ -2160,7 +2286,8 @@ def main(argv):
     if cmd == "last":
         print(last())
         return 0
-    print(f"agentmeister proxy: не знаю «{cmd}»\n\n{USAGE.format(port=port())}", file=sys.stderr)
+    print(tr(f"agentmeister proxy: не знаю «{cmd}»", f'agentmeister proxy: unknown command "{cmd}"') + f"\n\n{usage()}",
+          file=sys.stderr)
     return 2
 
 
