@@ -39,10 +39,10 @@ phase, tests are written first and must fail before the code change (Principle I
 
 ## Phase 5: migrate (PR cli-en/migrate)
 
-- [ ] T012 [P] [US1] [US2] Extend `tests/test_migrate_dirs.py` with lang en checks of help and refusals
-- [ ] T013 [US1] [US2] Print help from two constants in `libexec/agentmeister/lib/migrate_dirs.py`, wrap the
+- [x] T012 [P] [US1] [US2] Extend `tests/test_migrate_dirs.py` with lang en checks of help and refusals
+- [x] T013 [US1] [US2] Print help from two constants in `libexec/agentmeister/lib/migrate_dirs.py`, wrap the
       remaining messages
-- [ ] T014 Run `make test`
+- [x] T014 Run `make test`
 
 ## Phase 6: parallel (PR cli-en/parallel)
 
@@ -54,7 +54,7 @@ phase, tests are written first and must fail before the code change (Principle I
 
 ## Phase 7: Polish (goes with the parallel PR)
 
-- [ ] T018 [US3] Drop the Russian-only note from `README.md`
+- [x] T018 [US3] Drop the Russian-only note from `README.md`
 - [ ] T019 Run the manual check from `contracts/cli-output.md`, every count is 0 (SC-001)
 
 ## Dependencies

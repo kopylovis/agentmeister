@@ -15,8 +15,8 @@
   <img src="docs/screenshots/ru/main-dark.png#gh-dark-mode-only" width="900" alt="Agentmeister с вкладками Claude Code, Codex и терминала, каждая через свою подписку proxy"><img src="docs/screenshots/ru/main-light.png#gh-light-mode-only" width="900" alt="Agentmeister с вкладками Claude Code, Codex и терминала, каждая через свою подписку proxy">
 </p>
 
-Меню говорит на языке macOS, русском или английском. Часть сообщений, например `agentmeister -h` и
-`agentmeister proxy -h`, пока только на русском.
+Меню и команды говорят на языке macOS, русском или английском. `agentmeister lang ru` или
+`agentmeister lang en` закрепляет язык.
 
 ```
 # Меню для Claude Code и Codex
