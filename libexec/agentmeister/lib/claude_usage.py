@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from mnrhlib import HOME, has_flag, write_json  # noqa: E402
+from mnrhlib import HOME, has_flag, tr, write_json  # noqa: E402
 import claude_search  # noqa: E402
 
 from mnrhlib import CACHE_HOME, CONFIG_HOME, STATE_HOME, app_dir  # noqa: E402
@@ -23,6 +23,7 @@ VERSION = 1
 GAP = 300  # перерыв дольше 5 минут не считается работой
 KINDS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
 KIND_NAMES = ("вход", "выход", "кэш чт.", "кэш зап.")
+KIND_NAMES_EN = ("input", "output", "cache rd", "cache wr")
 RECENT_IDS = 64
 TS = re.compile(rb'"timestamp":\s*"([^"]+)"')
 CWD = re.compile(rb'"cwd":\s*"((?:[^"\\]|\\.)*)"')
@@ -230,21 +231,23 @@ def collect(days=7, project=None):
 
 def num(n):
     if n >= 10 ** 9:
-        return f"{n / 1e9:.1f} млрд"
+        return tr(f"{n / 1e9:.1f} млрд", f"{n / 1e9:.1f}B")
     if n >= 10 ** 7:
-        return f"{n / 1e6:.0f} млн"
+        return tr(f"{n / 1e6:.0f} млн", f"{n / 1e6:.0f}M")
     if n >= 10 ** 6:
-        return f"{n / 1e6:.1f} млн"
+        return tr(f"{n / 1e6:.1f} млн", f"{n / 1e6:.1f}M")
     if n >= 10 ** 4:
-        return f"{n / 1e3:.0f} тыс."
+        return tr(f"{n / 1e3:.0f} тыс.", f"{n / 1e3:.0f}K")
     if n >= 1000:
-        return f"{n / 1e3:.1f} тыс."
+        return tr(f"{n / 1e3:.1f} тыс.", f"{n / 1e3:.1f}K")
     return str(n)
 
 
 def dur(sec):
     m = int(round(sec / 60))
-    return f"{m // 60} ч {m % 60:02d} мин" if m >= 60 else f"{m} мин"
+    if m >= 60:
+        return tr(f"{m // 60} ч {m % 60:02d} мин", f"{m // 60} h {m % 60:02d} min")
+    return tr(f"{m} мин", f"{m} min")
 
 
 def short(name, n=40):
@@ -263,11 +266,13 @@ def table(title, head, rows):
 
 def report(days=7, project=None, top=5):
     rows = collect(days, project)
-    period = f"за {days} дн. (с {time.strftime('%d.%m', time.localtime(period_start(days)))})" if days \
-        else "за всё время"
-    where = f" в проекте «{project}»" if project else ""
+    start = time.strftime('%d.%m', time.localtime(period_start(days))) if days else ""
+    period = tr(f"за {days} дн. (с {start})", f"over {days} {'day' if days == 1 else 'days'} (since {start})") if days \
+        else tr("за всё время", "for all time")
+    where = tr(f" в проекте «{project}»", f" in project \"{project}\"") if project else ""
     if not rows:
-        return f"Claude Code {period}{where}: ни одной сессии с расходом.", False
+        return tr(f"Claude Code {period}{where}: ни одной сессии с расходом.",
+                  f"Claude Code {period}{where}: no sessions with usage."), False
     total = [0] * 5
     by_project, by_model = {}, {}
     for r in rows:
@@ -283,27 +288,34 @@ def report(days=7, project=None, top=5):
                 p["tok"][i] += row[i]
                 total[i] += row[i]
     active = sum(r["active"] for r in rows)
-    lines = [f"Claude Code {period}{where}: сессий {len(rows)}, активно {dur(active)}, запросов к модели {total[4]}.",
-             f"Токены: всего {num(sum(total[:4]))}; " + ", ".join(
-                 f"{n} {num(v)}" for n, v in zip(("вход", "выход", "чтение кэша", "запись в кэш"), total)) + ".",
+    kinds = tr(KIND_NAMES, KIND_NAMES_EN)
+    lines = [tr(f"Claude Code {period}{where}: сессий {len(rows)}, активно {dur(active)}, запросов к модели {total[4]}.",
+                f"Claude Code {period}{where}: {len(rows)} sessions, {dur(active)} active, {total[4]} model requests."),
+             tr(f"Токены: всего {num(sum(total[:4]))}; ", f"Tokens: {num(sum(total[:4]))} total; ") + ", ".join(
+                 f"{n} {num(v)}" for n, v in zip(tr(("вход", "выход", "чтение кэша", "запись в кэш"),
+                                                    ("input", "output", "cache read", "cache write")), total)) + ".",
              ""]
     projects = sorted(by_project.items(), key=lambda kv: (-sum(kv[1]["tok"][:4]), kv[0]))
-    lines += table("По проектам:", ["проект", "сессий", "время", "запросов", *KIND_NAMES],
+    lines += table(tr("По проектам:", "By project:"),
+                   tr(["проект", "сессий", "время", "запросов"], ["project", "sessions", "time", "requests"]) + list(kinds),
                    [[name, str(p["sessions"]), dur(p["active"]), str(p["tok"][4]), *map(num, p["tok"][:4])]
                     for name, p in projects])
     lines.append("")
     models = sorted(by_model.items(), key=lambda kv: (-sum(kv[1]["tok"][:4]), kv[0]))
-    lines += table("По моделям:", ["модель", "сессий", "запросов", *KIND_NAMES],
+    lines += table(tr("По моделям:", "By model:"),
+                   tr(["модель", "сессий", "запросов"], ["model", "sessions", "requests"]) + list(kinds),
                    [[name, str(m["sessions"]), str(m["tok"][4]), *map(num, m["tok"][:4])] for name, m in models])
     heavy = sorted(rows, key=lambda r: -r["total"])[:max(0, top)]
     if heavy:
-        lines += ["", "Самые тяжёлые сессии (по сумме токенов):"]
+        lines += ["", tr("Самые тяжёлые сессии (по сумме токенов):", "Heaviest sessions (by total tokens):")]
         for r in heavy:
             out = sum(row[1] for row in r["models"].values())
             last = time.strftime("%d.%m %H:%M", time.localtime(r["last"])) if r["last"] else "?"
             lines.append(f"  {r['sid'][:8]}  {short(claude_search.folder(r['data']))}  {last}  {dur(r['active'])}  "
-                         f"всего {num(r['total'])}, выход {num(out)}  «{claude_search.title(r['sid'], r['data'])}»")
-    lines += ["", "Вход — токены без кэша; время — промежутки меньше 5 минут между событиями, вместе с субагентами."]
+                         + tr(f"всего {num(r['total'])}, выход {num(out)}", f"total {num(r['total'])}, output {num(out)}")
+                         + f"  «{claude_search.title(r['sid'], r['data'])}»")
+    lines += ["", tr("Вход — токены без кэша; время — промежутки меньше 5 минут между событиями, вместе с субагентами.",
+                     "Input is tokens without cache; time is gaps under 5 minutes between events, subagents included.")]
     return "\n".join(lines), False
 
 
@@ -330,7 +342,7 @@ def handle(a):
     days = a.get("days")
     days = 7 if days is None else int(days)
     if days < 0:
-        return "days — число дней, 0 или больше.", True
+        return tr("days — число дней, 0 или больше.", "days is a number of days, 0 or more."), True
     return report(days=days, project=a.get("project") or None, top=int(a.get("top") or 5))
 
 
@@ -339,11 +351,16 @@ USAGE = """agentmeister usage [--days N] [--project P] [--top N]
   --days N     за N последних дней, считая сегодня (по умолчанию 7; 0 — за всё время)
   --project P  только этот проект: имя папки или его начало, ~ — домашний каталог
   --top N      сколько самых тяжёлых сессий показать (по умолчанию 5)"""
+USAGE_EN = """agentmeister usage [--days N] [--project P] [--top N]
+  Claude Code tokens and active time by project and model
+  --days N     the last N days, today included (7 by default; 0 for all time)
+  --project P  only this project: a folder name or its start, ~ for the home folder
+  --top N      how many of the heaviest sessions to show (5 by default)"""
 
 
 def main(argv):
     if has_flag(argv, "-h", "--help"):
-        print(USAGE)
+        print(tr(USAGE, USAGE_EN))
         return 0
     opts = {"--days": "7", "--project": None, "--top": "5"}
     short = {"-d": "--days", "-p": "--project", "-t": "--top"}
@@ -356,16 +373,17 @@ def main(argv):
             i += 1
             continue
         if a not in opts or i + 1 >= len(argv):
-            print(f"agentmeister usage: не понимаю {argv[i]}\n\n{USAGE}", file=sys.stderr)
+            print(tr(f"agentmeister usage: не понимаю {argv[i]}\n\n{USAGE}",
+                     f"agentmeister usage: unknown argument {argv[i]}\n\n{USAGE_EN}"), file=sys.stderr)
             return 2
         opts[a] = argv[i + 1]
         i += 2
     for k in ("--days", "--top"):
         if not opts[k].isdigit():
-            print(f"agentmeister usage: после {k} нужно число", file=sys.stderr)
+            print(tr(f"agentmeister usage: после {k} нужно число", f"agentmeister usage: {k} needs a number"), file=sys.stderr)
             return 2
     if not os.path.isdir(claude_search.PROJECTS):
-        print("Сессий Claude Code на этом Mac нет.")
+        print(tr("Сессий Claude Code на этом Mac нет.", "There are no Claude Code sessions on this Mac."))
         return 0
     text, err = report(days=int(opts["--days"]), project=opts["--project"], top=int(opts["--top"]))
     print(text)

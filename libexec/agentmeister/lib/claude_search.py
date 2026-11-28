@@ -7,7 +7,7 @@ import shlex
 from datetime import datetime
 
 import stemmer
-from mnrhlib import CLAUDE_HOME, HOME, UUID_RE, tilde, write_json
+from mnrhlib import CLAUDE_HOME, HOME, UUID_RE, tilde, tr, write_json
 
 CLAUDE = CLAUDE_HOME
 PROJECTS = os.path.join(CLAUDE, "projects")
@@ -21,6 +21,7 @@ REMINDER = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
 LOCAL = ("<command-name>", "<local-command-stdout>", "<local-command-stderr>", "<local-command-caveat>",
          "<task-notification>")
 ROLES = {"user": "ты", "claude": "claude", "tool": "команда", "error": "ошибка", "summary": "сводка"}
+ROLES_EN = {"user": "you", "claude": "claude", "tool": "command", "error": "error", "summary": "summary"}
 TOOL_CAP = 400
 # ошибки инструментов индексируются, обычный вывод нет; у длинной ошибки берутся начало и конец, где обычно причина
 ERROR_HEAD, ERROR_TAIL = 600, 900
@@ -66,6 +67,10 @@ def tool_line(block):
                     if inp.get(k)), "")
         text = f"{name} {arg}".strip()
     return text[:TOOL_CAP]
+
+
+def role_label(role):
+    return tr(ROLES.get(role, role), ROLES_EN.get(role, role))
 
 
 def error_text(block):
@@ -444,50 +449,63 @@ def find_sessions(q, project=None, days=None, roles=None, exclude=None):
 
 def search(query, project=None, days=None, roles=None, limit=8, exclude=None):
     if not query.strip():
-        return "Пустой запрос: дай хотя бы одно слово.", True
+        return tr("Пустой запрос: дай хотя бы одно слово.", "Empty query: give at least one word."), True
     q = Query(query)
     if not q.terms:
-        return f"В запросе «{query}» одни служебные слова (как, мы, в…), а они не индексируются. Дай слова по теме.", True
+        return tr(f"В запросе «{query}» одни служебные слова (как, мы, в…), а они не индексируются. Дай слова по теме.",
+                  f"The query \"{query}\" has only stop words (the, we, in…), and they are not indexed. "
+                  "Give words about the topic."), True
     r = find_sessions(q, project, days, roles, exclude)
     q, idf, df, scope, chosen, exact = r.q, r.idf, r.df, r.scope, r.chosen, r.exact
-    where = (f" в проекте «{project}»" if project else "") + (f" за {days} дн." if days else "")
+    where = (tr(f" в проекте «{project}»", f" in project \"{project}\"") if project else "") + \
+        (tr(f" за {days} дн.", f" over {days} {'day' if days == 1 else 'days'}") if days else "")
     if not chosen:
         missing = [q.words[x] for x in q.terms if not df[x]]
-        text = f"По запросу «{query}»{where} ничего не нашёл (просмотрено сессий: {len(scope)})."
+        text = tr(f"По запросу «{query}»{where} ничего не нашёл (просмотрено сессий: {len(scope)}).",
+                  f"Nothing found for \"{query}\"{where} (sessions searched: {len(scope)}).")
         if missing:
-            text += (" Нигде не встречается: " + ", ".join(missing) + ". Формы слова уже учтены "
-                     "(сессия найдёт и сессии), так что проверь написание или попробуй другое слово.")
+            text += tr(" Нигде не встречается: " + ", ".join(missing) + ". Формы слова уже учтены "
+                       "(сессия найдёт и сессии), так что проверь написание или попробуй другое слово.",
+                       " Not found anywhere: " + ", ".join(missing) + ". Word forms are already covered "
+                       "(session also finds sessions), so check the spelling or try another word.")
         return text, False
-    lines = [f"Сессий с совпадениями{where}: {len(chosen)}"
-             f"{'' if exact else ' (только частичные: не все слова в одном сообщении)'}. "
-             f"Показаны {min(limit, len(chosen))}, лучшие совпадения сверху."]
+    shown = min(limit, len(chosen))
+    lines = [tr(f"Сессий с совпадениями{where}: {len(chosen)}"
+                f"{'' if exact else ' (только частичные: не все слова в одном сообщении)'}. "
+                f"Показаны {shown}, лучшие совпадения сверху.",
+                f"Sessions with matches{where}: {len(chosen)}"
+                f"{'' if exact else ' (partial only: not all words in one message)'}. "
+                f"Showing {shown}, best matches first.")]
     for _, sid, data, found in chosen[:limit]:
         lines.append("")
         lines.append(f"■ {sid[:8]}  {folder(data)}  {when(data.get('last'))}  «{title(sid, data)}»  "
-                     f"совпадений: {len(found)}")
+                     + tr(f"совпадений: {len(found)}", f"matches: {len(found)}"))
         for i in found[:3]:
             role, ts, text = data["msgs"][i]
-            lines.append(f"  #{i} [{ROLES.get(role, role)} {when(ts)}] {snippet(text, q, idf)}")
+            lines.append(f"  #{i} [{role_label(role)} {when(ts)}] {snippet(text, q, idf)}")
         if len(found) > 3:
             more = ", ".join(f"#{i}" for i in found[3:18])
-            lines.append(f"  ещё: {more}{' …' if len(found) > 18 else ''}")
+            lines.append(tr(f"  ещё: {more}", f"  more: {more}") + (" …" if len(found) > 18 else ""))
     lines.append("")
-    lines.append("Прочитать место целиком: session_read с id и at=<номер после #>.")
+    lines.append(tr("Прочитать место целиком: session_read с id и at=<номер после #>.",
+                    "To read a place in full: session_read with the id and at=<number after #>."))
     return "\n".join(lines), False
 
 
 def resolve(ref, idx):
     ref = (ref or "").strip().lower()
     if not ref:
-        return None, "Нужен id сессии (первые 8 символов из session_search)."
+        return None, tr("Нужен id сессии (первые 8 символов из session_search).",
+                        "A session id is needed (the first 8 characters from session_search).")
     hits = [sid for sid in idx if sid.startswith(ref)]
     if not hits:
         hits = [sid for sid, d in idx.items() if ref in title(sid, d).lower()]
     if len(hits) == 1:
         return hits[0], None
     if hits:
-        return None, f"«{ref}» подходит к {len(hits)} сессиям, дай больше символов id."
-    return None, f"Сессии «{ref}» нет."
+        return None, tr(f"«{ref}» подходит к {len(hits)} сессиям, дай больше символов id.",
+                        f"\"{ref}\" matches {len(hits)} sessions, give more characters of the id.")
+    return None, tr(f"Сессии «{ref}» нет.", f"There is no session \"{ref}\".")
 
 
 def read(ref, at=None, query=None, before=2, after=8, max_chars=2000, full=False):
@@ -498,10 +516,11 @@ def read(ref, at=None, query=None, before=2, after=8, max_chars=2000, full=False
     data = idx[sid]
     msgs = data["msgs"]
     total = len(msgs)
-    head = (f"Сессия {sid}  «{title(sid, data)}»\nпапка: {tilde(home_of(data) or '?')} · "
-            f"{when(data.get('first'), True)} — {when(data.get('last'), True)} · сообщений: {total}")
+    place, first, last = tilde(home_of(data) or '?'), when(data.get('first'), True), when(data.get('last'), True)
+    head = tr(f"Сессия {sid}  «{title(sid, data)}»\nпапка: {place} · {first} — {last} · сообщений: {total}",
+              f"Session {sid}  \"{title(sid, data)}\"\nfolder: {place} · {first} to {last} · messages: {total}")
     if not total:
-        return head + "\nВ ней нет ни одного сообщения.", False
+        return head + tr("\nВ ней нет ни одного сообщения.", "\nIt has no messages."), False
     note = ""
     if query:
         q = Query(query)
@@ -510,10 +529,10 @@ def read(ref, at=None, query=None, before=2, after=8, max_chars=2000, full=False
         found = sorted(i for i in set.intersection(*(set(h[x]) for x in q.terms)) if q.phrase_ok(msgs[i][2])) \
             if q.terms else []
         if not found:
-            return head + f"\n«{query}» в этой сессии не встречается.", False
+            return head + tr(f"\n«{query}» в этой сессии не встречается.", f"\n\"{query}\" does not occur in this session."), False
         at = found[0] if at is None else at
         if len(found) > 1:
-            note = "Совпадения в сессии: " + ", ".join(f"#{i}" for i in found[:30]) + (" …" if len(found) > 30 else "")
+            note = tr("Совпадения в сессии: ", "Matches in the session: ") + ", ".join(f"#{i}" for i in found[:30]) + (" …" if len(found) > 30 else "")
     if at is None:
         at = 0
     at = int(at)
@@ -526,21 +545,22 @@ def read(ref, at=None, query=None, before=2, after=8, max_chars=2000, full=False
     if note:
         lines.append(note)
     if lo:
-        lines.append(f"… раньше ещё {lo} (at={max(0, lo - 1)})")
+        lines.append(tr(f"… раньше ещё {lo} (at={max(0, lo - 1)})", f"… {lo} more before (at={max(0, lo - 1)})"))
     budget = READ_BUDGET
     shown_to = lo
     for i in range(lo, hi):
         role, ts, text = msgs[i]
         cap = len(text) if full else max_chars
-        body = text if len(text) <= cap else text[:cap] + f"\n… (+{len(text) - cap} симв., целиком: at={i} full=true)"
-        block = f"\n#{i} [{ROLES.get(role, role)} {when(ts)}]{' ◀' if i == at else ''}\n{body}"
+        body = text if len(text) <= cap else text[:cap] + tr(f"\n… (+{len(text) - cap} симв., целиком: at={i} full=true)",
+                                                              f"\n… (+{len(text) - cap} chars, in full: at={i} full=true)")
+        block = f"\n#{i} [{role_label(role)} {when(ts)}]{' ◀' if i == at else ''}\n{body}"
         if budget - len(block) < 0 and i > at:
             break
         budget -= len(block)
         lines.append(block)
         shown_to = i + 1
     if shown_to < total:
-        lines.append(f"\n… дальше ещё {total - shown_to} (at={shown_to})")
+        lines.append(tr(f"\n… дальше ещё {total - shown_to} (at={shown_to})", f"\n… {total - shown_to} more after (at={shown_to})"))
     return "\n".join(lines), False
 
 

@@ -20,24 +20,46 @@ import claude_search  # noqa: E402
 CLAUDE_BIN = os.environ.get("MNRH_CLAUDE_BIN", "claude")
 
 
+USAGE = """agentmeister sessions     сохранённые сессии: выбрать стрелками, продолжить, перенести, удалить
+agentmeister sessions -l  просто список
+agentmeister sessions resume <id> [-n] продолжить в её папке (по умолчанию через caffeinate, -n обычная)
+agentmeister sessions mv <id> <папка>  перенести в другую папку: путь, имя проекта из папки проектов или root
+agentmeister sessions rm <id>... [-y]  удалить вместе с историей запросов этой сессии
+agentmeister sessions rename <id> <название>  переименовать, как /rename в Claude Code
+agentmeister sessions clean [-y]       битые ссылки, сессии без единого ответа, папки удалённых проектов,
+                                      папки с неверным именем от старого mv
+agentmeister sessions search <слова>   поиск по всем сессиям; -p <проект>, -d <дней>, -r error — по ошибкам
+agentmeister sessions show <id> [N]    прочитать сессию с сообщения N (из search), -N — с конца
+agentmeister sessions slim             что даст сжатие старых частей сессий (скриншоты, длинные выводы)
+agentmeister sessions slim <id> [-y]   сжать; --copy — сжатую копию с новым id для проверки;
+                                      --undo — вернуть оригинал; --keep N — не трогать N последних
+                                      отрезков между /compact (по умолчанию 2)
+
+<id> — начало id из списка, 4–8 символов обычно хватает.
+Перенос переписывает cwd внутри сессии, так что `claude --resume` найдёт её уже в новой папке."""
+
+
+USAGE_EN = """agentmeister sessions     saved sessions: pick one with the arrows, resume, move, delete
+agentmeister sessions -l  plain list
+agentmeister sessions resume <id> [-n] resume in its folder (with caffeinate by default, -n for a normal one)
+agentmeister sessions mv <id> <folder>  move to another folder: a path, a project name from the projects folder, or root
+agentmeister sessions rm <id>... [-y]  delete along with the prompt history of this session
+agentmeister sessions rename <id> <title>  rename, like /rename in Claude Code
+agentmeister sessions clean [-y]       broken links, sessions without a single reply, folders of deleted projects,
+                                      folders misnamed by the old mv
+agentmeister sessions search <words>   search all sessions; -p <project>, -d <days>, -r error to search errors
+agentmeister sessions show <id> [N]    read a session from message N (from search), -N counts from the end
+agentmeister sessions slim             how much slimming old parts of sessions would save (screenshots, long outputs)
+agentmeister sessions slim <id> [-y]   slim it; --copy makes a slimmed copy with a new id to check;
+                                      --undo restores the original; --keep N leaves the last N
+                                      parts between /compact alone (2 by default)
+
+<id> is the start of an id from the list, 4 to 8 characters are usually enough.
+A move rewrites cwd inside the session, so `claude --resume` finds it in the new folder."""
+
+
 def usage():
-    print("agentmeister sessions     сохранённые сессии: выбрать стрелками, продолжить, перенести, удалить")
-    print("agentmeister sessions -l  просто список")
-    print("agentmeister sessions resume <id> [-n] продолжить в её папке (по умолчанию через caffeinate, -n обычная)")
-    print("agentmeister sessions mv <id> <папка>  перенести в другую папку: путь, имя проекта из папки проектов или root")
-    print("agentmeister sessions rm <id>... [-y]  удалить вместе с историей запросов этой сессии")
-    print("agentmeister sessions rename <id> <название>  переименовать, как /rename в Claude Code")
-    print("agentmeister sessions clean [-y]       битые ссылки, сессии без единого ответа, папки удалённых проектов,")
-    print("                                      папки с неверным именем от старого mv")
-    print("agentmeister sessions search <слова>   поиск по всем сессиям; -p <проект>, -d <дней>, -r error — по ошибкам")
-    print("agentmeister sessions show <id> [N]    прочитать сессию с сообщения N (из search), -N — с конца")
-    print("agentmeister sessions slim             что даст сжатие старых частей сессий (скриншоты, длинные выводы)")
-    print("agentmeister sessions slim <id> [-y]   сжать; --copy — сжатую копию с новым id для проверки;")
-    print("                                      --undo — вернуть оригинал; --keep N — не трогать N последних")
-    print("                                      отрезков между /compact (по умолчанию 2)")
-    print()
-    print("<id> — начало id из списка, 4–8 символов обычно хватает.")
-    print("Перенос переписывает cwd внутри сессии, так что `claude --resume` найдёт её уже в новой папке.")
+    print(tr(USAGE, USAGE_EN))
 
 
 def flags(s):
@@ -65,7 +87,8 @@ def summary(ss):
 def print_list(ss):
     print(summary(ss))
     print()
-    print(paint(f"  {'id':<8}  {'когда':>13}  {'размер':>7}  {'папка':<24}  название", "2"))
+    print(paint(tr(f"  {'id':<8}  {'когда':>13}  {'размер':>7}  {'папка':<24}  название",
+                   f"  {'id':<8}  {'when':>13}  {'size':>7}  {'folder':<24}  title"), "2"))
     for s in ss:
         print(f"  {s['id'][:8]}  {row(s)}")
 
@@ -84,9 +107,10 @@ def resolve_dest(arg):
     if len(names) == 1:
         return names[0]
     if names:
-        sys.exit(f"agentmeister sessions: «{arg}» подходит к нескольким проектам: "
+        sys.exit(tr(f"agentmeister sessions: «{arg}» подходит к нескольким проектам: ",
+                    f"agentmeister sessions: \"{arg}\" matches several projects: ")
                  + " ".join(tilde(p) for p in names))
-    sys.exit(f"agentmeister sessions: папки «{arg}» нет")
+    sys.exit(tr(f"agentmeister sessions: папки «{arg}» нет", f"agentmeister sessions: there is no folder \"{arg}\""))
 
 
 def stage_sidecar(source, staged, olds, dest, rewrite_paths):
@@ -109,12 +133,13 @@ def move(s, dest):
     dest = os.path.abspath(dest)
     tdir = os.path.join(PROJECTS, encode(dest))
     if tdir == s["pdir"]:
-        print(f"Сессия уже в {tilde(dest)}")
+        print(tr(f"Сессия уже в {tilde(dest)}", f"The session is already in {tilde(dest)}"))
         return
     target = os.path.join(tdir, s["id"] + ".jsonl")
     extra = os.path.join(tdir, s["id"])
     if any(os.path.lexists(path) for path in (target, extra)):
-        sys.exit(f"agentmeister sessions: в {tilde(tdir)} уже есть файлы с таким id")
+        sys.exit(tr(f"agentmeister sessions: в {tilde(tdir)} уже есть файлы с таким id",
+                    f"agentmeister sessions: {tilde(tdir)} already has files with this id"))
     os.makedirs(tdir, exist_ok=True)
     olds = {s["cwd"], s["started_in"]} - {None}
     source, sidecar = s["path"], s["extra"]
@@ -136,7 +161,8 @@ def move(s, dest):
         require_idle(s)
         current = tree_snapshot(sidecar) if os.path.lexists(sidecar) else {}
         if current != sidecar_state or file_version(os.lstat(source)) != original:
-            sys.exit("agentmeister sessions: файлы сессии изменились во время переноса")
+            sys.exit(tr("agentmeister sessions: файлы сессии изменились во время переноса",
+                        "agentmeister sessions: the session files changed during the move"))
 
         with ExitStack() as rollback:
             if sidecar_state:
@@ -151,16 +177,21 @@ def move(s, dest):
             os.unlink(source)
             rollback.pop_all()
     remove_if_empty(s["pdir"])
-    print(f"Перенесено: {tilde(s['cwd'])} → {tilde(dest)}" + (f", cwd переписан в {changed} строках" if changed else ""))
-    print(paint(f"Продолжить: cd {tilde(dest)} && claude --resume {s['id']}", "2"))
+    print(tr(f"Перенесено: {tilde(s['cwd'])} → {tilde(dest)}", f"Moved: {tilde(s['cwd'])} → {tilde(dest)}")
+          + (tr(f", cwd переписан в {changed} строках", f", cwd rewritten in {changed} lines") if changed else ""))
+    print(paint(tr(f"Продолжить: cd {tilde(dest)} && claude --resume {s['id']}",
+                   f"Resume: cd {tilde(dest)} && claude --resume {s['id']}"), "2"))
 
 
 def resume(s, mode):
     if s["running"]:
-        sys.exit("agentmeister sessions: сессия уже открыта в другом окне")
+        sys.exit(tr("agentmeister sessions: сессия уже открыта в другом окне",
+                    "agentmeister sessions: the session is already open in another window"))
     if not os.path.isdir(s["cwd"]):
-        sys.exit(f"agentmeister sessions: папки {tilde(s['cwd'])} больше нет, перенеси сессию: "
-                 f"agentmeister sessions mv {s['id'][:8]} <папка>")
+        sys.exit(tr(f"agentmeister sessions: папки {tilde(s['cwd'])} больше нет, перенеси сессию: "
+                    f"agentmeister sessions mv {s['id'][:8]} <папка>",
+                    f"agentmeister sessions: the folder {tilde(s['cwd'])} is gone, move the session: "
+                    f"agentmeister sessions mv {s['id'][:8]} <folder>"))
     os.chdir(s["cwd"])
     print(f"-> {tilde(s['cwd'])} · {mode} · {s['title'] or s['id']}")
     sys.stdout.flush()
@@ -170,7 +201,8 @@ def resume(s, mode):
     try:
         os.execvp(cmd[0], cmd)
     except OSError as e:
-        sys.exit(f"agentmeister sessions: не запустился {cmd[0]}: {e}")
+        sys.exit(tr(f"agentmeister sessions: не запустился {cmd[0]}: {e}",
+                    f"agentmeister sessions: could not start {cmd[0]}: {e}"))
 
 
 def file_version(info):
@@ -409,18 +441,21 @@ def clean(assume_yes):
                 empty.append(s)
 
     if away:
-        print(f"Проекты на отключенных дисках ({len(away)}) не трогаю: " + ", ".join(tilde(h) for h in away[:5])
-              + (" и другие" if len(away) > 5 else ""))
+        print(tr(f"Проекты на отключенных дисках ({len(away)}) не трогаю: ",
+                 f"Leaving projects on disconnected disks alone ({len(away)}): ") + ", ".join(tilde(h) for h in away[:5])
+              + (tr(" и другие", " and others") if len(away) > 5 else ""))
         print()
     if unknown:
-        print(f"Папки без проекта на диске и без записи о его пути ({len(unknown)}) не трогаю: "
-              + ", ".join(tilde(os.path.join(PROJECTS, d)) for d in unknown[:3]) + (" и другие" if len(unknown) > 3 else ""))
+        print(tr(f"Папки без проекта на диске и без записи о его пути ({len(unknown)}) не трогаю: ",
+                 f"Leaving folders with no project on disk and no record of its path alone ({len(unknown)}): ")
+              + ", ".join(tilde(os.path.join(PROJECTS, d)) for d in unknown[:3])
+              + (tr(" и другие", " and others") if len(unknown) > 3 else ""))
         print()
     if broken:
-        print(f"Битые ссылки ({len(broken)}):")
+        print(tr(f"Битые ссылки ({len(broken)}):", f"Broken links ({len(broken)}):"))
         for p, _, target in broken:
             print(f"  {tilde(p)} → {target}")
-        if confirm("Удалить?", assume_yes):
+        if confirm(tr("Удалить?", "Delete?"), assume_yes):
             for p, version, target in broken:
                 try:
                     if file_version(os.lstat(p)) == version and os.readlink(p) == target and not os.path.exists(p):
@@ -430,10 +465,12 @@ def clean(assume_yes):
                     continue
         print()
     if empty:
-        print(f"Сессии без единого ответа Claude ({len(empty)}, {fmt_size(sum(s['size'] for s in empty))}):")
+        size = fmt_size(sum(s['size'] for s in empty))
+        print(tr(f"Сессии без единого ответа Claude ({len(empty)}, {size}):",
+                 f"Sessions without a single Claude reply ({len(empty)}, {size}):"))
         for s in empty:
             print(f"  {s['id'][:8]}  {row(s)}")
-        if confirm("Удалить?", assume_yes):
+        if confirm(tr("Удалить?", "Delete?"), assume_yes):
             for s in empty:
                 try:
                     removed = delete(s, unanswered_only=True)
@@ -442,19 +479,21 @@ def clean(assume_yes):
                 if removed:
                     did = True
                 else:
-                    print(f"  {s['id'][:8]}  пропускаю: состояние сессии изменилось или файл недоступен")
+                    print(f"  {s['id'][:8]}  " + tr("пропускаю: состояние сессии изменилось или файл недоступен",
+                                                    "skipped: the session state changed or the file is unavailable"))
         print()
     if orphans:
-        print("Папки проектов, которых больше нет на диске:")
+        print(tr("Папки проектов, которых больше нет на диске:", "Folders of projects that are no longer on disk:"))
         for pdir, home, sessions, _ in orphans:
             mem = " + memory" if os.path.isdir(os.path.join(pdir, "memory")) else ""
-            print(f"  {tilde(home) if home else os.path.basename(pdir)}: {len(sessions)} сесс.{mem}, "
+            print(f"  {tilde(home) if home else os.path.basename(pdir)}: {len(sessions)} {tr('сесс.', 'sessions')}{mem}, "
                   f"{fmt_size(tree_size(pdir))}")
         if any(s["running"] for _, _, ss, _ in orphans for s in ss):
-            print("  среди них есть открытые сессии, эти папки пропущу")
+            print(tr("  среди них есть открытые сессии, эти папки пропущу", "  some sessions are open, those folders are skipped"))
         if any(os.path.lexists(os.path.join(pdir, "memory")) for pdir, _, _, _ in orphans):
-            print("  папки memory/ останутся на месте, их можно удалить вручную")
-        if confirm("Удалить сессии этих папок?", assume_yes):
+            print(tr("  папки memory/ останутся на месте, их можно удалить вручную",
+                     "  memory/ folders stay in place, you can delete them by hand"))
+        if confirm(tr("Удалить сессии этих папок?", "Delete the sessions of these folders?"), assume_yes):
             for pdir, home, sessions, snapshot in orphans:
                 try:
                     removed = remove_orphan(pdir, home, sessions, snapshot)
@@ -463,18 +502,19 @@ def clean(assume_yes):
                 if removed:
                     did = True
                     if removed == "memory":
-                        print(f"  {tilde(os.path.join(pdir, 'memory'))}: оставил")
+                        print(f"  {tilde(os.path.join(pdir, 'memory'))}: " + tr("оставил", "kept"))
                 else:
-                    print(f"  {tilde(pdir)}: пропускаю, папка изменилась, занята или недоступна")
+                    print(f"  {tilde(pdir)}: " + tr("пропускаю, папка изменилась, занята или недоступна",
+                                                   "skipped, the folder changed, is busy or unavailable"))
         print()
     for d in os.listdir(PROJECTS):
         p = os.path.join(PROJECTS, d)
         if os.path.isdir(p) and not os.path.islink(p):
             remove_if_empty(p)
     if not (misnamed or broken or empty or orphans):
-        print("Чистить нечего.")
+        print(tr("Чистить нечего.", "Nothing to clean."))
     elif did:
-        print("Готово.")
+        print(tr("Готово.", "Done."))
 
 
 def pick_dest(screen, s):
@@ -652,9 +692,10 @@ def rename(s, title):
     лежит custom-title.json, он важнее строки в переписке, поэтому он тоже получает новое название."""
     title = " ".join(title.split())
     if not title:
-        sys.exit("agentmeister sessions: название пустое")
+        sys.exit(tr("agentmeister sessions: название пустое", "agentmeister sessions: the title is empty"))
     if s.get("link"):
-        sys.exit("agentmeister sessions: это ссылка на чужую переписку, переименуй оригинал")
+        sys.exit(tr("agentmeister sessions: это ссылка на чужую переписку, переименуй оригинал",
+                    "agentmeister sessions: this is a link to another transcript, rename the original"))
     line = json.dumps({"type": "custom-title", "customTitle": title, "sessionId": s["id"]}, ensure_ascii=False) + "\n"
     with open(s["path"], "a+b") as f:
         # последняя строка могла оборваться без перевода строки: не склеиваем с ней название
@@ -701,7 +742,7 @@ def main():
     args = [a for a in args if a not in ("-y", "--yes")]
     cmd = args[0] if args else None
     if cmd in (None, "-l", "--list", "ls", "list", "clean") and not os.path.isdir(PROJECTS):
-        print(f"Нет {tilde(PROJECTS)}, сессий нет.")
+        print(tr(f"Нет {tilde(PROJECTS)}, сессий нет.", f"No {tilde(PROJECTS)}, so there are no sessions."))
         return 0
 
     if cmd is None:
@@ -723,10 +764,10 @@ def main():
         targets = [find(ss, a) for a in args[1:]]
         for s in targets:
             print(f"  {s['id'][:8]}  {row(s)}")
-        if confirm(f"Удалить {len(targets)}?", yes):
+        if confirm(tr(f"Удалить {len(targets)}?", f"Delete {len(targets)}?"), yes):
             for s in targets:
                 delete(s)
-            print("Удалено.")
+            print(tr("Удалено.", "Deleted."))
     elif cmd == "clean":
         clean(yes)
     elif cmd == "slim":
@@ -744,15 +785,17 @@ def main():
             i += 1
         days = opts.get("-d")
         if days is not None and not days.isdigit():
-            sys.exit("agentmeister sessions: после -d нужно число дней")
+            sys.exit(tr("agentmeister sessions: после -d нужно число дней", "agentmeister sessions: -d needs a number of days"))
         roles = opts.get("-r", "").split(",") if opts.get("-r") else None
         if roles and not set(roles) <= set(claude_search.ROLES):
-            sys.exit("agentmeister sessions: после -r одна из ролей: " + ", ".join(claude_search.ROLES))
+            sys.exit(tr("agentmeister sessions: после -r одна из ролей: ", "agentmeister sessions: -r takes one of the roles: ")
+                     + ", ".join(claude_search.ROLES))
         text, err = claude_search.search(" ".join(rest), project=opts.get("-p"), days=int(days) if days else None,
                                          roles=roles,
                                          exclude=[os.environ["CLAUDE_CODE_SESSION_ID"]]
                                          if os.environ.get("CLAUDE_CODE_SESSION_ID") else None)
-        print(text.replace("session_read с id и at=<номер после #>", "agentmeister sessions show <id> <номер после #>"))
+        print(text.replace("session_read с id и at=<номер после #>", "agentmeister sessions show <id> <номер после #>")
+              .replace("session_read with the id and at=<number after #>", "agentmeister sessions show <id> <number after #>"))
         return 1 if err else 0
     elif cmd == "show" and len(args) in (2, 3):
         at = None
@@ -760,7 +803,8 @@ def main():
             try:
                 at = int(args[2].lstrip("#"))
             except ValueError:
-                sys.exit("agentmeister sessions: номер сообщения — число, например 120 или -10")
+                sys.exit(tr("agentmeister sessions: номер сообщения — число, например 120 или -10",
+                            "agentmeister sessions: the message number must be a number, for example 120 or -10"))
         text, err = claude_search.read(args[1], at=at)
         print(text)
         return 1 if err else 0
